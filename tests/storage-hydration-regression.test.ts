@@ -81,7 +81,7 @@ for (const [language, heading, label, all, savedFiles] of [
     assert.ok(markup.includes(heading))
     assert.ok(markup.includes(`aria-label="${label}"`))
     assert.ok(markup.includes(`<option value="all" selected="">${all}</option>`))
-    assert.ok(markup.includes(`<h2 class="font-semibold">${savedFiles} (0)</h2>`))
+    assert.ok(markup.includes(`<h2 class="font-semibold">${savedFiles} (…)</h2>`), 'SSR must not present an unverified file count of zero')
     assert.match(markup, /type="date"[^>]*value=""/)
   })
 }

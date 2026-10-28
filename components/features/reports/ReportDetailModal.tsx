@@ -13,7 +13,7 @@ import { ReportImage } from '@/lib/types/database.types'
 import { format } from 'date-fns'
 import { AlertTriangle, ChevronDown, ChevronUp, DollarSign, TrendingUp, Users, ThumbsUp, MessageCircle, Share2, ExternalLink, Star, Download, Check, X, Pencil, RotateCcw, ScanText, Trash2, History, LockOpen, Upload } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermission, canExportReportDetail } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
@@ -303,7 +303,6 @@ export function ReportDetailModal({
   const [showReopen, setShowReopen] = React.useState(false)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>('data')
   const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
-  const [mobileReviewOpen, setMobileReviewOpen] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState('overview')
   const [showConfirmWarning, setShowConfirmWarning] = React.useState(false)
   const [revisionPage, setRevisionPage] = React.useState(1)
@@ -500,7 +499,9 @@ export function ReportDetailModal({
     platforms: new Map(platforms.map(platform => [platform.id, platform.name])),
   })
 
-  const canExport = !currentUser || hasPermission(currentUser, 'reports.export') || hasPermission(currentUser, 'reports.review') || hasPermission(currentUser, 'reports.submit') || report.submitted_by === currentUser?.id
+  // Fail closed without an actor. Members may export only reports they submitted;
+  // Leader/Admin use their explicit reports.export permission.
+  const canExport = canExportReportDetail(currentUser, report.submitted_by)
 
   const rerunOcr = async () => {
     const platform = report.dashboard_platform || 'other'
@@ -731,11 +732,11 @@ export function ReportDetailModal({
 
   return (<>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="full" className="ada-reference-report-detail h-[100dvh] min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-none sm:h-[92vh] sm:rounded-2xl">
+      <DialogContent size="full" className="h-[calc(100vh-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden sm:h-[92vh]">
         <DialogHeader>
           <div className="flex flex-col gap-3 pr-8 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <DialogTitle className="text-[19px] font-extrabold tracking-tight text-[#07183B] sm:text-2xl">{getBrandName(shift.brand_id)} - {t('finalReport')}</DialogTitle>
+              <DialogTitle className="text-2xl">{getBrandName(shift.brand_id)} - {t('finalReport')}</DialogTitle>
               <div className="text-sm text-gray-600 mt-1">
                 {format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}
               </div>
@@ -749,38 +750,9 @@ export function ReportDetailModal({
           <div className="flex flex-wrap gap-2">{report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && <Button variant="outline" size="sm" onClick={() => setShowReopen(true)}><LockOpen className="mr-2 h-4 w-4" />{t('reopenReport')}</Button>}{canExport && <Button variant="outline" size="sm" onClick={exportDetail} data-testid="export-report-detail"><Download className="mr-2 h-4 w-4" />{t('exportReportDetail')}</Button>}</div>
         </div>
 
-        <DialogBody className="min-w-0 space-y-4 overflow-x-hidden pb-1">
-        <section data-testid="ada-reference-report-mobile" className="rounded-[16px] border border-[#E5EBF8] bg-white p-4 shadow-sm lg:hidden">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-[13px] font-bold text-[#07183B]">Thông tin phiên livestream</h3>
-            <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${report.metrics_confirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{report.status === 'reopened' ? 'Đã mở lại' : report.metrics_confirmed ? 'Đã duyệt' : 'Cần rà soát'}</span>
-          </div>
-          <dl className="space-y-2 text-[12px]">
-            {[
-              ['Brand', getBrandName(shift.brand_id)],
-              ['Nền tảng', platforms.find(item => item.id === shift.platform_id)?.name || '—'],
-              ['Host', users.find(item => item.id === shift.host_id)?.full_name || '—'],
-              ['Thời gian', formatShiftTimeRange(shift)],
-              ['Ngày', format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')],
-            ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-4 border-b border-[#EDF1F8] py-1.5 last:border-0">
-              <dt className="text-slate-500">{label}</dt><dd className="min-w-0 text-right font-semibold text-[#142650]">{value}</dd>
-            </div>)}
-          </dl>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <Button type="button" size="sm" onClick={() => setActiveTab('images')} className="min-h-10 bg-[#155EF2] text-[11px] text-white">Xem hình ảnh</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('versions')} className="min-h-10 border-[#D6E0F3] text-[11px] text-[#155EF2]">Lịch sử chỉnh sửa</Button>
-          </div>
-        </section>
+        <DialogBody className="space-y-4 pb-1">
         {!report.metrics_confirmed && currentUser && hasPermission(currentUser, 'reports.review') && (
-          <>
-            <button type="button" data-testid="pwa-report-review-toggle"
-              aria-expanded={mobileReviewOpen} onClick={() => setMobileReviewOpen(value => !value)}
-              className="flex min-h-11 w-full items-center justify-between rounded-[12px] border border-amber-200 bg-amber-50 px-4 text-left text-[12px] font-semibold text-amber-800 lg:hidden">
-              <span>Kiểm duyệt OCR · {unresolvedCount} chỉ số cần xem</span>
-              {mobileReviewOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
-            <div className={mobileReviewOpen ? 'block' : 'hidden lg:block'}>
-              <Card className="border-amber-200">
+          <Card className="border-amber-200">
             <CardContent className="space-y-4 pt-5">
               <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{t('reportOcrReview')}</h3><Badge variant="outline">{reviewData.status === 'review_required' ? t('statusReviewRequired') : reviewData.status === 'confirmed' ? t('statusConfirmed') : reviewData.status === 'failed' ? t('error') : reviewData.status === 'processing' ? t('loading') : reviewData.status === 'unavailable' ? t('manualInput') : t('pending')}</Badge></div><p className="text-sm text-muted-foreground">{t('ocrReviewHelp')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => void resetExtracted()}><RotateCcw className="mr-2 h-4 w-4" />{t('resetResults')}</Button><Button type="button" variant="outline" onClick={() => setEditingMetrics(value => !value)}><Pencil className="mr-2 h-4 w-4" />{editingMetrics ? t('finishEditing') : t('editOcrMetrics')}</Button><Button type="button" variant="outline" disabled={reviewData.status === 'processing'} onClick={() => void rerunOcr()}><ScanText className="mr-2 h-4 w-4" />{t('rescanOcr')}</Button><Button type="button" variant="outline" size="sm" data-testid="toggle-review-metrics-collapse" onClick={() => setMetricsCollapsed(prev => !prev)}>{metricsCollapsed ? <ChevronDown className="mr-1.5 h-4 w-4" /> : <ChevronUp className="mr-1.5 h-4 w-4" />}{metricsCollapsed ? t('expandMetrics') : t('collapseMetrics')}</Button></div></div>
               {dashboardImage && (
@@ -821,22 +793,18 @@ export function ReportDetailModal({
               <label className="text-xs font-medium">{t('reviewNotes')}<Textarea className="mt-1" value={reviewNotes} onChange={event => setReviewNotes(event.target.value)} /></label>
               <div className="flex flex-wrap justify-end gap-2">{unresolvedCount > 0 && <Button variant="outline" onClick={confirmAllMetrics}><Check className="mr-2 h-4 w-4" />{t('confirmAllReviewed')}</Button>}<Button variant="outline" disabled={busy} onClick={() => void saveDraft()}><Pencil className="mr-2 h-4 w-4" />{t('saveDraftRevision')}</Button><Button variant="outline" disabled={busy} onClick={() => void rejectReport()}><X className="mr-2 h-4 w-4" />{t('rejectReport')}</Button><Button disabled={busy || reviewData.status === 'processing' || reviewData.status === 'failed'} onClick={() => void confirmReport()}><Check className="mr-2 h-4 w-4" />{t('confirmMetrics')}</Button></div>
             </CardContent>
-              </Card>
-            </div>
-          </>
+          </Card>
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0">
           <div className="sticky top-0 z-20 bg-popover pb-3">
-          <div className="min-w-0 overflow-x-auto">
-            <TabsList className="flex h-11 w-max min-w-full flex-nowrap justify-start gap-1 rounded-[11px] bg-[#F3F6FD] p-1">
-              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="overview">{t('reportOverview')}</TabsTrigger>
-              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="images">{t('reportImages')}</TabsTrigger>
-              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="details">{t('reportDetails')}</TabsTrigger>
-              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="insights">{t('reportInsights')}</TabsTrigger>
-              <TabsTrigger className="min-w-[95px] flex-none text-[11px] data-[state=active]:bg-white data-[state=active]:text-[#155EF2]" value="versions">{t('reportVersions')}</TabsTrigger>
-            </TabsList>
-            </div>
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
+            <TabsTrigger value="overview">{t('reportOverview')}</TabsTrigger>
+            <TabsTrigger value="insights">{t('reportInsights')}</TabsTrigger>
+            <TabsTrigger value="details">{t('reportDetails')}</TabsTrigger>
+            <TabsTrigger value="images">{t('reportImages')}</TabsTrigger>
+            <TabsTrigger value="versions">{t('reportVersions')}</TabsTrigger>
+          </TabsList>
           </div>
 
           <TabsContent value="overview" className="space-y-6">

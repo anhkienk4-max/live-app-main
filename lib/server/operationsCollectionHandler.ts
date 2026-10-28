@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { operationsResponseOwnerKey } from '@/lib/server/operationsResponseOwnerKey'
 import { dashboardUpdateFromRow } from '@/lib/services/supabaseDashboardUpdateService'
 import { readDataQualityPage } from '@/lib/server/dataQualityPage'
 import { pageRange } from '@/lib/utils/pagination'
@@ -18,7 +19,7 @@ const shiftFilterKeys = ['search','from','to','brandIds','platformIds','campaign
 const filterKeys: Record<string,string[]> = {
   shifts:shiftFilterKeys,live_shifts:shiftFilterKeys,open_shifts:shiftFilterKeys,my_shifts:shiftFilterKeys,
   staff:['search','statuses','roles','systemPermissions','archived'],brands:['search','statuses'],platforms:['search','statuses'],campaigns:['search','statuses','brandIds'],
-  notifications:['search','statuses','types'],reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],analytics_reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],registration_reviews:['search','statuses','roles'],
+  notifications:['search','statuses','types'],reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],report_queue:['search','from','to','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses'],analytics_reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],registration_reviews:['search','statuses','roles'],
   archives:[],account_requests:['statuses'],live_updates:['shiftIds'],import_batches:[],schedule_changes:['from','to','actorIds','actionIds','shiftIds','brandIds','sources'],
   swaps:['search','from','to','brandIds','platformIds','campaignIds','scope','requesterIds','roles','statuses'],quality:['severity','qualitySources'],
 }
@@ -31,14 +32,14 @@ export const listFiltersSchema = z.object({
   registrationStatuses: z.array(z.enum(['pending', 'approved', 'manually_assigned'])).max(3).optional(),
   archived: z.boolean().optional(), systemPermissions: z.array(z.enum(['admin', 'leader', 'member'])).max(3).optional(), assignedUserIds: choices,
   hostIds: choices, supportIds: choices, technicalIds: choices, operationalRoles: z.array(z.enum(['host','support','technical'])).max(3).optional(), staffingStates: z.array(z.enum(['fully_staffed','missing_staff'])).max(2).optional(), registrationStates: z.array(z.enum(['pending','approved','manually_assigned','rejected','cancelled','removed'])).max(6).optional(), hasImportedStaffing: z.boolean().optional(),
-  severity: z.enum(['all','error','warning','info']).optional(), qualitySources: z.array(z.enum(['schedule_import','report','staffing'])).max(3).optional(),
+  severity: z.array(z.enum(['error','warning','info'])).max(3).optional(), qualitySources: z.array(z.enum(['schedule_import','report','staffing'])).max(3).optional(),
   scope: z.enum(['all', 'mine', 'forMe']).optional(), requesterIds: choices,
   actorIds: choices, actionIds: choices, shiftIds: choices, sources: choices,
   reportStatuses: choices, metricsStatuses: z.array(z.enum(['confirmed', 'unconfirmed'])).max(2).optional(),
   types: choices, statuses: choices, descending: z.boolean().optional(),
 }).strict().refine(value => !value.from || !value.to || value.from <= value.to)
 const schema = z.object({
-  entity: z.enum(['shifts', 'open_shifts', 'my_shifts', 'brands', 'platforms', 'campaigns', 'staff', 'notifications', 'reports', 'registration_reviews', 'import_batches', 'schedule_changes', 'swaps', 'quality', 'live_shifts', 'analytics_reports', 'live_updates', 'archives', 'account_requests']),
+  entity: z.enum(['shifts', 'open_shifts', 'my_shifts', 'brands', 'platforms', 'campaigns', 'staff', 'notifications', 'reports', 'report_queue', 'registration_reviews', 'import_batches', 'schedule_changes', 'swaps', 'quality', 'live_shifts', 'analytics_reports', 'live_updates', 'archives', 'account_requests']),
   page: z.coerce.number().int().min(1).max(100000),
   pageSize: z.coerce.number().refine(value => [10, 20, 50].includes(value)),
   pendingPage: z.coerce.number().int().min(1).max(100000),
@@ -48,7 +49,7 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
   return { GET: async (request: Request) => {
     try {
       const user = await requireUser(request, dependencies.resolveUser)
-      const ownerKey=user.id+':'+user.systemPermission
+      const ownerKey=operationsResponseOwnerKey(user)
       const reply=(data:object)=>Response.json({...data,ownerKey},{headers:{'Cache-Control':'private, no-store'}})
       const params = new URL(request.url).searchParams
       const raw = params.get('filters') ?? '{}'
@@ -120,15 +121,42 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
         const { rows, ...metadata } = result.data
         return reply({ ...metadata, items: rows.map(swapFromRow) })
       }
-      if (entity === 'reports' || entity === 'analytics_reports') {
-        const result = await client.rpc('get_report_list_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters, p_summary:entity==='analytics_reports' })
+      if (entity === 'reports') {
+        // Historical report access is based on report RLS, not broader shift
+        // visibility. The RPC returns only the separately authorized six-field
+        // display context for an RLS-hidden linked shift.
+        const result = await client.rpc('get_report_list_with_history', {
+          p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters,
+        })
+        if (result.error) throw result.error
+        const { rows, historicalShiftContexts, ...metadata } = result.data
+        if (!Array.isArray(rows) || !historicalShiftContexts ||
+          typeof historicalShiftContexts !== 'object' || Array.isArray(historicalShiftContexts)) {
+          throw new Error('REPORT_HISTORY_RESPONSE_INVALID')
+        }
+        const reportIds = new Set(rows.map((row:{ id:string })=>row.id))
+        if (Object.keys(historicalShiftContexts).some(id=>!reportIds.has(id))) {
+          throw new Error('REPORT_HISTORY_RESPONSE_INVALID')
+        }
+        return reply({ ...metadata, items: rows.map(reportFromRow), historicalShiftContexts })
+      }
+      if (entity === 'analytics_reports') {
+        const result = await client.rpc('get_report_list_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters, p_summary:true })
         if (result.error) throw result.error
         const { rows, ...metadata } = result.data
-        if (entity === 'reports') return reply({ ...metadata, items: rows.map(reportFromRow) })
         const ids = [...new Set((rows as Array<{ shift_id: string }>).map(row => row.shift_id))]
         const shifts = ids.length ? await client.from('shifts').select('*').in('id', ids) : { data: [], error: null }
         if (shifts.error) throw shifts.error
         return reply({ ...metadata, items: rows.map(reportFromRow), shifts: (shifts.data ?? []).map(row => shiftFromRow(row, 'database')) })
+      }
+      if (entity === 'report_queue') {
+        const result = await client.rpc('get_report_obligation_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters })
+        if (result.error) throw result.error
+        const { rows, ...metadata } = result.data
+        const entries = rows as Array<{ shift: Parameters<typeof shiftFromRow>[0]; report: Parameters<typeof reportFromRow>[0] | null }>
+        const shifts = await withShiftStaffingSummary(client, entries.map(entry => shiftFromRow(entry.shift, 'database')))
+        const shiftById = new Map(shifts.map(shift => [shift.id, shift]))
+        return reply({ ...metadata, items: entries.map(entry => ({ shift: shiftById.get(entry.shift.id)!, report: entry.report ? reportFromRow(entry.report) : null })) })
       }
       if (entity === 'registration_reviews') {
         const result = await client.rpc('get_registration_review_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters })
@@ -165,6 +193,11 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
     } catch (error) {
       if (isAuthorizationError(error)) return authorizationErrorResponse(error)
       const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
+      if (code === '42501') {
+        // Distinguish an actual database ACL failure from an application RBAC rejection.
+        // Never log user identifiers, filter values, request cookies or SQL details.
+        console.warn('OPS_COLLECTION_DATABASE_ACL_DENIED', { entity: new URL(request.url).searchParams.get('entity') })
+      }
       return Response.json({ error: { code: code === '42501' ? 'PERMISSION_DENIED' : 'LIST_READ_FAILED' } }, { status: code === '42501' ? 403 : code.startsWith('22') ? 400 : 500, headers: { 'Cache-Control': 'no-store' } })
     }
   } }

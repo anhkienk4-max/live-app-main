@@ -26,15 +26,15 @@ export function PageShell({ archetype, className, children, ...props }: PageShel
       case 'configuration':
         return 'max-w-[1280px]' // focused workspace
       case 'auth':
-        return 'max-w-md'
+        return 'max-w-full'
       default:
         return 'max-w-7xl'
     }
   }, [archetype])
 
   return (
-    <div className={cn('w-full mx-auto', maxWidthClass, className)} {...props}>
-      <div className={cn('flex flex-col w-full', archetype === 'auth' ? '' : 'pt-2 pb-6')}>
+    <div className={cn('w-full min-w-0 mx-auto', maxWidthClass, className)} {...props}>
+      <div className={cn('flex min-w-0 flex-col w-full', archetype === 'auth' ? '' : 'pt-2 pb-6')}>
         {children}
       </div>
     </div>
@@ -65,7 +65,7 @@ export function PageHeaderContent({ className, children, ...props }: React.HTMLA
 
 export function PageActions({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('flex items-center gap-2', className)} {...props}>
+    <div className={cn('flex min-w-0 flex-wrap items-center gap-2', className)} {...props}>
       {children}
     </div>
   )

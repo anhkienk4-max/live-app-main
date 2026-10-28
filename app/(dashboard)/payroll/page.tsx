@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
+import { MyPayslipPanel } from '@/components/features/payroll/MyPayslipPanel'
 import { useTranslation } from '@/lib/i18n'
 import type { User as BusinessUser } from '@/lib/types/database.types'
 import { resolveSystemPermission } from '@/lib/permissions'
@@ -26,18 +27,26 @@ import {
   type PayrollAudit,
 } from '@/lib/services/workforceService'
 import { PayrollOverview } from '@/components/features/payroll/PayrollOverview'
-import { formatCurrency } from '@/lib/utils/currency'
 import { PayrollPeriodManager } from '@/components/features/payroll/PayrollPeriodManager'
 import { PayrollRateManager } from '@/components/features/payroll/PayrollRateManager'
 import { PayrollDraftWorkspace } from '@/components/features/payroll/PayrollDraftWorkspace'
 import { PayrollAuditTimeline } from '@/components/features/payroll/PayrollAuditTimeline'
+import { PayrollRoomRules } from '@/components/features/payroll/PayrollRoomRules'
 
 export default function PayrollPage() {
   const { translate } = useTranslation()
+  // One stable, server-revalidated capability hook across mock/admin/member
+  // identity changes. Never unmount its observer before a new actor is verified.
   const { currentUser, loading, error, capabilities, identityKey } = useWorkforceCapabilities()
   if (loading) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Đang xác minh phiên đăng nhập và quyền truy cập…')}</p></PageShell>
   if (error) return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate(error)}</p></PageShell>
-  if (!currentUser || resolveSystemPermission(currentUser) !== 'admin') return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate('Bạn không có quyền truy cập bảng lương (403).')}</p></PageShell>
+  if (!currentUser) return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate('Vui lòng đăng nhập.')}</p></PageShell>
+  if (resolveSystemPermission(currentUser) !== 'admin') {
+    if (process.env.NEXT_PUBLIC_FEATURE_MY_PAYSLIP === 'true') {
+      return <MyPayslipPanel key={identityKey ?? currentUser.id} />
+    }
+    return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate('Bạn không có quyền truy cập bảng lương (403).')}</p></PageShell>
+  }
   if (!capabilities?.payroll) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.')}</p></PageShell>
   return <PayrollWorkspace key={identityKey} currentUser={currentUser} />
 }
@@ -46,8 +55,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
   const permission = resolveSystemPermission(currentUser)
   const { toast } = useToast()
 
-  const [activeTab, setActiveTab] = React.useState<'workspace' | 'periods' | 'rates'>('periods')
-  const [mobileAdvancedOpen, setMobileAdvancedOpen] = React.useState(false)
+  const [activeTab, setActiveTab] = React.useState<'workspace' | 'periods' | 'rates' | 'room_rules'>('periods')
   const [selectedPeriod, setSelectedPeriod] = React.useState<PayrollPeriod | null>(null)
   const [lines, setLines] = React.useState<PayrollLine[]>([])
   const [audit, setAudit] = React.useState<PayrollAudit[]>([])
@@ -126,7 +134,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
   }
 
   return (
-    <PageShell archetype="command" className="ada-payroll-page space-y-6 p-4 md:p-6" data-testid="payroll-page">
+    <PageShell archetype="command" className="space-y-6 p-4 md:p-6">
       {/* Page Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4">
         <div>
@@ -170,66 +178,9 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
       </div>
 
       {readError && <p role="alert">{readError}</p>}
-      <section data-testid="ada-reference-payroll-mobile" className="space-y-4 lg:hidden">
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-[#E6ECF8] bg-white px-3 py-3">
-          <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-[#2563EB]" /><span className="text-[12px] font-semibold text-[#142650]">{selectedPeriod ? `${selectedPeriod.period_start} – ${selectedPeriod.period_end}` : 'Chưa chọn chu kỳ lương'}</span></div>
-          <button type="button" onClick={() => { setActiveTab('periods'); setMobileAdvancedOpen(true) }} className="shrink-0 text-[11px] font-bold text-[#2563EB]">Chọn kỳ</button>
-        </div>
-        {selectedPeriod ? (
-          <div className="overflow-hidden rounded-[16px] bg-gradient-to-br from-[#091C49] via-[#0C285E] to-[#07142E] p-5 text-white shadow-[0_8px_22px_rgba(8,25,61,.14)]">
-            <p className="text-[11px] text-blue-100">Tổng giá trị quyết toán · {selectedPeriod.status}</p>
-            <p className="mt-3 text-[27px] font-extrabold tabular-nums tracking-tight">{loadingDetails ? 'Đang tải...' : formatCurrency(lines.filter(line => !line.voided_at).reduce((sum, line) => sum + line.net_vnd, 0))}</p>
-            <div className="mt-4 space-y-2 border-t border-white/15 pt-3">
-              {[
-                { role: 'host', label: 'Host' },
-                { role: 'support', label: 'Trợ livestream' },
-                { role: 'technical', label: 'Kỹ thuật' },
-              ].map(item => (
-                <div key={item.role} className="flex items-center justify-between gap-3 text-[11px] text-blue-100">
-                  <span>{item.label}</span>
-                  <span className="font-semibold tabular-nums text-white">{loadingDetails ? '…' : formatCurrency(lines.filter(line => !line.voided_at && line.operational_role === item.role).reduce((sum, line) => sum + line.net_vnd, 0))}</span>
-                </div>
-              ))}
-              <p className="pt-1 text-[10px] text-blue-200">{lines.filter(line => !line.voided_at).length} phân đoạn ca · Chỉ dành cho Admin</p>
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-[16px] border border-dashed border-[#CBD7ED] bg-white p-5 text-center">
-            <Banknote className="mx-auto h-7 w-7 text-[#2563EB]" />
-            <p className="mt-2 text-[13px] font-semibold text-[#07183B]">Chọn kỳ lương để xem số liệu</p>
-            <p className="mt-1 text-[11px] text-slate-500">Không hiển thị số tiền khi chưa có kỳ quyết toán.</p>
-          </div>
-        )}
-        {selectedPeriod && !loadingDetails && (
-          <div className="space-y-3">
-            <h2 className="text-[14px] font-bold text-[#07183B]">Chi tiết theo ca</h2>
-            {lines.filter(line => !line.voided_at).length === 0 ? (
-              <p className="rounded-xl border border-[#E7ECF8] bg-white p-4 text-[12px] text-slate-500">Kỳ này chưa có phân đoạn ca đối soát.</p>
-            ) : (
-              <div className="divide-y divide-[#EDF1F8] overflow-hidden rounded-[15px] border border-[#E7ECF8] bg-white">
-                {lines.filter(line => !line.voided_at).slice(0, 5).map(line => <div key={line.id} className="flex items-center gap-3 px-3 py-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#2563EB]"><Banknote className="h-[17px] w-[17px]" /></span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-semibold text-[#12234C]">{line.operational_role} · {line.payable_minutes} phút</p>
-                    <p className="truncate text-[10px] text-slate-500">Mã phân đoạn: {line.segment_id}</p>
-                  </div>
-                  <span className="shrink-0 text-[12px] font-bold tabular-nums text-[#0C2454]">{formatCurrency(line.net_vnd)}</span>
-                </div>)}
-              </div>
-            )}
-          </div>
-        )}
-        <button type="button" data-testid="pwa-payroll-advanced-toggle" aria-expanded={mobileAdvancedOpen}
-          onClick={() => setMobileAdvancedOpen(value => !value)}
-          className="flex min-h-11 w-full items-center justify-center rounded-[12px] border border-[#DCE4F5] bg-white px-4 text-[12px] font-semibold text-[#2563EB]">
-          {mobileAdvancedOpen ? 'Ẩn công cụ đối soát' : 'Mở công cụ đối soát / Đơn giá'}
-        </button>
-      </section>
-      {/* Keep all existing admin workflows mounted and accessible after explicit expansion. */}
-      <div className={mobileAdvancedOpen ? 'block' : 'hidden lg:block'}>
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-3 bg-slate-100 p-1 rounded-lg">
+        <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-2 sm:grid-cols-4 bg-slate-100 p-1 rounded-lg">
           <TabsTrigger value="workspace" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Không gian đối soát
           </TabsTrigger>
@@ -238,6 +189,9 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
           </TabsTrigger>
           <TabsTrigger value="rates" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Khung lương & Đơn giá
+          </TabsTrigger>
+          <TabsTrigger value="room_rules" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            Nội quy & Case vi phạm
           </TabsTrigger>
         </TabsList>
 
@@ -295,8 +249,12 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
         <TabsContent value="rates" className="mt-0">
           <PayrollRateManager />
         </TabsContent>
+
+        {/* READ-ONLY POLICY CASE REVIEW: NO AUTOMATIC PAYROLL DEDUCTIONS */}
+        <TabsContent value="room_rules" className="mt-0">
+          <PayrollRoomRules period={selectedPeriod} />
+        </TabsContent>
       </Tabs>
-      </div>
     </PageShell>
   )
 }

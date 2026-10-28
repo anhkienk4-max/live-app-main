@@ -17,6 +17,7 @@ import {
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { reportMetricValue, calculateNullableAnalyticsMetrics } from '@/lib/utils/analytics'
@@ -111,6 +112,7 @@ export function ReportsContainer() {
       setLoading(false)
     }
   }, [])
+  useShiftChangeRefresh(loadData)
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void loadData() })
@@ -286,7 +288,7 @@ export function ReportsContainer() {
           </div>
         </div>
 
-        <div data-testid="pwa-report-quick-filters" className={showFilters ? 'grid gap-2 sm:grid-cols-2 lg:grid-cols-5' : 'hidden gap-2 md:grid md:grid-cols-2 lg:grid-cols-5'}>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => ({ ...current, brandIds: value }))} />
             <EntityFilter label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => ({ ...current, platformIds: value }))} />
             <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaignIds: value }))} />

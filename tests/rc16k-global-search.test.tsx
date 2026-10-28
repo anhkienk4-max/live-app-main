@@ -14,7 +14,8 @@ for (const role of ['admin', 'leader', 'member'] as const) {
       assert.equal(params.get('page'), '1')
       assert.equal(params.get('pageSize'), '10')
       assert.deepEqual(JSON.parse(params.get('filters')!), { search: 'needle' })
-      return Response.json({ items: [], total: 0, page: 1, pageSize: 10 })
+      return Response.json({ items: [], total: 0, page: 1, pageSize: 10,
+        ...(entity === 'reports' ? { historicalShiftContexts: {} } : {}) })
     }
     try {
       const result = await searchCollections(' needle ', role)

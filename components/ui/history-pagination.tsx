@@ -39,17 +39,17 @@ export function HistoryPagination({
           </SelectContent>
         </Select>
         <span className="text-sm">{t('recordsPerPage')}</span></>}
-        <Button type="button" size="icon-sm" variant="outline" disabled={safePage <= 1} aria-label={t('firstPage')} title={t('firstPage')} onClick={() => onPageChange(1)}>
+        <Button type="button" size="icon-sm" variant="outline" className="max-md:!h-11 max-md:!w-11" disabled={safePage <= 1} aria-label={t('firstPage')} title={t('firstPage')} onClick={() => onPageChange(1)}>
           <ChevronsLeft className="h-4 w-4" />
         </Button>
-        <Button type="button" size="icon-sm" variant="outline" disabled={safePage <= 1} aria-label={t('previousPage')} title={t('previousPage')} onClick={() => onPageChange(safePage - 1)}>
+        <Button type="button" size="icon-sm" variant="outline" className="max-md:!h-11 max-md:!w-11" disabled={safePage <= 1} aria-label={t('previousPage')} title={t('previousPage')} onClick={() => onPageChange(safePage - 1)}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <span className="min-w-24 text-center text-sm">{t('pageOf', { page: safePage, totalPages })}</span>
-        <Button type="button" size="icon-sm" variant="outline" disabled={safePage >= totalPages} aria-label={t('nextPage')} title={t('nextPage')} onClick={() => onPageChange(safePage + 1)}>
+        <Button type="button" size="icon-sm" variant="outline" className="max-md:!h-11 max-md:!w-11" disabled={safePage >= totalPages} aria-label={t('nextPage')} title={t('nextPage')} onClick={() => onPageChange(safePage + 1)}>
           <ChevronRight className="h-4 w-4" />
         </Button>
-        <Button type="button" size="icon-sm" variant="outline" disabled={safePage >= totalPages} aria-label={t('lastPage')} title={t('lastPage')} onClick={() => onPageChange(totalPages)}>
+        <Button type="button" size="icon-sm" variant="outline" className="max-md:!h-11 max-md:!w-11" disabled={safePage >= totalPages} aria-label={t('lastPage')} title={t('lastPage')} onClick={() => onPageChange(totalPages)}>
           <ChevronsRight className="h-4 w-4" />
         </Button>
       </div>

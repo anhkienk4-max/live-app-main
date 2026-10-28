@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import {
   invalidatePageCache, pageCacheKey, readCachedListPage, readPageCache,
   writePageCache, prefetchNextListPage,
@@ -83,4 +84,130 @@ test('aborted requests and failed queries must not poison the cache', async () =
   assert.equal(readPageCache(key), undefined)
   await assert.rejects(readCachedListPage({ getPage: async () => { throw new Error('denied') } }, 'actor', 'shifts', query), /denied/)
   assert.equal(readPageCache(key), undefined)
+})
+
+test('RC19 #71 cached private rows are not returned after actor drift, and old cache is evicted', async () => {
+  invalidatePageCache()
+  const previousWarning = console.warn
+  const warnings: unknown[][] = []
+  console.warn = (...args: unknown[]) => { warnings.push(args) }
+  const identity = 'private-owner:member:2026-10-24'
+  const key = pageCacheKey(identity, 'shifts', query)
+  let fetches = 0
+  const service = { async getPage(): Promise<ListPage<Item>> {
+    fetches++
+    return { items: [{ id: 'private-stale-row' }], page: 1, pageSize: 10, total: 1 }
+  } }
+  try {
+    writePageCache(key, { items: [{ id: 'private-stale-row' }], page: 1, pageSize: 10, total: 1 })
+    await assert.rejects(
+      readCachedListPage(service, identity, 'shifts', query, undefined, async () => false),
+      /LIST_IDENTITY_CHANGED/,
+    )
+    assert.equal(fetches, 0, 'cached response must never invoke network when actor is revoked')
+    assert.equal(readPageCache(key), undefined, 'stale actor cache must be cleared')
+    assert.deepEqual(warnings, [['OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      stage: 'cache_actor_changed_on_hit',
+    }]])
+    const logged = JSON.stringify(warnings)
+    assert.equal(logged.includes(identity), false)
+    assert.equal(logged.includes('private-stale-row'), false)
+
+    const refreshed = await readCachedListPage(
+      service, identity, 'shifts', query, undefined, async () => true,
+    )
+    assert.deepEqual(refreshed.items.map(item => item.id), ['private-stale-row'])
+    assert.equal(fetches, 1)
+  } finally {
+    console.warn = previousWarning
+    invalidatePageCache()
+  }
+})
+
+test('RC19 #71 in-flight actor drift invalidates existing actor cache pages', async () => {
+  invalidatePageCache()
+  const previousWarning = console.warn
+  console.warn = () => undefined
+  const identity = 'private-session:member:v1'
+  const olderPage = pageCacheKey(identity, 'shifts', { ...query, page: 2 })
+  writePageCache(olderPage, { items: [{ id: 'stale-row' }], page: 2, pageSize: 10, total: 20 })
+  try {
+    await assert.rejects(
+      readCachedListPage({
+        getPage: async () => ({ items: [{ id: 'old-page-1' }], page: 1, pageSize: 10, total: 20 }),
+      }, identity, 'shifts', query, undefined, async () => false),
+      /LIST_IDENTITY_CHANGED/,
+    )
+    assert.equal(readPageCache(olderPage), undefined)
+    assert.equal(readPageCache(pageCacheKey(identity, 'shifts', query)), undefined)
+  } finally {
+    console.warn = previousWarning
+    invalidatePageCache()
+  }
+})
+
+test('RC19 #71 every usePagedList render goes through verified actor cache reads', () => {
+  const hook = readFileSync(new URL('../lib/hooks/usePagedList.ts', import.meta.url), 'utf8')
+  // Synchronous readPageCache could directly render old private rows without
+  // passing the stillSameActor guard. Only readCachedListPage may return them.
+  assert.doesNotMatch(hook, /\breadPageCache\b/)
+  assert.doesNotMatch(hook, /\bpageCacheKey\b/)
+  assert.match(hook, /readCachedListPage\(service, identity, prefix, currentQuery, controller\.signal, stillSameActor\)/)
+  assert.match(hook, /const result = active \? state\.result : undefined/)
+  assert.match(hook, /if \(request !== version\.current \|\| controller\.signal\.aborted\) return/)
+})
+
+test('RC19 #71 cached page invalidated while actor proof awaits fetches a fresh page', async () => {
+  invalidatePageCache()
+  const identity = 'member:member:2026-10-24'
+  const namespace = 'my_shifts'
+  const key = pageCacheKey(identity, namespace, query)
+  writePageCache(key, {
+    items: [{ id: 'old-cache-row' }], page: 1, pageSize: 10, total: 1,
+  } satisfies ListPage<Item>)
+  let signalReady!: (valid: boolean) => void
+  const pending = new Promise<boolean>(resolve => { signalReady = resolve })
+  let reads = 0
+  const read = readCachedListPage({
+    async getPage(): Promise<ListPage<Item>> {
+      reads++
+      return { items: [{ id: 'fresh-row' }], page: 1, pageSize: 10, total: 1 }
+    },
+  }, identity, namespace, query, undefined, async () => pending)
+  invalidatePageCache(identity, namespace)
+  signalReady(true)
+  const result = await read
+  assert.deepEqual(result.items.map(item => item.id), ['fresh-row'])
+  assert.equal(reads, 1, 'stale cache hit must not be returned after invalidation')
+  assert.deepEqual(readPageCache<ListPage<Item>>(key)?.items.map(row => row.id), ['fresh-row'])
+  invalidatePageCache()
+})
+
+test('RC19 #71 logout during actor verification rejects cached rows without leaking identity', async () => {
+  invalidatePageCache()
+  const identity = 'private-member:member:2026-10-24'
+  const namespace = 'reports'
+  const key = pageCacheKey(identity, namespace, query)
+  const previousWarning = console.warn
+  const warnings: unknown[][] = []
+  console.warn = (...args: unknown[]) => warnings.push(args)
+  const service = { async getPage(): Promise<ListPage<Item>> {
+    return { items: [{ id: 'server-old' }], page: 1, pageSize: 10, total: 1 }
+  } }
+  try {
+    writePageCache(key, { items: [{ id: 'cache-old' }], page: 1, pageSize: 10, total: 1 })
+    await assert.rejects(
+      readCachedListPage(service, identity, namespace, query, undefined,
+        async () => { throw new Error('authenticated business user unavailable') }),
+      /LIST_IDENTITY_CHANGED/,
+    )
+    assert.equal(readPageCache(key), undefined)
+    assert.deepEqual(warnings, [['OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      stage: 'cache_actor_changed_on_hit',
+    }]])
+    assert.equal(JSON.stringify(warnings).includes('private-member'), false)
+  } finally {
+    console.warn = previousWarning
+    invalidatePageCache()
+  }
 })

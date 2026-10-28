@@ -144,9 +144,25 @@ export interface PeriodDetailResponse {
   audit: PayrollAudit[]
 }
 
+export interface RawSelfAttendanceReviewEvent {
+  id: string
+  shift_id: string
+  staff_id: string
+  operational_role: WorkforceRole
+  event_kind: 'check_in' | 'check_out'
+  recorded_at: string
+  verification_status: 'pending_verification'
+  /** Does not expose private Drive file IDs or proof request UUIDs. */
+  photo_available?: boolean
+}
+
 export interface ActualSegmentsResponse {
   ok: true
   segments: ActualSegment[]
+  /** Independent app evidence, NOT approved actual minutes or group-message timestamps. */
+  attendance_events?: RawSelfAttendanceReviewEvent[]
+  /** False or missing means raw journal was not queried. Never interpret as zero check-ins. */
+  attendance_review_enabled?: boolean
   shift_context?: {
     id: string
     date: string
@@ -251,10 +267,13 @@ export interface LeaderboardEntry {
 
 export interface WorkforceOverviewResponse {
   ok: boolean
-  month: string
+  period: string
+  month?: string
+  year?: string
   role: WorkforceRole
   team: WorkforceTeamOverview
   staff: WorkforcePerformanceSummary[]
+  staff_pagination?: Pagination
   leaderboard: LeaderboardEntry[]
   leaderboard_policy_configured: boolean
   unmatched_approved_segments: number
@@ -379,7 +398,11 @@ async function requestResponse(url: string, init?: RequestInit): Promise<Respons
     }
     const failure = new WorkforceServiceError(errorCode, res.status, errorCode, details)
     if (typeof window !== 'undefined' && (res.status === 401 || res.status === 403 || errorCode.endsWith('FEATURE_DISABLED'))) {
-      window.dispatchEvent(new CustomEvent('workforce-access-invalidated', { detail: { message: workforceErrorMessage(failure) } }))
+      // A forbidden operation does not prove the current user's entire Workforce
+      // capability set is revoked. Revalidate it rather than making a local
+      // action-level 403 permanently replace the authorized workspace.
+      const revalidate = res.status === 403 && url !== '/api/workforce/capabilities'
+      window.dispatchEvent(new CustomEvent('workforce-access-invalidated', { detail: { message: workforceErrorMessage(failure), revalidate } }))
     }
     throw failure
   }
@@ -444,8 +467,10 @@ export const workforceService = {
     pageSize?: number
     staffId?: string
     role?: WorkforceRole
+    roles?: WorkforceRole[]
     effectiveDate?: string
     scope?: RateScope
+    scopes?: RateScope[]
   } = {}): Promise<{ ok: true; rates: RateCard[]; pagination: Pagination }> {
     const q = new URLSearchParams()
     q.set('action', 'list_rates')
@@ -453,8 +478,10 @@ export const workforceService = {
     if (params.pageSize) q.set('page_size', String(params.pageSize))
     if (params.staffId) q.set('staff_id', params.staffId)
     if (params.role) q.set('role', params.role)
+    params.roles?.forEach(role => q.append('roles', role))
     if (params.effectiveDate) q.set('effective_date', params.effectiveDate)
     if (params.scope) q.set('scope', params.scope)
+    params.scopes?.forEach(scope => q.append('scopes', scope))
 
     return requestJson<{ ok: true; rates: RateCard[]; pagination: Pagination }>(
       `/api/workforce/payroll?${q.toString()}`
@@ -720,12 +747,12 @@ export const workforceService = {
   async getWorkforcePerformance(params: {
     staffId: string
     role: WorkforceRole
-    month: string
+    period: string
   }): Promise<{ ok: true; performance: WorkforcePerformanceSummary }> {
     const q = new URLSearchParams()
     q.set('staff_id', params.staffId)
     q.set('role', params.role)
-    q.set('month', params.month)
+    q.set('period', params.period)
 
     return requestJson<{ ok: true; performance: WorkforcePerformanceSummary }>(
       `/api/workforce/performance?${q.toString()}`
@@ -733,15 +760,33 @@ export const workforceService = {
   },
 
   async getWorkforceOverview(params: {
-    month: string
+    period: string
     role: WorkforceRole
+    page?: number
+    pageSize?: number
+    search?: string
+    staffId?: string
+    record?: 'complete' | 'incomplete'
+    sort?: 'name' | 'assigned' | 'approved_minutes' | 'punctuality'
+    direction?: 'asc' | 'desc'
+    signal?: AbortSignal
   }): Promise<WorkforceOverviewResponse> {
     const q = new URLSearchParams()
-    q.set('month', params.month)
+    q.set('period', params.period)
     q.set('role', params.role)
+    if (params.page && params.pageSize) {
+      q.set('page', String(params.page))
+      q.set('page_size', String(params.pageSize))
+    }
+    if (params.search) q.set('search', params.search)
+    if (params.staffId) q.set('staff_id', params.staffId)
+    if (params.record) q.set('record', params.record)
+    if (params.sort) q.set('sort', params.sort)
+    if (params.direction) q.set('direction', params.direction)
 
     return requestJson<WorkforceOverviewResponse>(
-      `/api/workforce/overview?${q.toString()}`
+      `/api/workforce/overview?${q.toString()}`,
+      { signal: params.signal }
     )
   },
 }

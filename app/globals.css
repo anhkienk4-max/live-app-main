@@ -212,403 +212,107 @@
   }
 }
 
-/* ADA OPS PWA Visual W1: scoped to app shell/auth. Reference: ADA Global mobile brand board. */
-:root {
-  --ada-blue: #2563EB;
-  --ada-violet: #7C3AED;
-  --ada-cyan: #06B6D4;
-  --ada-navy: #07183B;
-  --ada-surface: #F8FAFF;
-  --ada-green: #10B981;
-  --ada-amber: #F59E0B;
-  --ada-red: #EF4444;
-  --ada-live: #EC4899;
+/* Keep touch controls usable without changing desktop density. */
+@media (max-width: 767px) {
+  button:not([role="switch"]):not([role="checkbox"]),
+  [role="menuitem"], [role="menuitemcheckbox"], [role="option"],
+  [data-slot="button"], [data-slot="select-trigger"],
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([tabindex="-1"]), select, textarea {
+    min-height: 44px;
+  }
+  button:not([role="switch"]):not([role="checkbox"]), [data-slot="button"] { min-width: 44px; }
+  [data-slot="tabs-list"] { height: auto; min-height: 44px; max-width: 100%; flex-wrap: wrap; }
+  [data-slot="tabs-trigger"] { min-height: 44px; }
+  label:has(input[type="checkbox"]), label:has(input[type="radio"]) { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
 }
 
-.ada-brand {
+@media (max-width: 767px) {
+  [role="region"] table:has(tr > th:nth-child(5)) { min-width: 640px; }
+}
+
+/* --- Enterprise Modern UI Utilities & Tokens --- */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* Operational status badges */
+.status-pill {
   display: inline-flex;
   align-items: center;
-  gap: .55rem;
-  min-width: 0;
-  color: var(--ada-navy);
-  vertical-align: middle;
-}
-.ada-brand--inverse { color: #fff; }
-.ada-brand__symbol {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 37px;
-  height: 37px;
-  flex: none;
-  border-radius: 11px;
-  background: linear-gradient(150deg, #0E62EE 7%, #4F31C8 96%);
-  box-shadow: 0 5px 15px rgba(31, 59, 180, .16);
-}
-.ada-brand__symbol-svg { width: 27px; height: 27px; }
-.ada-brand__type { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; line-height: 1; }
-.ada-brand__name { font-size: 24px; font-weight: 850; letter-spacing: -.085em; white-space: nowrap; }
-.ada-brand__ops { display: inline-block; margin-left: .35rem; font-size: .43em; font-weight: 850; letter-spacing: .08em; vertical-align: middle; }
-.ada-brand__descriptor { margin-top: .26rem; font-size: 8px; font-weight: 800; letter-spacing: .2em; }
-.ada-brand--compact { gap: .45rem; }
-.ada-brand--compact .ada-brand__symbol { width: 29px; height: 29px; border-radius: 9px; }
-.ada-brand--compact .ada-brand__symbol-svg { width: 21px; height: 21px; }
-.ada-brand--compact .ada-brand__name { font-size: 18px; }
-.ada-brand--compact .ada-brand__descriptor { font-size: 6px; }
-
-.ada-sidebar {
-  background: linear-gradient(165deg, #081A43 0%, #07152F 100%);
-}
-.ada-pwa-shell {
-  background: var(--ada-surface);
-}
-.ada-pwa-content {
-  background: var(--ada-surface);
-  overscroll-behavior-y: contain;
-}
-.ada-pwa-shell :is(button, a, input, select, textarea):focus-visible,
-.ada-auth :is(button, a, input, select, textarea):focus-visible {
-  outline: 2px solid var(--ada-blue);
-  outline-offset: 2px;
-}
-.ada-pwa-shell [data-testid="dashboard-page"] :is(.bg-white, .bg-card) {
-  border-radius: 14px;
-}
-.ada-bottom-nav {
-  padding-bottom: max(env(safe-area-inset-bottom), 0px);
-}
-.ada-bottom-nav__item {
-  position: relative;
-}
-.ada-bottom-nav__item--active:before {
-  content: '';
-  position: absolute;
-  top: 1px;
-  left: 31%;
-  right: 31%;
-  height: 3px;
-  border-radius: 0 0 5px 5px;
-  background: var(--ada-blue);
-}
-.ada-bottom-nav__item--active svg {
-  filter: drop-shadow(0 1px 3px rgba(37, 99, 235, .12));
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
 }
 
-.ada-auth__hero {
-  isolation: isolate;
-  background: linear-gradient(160deg, #075BF2 4%, #194FDE 46%, #080F50 100%);
+.status-pill-scheduled {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
 }
-.ada-auth__hero:before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: .72;
-  background: radial-gradient(ellipse 70% 65% at 100% 0%, #8E40EE 0%, transparent 70%);
-}
-.ada-auth__wave {
-  pointer-events: none;
-  position: absolute;
-  z-index: 0;
-  width: 125%;
-  height: 115px;
-  left: -12%;
-  bottom: -45px;
-  border-radius: 50% 50% 0 0;
-  transform: rotate(-9deg);
-  background: linear-gradient(90deg, #0D8CFF 0%, #4869F2 55%, #ACB7FF 100%);
-}
-.ada-auth__wave--second {
-  bottom: -73px;
-  left: 8%;
-  transform: rotate(8deg);
-  background: rgba(255,255,255,.64);
-}
-.ada-auth__brand .ada-brand__symbol {
-  width: 58px;
-  height: 58px;
-  border-radius: 17px;
-}
-.ada-auth__brand .ada-brand__symbol-svg { width: 42px; height: 42px; }
-.ada-auth__brand .ada-brand__name { font-size: 52px; }
-.ada-auth__brand .ada-brand__descriptor { font-size: 10px; }
-.ada-auth__card [data-testid="email-login-btn"] {
-  min-height: 46px;
-  background: var(--ada-blue);
-  border-radius: 11px;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, .16);
-}
-.ada-auth__card input { border-radius: 11px; background: #F8FAFF; }
-.ada-auth__card input:focus-visible { background: #fff; }
 
-@media (max-width: 639px) {
-  .ada-header {
-    background: linear-gradient(100deg, #091B43 0%, #081A3B 100%);
-    border-bottom-color: rgba(255,255,255,.08);
-  }
-  .ada-header :is(button, span):not([role="status"]) { color: #fff; }
-  .ada-header button:hover { background: rgba(255,255,255,.10); }
-  .ada-header [data-testid="user-menu-btn"] { padding-inline: 0; }
-  .ada-pwa-content { padding-bottom: calc(5.7rem + env(safe-area-inset-bottom)) !important; }
-  .ada-pwa-shell [data-testid="dashboard-page"] main { padding: 1rem; gap: .95rem; }
-  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
-  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-4 > div { min-width: 0; padding: .9rem; }
-  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-12 { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
-  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-12 > [class*="col-span-"] { grid-column: 1 / -1; min-width: 0; }
-  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-12 table { min-width: 500px; }
-  .ada-pwa-shell [data-testid="dashboard-page"] .grid-cols-12 .overflow-hidden:has(table) { overflow-x: auto; }
+.status-pill-preparing {
+  background-color: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
 }
-@media (min-width: 1024px) {
-  .ada-auth__hero .ada-auth__brand .ada-brand__name { font-size: 58px; }
-  .ada-auth__wave { height: 200px; bottom: -110px; }
-  .ada-auth__wave--second { bottom: -150px; }
+
+.status-pill-live {
+  background-color: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
 }
+
+.status-pill-paused {
+  background-color: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+
+.status-pill-completed {
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.status-pill-cancelled {
+  background-color: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+}
+
+/* Accessibility: Support prefers-reduced-motion for users sensitive to motion */
 @media (prefers-reduced-motion: reduce) {
-  .ada-pwa-shell *, .ada-auth * { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
-}
-
-/* ADA reference W2: surface styling only. Never substitute mock content for live data. */
-.ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page) h1 {
-  color: #07183B;
-  font-weight: 750;
-  letter-spacing: -.025em;
-}
-.ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page)
-:is([data-slot="card"],.shadow-sm.bg-white) {
-  border-color: #E7ECF7;
-  border-radius: 16px;
-  box-shadow: 0 6px 20px rgba(14, 39, 83, .045);
-}
-.ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page)
-:is(button,a) {
-  -webkit-tap-highlight-color: transparent;
-}
-.ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page)
-:is(button,a):active {
-  transition: transform .12s ease;
-}
-.ada-pwa-shell .ada-profile-page > div:first-child h1 { font-size: 1.5rem; }
-.ada-pwa-shell .ada-profile-page [data-slot="card"] { overflow: hidden; }
-.ada-pwa-shell .ada-reports-page > header { border-bottom: 1px solid #E8EDF8; padding-bottom: .8rem; }
-.ada-pwa-shell .ada-reports-page > header h1 { font-size: 1.5rem; }
-.ada-pwa-shell .ada-payroll-page [data-slot="tabs-list"] {
-  max-width: 100%;
-  overflow-x: auto;
-}
-@media (max-width: 639px) {
-  .ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page) {
-    min-width: 0;
-    padding: 1rem;
-  }
-  .ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page) [role="tablist"] {
-    max-width: 100%;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .ada-pwa-shell :is(.ada-calendar-page,.ada-reports-page,.ada-payroll-page,.ada-profile-page) [role="tab"] {
-    flex-shrink: 0;
-  }
-  .ada-pwa-shell .ada-payroll-page > div:first-child {
-    min-width: 0;
-    flex-wrap: wrap;
-  }
-}
-
-/* Auth responsive calibration for narrow desktop/tablet and mobile PWA.
-   Avoids the tall empty area when the viewport is 768–1023px wide. */
-.ada-auth__form { min-width: 0; }
-.ada-auth__card { min-width: 0; }
-@media (min-width: 768px) {
-  .ada-auth__hero { min-height: 100dvh; }
-  .ada-auth__form { min-height: 100dvh; }
-  .ada-auth__card { margin-top: 0; }
-}
-@media (max-width: 767px) {
-  .ada-auth__hero {
-    min-height: clamp(245px, 32dvh, 300px);
-    padding-top: max(2.25rem, env(safe-area-inset-top));
-  }
-  .ada-auth__card {
-    margin-top: -2.5rem;
-    margin-bottom: env(safe-area-inset-bottom);
-  }
-  .ada-auth__form { background: var(--ada-surface); }
-}
-@media (max-width: 360px) {
-  .ada-auth__card { padding-left: 1.15rem; padding-right: 1.15rem; }
-  .ada-auth__brand .ada-brand__name { font-size: 41px; }
-}
-
-/* ADA OPS 2026 reference-board mobile sign-in.
- * Mobile target: white canvas, central wordmark, blue/violet waves at edges.
- * Credentials, submit and recovery remain provided by the existing login component. */
-.ada-login-reference {
-  background: linear-gradient(180deg, #ffffff 0%, #ffffff 72%, #f5f8ff 100%);
-}
-.ada-login-reference__top {
-  position: absolute; z-index: 0; inset: 0 0 auto;
-  width: 100%; height: clamp(130px, 22dvh, 190px);
-  pointer-events: none;
-}
-.ada-login-reference__bottom {
-  position: absolute; z-index: 0; inset: auto 0 0;
-  width: 100%; height: clamp(100px, 19dvh, 170px);
-  pointer-events: none;
-}
-.ada-login-reference__logo { gap: .3rem; flex-direction: column; }
-.ada-login-reference__logo .ada-brand__symbol { display: none; }
-.ada-login-reference__logo .ada-brand__name { font-size: clamp(53px,13vw,67px); font-weight: 900; letter-spacing: -.11em; }
-.ada-login-reference__logo .ada-brand__ops { display: block; margin: .12rem 0 0; text-align: center; font-size: .24em; letter-spacing: .12em; }
-.ada-login-reference__logo .ada-brand__type { align-items: center; }
-.ada-login-reference__logo .ada-brand__descriptor { margin-top: .28rem; font-size: 9px; letter-spacing: .18em; }
-.ada-login-reference form input { background: #f4f6fb; border: 1px solid #e5eaf5; border-radius: 10px; }
-.ada-login-reference form input:focus-visible { background: #fff; border-color: #2563eb; }
-.ada-login-reference form button[type="submit"] { min-height: 44px; border-radius: 10px; background: #1559ef; }
-.ada-login-reference .ada-google-login { height: 44px; border-radius: 10px; }
-.ada-login-reference .ada-google-login:hover { background: #F3F7FF; }
-.ada-login-reference .ada-brand { user-select: none; }
-@media (min-width: 768px) {
-  .ada-login-reference { justify-content: center; }
-   .ada-login-reference__top { height: 190px; }
-  .ada-login-reference__bottom { height: 165px; }
-}
-@media (max-height: 740px) {
-  .ada-login-reference > main { padding-top: 105px; padding-bottom: 24px; }
-  .ada-login-reference main section { margin-top: 20px; }
-}
-
-/* Navy mobile title bar continues until the desktop sidebar is visible. */
-@media (max-width: 1023px) {
-  .ada-header { background: linear-gradient(115deg, #06183c, #092455 75%, #0c2967); border-bottom-color: rgba(255,255,255,.09); }
-  .ada-header button:not([data-slot="dropdown-menu-trigger"]) { color: #fff; }
-  .ada-header button:hover { background: rgba(255,255,255,.09); }
-}
-
-/* iPhone standalone safe area and compact Google-enabled sign-in. */
-@media (max-width: 430px) {
-  .ada-login-reference > main { padding-left: 22px; padding-right: 22px; }
-  .ada-login-reference__top { height: clamp(130px, 18dvh, 158px); }
-  .ada-login-reference__bottom { height: clamp(90px, 13dvh, 130px); }
-  .ada-login-reference main section { margin-top: 22px; }
-}
-@media (max-height: 670px) {
-  .ada-login-reference__bottom { opacity: .6; }
-  .ada-login-reference main section { margin-top: 16px; }
-}
-
-/*
- * ADA OPS Login reference-fidelity V3, scoped exclusively to the login variant.
- * Based on the supplied ADA Global login phone mockup, not a generic web-form shell.
- * The main content uses viewport width, avoiding a max-w-432px strip when browser
- * zoom makes a narrow Edge window report a much wider CSS viewport.
- */
-.ada-login-reference {
-  min-height: 100svh;
-  background: #fff;
-}
-.ada-login-reference__top,
-.ada-login-reference__bottom {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  z-index: 0;
-  pointer-events: none;
-}
-.ada-login-reference__top {
-  top: 0;
-  height: clamp(145px, 23svh, 205px);
-}
-.ada-login-reference__bottom {
-  top: auto;
-  bottom: 0;
-  height: clamp(185px, 24svh, 235px);
-}
-.ada-login-reference > .ada-login-reference__content {
-  width: min(88vw, 760px);
-  max-width: none;
-  margin-inline: auto;
-  padding: clamp(133px, 18.5svh, 180px) 0 max(60px, env(safe-area-inset-bottom));
-}
-.ada-login-reference__identity { text-align: center; }
-.ada-login-reference__logo { gap: 3px; flex-direction: column; }
-.ada-login-reference__logo .ada-brand__symbol { display: none; }
-.ada-login-reference__logo .ada-brand__type { align-items: center; }
-.ada-login-reference__logo .ada-brand__name {
-  font-size: clamp(84px, 22vw, 135px);
-  line-height: .82;
-  font-weight: 900;
-  letter-spacing: -.115em;
-}
-.ada-login-reference__logo .ada-brand__ops {
-  display: block;
-  font-size: .245em;
-  line-height: 1;
-  margin: 9px 0 0;
-  text-align: center;
-  letter-spacing: .11em;
-}
-.ada-login-reference__logo .ada-brand__descriptor {
-  margin-top: 6px;
-  font-size: clamp(11px, 2.7vw, 16px);
-  font-weight: 800;
-  letter-spacing: .14em;
-}
-.ada-login-reference__form { margin-top: clamp(26px, 4svh, 46px); }
-.ada-login-reference__form h1 {
-  font-size: clamp(24px, 6.5vw, 35px);
-  line-height: 1.25;
-  letter-spacing: -.035em;
-}
-.ada-login-reference__fields { margin-top: clamp(24px, 3.3svh, 32px); }
-.ada-login-reference__fields > div { width: 100%; }
-.ada-login-reference__fields form input {
-  height: 46px;
-  border-radius: 10px;
-  border: 1px solid #E4EAF5;
-  background: #F2F5FB;
-}
-.ada-login-reference__fields form button[type="submit"] {
-  min-height: 46px;
-  border-radius: 10px;
-  background: #155BF1;
-}
-.ada-login-reference__fields .ada-google-login { min-height: 44px; }
-.ada-login-reference__fields :is(input, button) { max-width: 100%; }
-@media (min-width: 768px) and (max-width: 1023px) {
-  .ada-login-reference > .ada-login-reference__content { width: min(84vw, 780px); }
-  .ada-login-reference__form h1 { font-size: 35px; }
-  .ada-login-reference__form { margin-top: 38px; }
-  .ada-login-reference__fields { margin-top: 30px; }
-  .ada-login-reference__fields form label { font-size: 17px; }
-  .ada-login-reference__fields form input { height: 56px; font-size: 17px; }
-  .ada-login-reference__fields form button[type="submit"] { min-height: 56px; font-size: 17px; }
-  .ada-login-reference__fields .ada-google-login { min-height: 54px; font-size: 16px; }
-  .ada-login-reference__bottom { height: clamp(225px, 25svh, 285px); }
-}
-@media (min-width: 1024px) {
-  .ada-login-reference > .ada-login-reference__content { width: min(88vw, 490px); }
-  .ada-login-reference__form h1 { font-size: 28px; }
-}
-@media (max-width: 430px) {
-  .ada-login-reference > .ada-login-reference__content {
-    width: calc(100% - 42px);
-    padding-top: clamp(133px, 18.5svh, 160px);
-  }
-  .ada-login-reference__top { height: clamp(140px, 22svh, 190px); }
-  .ada-login-reference__bottom { height: clamp(170px, 23svh, 213px); }
-  .ada-login-reference__form { margin-top: clamp(25px, 4svh, 37px); }
-  .ada-login-reference__fields { margin-top: 24px; }
-}
-@media (max-height: 730px) {
-  .ada-login-reference > .ada-login-reference__content {
-    padding-top: clamp(95px, 15svh, 137px);
-  }
-  .ada-login-reference__form { margin-top: 20px; }
-  .ada-login-reference__fields { margin-top: 17px; }
-  .ada-login-reference__bottom { opacity: .8; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ada-login-reference *, .ada-login-reference *::before, .ada-login-reference *::after {
-    animation-duration: .01ms !important;
-    transition-duration: .01ms !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

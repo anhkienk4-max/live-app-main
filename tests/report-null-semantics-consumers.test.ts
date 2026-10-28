@@ -40,6 +40,16 @@ test('Campaign confirmed revenue filters lifecycle state before summing', () => 
   assert.match(campaignList, /relatedReports\.filter\(report => report\.metrics_confirmed\)\.reduce\(\(sum, report\) => sum \+ \(report\.revenue \?\? 0\), 0\)/)
 })
 
+test('Analytics snapshot requests abort on identity changes and ignore stale settlements', () => {
+  const analytics = read('../components/features/analytics/DashboardAnalytics.tsx')
+  assert.match(analytics, /activeRequest\.current\?\.abort\(\)/)
+  assert.match(analytics, /reportService\.getAnalyticsSnapshot\(JSON\.parse\(filtersKey\),\s*controller\.signal\)/)
+  assert.match(analytics, /version!==requestVersion\.current\|\|controller\.signal\.aborted/)
+  assert.match(analytics, /version===requestVersion\.current&&!controller\.signal\.aborted\)setLoadError/)
+  assert.match(analytics, /if\(version===requestVersion\.current\)\s*\{[\s\S]*?setLoading\(false\)/)
+  assert.match(analytics, /requestVersion\.current\+=1;?\s*activeRequest\.current\?\.abort\(\)/)
+})
+
 test('report export keeps missing draft metrics blank and explicit zero numeric', () => {
   const context = { shifts: [], campaigns: [], users: [], brands: new Map(), platforms: new Map() }
   const report = (overrides: Partial<Report> = {}): Report => ({

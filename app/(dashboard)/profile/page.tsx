@@ -1,8 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Bell, Briefcase, Camera, ChevronRight, CircleHelp, Globe2, LogOut, Mail, Phone, Settings, Trash2, User as UserIcon, X } from 'lucide-react'
-import Link from 'next/link'
+import { Briefcase, Camera, Mail, Phone, Trash2, User as UserIcon, X } from 'lucide-react'
 import { userService } from '@/lib/services/dataService'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
@@ -13,17 +12,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { getAuthMode, getSupabasePublicConfig } from '@/lib/auth/authMode'
-import { clearLocalSession } from '@/lib/auth/session'
-import { createClient } from '@/lib/supabase/client'
+import { getAuthMode } from '@/lib/auth/authMode'
 import { removeProfileAvatar, uploadProfileAvatar } from '@/lib/services/profileAvatarStorageService'
 
 const acceptedAvatarTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const maxAvatarBytes = 5 * 1024 * 1024
 
 export default function ProfilePage() {
-  const { currentUser, loading, reload, clearIdentity } = useCurrentUser()
-  const { t, language, setLanguage } = useTranslation()
+  const { currentUser, loading, reload } = useCurrentUser()
+  const { t } = useTranslation()
   const { toast } = useToast()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const objectUrlRef = React.useRef<string | null>(null)
@@ -32,26 +29,6 @@ export default function ProfilePage() {
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null)
   const [removeAvatar, setRemoveAvatar] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
-  const [signingOut, setSigningOut] = React.useState(false)
-  const [helpOpen, setHelpOpen] = React.useState(false)
-  const [mobileEditOpen, setMobileEditOpen] = React.useState(false)
-  const signOut = async () => {
-    if (signingOut) return
-    setSigningOut(true)
-    try {
-      if (getAuthMode() !== 'mock') {
-        if (!getSupabasePublicConfig()) throw new Error('Auth unavailable')
-        const ok = await clearLocalSession(createClient())
-        if (!ok) throw new Error('Sign out failed')
-      }
-      clearIdentity()
-      window.location.replace('/login?reason=signed_out')
-    } catch {
-      toast({ title: t('signOutFailed'), description: t('tryAgain'), variant: 'destructive' })
-      setSigningOut(false)
-    }
-  }
-
 
   const revokePreview = React.useCallback(() => {
     if (objectUrlRef.current) {
@@ -70,7 +47,20 @@ export default function ProfilePage() {
     return () => cancelAnimationFrame(frame)
   }, [currentUser])
 
-  if (loading || !currentUser) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading || !currentUser) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6 animate-pulse" data-testid="profile-loading-shell">
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-16 rounded-full bg-slate-200" />
+          <div className="space-y-2">
+            <div className="h-6 w-40 rounded bg-slate-200" />
+            <div className="h-4 w-60 rounded bg-slate-100" />
+          </div>
+        </div>
+        <div className="h-72 rounded-lg border border-slate-200 bg-white p-6" />
+      </div>
+    )
+  }
 
   const canEdit = hasPermission(currentUser, 'profile.edit_own')
   const initials = currentUser.full_name.split(' ').map(part => part[0]).join('').toUpperCase()
@@ -160,50 +150,9 @@ export default function ProfilePage() {
     }
   }
 
-  return <div className="ada-profile-page space-y-6 p-4 sm:p-6" data-testid="profile-page">
-    <section data-testid="ada-reference-profile-mobile" className={mobileEditOpen ? 'hidden' : 'space-y-4 lg:hidden'}>
-      <div className="flex items-center gap-3 rounded-[16px] border border-[#E7ECF7] bg-white p-4">
-        <Avatar className="h-12 w-12 shrink-0"><AvatarImage src={displayedAvatar} /><AvatarFallback className="bg-[#3976F7] font-bold text-white">{initials}</AvatarFallback></Avatar>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[14px] font-bold text-[#07183B]">{currentUser.full_name}</p>
-          <p className="mt-1 truncate text-[11px] text-slate-500">{currentUser.email}</p>
-          <p className="mt-1 text-[11px] font-semibold capitalize text-[#2563EB]">{t(resolveSystemPermission(currentUser))}</p>
-        </div>
-      </div>
-      <div className="divide-y divide-[#EEF1F8] overflow-hidden rounded-[16px] border border-[#E7ECF7] bg-white">
-        <button type="button" data-testid="pwa-profile-open-edit" onClick={() => setMobileEditOpen(true)}
-          aria-expanded={mobileEditOpen}
-          className="flex min-h-[52px] w-full items-center gap-3 px-4 text-left text-[12px] font-medium text-[#17305C]">
-          <UserIcon className="h-[17px] w-[17px] text-[#2563EB]" aria-hidden="true" />
-          <span className="flex-1">Hồ sơ cá nhân</span><ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
-        </button>
-        {[
-          { href: '/notifications', label: 'Thông báo', icon: Bell },
-          { href: '/settings', label: 'Cài đặt', icon: Settings },
-        ].map(item => {
-          const Icon = item.icon
-          return <Link href={item.href} key={item.href} className="flex min-h-[52px] items-center gap-3 px-4 text-[12px] font-medium text-[#17305C]">
-            <Icon className="h-[17px] w-[17px] text-[#2563EB]" /><span className="flex-1">{item.label}</span><ChevronRight className="h-4 w-4 text-slate-400" />
-          </Link>
-        })}
-        <button type="button" onClick={() => setHelpOpen(v => !v)} aria-expanded={helpOpen} className="flex min-h-[52px] w-full items-center gap-3 px-4 text-left text-[12px] font-medium text-[#17305C]">
-          <CircleHelp className="h-[17px] w-[17px] text-[#2563EB]" /><span className="flex-1">Trợ giúp</span><ChevronRight className="h-4 w-4 text-slate-400" />
-        </button>
-        {helpOpen && <p className="bg-[#F8FAFF] px-4 py-3 text-[11px] leading-relaxed text-slate-500">Nếu gặp lỗi dữ liệu hoặc quyền truy cập, vui lòng liên hệ quản trị viên ADA OPS.</p>}
-        <button type="button" onClick={() => setLanguage(language === 'vi' ? 'en' : 'vi')} className="flex min-h-[52px] w-full items-center gap-3 px-4 text-left text-[12px] font-medium text-[#17305C]">
-          <Globe2 className="h-[17px] w-[17px] text-[#2563EB]" /><span className="flex-1">Đổi ngôn ngữ</span><span className="text-[11px] text-slate-500">{language === 'vi' ? 'Tiếng Việt' : 'English'}</span>
-        </button>
-      </div>
-      <button type="button" disabled={signingOut} onClick={() => void signOut()} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[14px] border border-red-100 bg-white text-[12px] font-semibold text-red-600 disabled:opacity-60">
-        <LogOut className="h-[17px] w-[17px]" />{signingOut ? 'Đang đăng xuất...' : 'Đăng xuất'}
-      </button>
-    </section>
-    <div className="hidden lg:block"><h1 className="text-3xl font-bold">{t('profile')}</h1><p className="mt-1 text-muted-foreground">{t('accountDetails')}</p></div>
-    {mobileEditOpen && <button type="button" onClick={() => setMobileEditOpen(false)} data-testid="pwa-profile-close-edit"
-      className="flex min-h-11 items-center gap-2 rounded-xl border border-[#DCE5F5] bg-white px-4 text-[12px] font-semibold text-[#2563EB] lg:hidden">
-      <ChevronRight className="h-4 w-4 rotate-180" aria-hidden="true" /> Quay lại tài khoản
-    </button>}
-    <form id="profile-edit" onSubmit={save} className={mobileEditOpen ? 'block' : 'hidden lg:block'}>
+  return <div className="space-y-6">
+    <div><h1 className="text-3xl font-bold">{t('profile')}</h1><p className="mt-1 text-muted-foreground">{t('accountDetails')}</p></div>
+    <form onSubmit={save}>
       <div className="grid gap-6 lg:grid-cols-3">
         <Card><CardHeader className="items-center text-center">
           <Avatar className="h-24 w-24"><AvatarImage src={displayedAvatar} /><AvatarFallback>{initials}</AvatarFallback></Avatar>

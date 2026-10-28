@@ -16,6 +16,7 @@ import {
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Shift, SwapRequest, SwapStatus, User, UserDirectoryEntry } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { downloadSwapRequestTemplate, exportSwapsToExcel } from '@/lib/utils/excelUtils'
 import { getSwapUiActions, getSwapStatusPresentation } from '@/lib/utils/swapUi'
@@ -43,7 +44,8 @@ type SwapScope = 'all' | 'mine' | 'forMe'
 
 export function SwapRequestList() {
   const { currentUser, loading: userLoading } = useCurrentUser()
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
+  const copy = (vi: string, en: string) => language === 'vi' ? vi : en
   const { toast } = useToast()
   const [swaps, setSwaps] = React.useState<SwapRequest[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -59,6 +61,8 @@ export function SwapRequestList() {
   const [loadError,setLoadError] = React.useState<string | null>(null)
   const [cancelTarget, setCancelTarget] = React.useState<SwapRequest | null>(null)
   const [scope, setScope] = React.useState<SwapScope>('all')
+  const [mineMode, setMineMode] = React.useState<'replacement' | 'exchange' | null>(null)
+  const [reviewingId, setReviewingId] = React.useState<string | null>(null)
   const [query, setQuery] = React.useState('')
   const pagination = useListPagination('swaps',20)
   const {page,pageSize,setPage,setPageSize,navigate}=pagination
@@ -69,7 +73,13 @@ export function SwapRequestList() {
   const { next, isCurrent, invalidate } = useRequestSequence()
   const identity = currentUser ? currentUser.id + ':' + (currentUser.system_permission ?? currentUser.role) : ''
   const [loadedIdentity, setLoadedIdentity] = React.useState('')
-  const [formShifts, setFormShifts] = React.useState<Shift[]>([])
+  const openForm = () => {
+    if (!currentUser) return
+    setShowForm(true)
+  }
+  const onFormOpenChange = (next: boolean) => {
+    setShowForm(next)
+  }
 
   const loadData = React.useCallback(async () => {
     const request=next()
@@ -88,6 +98,7 @@ export function SwapRequestList() {
     setShifts(loadedShifts);setUsers(loadedUsers);setBrands(loadedBrands);setPlatforms(loadedPlatforms);setCampaigns(loadedCampaigns);setDirectory(loadedDirectory)
     } catch(error) {if(isCurrent(request))setLoadError(error instanceof Error ? error.message : 'Không thể tải yêu cầu đổi ca')} finally {if(isCurrent(request))setLoading(false)}
   }, [encodedFilters,navigate,page,pageSize,identity,next,isCurrent])
+  useShiftChangeRefresh(loadData)
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void loadData() })
     return () => { cancelAnimationFrame(frame); invalidate() }
@@ -100,18 +111,21 @@ export function SwapRequestList() {
   const userName = (id?: string) => id ? displayUsers.find(user => user.id === id)?.full_name || '—' : '—'
   const roleFor = (swap: SwapRequest): OperationalRole => swap.operational_role || (swap.new_support_id ? 'support' : swap.new_technical_id ? 'technical' : 'host')
   const replacementFor = (swap: SwapRequest) => swap.replacement_staff_id || swap.new_host_id || swap.new_support_id || swap.new_technical_id
-  const filtered=swaps
+  const filtered=mineMode ? swaps.filter(swap => swap.mode === mineMode) : swaps
   const updateFilters = (next: React.SetStateAction<Filters>) => {
     setFilters(next)
     setPage(1)
   }
   const selectScope = (next: SwapScope) => {
     setScope(next)
+    setMineMode(null)
     setFilters(initialFilters)
     setPage(1)
   }
   const safePage=page
-  const visibleSwaps=swaps
+  const visibleSwaps=filtered
+  const activeSelectedSwap = identity === loadedIdentity && selectedSwap ? swaps.find(swap => swap.id === selectedSwap.id) ?? null : null
+  const activeCancelTarget = identity === loadedIdentity && cancelTarget ? swaps.find(swap => swap.id === cancelTarget.id && getSwapUiActions(swap, currentUser).showCancel) ?? null : null
   const exportMaps = {
     users: new Map(displayUsers.map(user => [user.id, user.full_name])),
     brands: new Map(brands.map(brand => [brand.id, brand.name])),
@@ -125,7 +139,10 @@ export function SwapRequestList() {
     } catch(error) {toast({title:t('error'),description:error instanceof Error?error.message:t('validationError'),variant:'destructive'})}
   }
   const runReview = async (swap: SwapRequest, action: 'approve' | 'reject' | 'accept' | 'counterpart_reject') => {
-    if (!currentUser) return
+    if (!currentUser || reviewingId || identity !== loadedIdentity || !swaps.some(row => row.id === swap.id)) return
+    const permissions = getSwapUiActions(swap, currentUser)
+    if (!(action === 'approve' && permissions.showApprove || action === 'reject' && permissions.showReviewerReject || action === 'accept' && permissions.showAccept || action === 'counterpart_reject' && permissions.showCounterpartReject)) return
+    setReviewingId(swap.id)
     try {
       if (action === 'accept') await swapRequestService.respond(swap.id, currentUser.id, 'accept', swap.version)
       else if (action === 'counterpart_reject') await swapRequestService.respond(swap.id, currentUser.id, 'reject', swap.version)
@@ -135,23 +152,23 @@ export function SwapRequestList() {
       await loadData()
     } catch (error) {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
-    }
+    } finally { setReviewingId(null) }
   }
 
-  const cancelImpact: DeletionImpact | null = cancelTarget ? {
+  const cancelImpact: DeletionImpact | null = activeCancelTarget ? {
     entity_type: 'swap_request',
-    entity_id: cancelTarget.id,
-    entity_name: `Swap request · ${roleFor(cancelTarget)}`,
+    entity_id: activeCancelTarget.id,
+    entity_name: `Swap request · ${roleFor(activeCancelTarget)}`,
     action: 'soft_delete',
     consequence: 'The pending request will be cancelled and retained in audit history.',
     reversible: false,
-    related_records: [{ entity_type: 'shift', entity_id: cancelTarget.shift_id, entity_name: shiftById.get(cancelTarget.shift_id)?.title || cancelTarget.shift_id }],
+    related_records: [{ entity_type: 'shift', entity_id: activeCancelTarget.shift_id, entity_name: shiftById.get(activeCancelTarget.shift_id)?.title || activeCancelTarget.shift_id }],
   } : null
 
   const cancelSwap = async (reason: string) => {
-    if (!currentUser || !cancelTarget) return
+    if (!currentUser || !activeCancelTarget || identity !== loadedIdentity) return
     try {
-      await swapRequestService.cancel(cancelTarget.id, currentUser.id, reason, cancelTarget.version)
+      await swapRequestService.cancel(activeCancelTarget.id, currentUser.id, reason, activeCancelTarget.version)
       toast({ title: 'Swap request cancelled', variant: 'success' })
       setCancelTarget(null)
       await loadData()
@@ -182,25 +199,21 @@ export function SwapRequestList() {
     <div className="flex items-center justify-between gap-2 border-b border-slate-200">
       <nav aria-label={t('status')} className="flex min-w-0 flex-1 overflow-x-auto">
         {[
-          { key: 'all', label: 'All', count: counts.all??0 },
-          { key: 'pending', label: t('pending'), count: counts.pending??0 },
-          { key: 'accepted', label: t('accepted'), count: counts.accepted??0 },
-          { key: 'completed', label: t('completed'), count: counts.completed??0 },
+          { key: 'all', label: t('all'), count: counts.all??0 },
+          { key: 'pending', label: copy('Chờ người nhận', 'Pending Recipient'), count: counts.pending??0 },
+          { key: 'accepted', label: copy('Chờ duyệt', 'Pending Approval'), count: null },
+          { key: 'approved', label: t('approved'), count: null },
           { key: 'rejected', label: t('rejected'), count: counts.rejected??0 },
           { key: 'cancelled', label: t('cancelled'), count: counts.cancelled??0 },
         ].map(item => {
-          const active = scope === 'all' && (item.key === 'all' ? !filters.statuses.length : filters.statuses.includes(item.key))
-          return <button type="button" key={item.key} aria-pressed={active} onClick={() => { setScope('all'); updateFilters(current => ({ ...current, statuses: item.key === 'all' ? [] : item.key === 'accepted' ? ['accepted', 'approved'] : [item.key] })) }} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${active ? 'border-blue-600 font-semibold text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{item.label} <strong>{item.count}</strong></button>
+          const selected = item.key === 'all' ? filters.statuses.length === 0 : item.key === 'approved' ? filters.statuses.includes('approved') : filters.statuses.length === 1 && filters.statuses[0] === item.key
+          const active = scope === 'all' && !mineMode && selected
+          return <button type="button" key={item.key} aria-pressed={active} onClick={() => { setScope('all'); setMineMode(null); updateFilters(current => ({ ...current, statuses: item.key === 'all' ? [] : item.key === 'approved' ? ['approved', 'completed'] : [item.key] })) }} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${active ? 'border-blue-600 font-semibold text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{item.label} {item.count !== null && <strong>{item.count}</strong>}</button>
         })}
-        <button type="button" aria-pressed={scope === 'mine'} onClick={() => selectScope('mine')} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${scope === 'mine' ? 'border-violet-600 font-semibold text-violet-700' : 'border-transparent text-slate-500'}`}>My requests <strong>{counts.mine??0}</strong></button>
-        <button type="button" aria-pressed={scope === 'forMe'} onClick={() => selectScope('forMe')} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${scope === 'forMe' ? 'border-emerald-600 font-semibold text-emerald-700' : 'border-transparent text-slate-500'}`}>For me <strong>{counts.forMe??0}</strong></button>
+        {(['replacement', 'exchange'] as const).map(value => <button type="button" key={value} aria-pressed={scope === 'mine' && mineMode === value} onClick={() => { setScope('mine'); setMineMode(value); setFilters(initialFilters); setPage(1) }} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${scope === 'mine' && mineMode === value ? 'border-violet-600 font-semibold text-violet-700' : 'border-transparent text-slate-500'}`}>{value === 'replacement' ? copy('PASS của tôi', 'My Pass') : copy('Đổi ca của tôi', 'My Exchange')}</button>)}
+        <button type="button" aria-pressed={scope === 'forMe'} onClick={() => selectScope('forMe')} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs ${scope === 'forMe' ? 'border-emerald-600 font-semibold text-emerald-700' : 'border-transparent text-slate-500'}`}>{copy('Gửi cho tôi', 'For me')} <strong>{counts.forMe??0}</strong></button>
       </nav>
-      {currentUser && hasPermission(currentUser, 'swaps.request') && <Button size="sm" className="mr-1 shrink-0" onClick={() => {
-        if (!currentUser) return
-        void shiftService.getAllFiltered({assignedUserIds:[currentUser.id],statuses:['scheduled']})
-          .then(items => {setFormShifts(items);setShowForm(true)})
-          .catch(error => setLoadError(error instanceof Error ? error.message : t('error')))
-      }}><Plus className="mr-1.5 h-4 w-4" />{t('swapsTitle')}</Button>}
+      {currentUser && hasPermission(currentUser, 'swaps.request') && <Button size="sm" className="mr-1 shrink-0" onClick={openForm}><Plus className="mr-1.5 h-4 w-4" />{t('swapsTitle')}</Button>}
     </div>
 
     <section className="rounded-lg border border-slate-200 bg-white p-3">
@@ -242,7 +255,8 @@ export function SwapRequestList() {
       </details>
     </section>
 
-    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}</CardContent></Card> : <Card className="overflow-hidden border-slate-200 shadow-none"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Shift & request','Requester','Replacement','Role / mode','Reason','Status','Created','Actions'].map(label=><th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody>{visibleSwaps.map(swap => {
+    {mineMode && <p className="text-xs text-muted-foreground">{copy('Yêu cầu của tôi', 'My requests')} · {page}/{Math.max(1, Math.ceil(total / pageSize))} · {copy('Lọc loại yêu cầu trên trang này', 'Request type filtered on this page')}</p>}
+    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}{mineMode && <HistoryPagination page={safePage} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />}</CardContent></Card> : <Card className="overflow-hidden border-slate-200 shadow-none"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Shift & request','Requester','Replacement','Role / mode','Reason','Status','Created','Actions'].map(label=><th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody>{visibleSwaps.map(swap => {
       const shift = shiftById.get(swap.shift_id)
       if (!shift) return null
       const actions = getSwapUiActions(swap, currentUser)
@@ -284,9 +298,10 @@ export function SwapRequestList() {
     })}</tbody></table></div><HistoryPagination page={safePage} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} /></CardContent></Card>}
 
 
-    {showForm && currentUser && <SwapRequestFormModal open={showForm} onOpenChange={setShowForm} shifts={formShifts} users={directory} brands={brands} platforms={platforms} onSuccess={() => { void loadData(); setShowForm(false) }} />}
-    {selectedSwap && <SwapDetailModal open swap={selectedSwap} shift={shiftById.get(selectedSwap.shift_id)!} requester={displayUsers.find(user => user.id === selectedSwap.requester_id)!} newHost={displayUsers.find(user => user.id === replacementFor(selectedSwap))} brands={brands} platforms={platforms} showParticipantActions={getSwapUiActions(selectedSwap, currentUser).showAccept} showReviewerActions={getSwapUiActions(selectedSwap, currentUser).showReviewerReject} onAccept={() => runReview(selectedSwap, 'accept')} onParticipantReject={() => runReview(selectedSwap, 'counterpart_reject')} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(selectedSwap, 'approve')} onReject={() => runReview(selectedSwap, 'reject')} />}
-    <LifecycleActionDialog open={Boolean(cancelTarget)} onOpenChange={open => !open && setCancelTarget(null)} title="Cancel swap request" impact={cancelImpact} confirmText="Cancel request" onConfirm={cancelSwap} />
+    {showForm && currentUser && <SwapRequestFormModal key={currentUser.id} open={showForm} onOpenChange={onFormOpenChange} brands={brands} platforms={platforms}
+      onSuccess={() => { void loadData(); onFormOpenChange(false) }} />}
+    {activeSelectedSwap && shiftById.get(activeSelectedSwap.shift_id) && <SwapDetailModal open swap={activeSelectedSwap} shift={shiftById.get(activeSelectedSwap.shift_id)!} requester={displayUsers.find(user => user.id === activeSelectedSwap.requester_id)!} newHost={displayUsers.find(user => user.id === replacementFor(activeSelectedSwap))} brands={brands} platforms={platforms} showParticipantActions={getSwapUiActions(activeSelectedSwap, currentUser).showAccept} showReviewerActions={getSwapUiActions(activeSelectedSwap, currentUser).showReviewerReject} onAccept={() => runReview(activeSelectedSwap, 'accept')} onParticipantReject={() => runReview(activeSelectedSwap, 'counterpart_reject')} onOpenChange={open => !open && setSelectedSwap(null)} onApprove={() => runReview(activeSelectedSwap, 'approve')} onReject={() => runReview(activeSelectedSwap, 'reject')} />}
+    <LifecycleActionDialog open={Boolean(activeCancelTarget)} onOpenChange={open => !open && setCancelTarget(null)} title="Cancel swap request" impact={cancelImpact} confirmText="Cancel request" onConfirm={cancelSwap} />
   </div>
 }
 

@@ -174,6 +174,12 @@ function client() {
       const q = {
         select(_cols?: string) { return q },
         eq(key: string, val: unknown) { filters.push(row => row[key] === val); return q },
+        ilike(key: string, pattern: string) {
+          assert.ok(pattern.startsWith('%') && pattern.endsWith('%'))
+          const literal = pattern.slice(1, -1).replace(/\\([\\%_])/g, '$1').toLowerCase()
+          filters.push(row => String(row[key] ?? '').toLowerCase().includes(literal))
+          return q
+        },
         is(key: string, val: unknown) { filters.push(row => (row[key] ?? null) === val); return q },
         order(_name: string, _opts?: unknown) { return q },
         not(key: string, op: string, value: string) { assert.equal(op, 'in'); const excluded = value.slice(1,-1).split(','); filters.push(row => !excluded.includes(String(row[key]))); return q },
@@ -298,6 +304,8 @@ test('operational file lifecycle uses external object, no duplicate, metadata-on
   const cat = await admin.GET(new Request('https://example.test/api/operational-files?catalog=1'))
   const catalog = await cat.json() as { categories: Array<{ id: string }> }
   assert.ok(catalog.categories.some(entry => entry.id === 'payment_document'))
+  const routeCount = await admin.GET(new Request('https://example.test/api/operational-files?catalog=1'))
+  assert.equal((await routeCount.json() as {active_route_count:number}).active_route_count,0)
   const leaderCat = await leader.GET(new Request('https://example.test/api/operational-files?catalog=1'))
   const leaderCatalog = await leaderCat.json() as { categories: Array<{ id: string }> }
   assert.equal(leaderCatalog.categories.some(entry => entry.id === 'payment_document'), false)
@@ -554,7 +562,7 @@ test('confidential Finance writes fail closed until separately approved, includi
     allowConfidentialWrites: () => approved,
     resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
     storage: {
-      async upload(input: FileUploadInput) {
+      async upload(_input: FileUploadInput) {
         uploads += 1
         return { asset: { external_file_id: 'finance-drive-' + uploads, provider_metadata: {} } }
       },
@@ -609,4 +617,39 @@ test('confidential Finance writes fail closed until separately approved, includi
   const catalog = await handler(false).GET(new Request('https://example.test/api/operational-files?catalog=1'))
   const body = await catalog.json() as { confidential_write_ready: boolean }
   assert.equal(body.confidential_write_ready, false)
+})
+
+test('search by literal filename is scoped, case-insensitive and counted before page limiting', async () => {
+  const state = client()
+  const scope = 'period:brand-1:platform-1:internal:2026-09-14'
+  const make = (id:string, file_name:string, provider:string, category='schedule_source', scope_key=scope) => ({
+    id,scope_key,category,file_name,provider,folder_path:'2026/THÁNG 09.2026/SHOPEE_LIVE/DATA/SOURCE',
+    size_bytes:2048,created_at:'2026-10-01T00:00:00.000Z',deleted_at:null,
+    integrity_status:id==='a'?'sha256_verified':'provider_reference',
+  })
+  state.rows.push(make('a','Deal_100%_FINAL.xlsx','google_drive'))
+  state.rows.push(make('b','Deal_100%_DRAFT.xlsx','onedrive'))
+  state.rows.push(make('c','Unrelated.xlsx','google_drive'))
+  state.rows.push(make('d','Deal_100%_PRIVATE.xlsx','google_drive','payment_document'))
+  state.rows.push(make('e','Deal_100%_OTHER.xlsx','google_drive','schedule_source','period:other'))
+  const route=createOperationalFileRouteHandler({
+    createClient:()=>state.db,
+    resolveUser:async()=>({id:'leader',systemPermission:'leader',businessUserId:'leader'}),
+    routingMode:'database',
+  })
+  const prefix='https://example.test/api/operational-files?brand_id=brand-1&platform_id=platform-1&period_date=2026-09-14&execution_source=internal'
+  const found=await route.GET(new Request(prefix+'&page=1&pageSize=10&search=100%25'))
+  assert.equal(found.status,200)
+  const envelope=await found.json() as {total:number;files:Array<{id:string;integrity_status:string;access_url:string}>}
+  assert.equal(envelope.total,2)
+  assert.deepEqual(envelope.files.map(row=>row.id).sort(),['a','b'])
+  assert.equal(envelope.files.find(item=>item.id==='a')?.integrity_status,'sha256_verified')
+  assert.ok(envelope.files.every(item=>item.access_url.startsWith('/api/operational-files?file_id=')))
+  const drive=await route.GET(new Request(prefix+'&search=100%25&provider_filter=google_drive'))
+  assert.equal(drive.status,200)
+  const driveRows=await drive.json() as {total:number;files:Array<{id:string}>}
+  assert.equal(driveRows.total,1)
+  assert.deepEqual(driveRows.files.map(row=>row.id),['a'])
+  const invalid=await route.GET(new Request(prefix+'&provider_filter=not-a-provider'))
+  assert.equal(invalid.status,400)
 })

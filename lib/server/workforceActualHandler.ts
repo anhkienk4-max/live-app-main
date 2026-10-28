@@ -7,6 +7,7 @@ import { authorizationErrorResponse, isAuthorizationError,
   requireRole, type ServerUserResolver } from '@/lib/server/authGuards'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
+import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
 
 const id = z.string().trim().min(1).max(120)
 const time = z.string().datetime({ offset: true })
@@ -37,7 +38,7 @@ const review = z.object({
   review_note: z.string().trim().min(8).max(2000),
 }).strict()
 
-type Depends = { client?: () => SupabaseClient; resolveUser?: ServerUserResolver; isEnabled?: () => boolean }
+type Depends = { client?: () => SupabaseClient; resolveUser?: ServerUserResolver; isEnabled?: () => boolean; isAttendanceReviewEnabled?: () => boolean }
 const noStore = { 'Cache-Control': 'no-store' }
 const fail = (code: string, status: number) => Response.json({ ok: false, error: { code } },
   { status, headers: noStore })
@@ -231,7 +232,8 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         if (!shiftId) return fail('WORKFORCE_SHIFT_ID_REQUIRED', 400)
 
         const client = db()
-        const [segmentsRes, shiftRes, regsRes, swapsRes] = await Promise.all([
+        const attendanceReviewEnabled = (deps.isAttendanceReviewEnabled ?? (() => isFeatureEnabled('self_attendance_review')))()
+        const [segmentsRes, shiftRes, regsRes, swapsRes, attendanceRes, photoEvidenceRes] = await Promise.all([
           client.from('workforce_actual_segments')
             .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
             .eq('shift_id', shiftId).order('created_at', { ascending: true }).limit(200),
@@ -244,14 +246,29 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           client.from('swap_requests')
             .select('id,requester_id,counterpart_id,replacement_staff_id,source_shift_id,target_shift_id,shift_id,operational_role,mode,status,deleted_at')
             .or(`source_shift_id.eq.${shiftId},target_shift_id.eq.${shiftId},shift_id.eq.${shiftId}`),
+          // Production may not have the staging-only attendance journal migration.
+          // Leave existing Workforce reads fully functional unless explicitly enabled.
+          attendanceReviewEnabled
+            ? client.from('self_attendance_events')
+              .select('id,request_id,shift_id,staff_id,operational_role,event_kind,recorded_at,verification_status')
+              .eq('shift_id', shiftId).order('recorded_at', {ascending: true}).limit(201)
+            : Promise.resolve({data: [], error: null}),
+          attendanceReviewEnabled
+            ? client.from('self_attendance_photo_evidence')
+              .select('request_id').eq('shift_id', shiftId).limit(201)
+            : Promise.resolve({data: [], error: null}),
         ])
         if (segmentsRes.error) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
+        if (attendanceRes.error || photoEvidenceRes.error)
+          return fail('SELF_ATTENDANCE_REVIEW_UNAVAILABLE', 503)
+        // A truncated source must never be represented as a complete evidence set.
+        if ((attendanceRes.data?.length ?? 0) > 200 ||
+          (photoEvidenceRes.data?.length ?? 0) > 200)
+          return fail('SELF_ATTENDANCE_REVIEW_LIMIT_EXCEEDED', 409)
         if (swapsRes?.error || regsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
         if (!shiftRes?.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
 
-        const rawGrace = process.env.WORKFORCE_LATE_GRACE_MINUTES
-        const parsedGrace = rawGrace !== undefined ? Number(rawGrace) : 0
-        const safeGraceMinutes = Number.isSafeInteger(parsedGrace) && parsedGrace >= 0 && parsedGrace <= 180 ? parsedGrace : 0
+        const safeGraceMinutes = WORKFORCE_LATE_GRACE_MINUTES
 
         const enrichedSegments = (segmentsRes.data ?? []).map((seg) => {
           const verification = resolveStaffAssignmentVerification({
@@ -282,11 +299,20 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         return Response.json({
           ok: true,
           segments: enrichedSegments,
+          // Raw request UUID is a private linkage key, never an API response.
+          attendance_events: (attendanceRes.data ?? []).map(ev=>({
+            id:ev.id,shift_id:ev.shift_id,staff_id:ev.staff_id,
+            operational_role:ev.operational_role,event_kind:ev.event_kind,
+            recorded_at:ev.recorded_at,verification_status:ev.verification_status,
+            photo_available:((photoEvidenceRes.data??[]) as Array<{request_id:string}>)
+              .some(photo=>photo.request_id===ev.request_id),
+          })),
+          attendance_review_enabled: attendanceReviewEnabled,
           shift_context: shiftRes.data,
           planned_staff: regsRes?.data ?? [],
           lateness_policy: {
             grace_minutes: safeGraceMinutes,
-            policy_status: rawGrace !== undefined ? 'configured' : 'pending_company_policy',
+            policy_status: 'configured',
           },
         }, { headers: noStore })
       })

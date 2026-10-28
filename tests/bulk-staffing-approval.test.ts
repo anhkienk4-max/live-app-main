@@ -132,9 +132,18 @@ test('bulk approval modal contract renders pending request columns, filters and 
   assert.equal(rows.length, 2)
   assert.equal(rows[0].user?.full_name, 'Host One')
   assert.deepEqual(
-    filterStaffingReviewRows(rows, { date: '2031-08-24', role: 'support', shiftId: 'all' })
+    filterStaffingReviewRows(rows, { date: '2031-08-24', role: ['support'], shiftId: [] })
       .map(row => row.registration.id),
     ['reg-2'],
+  )
+  assert.deepEqual(
+    filterStaffingReviewRows(rows, { date: '', role: ['host', 'support'], shiftId: [] })
+      .map(row => row.registration.id),
+    ['reg-1', 'reg-2'],
+  )
+  assert.deepEqual(
+    filterStaffingReviewRows(rows, { date: '', role: ['host', 'support'], shiftId: [], host: ['someone-else'] }),
+    [],
   )
   const selected = toggleStaffingReviewSelection(new Set(), ['reg-1', 'reg-2'], true)
   assert.deepEqual([...selected].sort(), ['reg-1', 'reg-2'])

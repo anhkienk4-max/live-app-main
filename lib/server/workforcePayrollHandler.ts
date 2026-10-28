@@ -10,6 +10,8 @@ import { autoCalculatePeriodLines, calculatePayrollAmounts, calculatePayrollLine
   calculateRecalculationDiffs, selectApprovedRate, WorkforceCalculationError,
   type ActualStaffingEvidence, type ApprovedPayrollRate, type ExistingPayrollLineForRecalc,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
+import { readCompleteWorkforceRows, readWorkforceRowsForShifts,
+  WorkforceScopeReadError } from '@/lib/server/workforceScopePagination'
 
 const id = z.string().trim().min(1).max(120)
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u)
@@ -76,9 +78,17 @@ const periodDiscovery = z.object({
 const rateDiscovery = z.object({
   ...discoveryPage,action:z.literal('list_rates'),staff_id:id.optional(),
   role:z.enum(['host','support','technical']).optional(),
+  roles:z.array(z.enum(['host','support','technical'])).max(3).optional(),
   effective_date:discoveryDate.optional(),
   scope:z.enum(['staff_specific','role_default']).optional(),
-}).strict().refine(value=>value.scope!=='role_default'||!value.staff_id)
+  scopes:z.array(z.enum(['staff_specific','role_default'])).max(2).optional(),
+}).strict()
+  .refine(value=>!value.role||!value.roles)
+  .refine(value=>!value.scope||!value.scopes)
+  .refine(value=>!value.roles||new Set(value.roles).size===value.roles.length)
+  .refine(value=>!value.scopes||new Set(value.scopes).size===value.scopes.length)
+  .refine(value=>!(value.scope==='role_default'
+    ||(value.scopes?.length===1&&value.scopes[0]==='role_default'))||!value.staff_id)
 const discoveryQuery = z.union([periodDiscovery,rateDiscovery])
 const correctionErrors = new Set([
   'WORKFORCE_PAYROLL_STALE_LINE','WORKFORCE_PAYROLL_PERIOD_NOT_DRAFT',
@@ -107,153 +117,48 @@ function csvNumber(input:unknown):string {
   return '"'+value+'"'
 }
 
+// All four payroll input sources must be complete before a draft mutation.
+// Reuse the same exact-count, stable-ID and bounded fail-closed contract as
+// Workforce KPI reads. Never interpret null / partial PostgREST pages as empty.
 async function fetchAllShifts(db: SupabaseClient, periodStart: string, periodEnd: string) {
-  const pageSize = 1000
-  let page = 0
-  const allShifts: Array<{ id: string; date: string }> = []
-  let hasMore = true
-
-  while (hasMore) {
-    const { data, count, error } = await db.from('shifts')
-      .select('id,date,deleted_at', { count: 'exact' })
-      .gte('date', periodStart)
-      .lte('date', periodEnd)
-      .is('deleted_at', null)
-      .order('id', { ascending: true })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (error) throw new WorkforceCalculationError('WORKFORCE_SHIFT_READ_FAILED')
-    if (!data) break
-    allShifts.push(...data)
-    if (count !== null && allShifts.length >= count) {
-      hasMore = false
-    } else if (data.length < pageSize) {
-      hasMore = false
-    } else {
-      page++
-    }
-  }
-  return allShifts
+  return readCompleteWorkforceRows(
+    (from,to)=>db.from('shifts')
+      .select('id,date,deleted_at', { count:'exact' })
+      .gte('date',periodStart).lte('date',periodEnd).is('deleted_at',null)
+      .order('id',{ascending:true}).range(from,to),
+    'WORKFORCE_SHIFT_READ_FAILED',
+  )
 }
 
 async function fetchAllSegmentsForShifts(db: SupabaseClient, shiftIds: string[]) {
-  const chunkSize = 200
-  const allSegments: Array<{
-    id: string
-    shift_id: string
-    staff_id: string
-    operational_role: string
-    event_kind: string
-    review_status: string
-    actual_start_at: string | null
-    actual_end_at: string | null
-    review_note: string | null
-    evidence_note: string | null
-  }> = []
-
-  for (let i = 0; i < shiftIds.length; i += chunkSize) {
-    const chunk = shiftIds.slice(i, i + chunkSize)
-    const pageSize = 1000
-    let page = 0
-    let hasMore = true
-    let chunkFetched = 0
-    let chunkTotalCount: number | null = null
-
-    while (hasMore) {
-      const { data, count, error } = await db.from('workforce_actual_segments')
-        .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at,review_note,evidence_note', { count: 'exact' })
-        .in('shift_id', chunk)
-        .eq('review_status', 'approved')
-        .eq('event_kind', 'worked')
-        .order('id', { ascending: true })
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-
-      if (error) throw new WorkforceCalculationError('WORKFORCE_ACTUAL_READ_FAILED')
-      if (!data) break
-      allSegments.push(...data)
-      chunkFetched += data.length
-      if (count !== null) {
-        chunkTotalCount = count
-      }
-
-      if (chunkTotalCount !== null && chunkFetched >= chunkTotalCount) {
-        hasMore = false
-      } else if (data.length < pageSize) {
-        hasMore = false
-      } else {
-        page++
-      }
-    }
-
-    if (chunkTotalCount !== null && chunkFetched !== chunkTotalCount) {
-      throw new WorkforceCalculationError('WORKFORCE_ACTUAL_READ_FAILED')
-    }
-  }
-  return allSegments
+  return readWorkforceRowsForShifts(
+    shiftIds,
+    (chunk,from,to)=>db.from('workforce_actual_segments')
+      .select('id,shift_id,staff_id,operational_role,event_kind,review_status,actual_start_at,actual_end_at,review_note,evidence_note',{count:'exact'})
+      .in('shift_id',chunk).eq('review_status','approved').eq('event_kind','worked')
+      .order('id',{ascending:true}).range(from,to),
+    'WORKFORCE_ACTUAL_READ_FAILED',
+  )
 }
 
 async function fetchAllApprovedRateCards(db: SupabaseClient) {
-  const pageSize = 1000
-  let page = 0
-  const allCards: Array<{
-    id: string
-    staff_id: string | null
-    operational_role: string
-    effective_from: string
-    effective_through: string | null
-    vnd_per_hour: number
-    overtime_multiplier_basis_points: number
-    approved_by: string
-  }> = []
-  let hasMore = true
-
-  while (hasMore) {
-    const { data, count, error } = await db.from('workforce_rate_cards')
-      .select('id,staff_id,operational_role,effective_from,effective_through,vnd_per_hour,overtime_multiplier_basis_points,approved_by', { count: 'exact' })
-      .not('approved_by', 'is', null)
-      .not('approved_at', 'is', null)
-      .order('id', { ascending: true })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (error) throw new WorkforceCalculationError('WORKFORCE_RATES_INCOMPLETE')
-    if (!data) break
-    allCards.push(...data)
-    if (count !== null && allCards.length >= count) {
-      hasMore = false
-    } else if (data.length < pageSize) {
-      hasMore = false
-    } else {
-      page++
-    }
-  }
-  return allCards
+  return readCompleteWorkforceRows(
+    (from,to)=>db.from('workforce_rate_cards')
+      .select('id,staff_id,operational_role,effective_from,effective_through,vnd_per_hour,overtime_multiplier_basis_points,approved_by',{count:'exact'})
+      .not('approved_by','is',null).not('approved_at','is',null)
+      .order('id',{ascending:true}).range(from,to),
+    'WORKFORCE_RATES_INCOMPLETE',
+  )
 }
 
 async function fetchAllPeriodLines(db: SupabaseClient, periodId: string) {
-  const pageSize = 1000
-  let page = 0
-  const allLines: Array<Record<string, unknown>> = []
-  let hasMore = true
-
-  while (hasMore) {
-    const { data, count, error } = await db.from('workforce_payroll_lines')
-      .select('id,period_id,segment_id,rate_card_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,calculation_version,version,voided_at', { count: 'exact' })
-      .eq('period_id', periodId)
-      .order('id', { ascending: true })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (error) throw new WorkforceCalculationError('WORKFORCE_PAYROLL_READ_FAILED')
-    if (!data) break
-    allLines.push(...data)
-    if (count !== null && allLines.length >= count) {
-      hasMore = false
-    } else if (data.length < pageSize) {
-      hasMore = false
-    } else {
-      page++
-    }
-  }
-  return allLines
+  return readCompleteWorkforceRows(
+    (from,to)=>db.from('workforce_payroll_lines')
+      .select('id,period_id,segment_id,rate_card_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,calculation_version,version,voided_at',{count:'exact'})
+      .eq('period_id',periodId)
+      .order('id',{ascending:true}).range(from,to),
+    'WORKFORCE_PAYROLL_READ_FAILED',
+  )
 }
 
 export function createWorkforcePayrollHandler(options:Options={}) {
@@ -265,6 +170,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
       if(e instanceof RequestBodyError)return failure(e.code,e.status)
       if(e instanceof z.ZodError)return failure('WORKFORCE_REQUEST_INVALID',400)
       if(e instanceof WorkforceCalculationError)return failure(e.code,409)
+      if(e instanceof WorkforceScopeReadError)return failure(e.code,503)
       return failure('WORKFORCE_PAYROLL_FAILED',500)
     }
   }
@@ -276,9 +182,12 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           return failure('WORKFORCE_PAYROLL_FEATURE_DISABLED',503)
         const q=new URL(request.url).searchParams
         if(q.has('action')){
-          if([...q.keys()].some(key=>q.getAll(key).length!==1))
+          if([...q.keys()].some(key=>q.getAll(key).length!==1&&!['roles','scopes'].includes(key)))
             return failure('WORKFORCE_PAYROLL_DISCOVERY_QUERY_INVALID',400)
-          const parsed=discoveryQuery.safeParse(Object.fromEntries(q.entries()))
+          const query:Record<string,unknown>=Object.fromEntries(q.entries())
+          if(q.has('roles'))query.roles=q.getAll('roles')
+          if(q.has('scopes'))query.scopes=q.getAll('scopes')
+          const parsed=discoveryQuery.safeParse(query)
           if(!parsed.success)return failure('WORKFORCE_PAYROLL_DISCOVERY_QUERY_INVALID',400)
           const input=parsed.data
           const isPeriods=input.action==='list_periods'
@@ -299,9 +208,12 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             }else{
               query=query.not('approved_by','is',null).not('approved_at','is',null)
               if(input.staff_id)query=query.eq('staff_id',input.staff_id)
-              if(input.role)query=query.eq('operational_role',input.role)
-              if(input.scope==='role_default')query=query.is('staff_id',null)
-              if(input.scope==='staff_specific')query=query.not('staff_id','is',null)
+              const roles=input.roles??(input.role?[input.role]:[])
+              const scopes=input.scopes??(input.scope?[input.scope]:[])
+              if(roles.length===1)query=query.eq('operational_role',roles[0])
+              else if(roles.length>1)query=query.in('operational_role',roles)
+              if(scopes.length===1&&scopes[0]==='role_default')query=query.is('staff_id',null)
+              else if(scopes.length===1)query=query.not('staff_id','is',null)
               if(input.effective_date)query=query.lte('effective_from',input.effective_date)
                 .or('effective_through.is.null,effective_through.gte.'+input.effective_date)
               query=query.order('effective_from',{ascending:false})
@@ -349,9 +261,19 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             'payable_minutes','overtime_minutes','rate_vnd_per_hour',
             'overtime_multiplier_basis_points','gross_vnd','adjustment_vnd','net_vnd',
             'adjustment_reason','calculation_version']
+          // A snapshot with duplicate/blank active evidence cannot be
+          // exported as a misleading locked payroll statement.
+          const activeLines=lines.data.filter(row=>!row.voided_at)
+          const uniqueSegments=new Set<string>()
+          for(const row of activeLines){
+            const segmentId=row.segment_id
+            if(typeof segmentId!=='string'||!segmentId.trim()||uniqueSegments.has(segmentId))
+              return failure('WORKFORCE_PAYROLL_EXPORT_INCOMPLETE',503)
+            uniqueSegments.add(segmentId)
+          }
           const csv='\ufeff'+[columns.map(csvEscape).join(','),
-            ...(lines.data??[]).filter(row=>!row.voided_at).map(row=>columns.map(k=>
-               csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
+            ...activeLines.map(row=>columns.map(k=>
+              csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
           const filename='payroll-'+r.data.period_start+'-'+r.data.period_end+'.csv'
           return new Response(csv,{headers:{'Content-Type':'text/csv; charset=utf-8',
             'Content-Disposition':'attachment; filename="'+filename+'"',
@@ -389,32 +311,29 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             p_approval_note: input.approval_note,
           })
 
-          if (!rpcRes.error && rpcRes.data?.rate) {
-            return Response.json({
-              ok: true,
-              rate: rpcRes.data.rate,
-              superseded_rate_id: rpcRes.data.superseded_rate_id,
-            }, { status: 201, headers: noStore })
+          // Rate supersession, concurrency and audit must be one transaction.
+          // Never fall back to direct table INSERT if the RPC was not installed.
+          if (rpcRes.error) {
+            const msg = rpcRes.error.message ?? ''
+            if (rpcRes.error.code === 'PGRST202' || rpcRes.error.code === '42883'
+              || /function.*does not exist/iu.test(msg))
+              return failure('WORKFORCE_RATE_RPC_UNAVAILABLE',503)
+            if (msg === 'WORKFORCE_RATE_SELF_APPROVAL_BLOCKED'
+              || msg === 'WORKFORCE_RATE_ACTOR_FORBIDDEN') return failure(msg,403)
+            if (msg === 'WORKFORCE_RATE_DATES_INVALID'
+              || msg === 'WORKFORCE_RATE_INVALID') return failure(msg,400)
+            if (msg === 'WORKFORCE_RATE_RETROACTIVE_LOCKED_PERIOD'
+              || msg === 'WORKFORCE_APPROVED_RATE_OVERLAP') return failure(msg,409)
+            return failure('WORKFORCE_RATE_DUPLICATE_OR_INVALID',409)
           }
-
-          if (rpcRes.error && rpcRes.error.message && !rpcRes.error.message.includes('does not exist')) {
-            const msg = rpcRes.error.message
-            if (msg === 'WORKFORCE_RATE_SELF_APPROVAL_BLOCKED' || msg === 'WORKFORCE_RATE_ACTOR_FORBIDDEN') return failure(msg, 403)
-            if (msg === 'WORKFORCE_RATE_DATES_INVALID' || msg === 'WORKFORCE_RATE_INVALID') return failure(msg, 400)
-            if (msg === 'WORKFORCE_RATE_RETROACTIVE_LOCKED_PERIOD' || msg === 'WORKFORCE_APPROVED_RATE_OVERLAP') return failure(msg, 409)
-            return failure('WORKFORCE_RATE_DUPLICATE_OR_INVALID', 409)
-          }
-
-          // Fallback direct insert if RPC not in environment
-          const {data,error}=await db.from('workforce_rate_cards').insert({
-            staff_id:input.staff_id,operational_role:input.operational_role,
-            effective_from:input.effective_from,effective_through:input.effective_through,
-            vnd_per_hour:input.vnd_per_hour,
-            overtime_multiplier_basis_points:input.overtime_multiplier_basis_points,
-            approved_by:actor,approved_at:new Date().toISOString(),approval_note:input.approval_note,
-          }).select('id,staff_id,operational_role,effective_from,effective_through').single()
-          return error ? failure('WORKFORCE_RATE_DUPLICATE_OR_INVALID',409)
-            : Response.json({ok:true,rate:data},{status:201,headers:noStore})
+          if (!rpcRes.data?.rate || typeof rpcRes.data.rate.id !== 'string'
+            || !rpcRes.data.rate.id.trim())
+            return failure('WORKFORCE_RATE_RPC_RESPONSE_INVALID',503)
+          return Response.json({
+            ok: true,
+            rate: rpcRes.data.rate,
+            superseded_rate_id: rpcRes.data.superseded_rate_id,
+          }, { status: 201, headers: noStore })
         }
 
         if(input.action==='create_period'){

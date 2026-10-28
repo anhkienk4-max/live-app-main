@@ -110,6 +110,7 @@ function publicFile(row: Record<string, unknown>) {
     size_bytes: row.size_bytes, mime_type: row.mime_type,
     checksum_sha256: row.checksum_sha256, created_at: row.created_at,
     scope_key: row.scope_key, provider: row.provider,
+    integrity_status: row.integrity_status === 'sha256_verified' ? 'sha256_verified' : 'provider_reference',
     access_url: '/api/operational-files?file_id=' + encodeURIComponent(String(row.id)),
   }
 }
@@ -295,11 +296,13 @@ export function createOperationalFileRouteHandler(deps: {
         const params = new URL(request.url).searchParams
         const client = clientFactory()
         if (params.get('catalog') === '1') {
-          const [brands, platforms, campaigns] = await Promise.all([
+          const [brands, platforms, campaigns, activeRouteCount] = await Promise.all([
             client.from('brands').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
             client.from('platforms').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
             client.from('campaigns').select('id,name,brand_id,start_date,end_date,platform_ids,platform_source')
               .is('deleted_at', null).order('name', { ascending: true }),
+            client.from('operational_storage_routes')
+              .select('id', { count: 'exact', head: true }).eq('active', true),
           ])
           if (brands.error || platforms.error || campaigns.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
           return Response.json({
@@ -308,6 +311,7 @@ export function createOperationalFileRouteHandler(deps: {
             brands: brands.data ?? [], platforms: platforms.data ?? [], campaigns: campaigns.data ?? [],
             max_single_upload_bytes: MAX_OPERATIONAL_FILE_BYTES,
             confidential_write_ready: allowConfidentialWrites(),
+            active_route_count: activeRouteCount.error ? null : activeRouteCount.count ?? null,
           }, { headers: { 'Cache-Control': 'no-store' } })
         }
 
@@ -345,9 +349,16 @@ export function createOperationalFileRouteHandler(deps: {
           page: z.coerce.number().int().min(1).max(100000),
           pageSize: z.coerce.number().refine(value => [10, 20, 50].includes(value)),
           category: z.enum(['all', ...OPERATIONAL_FILE_CATEGORIES]).default('all'),
-        }).safeParse({ page: params.get('page') ?? 1, pageSize: params.get('pageSize') ?? 20, category: params.get('category') ?? 'all' })
+          provider_filter: z.enum(['all','google_drive','onedrive']).default('all'),
+          search: z.string().trim().max(128).default(''),
+        }).safeParse({
+          page: params.get('page') ?? 1, pageSize: params.get('pageSize') ?? 20,
+          category: params.get('category') ?? 'all',
+          provider_filter: params.get('provider_filter') ?? 'all',
+          search: params.get('search') ?? '',
+        })
         if (!parsedPage.success) return errorResponse('OPERATIONAL_FILE_LIST_INVALID')
-        const { page: requestedPage, pageSize, category } = parsedPage.data
+        const { page: requestedPage, pageSize, category, provider_filter, search } = parsedPage.data
         if (restrictedCategories.has(category) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
         const scope = await scopeFromInput(client, fromQuery(params))
         const fetchPage = (page: number) => {
@@ -355,6 +366,12 @@ export function createOperationalFileRouteHandler(deps: {
             .eq('scope_key', scope.scope_key).is('deleted_at', null)
           if (actor.systemPermission !== 'admin') query = query.not('category', 'in', '(payment_document,system_export)')
           if (category !== 'all') query = query.eq('category', category)
+          if (provider_filter !== 'all') query = query.eq('provider', provider_filter)
+          // Escape SQL wildcard characters so user search is a literal filename substring.
+          if (search) {
+            const escaped = search.replace(/[\\%_]/g, character => '\\' + character)
+            query = query.ilike('file_name', '%' + escaped + '%')
+          }
           return query.order('created_at', { ascending: false }).order('id').range((page - 1) * pageSize, page * pageSize - 1)
         }
         let result = await fetchPage(requestedPage)

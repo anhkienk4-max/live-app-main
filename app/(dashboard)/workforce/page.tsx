@@ -7,7 +7,10 @@ import {
   User,
   Trophy,
   RefreshCw,
+  Table2,
+  LayoutGrid,
 } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 import { PageShell } from '@/components/ui/archetypes'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -33,12 +36,15 @@ import {
 import { WorkforceTeamOverview } from '@/components/features/workforce/WorkforceTeamOverview'
 import { WorkforceIndividualView } from '@/components/features/workforce/WorkforceIndividualView'
 import { WorkforceLeaderboard } from '@/components/features/workforce/WorkforceLeaderboard'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
+import { parseWorkforceYearDraft } from '@/lib/workforce/workforcePeriod'
+import { useListPagination } from '@/lib/hooks/useListPagination'
 
 export default function WorkforcePage() {
   const { translate } = useTranslation()
-  const { currentUser, loading, error, capabilities, identityKey } = useWorkforceCapabilities()
+  const { currentUser, loading, error, capabilities, identityKey, reload } = useWorkforceCapabilities()
   if (loading) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Đang xác minh phiên đăng nhập và quyền truy cập…')}</p></PageShell>
-  if (error) return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate(error)}</p></PageShell>
+  if (error) return <PageShell archetype="command" className="space-y-3 p-4 md:p-6"><p role="alert">{translate(error)}</p><Button onClick={reload}>{translate('Thử lại')}</Button></PageShell>
   if (!currentUser || !capabilities?.own_performance) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.')}</p></PageShell>
   return <WorkforceWorkspace key={identityKey} currentUser={currentUser} canViewTeam={capabilities.team_performance} />
 }
@@ -47,68 +53,85 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   const permission = resolveSystemPermission(currentUser)
   const isSupervisor = canViewTeam && (permission === 'admin' || permission === 'leader')
   const { toast } = useToast()
+  const { language } = useTranslation()
+  const en = language === 'en'
+  const params = useSearchParams()
+  const pagination = useListPagination('workforce_staff', 20)
 
-  // Default month: current month YYYY-MM
+  // Workforce periods use the shift's business calendar date.
   const currentMonthStr = React.useMemo(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   }, [])
 
-  const [month, setMonth] = React.useState<string>(currentMonthStr)
-  const [role, setRole] = React.useState<WorkforceRole>('host')
-  const [activeTab, setActiveTab] = React.useState<'team' | 'individual' | 'leaderboard'>('team')
-
-  // Selected staff ID for Individual tab
-  const [selectedStaffId, setSelectedStaffId] = React.useState<string>('')
+  const periodParam = params.get('workforce_period')
+  const period = periodParam && /^\d{4}(?:-(0[1-9]|1[0-2]))?$/u.test(periodParam) ? periodParam : currentMonthStr
+  const roleParam = params.get('workforce_role')
+  const role: WorkforceRole = roleParam === 'support' || roleParam === 'technical' ? roleParam : 'host'
+  const viewParam = params.get('workforce_view')
+  const activeTab = viewParam === 'table' || viewParam === 'cards' || viewParam === 'individual' || viewParam === 'leaderboard' ? viewParam : 'team'
+  const search = params.get('workforce_search') || ''
+  const staffFilter = params.get('workforce_staff_id') || ''
+  const sortParam = params.get('workforce_sort')
+  const sort = sortParam === 'assigned' || sortParam === 'approved_minutes' || sortParam === 'punctuality' ? sortParam : 'name'
+  const direction = params.get('workforce_direction') === 'desc' ? 'desc' : 'asc'
+  const recordParam = params.get('workforce_record')
+  const record = recordParam === 'complete' || recordParam === 'incomplete' ? recordParam : null
+  const [yearDraft, setYearDraft] = React.useState(period.slice(0, 4))
+  const updateQuery = (values: Record<string, string | null>, resetPage = false) =>
+    pagination.navigate({ ...values, ...(resetPage ? { workforce_staff_page: null } : {}) })
+  const updatePeriod = (value: string) => {
+    setYearDraft(value.slice(0, 4))
+    updateQuery({ workforce_period: value }, true)
+  }
+  const updateRole = (value: WorkforceRole) => updateQuery({ workforce_role: value }, true)
+  const setActiveTab = (value: string) => updateQuery({ workforce_view: value === 'team' ? null : value })
+  const selectedStaffId = staffFilter || currentUser.id
+  const needsOverview = isSupervisor && activeTab !== 'individual'
 
   // Overview response state
-  const [overviewData, setOverviewData] = React.useState<WorkforceOverviewResponse | null>(null)
-  const [overviewError, setOverviewError] = React.useState<string | null>(null)
+  const [overviewState, setOverviewState] = React.useState<{ key: string; data?: WorkforceOverviewResponse; error?: string } | null>(null)
   const [loadingOverview, setLoadingOverview] = React.useState(false)
-
-  // Initialize selectedStaffId for Member or Supervisor
-  React.useEffect(() => {
-    let frame: number | undefined
-    if (currentUser?.id && !selectedStaffId) {
-      frame = requestAnimationFrame(() => {
-        setSelectedStaffId(currentUser.id)
-      })
-    }
-    return () => {
-      if (frame !== undefined) cancelAnimationFrame(frame)
-    }
-  }, [currentUser?.id, selectedStaffId])
+  const queryKey = [period, role, pagination.page, pagination.pageSize, search, staffFilter, record, sort, direction].join('|')
+  const overviewData = overviewState?.key === queryKey ? overviewState.data || null : null
+  const overviewError = overviewState?.key === queryKey ? overviewState.error || null : null
 
   // Load Team Overview for Supervisors
   const readSequence = React.useRef(0)
+  const overviewRequest = React.useRef<AbortController | null>(null)
   const loadOverview = React.useCallback(async () => {
-    if (!isSupervisor) return
+    if (!needsOverview) return
     const sequence = ++readSequence.current
-    setOverviewData(null)
+    overviewRequest.current?.abort()
+    const controller = new AbortController()
+    overviewRequest.current = controller
     setLoadingOverview(true)
-    setOverviewError(null)
     try {
-      const res = await workforceService.getWorkforceOverview({ month, role })
+      const res = await workforceService.getWorkforceOverview({
+        period, role, page: pagination.page, pageSize: pagination.pageSize,
+        search, staffId: staffFilter, record: record || undefined,
+        sort, direction, signal: controller.signal,
+      })
       if (sequence !== readSequence.current) return
-      setOverviewData(res)
+      setOverviewState({ key: queryKey, data: res })
     } catch (err: unknown) {
-      if (sequence !== readSequence.current) return
-      setOverviewError(workforceErrorMessage(err))
-      setOverviewData(null)
+      if (sequence !== readSequence.current || controller.signal.aborted) return
+      setOverviewState({ key: queryKey, error: workforceErrorMessage(err) })
       toast({
-        title: 'Không thể tải tổng quan hiệu suất đội ngũ',
+        title: en ? 'Could not load team performance' : 'Không thể tải tổng quan hiệu suất đội ngũ',
         description: workforceErrorMessage(err),
         variant: 'destructive',
       })
     } finally {
       if (sequence === readSequence.current) setLoadingOverview(false)
     }
-  }, [isSupervisor, month, role, toast])
+  }, [needsOverview, period, role, pagination.page, pagination.pageSize, search, staffFilter, record, sort, direction, queryKey, toast, en])
+  useShiftChangeRefresh(loadOverview)
 
   React.useEffect(() => {
     const generation = readSequence
     let frame: number | undefined
-    if (isSupervisor) {
+    if (needsOverview) {
       frame = requestAnimationFrame(() => {
         void loadOverview()
       })
@@ -116,12 +139,12 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
     return () => {
       if (frame !== undefined) cancelAnimationFrame(frame)
       generation.current++
+      overviewRequest.current?.abort()
     }
-  }, [isSupervisor, loadOverview])
+  }, [needsOverview, loadOverview])
 
   const handleDrilldownStaff = (staffId: string) => {
-    setSelectedStaffId(staffId)
-    setActiveTab('individual')
+    updateQuery({ workforce_staff_id: staffId, workforce_view: 'individual' })
   }
 
   // If Member: strictly individual performance view
@@ -135,21 +158,22 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
               <Activity className="h-4 w-4" />
             </span>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">
-              Hiệu suất & Chấm công cá nhân
+              {en ? 'Individual Performance & Attendance' : 'Hiệu suất & Chấm công cá nhân'}
             </h1>
           </div>
           <p className="text-xs text-slate-500">
-            Theo dõi khối lượng làm việc thực tế, thời lượng và tỷ lệ đúng giờ được xác nhận độc lập.
+            {en ? 'Track approved work, attendance and verified timeliness.' : 'Theo dõi khối lượng làm việc thực tế, thời lượng và tỷ lệ đúng giờ được xác nhận độc lập.'}
           </p>
         </div>
 
         <WorkforceIndividualView
+          key={`${myStaffId}:${role}:${period}`}
           staffId={myStaffId}
           role={role}
-          month={month}
+          period={period}
           canSelectOtherStaff={false}
-          onRoleChange={setRole}
-          onMonthChange={setMonth}
+          onRoleChange={updateRole}
+          onPeriodChange={updatePeriod}
         />
       </PageShell>
     )
@@ -166,35 +190,67 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
               <Activity className="h-4 w-4" />
             </span>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">
-              Quản lý Hiệu suất Nhân sự (Workforce Performance)
+              {en ? 'Workforce Performance' : 'Quản lý Hiệu suất Nhân sự'}
             </h1>
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            Theo dõi kỷ luật thời gian, mức độ bao phủ chứng minh chấm công và độ tin cậy vận hành của đội ngũ.
+            {en ? 'Track verified attendance, approved time and team performance.' : 'Theo dõi kỷ luật thời gian, mức độ bao phủ chứng minh chấm công và độ tin cậy vận hành của đội ngũ.'}
           </p>
         </div>
 
-        {/* Global Month & Role controls for Team tab */}
+        {/* Global period and role controls for Team/Leaderboard */}
         {activeTab !== 'individual' && (
           <div className="flex flex-wrap items-center gap-2">
             <div className="w-36">
-              <Select value={role} onValueChange={(val: WorkforceRole) => setRole(val)}>
-                <SelectTrigger className="h-8 text-xs bg-white">
+              <Select value={role} onValueChange={(val: WorkforceRole) => updateRole(val)}>
+                <SelectTrigger aria-label={en ? 'Operational role' : 'Vai trò vận hành'} className="h-8 text-xs bg-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="host">Host Livestream</SelectItem>
-                  <SelectItem value="support">Trợ lý phiên Live</SelectItem>
-                  <SelectItem value="technical">Kỹ thuật viên</SelectItem>
+                  <SelectItem value="support">{en ? 'Support' : 'Trợ lý phiên Live'}</SelectItem>
+                  <SelectItem value="technical">{en ? 'Technical' : 'Kỹ thuật viên'}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-36">
+              <Select value={period.length === 4 ? 'year' : 'month'} onValueChange={(mode) =>
+                updatePeriod(mode === 'year' ? period.slice(0, 4) : `${period.slice(0, 4)}-01`)
+              }>
+                <SelectTrigger aria-label={en ? 'Period mode' : 'Chế độ thời gian'} className="h-8 text-xs bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">{en ? 'Monthly' : 'Theo tháng'}</SelectItem>
+                  <SelectItem value="year">{en ? 'Yearly' : 'Theo năm'}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="w-36">
               <Input
-                type="month"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
+                type={period.length === 4 ? 'number' : 'month'}
+                aria-label={en ? 'Performance period' : 'Kỳ hiệu suất'}
+                min={period.length === 4 ? 1900 : undefined}
+                max={period.length === 4 ? 9999 : undefined}
+                step={period.length === 4 ? 1 : undefined}
+                value={period.length === 4 ? yearDraft : period}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (period.length === 4) {
+                    const parsed = parseWorkforceYearDraft(value)
+                    if (parsed) {
+                      setYearDraft(parsed.draft)
+                      if (parsed.period) updatePeriod(parsed.period)
+                    }
+                  } else if (/^\d{4}-\d{2}$/u.test(value)) {
+                    updatePeriod(value)
+                  }
+                }}
+                onBlur={() => {
+                  if (!/^\d{4}$/u.test(yearDraft)) setYearDraft(period.slice(0, 4))
+                }}
                 className="h-8 text-xs bg-white"
               />
             </div>
@@ -207,54 +263,61 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
               className="h-8 text-xs"
             >
               <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loadingOverview ? 'animate-spin' : ''}`} />
-              Làm mới
+              {en ? 'Refresh' : 'Làm mới'}
             </Button>
           </div>
         )}
       </div>
 
-      {overviewError && <div role="alert" className="sr-only">{overviewError}</div>}
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-3 bg-slate-100 p-1 rounded-lg">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg sm:grid-cols-5">
           <TabsTrigger value="team" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Users className="h-3.5 w-3.5 mr-1.5" />
-            Tổng quan đội ngũ
+            {en ? 'Overview' : 'Tổng quan'}
+          </TabsTrigger>
+          <TabsTrigger value="table" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <Table2 className="h-3.5 w-3.5 mr-1.5" />
+            {en ? 'Table' : 'Bảng'}
+          </TabsTrigger>
+          <TabsTrigger value="cards" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
+            {en ? 'Cards' : 'Thẻ'}
           </TabsTrigger>
           <TabsTrigger value="individual" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <User className="h-3.5 w-3.5 mr-1.5" />
-            Hiệu suất cá nhân
+            {en ? 'Individual' : 'Cá nhân'}
           </TabsTrigger>
           <TabsTrigger value="leaderboard" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Trophy className="h-3.5 w-3.5 mr-1.5" />
-            Bảng xếp hạng
+            {en ? 'Ranking' : 'Xếp hạng'}
           </TabsTrigger>
         </TabsList>
 
-        {/* TEAM OVERVIEW TAB */}
-        <TabsContent value="team" className="mt-0">
-          <WorkforceTeamOverview
-            overview={overviewData?.team || null}
-            staffList={overviewData?.staff || []}
-            month={month}
-            role={role}
-            loading={loadingOverview}
-            error={overviewError}
-            onSelectStaff={handleDrilldownStaff}
+        {(['team', 'table', 'cards'] as const).map(view => <TabsContent key={view} value={view} className="mt-0">
+          <WorkforceTeamOverview view={view} overview={overviewData?.team || null}
+            staffList={overviewData?.staff || []} staffPagination={overviewData?.staff_pagination}
+            period={period} role={role} loading={loadingOverview || (!overviewState || overviewState.key !== queryKey) && !overviewError}
+            error={overviewError} onRetry={loadOverview} onSelectStaff={handleDrilldownStaff}
+            page={pagination.page} pageSize={pagination.pageSize} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize}
+            searchDraft={search} staffDraft={staffFilter}
+            onApplyFilters={(searchValue, staffValue) => updateQuery({ workforce_search: searchValue.trim() || null, workforce_staff_id: staffValue.trim() || null }, true)}
+            sort={sort} direction={direction} onSortChange={(value, dir) => updateQuery({ workforce_sort: value, workforce_direction: dir, workforce_staff_page: null })}
+            record={record} onRecordChange={value => updateQuery({ workforce_record: value, workforce_staff_page: null })}
           />
-        </TabsContent>
+        </TabsContent>)}
 
         {/* INDIVIDUAL PERFORMANCE TAB */}
         <TabsContent value="individual" className="mt-0">
           <WorkforceIndividualView
-            key={`${selectedStaffId}:${role}:${month}`}
+            key={`${selectedStaffId}:${role}:${period}`}
             staffId={selectedStaffId || currentUser?.id || ''}
             role={role}
-            month={month}
+            period={period}
             canSelectOtherStaff={isSupervisor}
-            onStaffChange={setSelectedStaffId}
-            onRoleChange={setRole}
-            onMonthChange={setMonth}
+            onStaffChange={value => updateQuery({ workforce_staff_id: value || null })}
+            onRoleChange={updateRole}
+            onPeriodChange={updatePeriod}
           />
         </TabsContent>
 
@@ -263,10 +326,13 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
           <WorkforceLeaderboard
             leaderboard={overviewData?.leaderboard || []}
             isConfigured={overviewData?.leaderboard_policy_configured || false}
-            loading={loadingOverview}
+            loading={loadingOverview || (!overviewState || overviewState.key !== queryKey) && !overviewError}
             error={overviewError}
-            month={month}
+            period={period}
             role={role}
+            search={search}
+            staffFilter={staffFilter}
+            onRetry={loadOverview}
           />
         </TabsContent>
       </Tabs>

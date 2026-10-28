@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
-import { getAllIssues } from '@/lib/utils/dataQuality'
+import { filterDataQualityIssues, getAllIssues } from '@/lib/utils/dataQuality'
 import { shiftFromRow } from '@/lib/services/supabaseShiftService'
 import { reportFromRow } from '@/lib/services/supabaseReportService'
 import { registrationFromRow } from '@/lib/services/supabaseShiftRegistrationService'
@@ -33,7 +33,6 @@ export async function readDataQualityPage(client: SupabaseClient, query: ListQue
     reports:reports.map(row=>reportFromRow(row as Parameters<typeof reportFromRow>[0])),
     registrations:registrations.map(row=>registrationFromRow(row as Parameters<typeof registrationFromRow>[0])),
   }).sort((a,b)=>a.id.localeCompare(b.id))
-  const filtered=all.filter(issue=>(!query.filters?.severity || query.filters.severity==='all' || issue.severity===query.filters.severity)
-    && (!query.filters?.qualitySources?.length || query.filters.qualitySources.includes(issue.source)))
+  const filtered=filterDataQualityIssues(all,query.filters?.severity??[],query.filters?.qualitySources??[])
   return { ...localListPage(filtered,query), counts:{error:all.filter(i=>i.severity==='error').length,warning:all.filter(i=>i.severity==='warning').length,info:all.filter(i=>i.severity==='info').length}, totalIssues:all.length }
 }

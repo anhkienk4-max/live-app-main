@@ -1,7 +1,7 @@
 import type { Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { pageRange, type PageSize } from '@/lib/utils/pagination'
 
-export type OperationsList = 'shifts' | 'open_shifts' | 'my_shifts' | 'brands' | 'platforms' | 'campaigns' | 'staff' | 'notifications' | 'reports' | 'registration_reviews' | 'import_batches' | 'schedule_changes' | 'swaps' | 'quality' | 'live_shifts' | 'analytics_reports' | 'live_updates' | 'archives' | 'account_requests'
+export type OperationsList = 'shifts' | 'open_shifts' | 'my_shifts' | 'brands' | 'platforms' | 'campaigns' | 'staff' | 'notifications' | 'reports' | 'report_queue' | 'registration_reviews' | 'import_batches' | 'schedule_changes' | 'swaps' | 'quality' | 'live_shifts' | 'analytics_reports' | 'live_updates' | 'archives' | 'account_requests'
 export interface ListFilters {
   search?: string
   from?: string
@@ -29,7 +29,7 @@ export interface ListFilters {
   actionIds?: string[]
   shiftIds?: string[]
   sources?: string[]
-  severity?: 'all' | 'error' | 'warning' | 'info'
+  severity?: string[]
   qualitySources?: string[]
   requesterIds?: string[]
   scope?: 'all' | 'mine' | 'forMe'
@@ -37,7 +37,23 @@ export interface ListFilters {
   descending?: boolean
 }
 export interface ListQuery { page: number; pageSize: PageSize; filters?: ListFilters; pendingPage?: number }
-export interface ListPage<T> { items: T[]; total: number; page: number; pageSize: PageSize; ownerKey?: string }
+export interface HistoricalReportShiftContext {
+  date: string
+  start_time: string
+  end_time: string
+  brand_id: string
+  platform_id: string
+  campaign_id: string | null
+}
+export interface ListPage<T> {
+  items: T[]
+  total: number
+  page: number
+  pageSize: PageSize
+  ownerKey?: string
+  /** Only populated for Reports, and only for individually authorized reports. */
+  historicalShiftContexts?: Record<string, HistoricalReportShiftContext>
+}
 export interface ShiftListPage extends ListPage<Shift> {
   registrations: ShiftRegistration[]
   pendingTotal: number
@@ -60,10 +76,44 @@ export async function getCollectionPage<T>(entity: OperationsList, query: ListQu
   const owner=await browserOwner()
   const response = await fetch('/api/operations/collection?' + params, { credentials: 'same-origin', cache: 'no-store', signal })
   const body = await response.json()
-  if(owner!==await browserOwner())throw new OperationsListError('LIST_IDENTITY_CHANGED',409)
-  if (!response.ok) throw new OperationsListError(body.error?.code ?? 'LIST_READ_FAILED', response.status)
+  const ownerAfterResponse = await browserOwner()
+  if (owner !== ownerAfterResponse) {
+    // Diagnostics intentionally exclude actor IDs, ownerKeys, tokens, response
+    // payloads and query parameters. Never weaken the fail-closed boundary.
+    console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      entity, stage: 'actor_changed_during_request', httpStatus: response.status,
+    })
+    throw new OperationsListError('LIST_IDENTITY_CHANGED', 409)
+  }
+  if (!response.ok) throw new OperationsListError(body?.error?.code ?? 'LIST_READ_FAILED', response.status)
+  if (typeof window !== 'undefined' && body?.ownerKey !== owner) {
+    console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', {
+      entity, stage: body?.ownerKey === undefined ? 'server_owner_missing' : 'server_owner_mismatch',
+      httpStatus: response.status,
+    })
+    throw new OperationsListError('LIST_IDENTITY_CHANGED', 409)
+  }
   if ((body.ownerKey !== undefined && typeof body.ownerKey !== 'string') || !Array.isArray(body.items) || body.items.length > query.pageSize || !Number.isSafeInteger(body.total) || body.total < body.items.length || body.pageSize !== query.pageSize || !Number.isSafeInteger(body.page) || body.page < 1) {
     throw new OperationsListError('LIST_RESPONSE_INVALID', 502)
+  }
+  if (entity === 'reports') {
+    const contexts = body.historicalShiftContexts
+    if (!contexts || typeof contexts !== 'object' || Array.isArray(contexts)) {
+      throw new OperationsListError('REPORT_HISTORY_RESPONSE_INVALID', 502)
+    }
+    const reportIds = new Set(body.items.map((item:{id:string}) => item.id))
+    for (const [reportId, context] of Object.entries(contexts)) {
+      const ctx = context as Record<string, unknown> | null
+      if (!reportIds.has(reportId) || !ctx || Array.isArray(ctx) ||
+        Object.keys(ctx).sort().join(',') !== 'brand_id,campaign_id,date,end_time,platform_id,start_time' ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(String(ctx.date)) ||
+        !/^\d{2}:\d{2}/.test(String(ctx.start_time)) ||
+        !/^\d{2}:\d{2}/.test(String(ctx.end_time)) ||
+        typeof ctx.brand_id !== 'string' || typeof ctx.platform_id !== 'string' ||
+        (ctx.campaign_id !== null && typeof ctx.campaign_id !== 'string')) {
+        throw new OperationsListError('REPORT_HISTORY_RESPONSE_INVALID', 502)
+      }
+    }
   }
   return body
 }
