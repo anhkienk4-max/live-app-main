@@ -26,6 +26,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: UI scope and retained service/auth entrypoints
         run: node scripts/pwa-rc19-ui-release-scope.mjs
+      - name: Attest available Vercel CLI production source hashes
+        run: node scripts/verify-vercel-cli-source-hashes.mjs
       - name: TypeScript
         run: pnpm exec tsc --noEmit --incremental false
       - name: Scoped ESLint for changed code

@@ -1,0 +1,2364 @@
+{
+  "schema": 1,
+  "source": "Vercel CLI deployment file-list",
+  "deploymentId": "dpl_EDJnc6158sDV6gyHq5jfAMZE9rMZ",
+  "domain": "ops5729.top",
+  "referenceCommit": "1b96f38a17768e96b92f23056efba4b61cc76f84",
+  "complete": false,
+  "coverageNote": "Only non-truncated src/ file entries returned by Vercel list_deployment_files; missing entries are NOT proven equal.",
+  "listedFiles": 588,
+  "files": [
+    {
+      "path": ".agents/memory/brand-kb-fields.md",
+      "sha1": "c672b30a07f40beec581836b527eb62402c9d379"
+    },
+    {
+      "path": ".agents/memory/livestream-ops-arch.md",
+      "sha1": "6a617386fbe709823f29784083cbd99d6307ccda"
+    },
+    {
+      "path": ".agents/memory/MEMORY.md",
+      "sha1": "687931dc765de81791d6245d160f3347af628cf5"
+    },
+    {
+      "path": ".env.example",
+      "sha1": "6a27773c07ad7a5896977b38b8af9ec3624c6e82"
+    },
+    {
+      "path": ".gitattributes",
+      "sha1": "b5b17b62212ee15885ecd9bdcd7038347c24a47f"
+    },
+    {
+      "path": ".github/p0-postgres/Dockerfile",
+      "sha1": "dc01083b787fd9aa5242df1c21561c29bc1c0934"
+    },
+    {
+      "path": ".github/workflows/ada-hls-browser-integration.yml",
+      "sha1": "dd3a25f20e169235a6c1fbd7821cfe76f2867657"
+    },
+    {
+      "path": ".github/workflows/ada-hls-player-gate.yml",
+      "sha1": "f72067a132aabf06f829358bdcc6154ac939c183"
+    },
+    {
+      "path": ".github/workflows/ada-hls-react-component.yml",
+      "sha1": "acf9ee9f20afb74d58a101f915aea185405328da"
+    },
+    {
+      "path": ".github/workflows/analytics-p0-identity-cdp.yml",
+      "sha1": "6517ecd85bbbce240cdc56529492ca625ea24598"
+    },
+    {
+      "path": ".github/workflows/media-player-dependency-resolve.yml",
+      "sha1": "9a232d873c498ed4fb9c141a9b0a7e0917166970"
+    },
+    {
+      "path": ".github/workflows/media-poc-smoke.yml",
+      "sha1": "a63decc10f7c3ffd021453ae99f04ae8add76ae4"
+    },
+    {
+      "path": ".github/workflows/media-viewer-grants.yml",
+      "sha1": "97dfbf70a9245f6b26f90db25395c60b542b536f"
+    },
+    {
+      "path": ".github/workflows/p0-shift-status-postgres.yml",
+      "sha1": "430b6e1d2f236163539c887fa5d586f7dc7a737c"
+    },
+    {
+      "path": ".github/workflows/prod-uat-auth-calendar-gate.yml",
+      "sha1": "d3ee2c0584a65131cf4c867422db133a567fc78a"
+    },
+    {
+      "path": ".github/workflows/rc-convergence-gate.yml",
+      "sha1": "967e0d16157b6be67b6ead9d78fea6f75bb3326f"
+    },
+    {
+      "path": ".github/workflows/rc15-storage-gate.yml",
+      "sha1": "a739cc56050836ae8bf41a2a860306fb2de8536c"
+    },
+    {
+      "path": ".github/workflows/rc16-workforce-payroll-gate.yml",
+      "sha1": "6261ef5f7641925ac86a82a3204fea43c7f6c9a6"
+    },
+    {
+      "path": ".github/workflows/rc17d-responsive-gate.yml",
+      "sha1": "d7bad7b51b71cee47b94ef95c14b3aefc6edafa9"
+    },
+    {
+      "path": ".github/workflows/rc18-integration-prod-candidate.yml",
+      "sha1": "f2ec9615cfdd653c8028475a43d4fffb0a9e21ab"
+    },
+    {
+      "path": ".github/workflows/rc18-payroll-ada-room-rules.yml",
+      "sha1": "3b4f5b8f10253446cd968711d9e9ce7382d58c1b"
+    },
+    {
+      "path": ".github/workflows/rc18-payroll-attendance-rulebook-gate.yml",
+      "sha1": "c8bf3f0d6d2e5077e22d50424eef204ccad4ef93"
+    },
+    {
+      "path": ".github/workflows/rc18a-realtime-publication-contract.yml",
+      "sha1": "4e55edf07cd15e8cb3cc67ea6d93a8200b9c681a"
+    },
+    {
+      "path": ".github/workflows/rc19-one-preview-release-gate.yml",
+      "sha1": "bfe920c49d5207e797143d059bdc8854758344a7"
+    },
+    {
+      "path": ".github/workflows/rc19-p0-member-identity-gate.yml",
+      "sha1": "97e016a45db8c54be92d2c6495623817947e4925"
+    },
+    {
+      "path": ".github/workflows/rc19-p1-calendar-density-gate.yml",
+      "sha1": "d1aa9904314a198b3d2b65b8a5a31c9fc96a7086"
+    },
+    {
+      "path": ".github/workflows/rc19-p1-staffing-gap-gate.yml",
+      "sha1": "92e3861a501497e7e918e1010282c01b9cb0fd41"
+    },
+    {
+      "path": ".npmrc",
+      "sha1": "1b0313313b77ce5d44f3e3c2b73c015c6d7045c9"
+    },
+    {
+      "path": ".replit",
+      "sha1": "100dab9ac6ba8ee7925d83bf97158be68834e111"
+    },
+    {
+      "path": ".replitignore",
+      "sha1": "7ebe602ba64703ed652005e8dfb08ef9b7399847"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha1": "cdcdd6afa2ee0f26e0a6d7ea7243bad56475676c"
+    },
+    {
+      "path": "attached_assets/Pasted-We-will-continue-developing-the-project-from-its-CURREN_1784101336577.txt",
+      "sha1": "58359f539779165d871c029dd536808297771cdc"
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha1": "76e488855346db319fc11455bd8dc6879e2e51aa"
+    },
+    {
+      "path": "components.json",
+      "sha1": "eadd729c83228f9418a4a4fd6feb4a0414544adb"
+    },
+    {
+      "path": "components/domain/ImportOutcomeBadge.tsx",
+      "sha1": "2ee66c4d8b09ce91f4cedb2ad23ecfa48f699e56"
+    },
+    {
+      "path": "components/domain/OperationalRoleChip.tsx",
+      "sha1": "17ab850598a9d9efc438ff391aa4f844bc3b2042"
+    },
+    {
+      "path": "components/domain/RegistrationStatusBadge.tsx",
+      "sha1": "70a26e76d9cff640f0ee39b6f3bedb8056861471"
+    },
+    {
+      "path": "components/domain/ShiftStatusBadge.tsx",
+      "sha1": "7f3d47799c7b00d6e36265b91db5e61218ddae67"
+    },
+    {
+      "path": "components/domain/SystemRoleBadge.tsx",
+      "sha1": "6f942df4cbd517e0820c4519c621fb773c6df236"
+    },
+    {
+      "path": "components/layout/AccountMenu.tsx",
+      "sha1": "b09a5653e64bb9bdf638f5cbf2816f5ff5f25313"
+    },
+    {
+      "path": "components/layout/BottomNav.tsx",
+      "sha1": "30b8a8aa5098c9bd6dc043876587b1f4b72b7171"
+    },
+    {
+      "path": "components/layout/Header.tsx",
+      "sha1": "fad1fbef1c7ad7caddc258ac22642c894d651f59"
+    },
+    {
+      "path": "components/layout/NavigationDrawer.tsx",
+      "sha1": "58ea0c9c612a84c94ed4e830d96ec90303c825d4"
+    },
+    {
+      "path": "components/layout/ProductionAppShell.tsx",
+      "sha1": "37b9cdee93ee2f8320ed3dd797ca5fdb8bd32cd8"
+    },
+    {
+      "path": "components/layout/shellConfig.ts",
+      "sha1": "1fa011c20c8154b83c621f7820d9848accb1a55b"
+    },
+    {
+      "path": "components/layout/Sidebar.tsx",
+      "sha1": "f60cce1feaabfa7c1253d99b817cba1e2b1d59db"
+    },
+    {
+      "path": "components/layouts/AuthLayout.tsx",
+      "sha1": "6f75ef35b88fce429c5d839f5e7079707f5c9bcf"
+    },
+    {
+      "path": "components/providers/QueryProvider.tsx",
+      "sha1": "235d8630fb87a632b7265445e7f1e941fec4b603"
+    },
+    {
+      "path": "components/providers/RoleLensProvider.tsx",
+      "sha1": "93bad8392047ed88ec6f826f9505f725823332c0"
+    },
+    {
+      "path": "components/providers/ShiftChangeBridge.tsx",
+      "sha1": "04ee1e8816ac9d9a55eccd35c6b129bcc782fda5"
+    },
+    {
+      "path": "components/ui/action-bar.tsx",
+      "sha1": "809df6b32f5f5a2d341d6a897a5818ed67b486b8"
+    },
+    {
+      "path": "components/ui/alert-dialog.tsx",
+      "sha1": "e3a3ffec78040d920bbe016426a04c2c28d451bd"
+    },
+    {
+      "path": "components/ui/archetypes.tsx",
+      "sha1": "6bdb55e3f747e121f627b8b3fcb3e8adc1ea4ce8"
+    },
+    {
+      "path": "components/ui/avatar.tsx",
+      "sha1": "8da9aa2dca6a7475e0f005d1f131f57a87c72f73"
+    },
+    {
+      "path": "components/ui/badge.tsx",
+      "sha1": "500f6586eeee4f76e7f073f415aee73471a02450"
+    },
+    {
+      "path": "components/ui/button.tsx",
+      "sha1": "dd7468f0480e9e78140dad3bd4849062c3f16471"
+    },
+    {
+      "path": "components/ui/calendar.tsx",
+      "sha1": "9dc27f262cdcbe5c3fb8374b4a25b500a69bd9c6"
+    },
+    {
+      "path": "components/ui/card.tsx",
+      "sha1": "7e8dd715c69b4d4972a1a166b0c281edfb5f6164"
+    },
+    {
+      "path": "components/ui/checkbox.tsx",
+      "sha1": "3d423601a00586fedda7002652269a2c84102d70"
+    },
+    {
+      "path": "components/ui/command-toolbar.tsx",
+      "sha1": "c0ce067984dc276e76ac46e9a88ffe4993739e09"
+    },
+    {
+      "path": "components/ui/content-skeleton.tsx",
+      "sha1": "5fe7aa373edf9ee810dfd6c31c2dbe82252ada37"
+    },
+    {
+      "path": "components/ui/current-time-indicator.tsx",
+      "sha1": "33fffdf9dac9c1f801977f448f508ce0d6394672"
+    },
+    {
+      "path": "components/ui/data-table.tsx",
+      "sha1": "367e38d9eb46c5197d96f3fc3092d78b269545ec"
+    },
+    {
+      "path": "components/ui/dialog.tsx",
+      "sha1": "6eb8bc067aa55e4db02d05c7d05e4f44b92624e0"
+    },
+    {
+      "path": "components/ui/dropdown-menu.tsx",
+      "sha1": "059a77561a10a42ff238ad9766319a54cca541e2"
+    },
+    {
+      "path": "components/ui/enterprise-data-table.tsx",
+      "sha1": "f5a033a7c3fcb078f11be0abfa0b9d2186ae0b52"
+    },
+    {
+      "path": "components/ui/filter-bar.tsx",
+      "sha1": "e5997065b2a3c8d6ca45344413d9c3196a5bfb80"
+    },
+    {
+      "path": "components/ui/history-pagination.tsx",
+      "sha1": "310dd202a21c0b661030ae209cb1e7651c9a76dd"
+    },
+    {
+      "path": "components/ui/input.tsx",
+      "sha1": "33c91e9528ca88c8709a0498eea0c8f9e64e1caf"
+    },
+    {
+      "path": "components/ui/lifecycle-action-dialog.tsx",
+      "sha1": "fca546b8f3916dfd62415676d210878e8e277d69"
+    },
+    {
+      "path": "components/ui/list-feedback.tsx",
+      "sha1": "9cd5311a1cb47301c03ddad01952343f256eeff6"
+    },
+    {
+      "path": "components/ui/mobile-action-menu.tsx",
+      "sha1": "2caefb886b5c399af1f2694923a60f977b90de6d"
+    },
+    {
+      "path": "components/ui/motion.tsx",
+      "sha1": "7b2ce27d6e5ab62b8fc08c7a21717fa9b7e7751e"
+    },
+    {
+      "path": "components/ui/multi-select-filter.tsx",
+      "sha1": "2eb8c2b795b7ce2d4edf313206aaa5fdc94ecca2"
+    },
+    {
+      "path": "components/ui/operational-status.tsx",
+      "sha1": "d7aaf297fcd56bbcd532bac26bca525eaa1912c0"
+    },
+    {
+      "path": "components/ui/page-load-error.tsx",
+      "sha1": "bac027196dc7394d5dd0f03165825754d7e76efa"
+    },
+    {
+      "path": "components/ui/select.tsx",
+      "sha1": "c605a18988fe171274ba6c6e105cd8f10e56ab8d"
+    },
+    {
+      "path": "components/ui/separator.tsx",
+      "sha1": "1186bd0c76a82a98c699a2e8faac7306c6087499"
+    },
+    {
+      "path": "components/ui/skeleton.tsx",
+      "sha1": "554302d7629a5aa5d795dd6295e4fb89e6ce1cd8"
+    },
+    {
+      "path": "components/ui/states.tsx",
+      "sha1": "a47195ef14af160062db3f74460db93cf75874d3"
+    },
+    {
+      "path": "components/ui/switch.tsx",
+      "sha1": "fd1271643deb559967d65a46c1e856c6e94917e1"
+    },
+    {
+      "path": "components/ui/table.tsx",
+      "sha1": "547c1a349539c93ed4fcb9cc10f9b4a4bfc02ee8"
+    },
+    {
+      "path": "components/ui/tabs.tsx",
+      "sha1": "a39411eec93ad220a86d0948b8618721c81076ed"
+    },
+    {
+      "path": "components/ui/textarea.tsx",
+      "sha1": "e0c987f7a8b4f3775e0cedf91f7b5d88723f57bd"
+    },
+    {
+      "path": "components/ui/toast.tsx",
+      "sha1": "30c7de3f0a24a3d071dbf9f72141429986b70b98"
+    },
+    {
+      "path": "components/visual-qa/AdminReferenceMock.tsx",
+      "sha1": "4c3fce9a1ccbff194b7ade5e821f6f03b22fbd9f"
+    },
+    {
+      "path": "components/visual-qa/AdminSystemReferenceShell.tsx",
+      "sha1": "cb276491d6bebc642e17f27bb8a7c47b7a454ea2"
+    },
+    {
+      "path": "components/visual-qa/AnalyticsReferenceMock.tsx",
+      "sha1": "bc526864a07215be021a78fdd45d3a5d139a01bb"
+    },
+    {
+      "path": "components/visual-qa/AuditReferenceMock.tsx",
+      "sha1": "e856cd413e6e2be2eacae425f6d2e931976d1090"
+    },
+    {
+      "path": "components/visual-qa/AuthReferenceMock.tsx",
+      "sha1": "7b245597d66b61001285cd3642d647e9ac7a0027"
+    },
+    {
+      "path": "components/visual-qa/CalendarReferenceMock.tsx",
+      "sha1": "4f32e33c0cd0b84a45c9570fd50025ec637e66ec"
+    },
+    {
+      "path": "components/visual-qa/CreateShiftReferenceMock.tsx",
+      "sha1": "1851999527f377c7fbb0a56edc781c141f6abff3"
+    },
+    {
+      "path": "components/visual-qa/EditShiftActionsReferenceMock.tsx",
+      "sha1": "a9c5d501b533f6602af9aaa303a60110326377ca"
+    },
+    {
+      "path": "components/visual-qa/EditShiftDuplicateReferenceMock.tsx",
+      "sha1": "cfb33e200e10a5a424498f8f5e7743372ac616e1"
+    },
+    {
+      "path": "components/visual-qa/EditShiftReferenceMock.tsx",
+      "sha1": "8c9c860bea6b159a91fd0a271e4f3a127e9fd1ce"
+    },
+    {
+      "path": "components/visual-qa/ImportReferenceMock.tsx",
+      "sha1": "71784b4e1a47852ab588a2d52cdeaac77d2f068d"
+    },
+    {
+      "path": "components/visual-qa/InsightsReferenceShell.tsx",
+      "sha1": "f8694ce8dd4ba284c261a8e1d68b9c019dd5c476"
+    },
+    {
+      "path": "components/visual-qa/LeaderReferenceMock.tsx",
+      "sha1": "232117dc7007a346a26cbb6be7a9ae6dc7ecfe74"
+    },
+    {
+      "path": "components/visual-qa/LiveOperationsReferenceMock.tsx",
+      "sha1": "bda04df83a42ede5e63f6a2f009f15e9d259668d"
+    },
+    {
+      "path": "components/visual-qa/MemberReferenceMock.tsx",
+      "sha1": "4448f01d7450eb7fe8886482c1b51905c66604cf"
+    },
+    {
+      "path": "components/visual-qa/NotificationsReferenceMock.tsx",
+      "sha1": "8ecfbf61d118c73c9cf0a72e7c07ca3eda2596ee"
+    },
+    {
+      "path": "components/visual-qa/OpsWorkflowReferenceShell.tsx",
+      "sha1": "37ad20f0d22e8987df610ad6212526911764eb69"
+    },
+    {
+      "path": "components/visual-qa/PeopleOpsReferenceShell.tsx",
+      "sha1": "853c417fc57c4c0b2573f15e43e3dda0c1961af2"
+    },
+    {
+      "path": "components/visual-qa/PeopleReferenceMock.tsx",
+      "sha1": "505ad8e766f63826bd6f22143d65e8cb2d1e1641"
+    },
+    {
+      "path": "components/visual-qa/RegistrationReferenceMock.tsx",
+      "sha1": "3d8ecc3ccc79e555cda09d586ce8dcdc812b78c7"
+    },
+    {
+      "path": "components/visual-qa/ReportsReferenceMock.tsx",
+      "sha1": "6b4cb304ee5f837550802e207ea7139b84cd5ae4"
+    },
+    {
+      "path": "components/visual-qa/SettingsReferenceMock.tsx",
+      "sha1": "cff81dbd7cf188f0884220b93b4a75d190325916"
+    },
+    {
+      "path": "components/visual-qa/ShiftDetailReferenceMock.tsx",
+      "sha1": "13f067b9e9977d30aa75bb23369c833e2107bc33"
+    },
+    {
+      "path": "components/visual-qa/ShiftLifecycleReferenceMock.tsx",
+      "sha1": "cb8c2a240340ad6c7bc176010eae52a546b205bd"
+    },
+    {
+      "path": "components/visual-qa/ShiftOperationalReference.tsx",
+      "sha1": "f09d7c0141bb07b62b28b99e1fd684a55d18a570"
+    },
+    {
+      "path": "components/visual-qa/StaffingReferenceMock.tsx",
+      "sha1": "0f9c8574b08ce4f541ea2d78a24e65f5c660785e"
+    },
+    {
+      "path": "components/visual-qa/SwapsReferenceMock.tsx",
+      "sha1": "6d3100da6ff303e49ce0a0f33f2cf6add1b286d5"
+    },
+    {
+      "path": "components/visual-qa/VisualQaShell.tsx",
+      "sha1": "fbec15cc2fe4e030a2f6206da7805450f1a975bf"
+    },
+    {
+      "path": "config/storage-v1-production-routes.proposed.json",
+      "sha1": "36283a0e56e5e08684a9d0a305eec653887bca5e"
+    },
+    {
+      "path": "CONVERGENCE_IMPLEMENTATION_REPORT.md",
+      "sha1": "6011fc5e8c76f7856a9b5701451bedaa9772c99c"
+    },
+    {
+      "path": "DEPLOYED_PREVIEW_CONTACT_SHEET_REJECTED.html",
+      "sha1": "730a5cbb7e0cf515eda97dcb398e05270d74940d"
+    },
+    {
+      "path": "DEPLOYED_PREVIEW_SCREENSHOT_MANIFEST_REJECTED.json",
+      "sha1": "3e8bb6ae7a227ffaeee11283a72695fc8fd910a5"
+    },
+    {
+      "path": "DEPLOYED_PREVIEW_VISUAL_PARITY_MATRIX_REJECTED.md",
+      "sha1": "9c3f53e2398debb7c7ab4ed351114f270730e67d"
+    },
+    {
+      "path": "docs/AI_INTEGRATION.md",
+      "sha1": "12a9121b6ca32a8a0135aebb93d57e4e1e1d7321"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "sha1": "6a5c3b4b8ecf5e2a34c0cb9b5ee7790999f5ea5a"
+    },
+    {
+      "path": "docs/architecture/file-provider-foundation.md",
+      "sha1": "17145a46f699b3b422aa86143dcc4f18a6ddfb27"
+    },
+    {
+      "path": "docs/global-stabilization/CONSOLIDATED_BACKLOG.md",
+      "sha1": "6054c013a455b8d2c94b77d99ee013a0e9d817cf"
+    },
+    {
+      "path": "docs/global-stabilization/PRODUCTION_CUTOVER_PREFLIGHT_20261021.md",
+      "sha1": "8e362eeadc0321d05f7e7153e49b9e248785412b"
+    },
+    {
+      "path": "docs/handoffs/CODEX_RC19_UI_FIX_HANDOFF.md",
+      "sha1": "52384e558b6a61edc20452eada30fb31c22bc50f"
+    },
+    {
+      "path": "docs/handoffs/GEMINI_RC19_U08_STORAGE_HANDOFF.md",
+      "sha1": "e4cdb6bda60f7f46f5e8cc0a65f8531d688a61e5"
+    },
+    {
+      "path": "docs/handoffs/GEMINI_RC19_U09_REPORTS_HANDOFF.md",
+      "sha1": "7eba180b557e0f409083cbbc15e2a52326652da0"
+    },
+    {
+      "path": "docs/media-poc/ADA_PLAYER_UAT.md",
+      "sha1": "7015c46529edb48f5e55e58cb6425c6ea6d67655"
+    },
+    {
+      "path": "docs/media-poc/ADA_VIEWER_GRANT_BACKEND.md",
+      "sha1": "336990c70c11fab172a24091c4dd1c67df4116bb"
+    },
+    {
+      "path": "docs/media-poc/MEDIA_ACL_SCHEMA_PROPOSAL.sql",
+      "sha1": "4df337b886fadd2f8c8e44e23d5f3c44d5464aac"
+    },
+    {
+      "path": "docs/media-poc/README.md",
+      "sha1": "7db5bdafab6d409b76fec8e564573107dadbded9"
+    },
+    {
+      "path": "docs/media-poc/SECURITY_CONTRACT.md",
+      "sha1": "f0a554863169b2f877190ec064b8707a85b63b3b"
+    },
+    {
+      "path": "docs/media-poc/STAGING_GATEWAY_PREFLIGHT.md",
+      "sha1": "81964d2942b8bbab281be93b898acadf467036df"
+    },
+    {
+      "path": "docs/media-poc/STUDIO_WAN_UAT_GATE.md",
+      "sha1": "53a01ed7704e65283ba99509a3d078651743624f"
+    },
+    {
+      "path": "docs/media-poc/UAT_MATRIX.md",
+      "sha1": "5ee49afd21b11faee8ac057c684f2823dfe894d4"
+    },
+    {
+      "path": "docs/rc17d/FILES.md",
+      "sha1": "9761eb8e9020184b43a27787926f2ddce8af4f52"
+    },
+    {
+      "path": "docs/rc17d/PRODUCTION_AUTH_STATUS.json",
+      "sha1": "b2f2e4952e6c4b28a5496fefe7f9d21eb3e0cff4"
+    },
+    {
+      "path": "docs/rc17d/README.md",
+      "sha1": "afb5b25c2c3eaa6dcf7fe3e7232dd386bba3a290"
+    },
+    {
+      "path": "docs/rc17d/RESPONSIVE_MATRIX.csv",
+      "sha1": "8cb885a010f3c15075824bf08fc1d1eea1712dc2"
+    },
+    {
+      "path": "docs/rc17d/ROUTE_MATRIX.md",
+      "sha1": "ae1a7fc0619ac95a46fb05351cbfc97490bfd6d6"
+    },
+    {
+      "path": "docs/rc17d/SCREENSHOTS.md",
+      "sha1": "7080dd04a70cf18f4fb5c3bb109ffc454b7ea136"
+    },
+    {
+      "path": "docs/rc17d/VERIFICATION.md",
+      "sha1": "41ac49369ed218a7f16c97495b6e6d4cfbc9184a"
+    },
+    {
+      "path": "docs/rc18/RC18A_SCOPE_MATRIX.md",
+      "sha1": "4834c2cd52d02c45b917145467db7c61d30045aa"
+    },
+    {
+      "path": "docs/rc19/staffing_candidate_availability.MIGRATION_DRAFT.sql",
+      "sha1": "7d27ce810a4df09d111db36a59e3bbf9799e476f"
+    },
+    {
+      "path": "docs/release-safety.md",
+      "sha1": "63b108b264362624e94cb17b39135f0417653d71"
+    },
+    {
+      "path": "docs/releases/core-v1-rc1.md",
+      "sha1": "833b834298b19a6ae6cfd1c924843d0a0823a55a"
+    },
+    {
+      "path": "docs/releases/RC19_MIGRATION_PARITY_SNAPSHOT_20261023.json",
+      "sha1": "16b085c14dd531ae3ec959b499c64d6995d3b1db"
+    },
+    {
+      "path": "docs/releases/RC19_P0_REPORT_SECURITY_STAGING_EVIDENCE_20261023.md",
+      "sha1": "5a1ee67ddc2fc606103dca360ca2c38ea01c985b"
+    },
+    {
+      "path": "docs/releases/RC19_P2_04_ATTENDANCE_SINGLE_PREVIEW_GATE.md",
+      "sha1": "3d76594f229bfad8328a005f9f5372a215a5c482"
+    },
+    {
+      "path": "docs/releases/RC19_REPORT_OBLIGATION_SCHEMA_PARITY_GATE.md",
+      "sha1": "79ca297fbc610a51f50109c890f0989aadb19735"
+    },
+    {
+      "path": "docs/releases/RC19_SCREENSHOT_FIX_SCOPE_AND_ACCEPTANCE_20261024.md",
+      "sha1": "44967bcad42c67c5815f3ffbd56eb1912ed087fc"
+    },
+    {
+      "path": "docs/runbooks/core-v1-backup-restore.md",
+      "sha1": "007de8a5ac17b56281fa5033541e190227d05cfb"
+    },
+    {
+      "path": "docs/s4f-lite-staffing-labels.md",
+      "sha1": "5d931303d4529adf8081bbcc359b61dd2bedbee9"
+    },
+    {
+      "path": "docs/storage/RC15_GOLIVE_READINESS_RUNBOOK.md",
+      "sha1": "239eff4fe53f8f8aabfbf6002b8f68204db5e252"
+    },
+    {
+      "path": "docs/storage/RC15_PRODUCTION_DRIVE_TOPOLOGY_READONLY.md",
+      "sha1": "636281de7d24ecba2004393ddb1f3c107e9a8397"
+    },
+    {
+      "path": "docs/storage/RC15_STORAGE_CONTRACT_V2.md",
+      "sha1": "63c327f68a491095eab41d52cd3dfdb6f62e554e"
+    },
+    {
+      "path": "docs/supabase-p1a-schema-rls-design.md",
+      "sha1": "87978c103a64e66d86cbbe8e12565fc901ab704a"
+    },
+    {
+      "path": "docs/supabase-p1b-migration-plan.md",
+      "sha1": "2701933b1b215ac8856d885ea0ee29eaed8d0cd7"
+    },
+    {
+      "path": "docs/workforce/RC16_GEMINI_UI_API_HANDOFF.md",
+      "sha1": "4760a39bd8ba7cab5a9abd1e089ebcfba9ea43e2"
+    },
+    {
+      "path": "docs/workforce/RC16_UI_INTEGRATION.md",
+      "sha1": "7d088b4db675b50b5ae9fd80a39be53fafe449ae"
+    },
+    {
+      "path": "docs/workforce/RC16B_BUSINESS_RULE_AUDIT.md",
+      "sha1": "33bfea3e8be3372b664a3525bf0a694bc9a653cb"
+    },
+    {
+      "path": "docs/workforce/RC16C_ENVIRONMENT_IDENTITY.md",
+      "sha1": "b08e137049695c65c8111ad71ddc44f9324b93d6"
+    },
+    {
+      "path": "docs/workforce/RC16C_INTEGRATION_READINESS.md",
+      "sha1": "d4425342f877fc702810d20f9c0dd417801cff1c"
+    },
+    {
+      "path": "docs/workforce/RC16C_SYNTHETIC_UAT_CHECKLIST.md",
+      "sha1": "808c9c520bc857390234df9eae6f3a21a085e034"
+    },
+    {
+      "path": "docs/workforce/RC16C_UI_API_PARITY_MATRIX.md",
+      "sha1": "c70ee38a0d09a44c39a4dc7dd38714deaeb67d8b"
+    },
+    {
+      "path": "docs/workforce/RC16F_BLOCKERS.md",
+      "sha1": "ca1dd722e01598555f892ada602ea93f724a17ce"
+    },
+    {
+      "path": "docs/workforce/RC16F_MIGRATION_COMPATIBILITY.md",
+      "sha1": "e2d930b06cd2168a1a1a757628d92cff2856e6ee"
+    },
+    {
+      "path": "docs/workforce/RC16F_PREVIEW_ACCEPTANCE.md",
+      "sha1": "ec8b43ef6b1a762c0cb754b1f2c63c15ccaae5fe"
+    },
+    {
+      "path": "docs/workforce/RC16F_REHEARSAL_EVIDENCE.md",
+      "sha1": "3df4d306abcab962599f4f78820b59c6cdcb8038"
+    },
+    {
+      "path": "docs/workforce/RC16F_STAGING_APPROVAL_PACKAGE.md",
+      "sha1": "6f68fd0eb81172d409894dfe10b286761a15cfc6"
+    },
+    {
+      "path": "docs/workforce/RC16F_STAGING_PREFLIGHT.md",
+      "sha1": "26b2bca951128d60f44e8e8864a3d27bbb93496b"
+    },
+    {
+      "path": "docs/workforce/RC16F_SYNTHETIC_FIXTURES.md",
+      "sha1": "a8d2352ab57b1a1eaefc4da82209814435700d68"
+    },
+    {
+      "path": "docs/workforce/RC16G_RECONCILIATION_READINESS.md",
+      "sha1": "cdc7e4bd18e5d678cc12ccc7993972972f87963c"
+    },
+    {
+      "path": "docs/workforce/RC16H_ANTIGRAVITY_INTEGRATION.md",
+      "sha1": "c09fc53d708fc2b47d7cb8a968aec87c68fe86cb"
+    },
+    {
+      "path": "docs/workforce/RC16H_PRODUCTION_APPROVAL.md",
+      "sha1": "7b97dcdda7637faa1fd92c5717462829cc041bfe"
+    },
+    {
+      "path": "docs/workforce/RC16H_PRODUCTION_READINESS.md",
+      "sha1": "ea374888af04b7b4e331d45cd2489bebc4f52b16"
+    },
+    {
+      "path": "docs/workforce/RC16H_REHEARSAL_EVIDENCE.md",
+      "sha1": "962b796069a30a101fce3c5fb24cf57aa185a5d4"
+    },
+    {
+      "path": "docs/workforce/RC16I_POSTMAIN_DELTA_MATRIX.md",
+      "sha1": "5f77b942e9389bb494828982e52669d897202c6b"
+    },
+    {
+      "path": "docs/workforce/RC16I_POSTMAIN_HARDENING.md",
+      "sha1": "5ed932f7a00261d156dab1716170370245ee1bcc"
+    },
+    {
+      "path": "docs/workforce/RC18_ADA_ROOM_PAYROLL_RULEBOOK.md",
+      "sha1": "b546eb525d0cc93af502af7b81c292f756ece9ea"
+    },
+    {
+      "path": "e2e/action-menu-runtime.spec.ts",
+      "sha1": "8f09b5bdbe836123a23e5da7eee88cee309bd16b"
+    },
+    {
+      "path": "e2e/auth-public-entry-regression.spec.ts",
+      "sha1": "3d13ad8eac6bd23422fb24fdf18902b3cec4eeb4"
+    },
+    {
+      "path": "e2e/auth-redirect-loop.spec.ts",
+      "sha1": "6e5ebbee30d38a817eebb2fc6b31b403b3e563be"
+    },
+    {
+      "path": "e2e/calendar-drawer-containment.spec.ts",
+      "sha1": "a4c4671b2f8c06e696dcc87ab0df54d1e100a3b9"
+    },
+    {
+      "path": "e2e/capture-payroll-screens.spec.ts",
+      "sha1": "062eff747ad3af5735a521c37399a5266eadf49c"
+    },
+    {
+      "path": "e2e/core-v1-3role.uat.spec.ts",
+      "sha1": "fe5eac62f9915cceae9d6151b3212a23cffc6411"
+    },
+    {
+      "path": "e2e/fixtures/shopee-dashboard.jpg",
+      "sha1": "d23562b8f1d491aa57b70624ad147a61f15a67be"
+    },
+    {
+      "path": "e2e/fixtures/tiktok-dashboard.jpg",
+      "sha1": "e1742aec42f30e647cde5af3b6c4f451f243ff28"
+    },
+    {
+      "path": "e2e/harness/core-v1-harness.ts",
+      "sha1": "61f4aec2622fcd6eee1e255d1a4024cf7d614956"
+    },
+    {
+      "path": "e2e/hydration-release.spec.ts",
+      "sha1": "f0099a412f4b24bed3fcd054fb523c58be953130"
+    },
+    {
+      "path": "e2e/ocr-workflows.spec.ts",
+      "sha1": "c1d525b5f5cdec462a5abdb4156a17a8dc8372ab"
+    },
+    {
+      "path": "e2e/preview-authenticated-uat.spec.ts",
+      "sha1": "cafc571f87302d5dd84bce95399def8200a47019"
+    },
+    {
+      "path": "e2e/production-shell-invariant.spec.ts",
+      "sha1": "8953ce925a325d12ce244771079022b2ec14c509"
+    },
+    {
+      "path": "e2e/rc16-workflow.spec.ts",
+      "sha1": "dad49b38657e526c4f1da1315dc72d4c5a6d6403"
+    },
+    {
+      "path": "e2e/rc16i-postmain.spec.ts",
+      "sha1": "38b23e3fbeaeee6aa3a7234063c518471f1b8c8f"
+    },
+    {
+      "path": "e2e/rc16k-route-audit.spec.ts",
+      "sha1": "3a0e027e17b1a29ee3dc70a4d2c1d6a429c6ddda"
+    },
+    {
+      "path": "e2e/rc16k-ui.spec.ts",
+      "sha1": "13e99e5425cb55c1e19b95725fe1d579afbb474a"
+    },
+    {
+      "path": "e2e/rc16l-calendar.spec.ts",
+      "sha1": "40456774af472443916876c3e8706b3d93a1dabc"
+    },
+    {
+      "path": "e2e/rc17d-auth.spec.ts",
+      "sha1": "72308de0457d5b4aa3c2d4c2ec48c0ba910e4bff"
+    },
+    {
+      "path": "e2e/rc17d-responsive.spec.ts",
+      "sha1": "179cd62f92e758032670053e589ea36b9773c51d"
+    },
+    {
+      "path": "e2e/rc17d-workflows.spec.ts",
+      "sha1": "8fc1aa3c4a8238687ef1dd82d90a48f4d5c06000"
+    },
+    {
+      "path": "e2e/rc18-analytics-browser.spec.ts",
+      "sha1": "9444e8f9d3ed55cad1cbd71e4536177b727ac3b7"
+    },
+    {
+      "path": "e2e/rc18-payroll-room-rules.spec.ts",
+      "sha1": "2d0ebfb854a53b257e0b9a8fc0e383f8b6b4cda0"
+    },
+    {
+      "path": "e2e/rc19-attendance-workflow.spec.ts",
+      "sha1": "d20d16db02d788e5ba9640575e48fbe6fc9352c2"
+    },
+    {
+      "path": "e2e/rc19-auth-zoom-accessibility.spec.ts",
+      "sha1": "47fd279d8999e7177270d23625f9f0a849d63704"
+    },
+    {
+      "path": "e2e/rc19-cal01-week-scroll.spec.ts",
+      "sha1": "87e2f7b7ae295f0263f1b6b4333d20892dbe62c5"
+    },
+    {
+      "path": "e2e/rc19-cal02-mobile-month.spec.ts",
+      "sha1": "a2fb47a0d15cde53a1296785ad589021b18bdfd2"
+    },
+    {
+      "path": "e2e/rc19-calendar-density.spec.ts",
+      "sha1": "bf1b7fd31423c7f341492f5c194f3b25479f2065"
+    },
+    {
+      "path": "e2e/rc19-calendar-filter-apply.spec.ts",
+      "sha1": "226f0e783362841005e907e4ac2eab16fc78e1e9"
+    },
+    {
+      "path": "e2e/rc19-live-monitoring.spec.ts",
+      "sha1": "5151e713443547ea640b3fc742d66a310c1f6a0b"
+    },
+    {
+      "path": "e2e/rc19-reports.spec.ts",
+      "sha1": "1d4e13a389133a53931392cf6f30d5aa87ff6f8e"
+    },
+    {
+      "path": "e2e/rc19-settings-workflow.spec.ts",
+      "sha1": "5fe1848bd7c970f0825caa4937af9123c6d85d05"
+    },
+    {
+      "path": "e2e/rc19-shell01-sidebar-scroll.spec.ts",
+      "sha1": "f4ef7179974617a421e0dde8f1767e7b1c603f8c"
+    },
+    {
+      "path": "e2e/rc19-shell02-calendar-tab-arrows.spec.ts",
+      "sha1": "13b7265743063ba354283ee76ff6baf6c3cda4aa"
+    },
+    {
+      "path": "e2e/rc19-shifts-list.spec.ts",
+      "sha1": "1f21ebafdd664e933fdacdd3b670db0a491bb85c"
+    },
+    {
+      "path": "e2e/rc19-staffing-filters.spec.ts",
+      "sha1": "441df578dc09ec8ca643c0deb2f92d6ef78a119a"
+    },
+    {
+      "path": "e2e/rc19-storage-explorer.spec.ts",
+      "sha1": "0f0207252a6c6fc3d71df0d85da165c6dc76aefd"
+    },
+    {
+      "path": "e2e/rc19-toolbar-scoped.spec.ts",
+      "sha1": "caa15752d395f38003489de6a435f72bf720ef14"
+    },
+    {
+      "path": "e2e/rc19-u14-self-attendance.spec.ts",
+      "sha1": "b018c5214beab0519bbbffd017a1de32d0abe2a2"
+    },
+    {
+      "path": "e2e/rc19-workforce-performance.spec.ts",
+      "sha1": "6153eb2a1059bb50c7351716aabd204108ab28e5"
+    },
+    {
+      "path": "e2e/release-blockers-privacy-revisions.spec.ts",
+      "sha1": "70232e7b896d40265c9a1a9ec5564b595e174fd4"
+    },
+    {
+      "path": "e2e/report-revision-error.spec.ts",
+      "sha1": "0c7be5c050b18e0da121c7a4f1d80e2f750da7b3"
+    },
+    {
+      "path": "e2e/shift-detail-containment.spec.ts",
+      "sha1": "e609b4831eefccd619f5dd029b526f5f0bc93ce9"
+    },
+    {
+      "path": "e2e/shift-detail-foundation.spec.ts",
+      "sha1": "f18d1ff674c03092731dff636b21a9690e4276d8"
+    },
+    {
+      "path": "e2e/shift-form-responsive.spec.ts",
+      "sha1": "f9ba097b92153ee62a07d99f565c66c836b0c896"
+    },
+    {
+      "path": "e2e/shopee-layout-variants.spec.ts",
+      "sha1": "f7c231aa0fbd53f46fdb8e6992a9c9b558d12607"
+    },
+    {
+      "path": "e2e/smoke.spec.ts",
+      "sha1": "cf136302b5405ab2ba84b130299ca13ca5497966"
+    },
+    {
+      "path": "e2e/swap-form-state.spec.ts",
+      "sha1": "471e563c256dba74a4fc3e63fcd194b780006668"
+    },
+    {
+      "path": "e2e/tiktok-layout-variants.spec.ts",
+      "sha1": "73bfe08317152b4d23139a831ddaa707012e2c30"
+    },
+    {
+      "path": "e2e/vision-ocr-phase-a.spec.ts",
+      "sha1": "517881c2ed1cfbf5299ed3c6051c9a68f82d7568"
+    },
+    {
+      "path": "eslint.config.mjs",
+      "sha1": "0892ac4790f0efbe7a89adc4c6be512a37451f19"
+    },
+    {
+      "path": "FINAL_CONTACT_SHEET.html",
+      "sha1": "f1c7b1512bcd7daa98310398e55a7bbcdb992a84"
+    },
+    {
+      "path": "FORWARD_ONLY_RECONCILIATION_PROPOSAL.md",
+      "sha1": "2d19507a8ea33a63c2bf6d7e9bd745acec0215b0"
+    },
+    {
+      "path": "GO_NO_GO_BLOCKERS_UPDATED.md",
+      "sha1": "01808d0782a99fffa0b53bfbd57de300d17958c5"
+    },
+    {
+      "path": "H4_FULL_REGRESSION_RESULTS.md",
+      "sha1": "382ec3d322400d899cf0d36913f4fe5a91b9c53a"
+    },
+    {
+      "path": "H4_IMMUTABLE_MIGRATION_AUDIT.md",
+      "sha1": "a7c5cf3deb228cfcfd27b09506a510dd846769d9"
+    },
+    {
+      "path": "H4_PROVIDER_CONTRACT_REPAIR.md",
+      "sha1": "a732165b0a945805cbeb8bea02edc879ce9525f8"
+    },
+    {
+      "path": "H4_RELEASE_CANDIDATE_DECISION.md",
+      "sha1": "78f0a640f468fcd9ac9b2624deba20aafec47412"
+    },
+    {
+      "path": "H4_STORAGE_ROUTE_SECURITY_TESTS.md",
+      "sha1": "b14faf20a66543f2332862e87b5a1f2077c61190"
+    },
+    {
+      "path": "H4_VERCEL_BUILD_ROOT_CAUSE.md",
+      "sha1": "fa03cfd79c29dd2fcce32f5e4658fb8e02dd1743"
+    },
+    {
+      "path": "H5_DB_CLONE_REHEARSAL_RESULTS.md",
+      "sha1": "06d3fc5e72af736116abda4c10b1a43b187c8d79"
+    },
+    {
+      "path": "H5_DEPLOYED_VISUAL_UAT.md",
+      "sha1": "426ef45e34bb2f54b2eed3ca8b9195e132d683e2"
+    },
+    {
+      "path": "H5_GITHUB_CI_RESULTS.md",
+      "sha1": "be705d9258b831aea312257901480de0d42b2a9c"
+    },
+    {
+      "path": "H5_GO_NO_GO_DECISION.md",
+      "sha1": "a263e794ed45b178f84e7828f60ebd58234e9a63"
+    },
+    {
+      "path": "H5_PROVIDER_E2E_RESULTS.md",
+      "sha1": "0bf1fa51ab6f1cdf7ade850bace145ffaaeb2d28"
+    },
+    {
+      "path": "H5_RELEASE_GATE_EVIDENCE.md",
+      "sha1": "6e21186cfb734eb518085bfd581a1c8803f3e645"
+    },
+    {
+      "path": "H51_FULL_CI_RESULTS.md",
+      "sha1": "42505a837a3ddf0f4e0119951d2dab73e0e1baa1"
+    },
+    {
+      "path": "H51_GO_NO_GO_DECISION.md",
+      "sha1": "7df92bcdbdbbca1683c28857fd9edc29853158b6"
+    },
+    {
+      "path": "H51_PRODUCTION_SCHEMA_REHEARSAL.md",
+      "sha1": "9e4fc581d30437a513eab9b049aa213b304e80cf"
+    },
+    {
+      "path": "H51_PROVIDER_INTEGRITY_FIX.md",
+      "sha1": "980a0b41ac06008b6c2932770f828c26894b93c6"
+    },
+    {
+      "path": "H51_RBAC_NEGATIVE_TESTS.md",
+      "sha1": "414f3c819ecce9b95a980585a485becfd60ee576"
+    },
+    {
+      "path": "H51_RELEASE_GATE_CORRECTION.md",
+      "sha1": "3d25adcf82c995b7e52670d14ee0d49c9da0b80b"
+    },
+    {
+      "path": "H52_DB_AUTH_INTEGRATION_RESULTS.md",
+      "sha1": "de5d5a191193393d083f424ab037ed642c8b11b8"
+    },
+    {
+      "path": "H52_FINAL_SECURITY_CONTRACT.md",
+      "sha1": "4abfea29b2f068f2a62d469cd8c28ed151165484"
+    },
+    {
+      "path": "H52_GO_NO_GO_DECISION.md",
+      "sha1": "bb517724dc6db3677c55f2ac5e0c4a84017b6205"
+    },
+    {
+      "path": "H52_PRODUCTION_EQUIVALENT_REHEARSAL.md",
+      "sha1": "2c715010eea1d8e699e68fb177aebdfdde72fbf0"
+    },
+    {
+      "path": "H52_RELEASE_GATE_ASSURANCE.md",
+      "sha1": "2b085eb8f22cb4aa9bcecce4e95bd572529539d4"
+    },
+    {
+      "path": "HIGH_FIDELITY_VISUAL_PARITY_MATRIX.md",
+      "sha1": "d8ca39eff7fefb2ef8f8adc306500e07c6c83716"
+    },
+    {
+      "path": "infra/media-poc/compose.yaml",
+      "sha1": "25759db6fec89fb1d7777eada91e2edaa90ab1d2"
+    },
+    {
+      "path": "infra/media-poc/hls-auth-guard.mjs",
+      "sha1": "4b8667778f57875389892fe461032f52c8e1a55e"
+    },
+    {
+      "path": "infra/media-poc/mediamtx.yml",
+      "sha1": "d423a376291d3f647dc96c8c8e69610ea8313e60"
+    },
+    {
+      "path": "infra/media-poc/nginx-hls.conf.example",
+      "sha1": "74bfaec5e2bb3ed5eed61aab2beac95355aa990f"
+    },
+    {
+      "path": "INTEGRATION_14_WAVE_REGRESSION.md",
+      "sha1": "bf70699ededa6d6c2a9e6e2416079a8d0dd101af"
+    },
+    {
+      "path": "INTEGRATION_MIGRATION_COMPATIBILITY_REPORT.md",
+      "sha1": "2617e5aa3dab0aa49e43423f86dc6d77ed8d4d9f"
+    },
+    {
+      "path": "INTEGRATION_RELEASE_GATE.md",
+      "sha1": "70bd5c167592ce4c0626ea70aa98013fefd5d5e1"
+    },
+    {
+      "path": "INTEGRATION_SOURCE_REGRESSION_REPORT.md",
+      "sha1": "3ba7883a7c55af775c7dc3f6a80fc660d9b2b8eb"
+    },
+    {
+      "path": "INTERIOR_PARITY_MATRIX_14_WAVES.md",
+      "sha1": "2e03611f1b229a2b65c3fea2fda267ac49eccc5a"
+    },
+    {
+      "path": "LIVE_CALENDAR_DATA_RECONCILIATION.md",
+      "sha1": "ee27796cd49237b8c744b6015e0001b1cfa396c7"
+    },
+    {
+      "path": "LIVE_CALENDAR_POPULATED_STATE_QA_REJECTED.md",
+      "sha1": "86179a549d2027f0c5ce091f3886f501d83cf7d5"
+    },
+    {
+      "path": "next-env.d.ts",
+      "sha1": "7d1f870fce9d7a4537f204641c81d815abebd45b"
+    },
+    {
+      "path": "next.config.ts",
+      "sha1": "b122f3a4f84bc62b65627dbd372e6ca1247a5993"
+    },
+    {
+      "path": "openspec/config.yaml",
+      "sha1": "16958b606d8938d717c7d8c652fd42746384ecaa"
+    },
+    {
+      "path": "package.json",
+      "sha1": "806bac22f366a51660b5a864e0d678cc25e2759c"
+    },
+    {
+      "path": "PHASE_H_AUDIT_CORRECTION.md",
+      "sha1": "1f71a0fe59a25bed56e42799affd63abfccdc7cd"
+    },
+    {
+      "path": "PHASE_H_GO_LIVE_PREPARATION_AUDIT.md",
+      "sha1": "268fb4b34920866a2b2a5c6c95ebdaf9f6522c7a"
+    },
+    {
+      "path": "PHASE1_COMPLETION_SUMMARY.md",
+      "sha1": "c0b6ca7aeea1966309fb156f963b251805c97170"
+    },
+    {
+      "path": "playwright.config.ts",
+      "sha1": "d0cb4ba982c42d51df28b77e998d427d369dcbea"
+    },
+    {
+      "path": "playwright.preview-uat.config.ts",
+      "sha1": "2b55df4d209e69c22287ed802c0ba36798121814"
+    },
+    {
+      "path": "playwright.rc16.config.ts",
+      "sha1": "396fcf54515c38d0f058ba196fa43e44f4b736c5"
+    },
+    {
+      "path": "playwright.rc16i-postmain.config.ts",
+      "sha1": "e0045f17349c51fa8a182e4f5a96f3268cece8e6"
+    },
+    {
+      "path": "playwright.rc16k.config.ts",
+      "sha1": "e55003a27ae44fd30e0cc2cabe0f439f994c9e76"
+    },
+    {
+      "path": "playwright.rc16l.config.ts",
+      "sha1": "ca91163fd03cf1c81ce8f08ef4308f11a014ce62"
+    },
+    {
+      "path": "playwright.rc17d.config.ts",
+      "sha1": "2277aa2530e76550d537a09166edb7695a0ec1ee"
+    },
+    {
+      "path": "playwright.rc18-analytics.config.ts",
+      "sha1": "8a1494ce660c1d5e50ab672f851e850cfda87f1d"
+    },
+    {
+      "path": "playwright.rc18-payroll-rules.config.ts",
+      "sha1": "84d6dc38bc9b18c72f1cb8dfc643fbb3b662bf4c"
+    },
+    {
+      "path": "playwright.rc19-attendance.config.ts",
+      "sha1": "00a92d839a894973bfe708b10b73f58487dca9c6"
+    },
+    {
+      "path": "playwright.rc19-auth.config.ts",
+      "sha1": "74e5b8e02a697da8a016362bb4d7212c34934353"
+    },
+    {
+      "path": "playwright.rc19-calendar.config.ts",
+      "sha1": "a569f39e51eeee0d2886f2b03b2b2dc281ceecaa"
+    },
+    {
+      "path": "playwright.rc19-live.config.ts",
+      "sha1": "064ef96451f989e0016df7147c87598030dafea7"
+    },
+    {
+      "path": "playwright.rc19-reports.config.ts",
+      "sha1": "b58dcbb5d03b28e2529aa2d944041068bf1b190e"
+    },
+    {
+      "path": "playwright.rc19-settings.config.ts",
+      "sha1": "7ea67df33f4ece08e940305fff8ac81a46957092"
+    },
+    {
+      "path": "playwright.rc19-shifts.config.ts",
+      "sha1": "b27b3541603e0a783c6fa125dc9c71efa7c24a26"
+    },
+    {
+      "path": "playwright.rc19-staffing.config.ts",
+      "sha1": "d169b7096159fc3f9d1ea84871b3b88734a0f095"
+    },
+    {
+      "path": "playwright.rc19-storage.config.ts",
+      "sha1": "182376d3bb33c809e3eec600a5835c19420ebd15"
+    },
+    {
+      "path": "playwright.rc19-toolbar.config.ts",
+      "sha1": "787feaeb1c02e2ea0f5ef10689a60158011370a1"
+    },
+    {
+      "path": "playwright.rc19-u14-off.config.ts",
+      "sha1": "9731fdb60a5bae3c94ffb44a197d9e80bb73750a"
+    },
+    {
+      "path": "playwright.rc19-u14-on.config.ts",
+      "sha1": "0132c6ad85fa298b4a7af99af481a2fbac2cb830"
+    },
+    {
+      "path": "playwright.rc19-workforce.config.ts",
+      "sha1": "7b94dcd19e85623900b293a9365aef4af992d388"
+    },
+    {
+      "path": "playwright.screens.config.ts",
+      "sha1": "e4c3a0f5888906d7533a3d189fb0d4debaa7c35f"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha1": "b1eda4da30ff3317337ca12ee1f2e1657659db57"
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "sha1": "c6ac6ca55c8902b18d9fa48fdfaabac3520a5791"
+    },
+    {
+      "path": "postcss.config.mjs",
+      "sha1": "6f3aa78a9788022698ce432716b560570f27780f"
+    },
+    {
+      "path": "project-memory/business-rules.json",
+      "sha1": "4bbbaab3afcae1ab09aef1e82e4c4593b346d46a"
+    },
+    {
+      "path": "project-memory/current-state.json",
+      "sha1": "9b598c7fa7e3ce0722f2804e31d4145483a8d689"
+    },
+    {
+      "path": "project-memory/data-contracts.json",
+      "sha1": "c3b0ba6ef14f600bff60c4399065eb9a6a593e9c"
+    },
+    {
+      "path": "project-memory/decisions/GL-03-foundation.md",
+      "sha1": "11273a8ed8ee3f77fea406f3b95a05537b4ed171"
+    },
+    {
+      "path": "project-memory/decisions/RC16H-production-only.md",
+      "sha1": "454853e2d86fd75a067e96c9ce7b3402043498d9"
+    },
+    {
+      "path": "project-memory/decisions/README.md",
+      "sha1": "742f2fda126c3f621cfdc64f3ad2b2e9232be3a5"
+    },
+    {
+      "path": "project-memory/defects.json",
+      "sha1": "f3ae5e016d508fd9e73b7f366eb03c138667a749"
+    },
+    {
+      "path": "project-memory/evidence/GL-03-validation.md",
+      "sha1": "180f98c8851d5402fe15be15156d4098d06edfd2"
+    },
+    {
+      "path": "project-memory/evidence/RC16E-environment-isolation.md",
+      "sha1": "81ab50af6ddfc63c60986f6c3846cdefb061c97a"
+    },
+    {
+      "path": "project-memory/evidence/RC16F-staging-rehearsal.md",
+      "sha1": "f0fa4562c6fe53820715c32482e0920c542f8072"
+    },
+    {
+      "path": "project-memory/evidence/RC16G-forward-reconciliation.md",
+      "sha1": "a4905add7778a1c02ef6dbd155ccca2ee8408970"
+    },
+    {
+      "path": "project-memory/evidence/RC16H-production-readiness.md",
+      "sha1": "0caa4182dc807327c1410396786e915d36b00415"
+    },
+    {
+      "path": "project-memory/evidence/RC16I-postmain-hardening.md",
+      "sha1": "65bfb6c5a4d8e1aae0c4838d4d220c69149f3500"
+    },
+    {
+      "path": "project-memory/evidence/RC16UI-integration.md",
+      "sha1": "7d088b4db675b50b5ae9fd80a39be53fafe449ae"
+    },
+    {
+      "path": "project-memory/evidence/README.md",
+      "sha1": "851c32992816b9f43dd197bbef990f5a1d3170d0"
+    },
+    {
+      "path": "project-memory/flows.json",
+      "sha1": "bdd02bca92638e661020198e7c158cdf770ee449"
+    },
+    {
+      "path": "project-memory/generated/project-memory.md",
+      "sha1": "e726c444d7ba1a2e558373d0c94e9cf984fb8ae3"
+    },
+    {
+      "path": "project-memory/modules.json",
+      "sha1": "641d4956ea71f46759289831f182801e2c577020"
+    },
+    {
+      "path": "project-memory/permissions.json",
+      "sha1": "44471a21d976a81becb6194b130bfb75982e6203"
+    },
+    {
+      "path": "project-memory/README.md",
+      "sha1": "8f54d932e275c46c91b3208ce012892032bdc194"
+    },
+    {
+      "path": "project-memory/release-gates.json",
+      "sha1": "17a53af0592c1d78f8028b5d0da77e785cd55305"
+    },
+    {
+      "path": "project-memory/ui-contracts.json",
+      "sha1": "8f89308b88a438bd258deb429f6d968588bafd6c"
+    },
+    {
+      "path": "proxy.ts",
+      "sha1": "3553d9f7c2b0097bdad90a08ee04f74637bb7f08"
+    },
+    {
+      "path": "replit.md",
+      "sha1": "7d72c5185bac38662a7a985a69a3f5e467e28a36"
+    },
+    {
+      "path": "scripts/capture-attendance-screenshots.mjs",
+      "sha1": "c330ad6f3c00be5a73e36ec113c5fa946532de49"
+    },
+    {
+      "path": "scripts/check-runtime-environment.ts",
+      "sha1": "ba48c2be6f021ccf231a67c7076ca3c2590689fb"
+    },
+    {
+      "path": "scripts/check-supabase-target.ts",
+      "sha1": "985414ba7fb74e2d2b5f1d59337711d25e976cc4"
+    },
+    {
+      "path": "scripts/google-drive-oauth-bootstrap.ts",
+      "sha1": "d1dc73393e855f2a8a09d1b81674705ecb2d15aa"
+    },
+    {
+      "path": "scripts/media-poc-smoke.mjs",
+      "sha1": "88792fdac551f2b988044a7ee23148b64c79b977"
+    },
+    {
+      "path": "scripts/memory-report.mjs",
+      "sha1": "d5a5bd6e549982b9eb23e0281b033077c10f9a62"
+    },
+    {
+      "path": "scripts/memory-sync.mjs",
+      "sha1": "d862a4094659ffd7d61750b560593798b6b15e52"
+    },
+    {
+      "path": "scripts/memory-validate.mjs",
+      "sha1": "f01bb5e2f6ae7c81ea48de854367205fed860ece"
+    },
+    {
+      "path": "scripts/p1b-concurrency-uat.ts",
+      "sha1": "25cf47f3e87e27d3a3f1f8496f9114e87dcdbc3f"
+    },
+    {
+      "path": "scripts/package.json",
+      "sha1": "7a69bd78c964eddf9f3d1f95df2999c504c57387"
+    },
+    {
+      "path": "scripts/phase-d-local-runtime-uat.ts",
+      "sha1": "3f41f1bdfc302fa343259c827522a89600d8dc02"
+    },
+    {
+      "path": "scripts/post-merge.sh",
+      "sha1": "b4b0e0003a91d8fe0dbac3de8a552f8697729a3b"
+    },
+    {
+      "path": "scripts/production-smoke-checklist.md",
+      "sha1": "cf99d8e26dc94bfb3c1ee34c6451b9a2ba6166d2"
+    },
+    {
+      "path": "scripts/production-smoke.ts",
+      "sha1": "e67619d3c916d7073d9a17ad84724100b2dd56bf"
+    },
+    {
+      "path": "scripts/project-memory-lib.mjs",
+      "sha1": "262e5549d2c9f7a144ca8fefa497fc8b5c9544e0"
+    },
+    {
+      "path": "scripts/rehearse_db_clone.mjs",
+      "sha1": "cae832c6ff757183c07b7a037c8d673563fd5a5c"
+    },
+    {
+      "path": "scripts/render-media-staging-config.mjs",
+      "sha1": "fda802645fa6528c474905f27fad1874cc21b35f"
+    },
+    {
+      "path": "scripts/run-final-regression.mjs",
+      "sha1": "e8143a14cdd9c89b7cd11476ca938294a1d54f72"
+    },
+    {
+      "path": "scripts/seed-staging.ts",
+      "sha1": "9b224177f464b2e8ac88fedadd9c686cdceb595c"
+    },
+    {
+      "path": "scripts/src/hello.ts",
+      "sha1": "a9a7b9f365750bd571bbfbaebc117aaca394a3cf"
+    },
+    {
+      "path": "scripts/storage/rc15-production-readiness.sql",
+      "sha1": "6f5526a71895bdc23e7349bf58da6b564c1ec35b"
+    },
+    {
+      "path": "scripts/tsconfig.json",
+      "sha1": "39b2c85230afdefe6430aecc0591756fc6fb4b8a"
+    },
+    {
+      "path": "scripts/uat_analytics_hard_reload_gate.mjs",
+      "sha1": "37b88d5f7027a2204ea53c7e5ebcc36bdbeec8c3"
+    },
+    {
+      "path": "scripts/uat/RC19_MEMBER_IDENTITY_UAT.md",
+      "sha1": "13b43e70db3c5d18802017998969d0744597e539"
+    },
+    {
+      "path": "scripts/uat/RC19_PRODUCTION_UAT_20261024_LEDGER.md",
+      "sha1": "f97262dfa856a5cdcdccc79b98e647aca3a8eef1"
+    },
+    {
+      "path": "scripts/uat/RC19_REPORTS_SIGNED_JWT_README.md",
+      "sha1": "42176d3de837a09bed85901c534c96b58152c640"
+    },
+    {
+      "path": "scripts/uat/rc19-reports-rls-role-simulation.sql",
+      "sha1": "74d5b1a7caadd3c729e353245f585645ae544f95"
+    },
+    {
+      "path": "scripts/uat/rc19-reports-signed-jwt.mjs",
+      "sha1": "61a6c9297553ac196553b5395054c60e618e7577"
+    },
+    {
+      "path": "scripts/uat/rc19-reports-signed-jwt.test.mjs",
+      "sha1": "42ac1403fffc3ebd25ce223c3153b66593935d18"
+    },
+    {
+      "path": "scripts/workforce/rc16h-production-manifest.mjs",
+      "sha1": "d99ffb47901954a434f3a2a20f4aacbb99edc214"
+    },
+    {
+      "path": "supabase/.temp/cli-latest",
+      "sha1": "47e7e3decadd3a2c2e3b612b16f9ca7526b1b743"
+    },
+    {
+      "path": "supabase/.temp/gotrue-version",
+      "sha1": "c31fbef576da3456481794159b78d43c82558f61"
+    },
+    {
+      "path": "supabase/.temp/linked-project.json",
+      "sha1": "89671fe7f309a8f60ce790ecc96009259113d530"
+    },
+    {
+      "path": "supabase/.temp/pooler-url",
+      "sha1": "07c390ddd07af5d8ce847ccc9709673179b58918"
+    },
+    {
+      "path": "supabase/.temp/postgres-version",
+      "sha1": "6ac73a482da36e68585f3b3c6586a13f3b1d16f8"
+    },
+    {
+      "path": "supabase/.temp/project-ref",
+      "sha1": "5bdb25dc1f103aa10c30aaafd3fd28fc46e67c8c"
+    },
+    {
+      "path": "supabase/.temp/rest-version",
+      "sha1": "a160a3de9651173452611a9f3ee7be50022064cf"
+    },
+    {
+      "path": "supabase/.temp/storage-migration",
+      "sha1": "e13fe26ffb7bb5cd477b2ac7702087e0123e60e7"
+    },
+    {
+      "path": "supabase/.temp/storage-version",
+      "sha1": "e53c555966ed63819ac5fe52353798198a042c6a"
+    },
+    {
+      "path": "supabase/config.toml",
+      "sha1": "0c80e739dee140f13659e9fe8f6b789fa441f53f"
+    },
+    {
+      "path": "supabase/migrations/20260811110219_p1b_foundation.sql",
+      "sha1": "7cfcee5a747d6abe885927109bae12c59a4cd17b"
+    },
+    {
+      "path": "supabase/migrations/20260811110239_p1b_master_data.sql",
+      "sha1": "9cc5d11831a6523ce5b50a03ba7710ed1181bf34"
+    },
+    {
+      "path": "supabase/migrations/20260811112834_p1b_production_bootstrap.sql",
+      "sha1": "ac0923c30dc9302437f90e03642fffaf386e74ed"
+    },
+    {
+      "path": "supabase/migrations/20260814064606_p1b_security_hardening.sql",
+      "sha1": "71039ecc22bdf4498e0cbf630ff0ad5aca5d9d69"
+    },
+    {
+      "path": "supabase/migrations/20260814085659_p1c_shift_persistence.sql",
+      "sha1": "b827188bcb4cffe4be984c3af4c60f091b311f62"
+    },
+    {
+      "path": "supabase/migrations/20260815122237_p1c_shift_lifecycle.sql",
+      "sha1": "178139f9c2f80a298cd362d1256ac768f83e4cba"
+    },
+    {
+      "path": "supabase/migrations/20260816105052_p1c_cancel_manual_assignment.sql",
+      "sha1": "133f19211700a4ec637de30cdbc354b716ff1dcc"
+    },
+    {
+      "path": "supabase/migrations/20260820120000_s4a_import_batch_foundation.sql",
+      "sha1": "fab65da1724a11e6d4c75acc2570e7b2a450e466"
+    },
+    {
+      "path": "supabase/migrations/20260821083750_s4f_lite_staffing_display_labels.sql",
+      "sha1": "24511ebe326c2f398743d550ef47ee321511aa52"
+    },
+    {
+      "path": "supabase/migrations/20260822140432_s4f1_edit_staffing_display_labels.sql",
+      "sha1": "55f680d4897d0342e1fd507c60e28efd72d3c269"
+    },
+    {
+      "path": "supabase/migrations/20260822144531_s4e_import_recovery_reconciliation.sql",
+      "sha1": "45917a4666e2b240b0af4796971fe1271c45e67e"
+    },
+    {
+      "path": "supabase/migrations/20260822160308_s5_staff_identity_mapping.sql",
+      "sha1": "a25aa02dbfaf12b3c64c0b7258ef196ed31b8120"
+    },
+    {
+      "path": "supabase/migrations/20260823000000_p3_report_persistence.sql",
+      "sha1": "22f33faea186376c374a22e2e68b622fdf4315f4"
+    },
+    {
+      "path": "supabase/migrations/20260823120000_s2b_staff_management_writes.sql",
+      "sha1": "a6cb744b6d4b8758efb2ca70e443ba45d4daaedb"
+    },
+    {
+      "path": "supabase/migrations/20260824120000_bulk_staffing_approval.sql",
+      "sha1": "d1e363bd6b69e45cb96dab3f4abb14ae1086dd21"
+    },
+    {
+      "path": "supabase/migrations/20260826082036_shift_swap_production.sql",
+      "sha1": "600a63c3e06d3ed6e158b1825f27a8080530f649"
+    },
+    {
+      "path": "supabase/migrations/20260826082055_shift_swap_p0_hardening.sql",
+      "sha1": "f7b6b80550e257d563e64c396651b6c70515caca"
+    },
+    {
+      "path": "supabase/migrations/20260826083723_shift_swap_lock_helper_fix.sql",
+      "sha1": "8c671bf96b8d7a57ae86323aee79e0d501965a78"
+    },
+    {
+      "path": "supabase/migrations/20260826172730_shift_swap_two_flow_semantics.sql",
+      "sha1": "acef069b92f759fb103c254eac097a54ab5257a0"
+    },
+    {
+      "path": "supabase/migrations/20260827094704_core_account_lifecycle.sql",
+      "sha1": "5d78de31dbeb9995b09c8972f5a27e37ecf30807"
+    },
+    {
+      "path": "supabase/migrations/20260827110001_notifications_persistent_realtime.sql",
+      "sha1": "0dbc92f29bf3333481b63eb0e5f2b8503794c71b"
+    },
+    {
+      "path": "supabase/migrations/20260829120000_core_v1_timezone_contract.sql",
+      "sha1": "6446379d0d04d7f041b38549f4e46daff1c53753"
+    },
+    {
+      "path": "supabase/migrations/20260829130000_core_v1_data_integrity_p1b.sql",
+      "sha1": "52e106a2e273b3f1535bc80691bf1b9e7d577b8c"
+    },
+    {
+      "path": "supabase/migrations/20260830085911_core_v1_data_integrity_p1c.sql",
+      "sha1": "010768eb6f90fd0a68f91d21613249f77a5584f3"
+    },
+    {
+      "path": "supabase/migrations/20260830102222_core_v1_permission_rls_final.sql",
+      "sha1": "c096c15d6057ee138fb44f20213beab10617b1f6"
+    },
+    {
+      "path": "supabase/migrations/20260830113000_core_v1_persistent_audit.sql",
+      "sha1": "f8ab1f539580e861b5676498acca42bfef2b1b7b"
+    },
+    {
+      "path": "supabase/migrations/20260830114000_core_v1_persistent_audit_read_permission.sql",
+      "sha1": "1baf3a0200313f0399fad442e4f27a0e41f93ee6"
+    },
+    {
+      "path": "supabase/migrations/20260831120000_core_v1_shift_lifecycle_admin_guard.sql",
+      "sha1": "dd8b2a3c238e91eb2eba6ceaf78bc4834fd4dab9"
+    },
+    {
+      "path": "supabase/migrations/20260831130000_core_v1_audit_update_before_state.sql",
+      "sha1": "74922efed7288c46442b634c1864703eaa96b280"
+    },
+    {
+      "path": "supabase/migrations/20260901120000_account_provisioning_foundation.sql",
+      "sha1": "7c96fe703196586b99179b7c02b92433dc68a3c2"
+    },
+    {
+      "path": "supabase/migrations/20260901150241_before_user_created_google_hook.sql",
+      "sha1": "59d2aa7a6c029f3f0c06b1765d1191218cefae69"
+    },
+    {
+      "path": "supabase/migrations/20260901190744_account_requests_foundation.sql",
+      "sha1": "c012be8ebb2842ac208d92cabd1769e7619e2299"
+    },
+    {
+      "path": "supabase/migrations/20260902110000_account_request_review.sql",
+      "sha1": "966e010537c22717c2029f66c702883e5480517d"
+    },
+    {
+      "path": "supabase/migrations/20260902130000_f6_import_outcome_existing_shift.sql",
+      "sha1": "a9252969740a4020dcc9b45e9d332ad1c9ae8b2c"
+    },
+    {
+      "path": "supabase/migrations/20260902140000_account_request_provisioning.sql",
+      "sha1": "12312909fd9b6a9bd73d6933af156c160f4706ac"
+    },
+    {
+      "path": "supabase/migrations/20260902150000_account_request_rate_limit.sql",
+      "sha1": "34aa8e20febbbccb0e846c87e53a14e42f779d8d"
+    },
+    {
+      "path": "supabase/migrations/20260902160000_account_request_provisioning_boundary.sql",
+      "sha1": "a0973fb1f00c66ddff1b61de5e9bacfd600559cb"
+    },
+    {
+      "path": "supabase/migrations/20260902170000_f9_campaign_leader_edit.sql",
+      "sha1": "d85c667e5cf966b66cf588621db6c5767c4eac4f"
+    },
+    {
+      "path": "supabase/migrations/20260902180000_f9_delete_archive_integrity.sql",
+      "sha1": "424399d85166d99cab912dd0217301a1dc74563e"
+    },
+    {
+      "path": "supabase/migrations/20260903085439_fix_account_request_identity_composite_assignment.sql",
+      "sha1": "d06a0dcfc83d0f946d327d0d04e241665bb5b9db"
+    },
+    {
+      "path": "supabase/migrations/20260903110000_f10_report_active_business_user_rls.sql",
+      "sha1": "9d816c02e59c47af020b8079ca23d36a385489fe"
+    },
+    {
+      "path": "supabase/migrations/20260903120000_core_v1_recursive_audit_sanitizer.sql",
+      "sha1": "e146bf85cd0260e2f01a55fe5b4f278a35611068"
+    },
+    {
+      "path": "supabase/migrations/20260903130000_f11_sanitizer_case_normalization.sql",
+      "sha1": "5131e3903707e7bdcc0acf017fa7df3d7b2bb712"
+    },
+    {
+      "path": "supabase/migrations/20260905110000_gl19c_authoritative_settings.sql",
+      "sha1": "4d4d63fb4816e29c7e38a3241b5270f52a695829"
+    },
+    {
+      "path": "supabase/migrations/20260905190925_profile_avatar_storage.sql",
+      "sha1": "d363fe832354257e148127a6be57682e2ab06292"
+    },
+    {
+      "path": "supabase/migrations/20260905191836_live_dashboard_update_persistence.sql",
+      "sha1": "77e2f3c5dc72d6d0d2b194d7f909c8a92a07375e"
+    },
+    {
+      "path": "supabase/migrations/20260906100000_gl19c_operational_settings_consumers.sql",
+      "sha1": "1225266e96b4f2ea4690876eca5fa977dfc285fd"
+    },
+    {
+      "path": "supabase/migrations/20260906141234_rw004_admin_self_operational_roles.sql",
+      "sha1": "4e6685610cc10772e30fd58dab3a31bf6e144af1"
+    },
+    {
+      "path": "supabase/migrations/20260912083056_report_draft_nullable_metrics.sql",
+      "sha1": "234ea5ce5e3f221a5b8d6cb67b85362021073087"
+    },
+    {
+      "path": "supabase/migrations/20260913120000_shift_status_mode_and_auto_completion.sql",
+      "sha1": "dd80f5e110cd41d46e7bab3708a15628d00c8d3b"
+    },
+    {
+      "path": "supabase/migrations/20260913122832_20260913125000_account_request_provisioning_boundary_hardening.sql",
+      "sha1": "9ae37d4a197fbd3c22d06d097a9b2240aa96e237"
+    },
+    {
+      "path": "supabase/migrations/20260913130000_account_request_active_lifecycle.sql",
+      "sha1": "6a7a508780366c1635bb0963dba05dd879daac12"
+    },
+    {
+      "path": "supabase/migrations/20260913200045_restore_import_create_shift_staffing_contract.sql",
+      "sha1": "e6a53ff55e9c98ac845a180e038e3110172d9ab1"
+    },
+    {
+      "path": "supabase/migrations/20260913233111_report_storage_security.sql",
+      "sha1": "7bffaddafd6e5fc94b55d050d12dd9e254f03ffc"
+    },
+    {
+      "path": "supabase/migrations/20260916090000_report_expected_version_cas.sql",
+      "sha1": "ba8ace4466aa34866bb0eb17869f70b94b00e676"
+    },
+    {
+      "path": "supabase/migrations/20260919074349_rc12_report_file_provider.sql",
+      "sha1": "fa88456865f15febee0b658b5762b8b5e79055fd"
+    },
+    {
+      "path": "supabase/migrations/20260924000000_rc13a_execution_source_storage_routes.sql",
+      "sha1": "c18c863dfacc62356997df97d13b0efadee7e32c"
+    },
+    {
+      "path": "supabase/migrations/20261006160000_rc14_live_image_storage_contract.sql",
+      "sha1": "aaef8f301daec6e62ae7089790f9cad621208e34"
+    },
+    {
+      "path": "supabase/migrations/20261007183831_rc14_report_data_artifacts.sql",
+      "sha1": "2e389c1b6cdbe91ab64c9842dfe5900d48272119"
+    },
+    {
+      "path": "supabase/migrations/20261008160638_member_registration_directory_privacy.sql",
+      "sha1": "76cea92c2a880de86268f21d2ca338a166cf8bef"
+    },
+    {
+      "path": "supabase/migrations/20261008160645_repair_report_revision_history_rpc.sql",
+      "sha1": "e083417e66053f1317e304c910bfc4064a9f039e"
+    },
+    {
+      "path": "supabase/migrations/20261011091925_rc15_storage_route_prerequisites.sql",
+      "sha1": "570a285a2e86da35764d3552641e30eabbb1b9ea"
+    },
+    {
+      "path": "supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql",
+      "sha1": "a97e652173daac132d3155f106d4d29f7ca6840c"
+    },
+    {
+      "path": "supabase/migrations/20261011092051_rc15_operational_files.sql",
+      "sha1": "d3510e496e62e18d67e60a83b30f9d7a26a83cc1"
+    },
+    {
+      "path": "supabase/migrations/20261011221500_rc15_provider_metadata_forward_compat.sql",
+      "sha1": "d8a30c7d89b4a9ea5b2a6ce63287555e1bda2492"
+    },
+    {
+      "path": "supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql",
+      "sha1": "60bd3c9c88f4c301634e7a20291294f9af3de538"
+    },
+    {
+      "path": "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
+      "sha1": "b3c8dd0f001e0c8e3da627fdbc5ca9aae2f11d74"
+    },
+    {
+      "path": "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
+      "sha1": "3b371dd2b4bb95a9789bf62920fd26e7d60101c8"
+    },
+    {
+      "path": "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
+      "sha1": "628dc84f87d46d68b8a4a32c9c5c866833d00ca6"
+    },
+    {
+      "path": "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql",
+      "sha1": "4e8ef90b61f7b3cf0201d5462930d4d31b558ffe"
+    },
+    {
+      "path": "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql",
+      "sha1": "e92935067076d5db3dea88b4b0db72015d339eb7"
+    },
+    {
+      "path": "supabase/migrations/20261020164351_rc18a_publish_shifts_realtime.sql",
+      "sha1": "db4ea408866cfcc4bf9b62cd515c0326b6e0613a"
+    },
+    {
+      "path": "supabase/migrations/20261021000000_rc17c_attendance_import_foundation.sql",
+      "sha1": "5966a8a9eac895beedcd8d0ef310770e3a9abebe"
+    },
+    {
+      "path": "supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql",
+      "sha1": "f6426fe8ee950c3236fc338be85ce8ec23a74b0c"
+    },
+    {
+      "path": "supabase/migrations/20261021064611_media_viewer_acl_exact_shift_v1.sql",
+      "sha1": "4074439c78f640ce6c337ddb65a9c81904b8a8ce"
+    },
+    {
+      "path": "supabase/migrations/20261021120000_global_report_obligation_page.sql",
+      "sha1": "e10898139c4eb731d38a8eb4b2a10ee3584760d9"
+    },
+    {
+      "path": "supabase/migrations/20261021190000_global_report_notification_transition_keys.sql",
+      "sha1": "f56d6be153adb5dbb9332aa7144a78c210fab115"
+    },
+    {
+      "path": "supabase/migrations/20261022165004_rc19_1b2_staffing_candidate_availability.sql",
+      "sha1": "eda4817791bd0add641647250b22947c5b0b6d2a"
+    },
+    {
+      "path": "supabase/migrations/20261022165655_rc19_1b3_staffing_candidate_page_before_conflict.sql",
+      "sha1": "7d27ce810a4df09d111db36a59e3bbf9799e476f"
+    },
+    {
+      "path": "supabase/migrations/20261022185140_rc19_p2_04_member_attendance_event_journal.sql",
+      "sha1": "a15a9f6ad5438fc2cfa89f002bcceb71883d7fcc"
+    },
+    {
+      "path": "supabase/migrations/20261023093000_rc19_p0_report_read_ownership_and_revisions.sql",
+      "sha1": "3fd1b1bf5166e6c7bb734fc86dc014654ee6dd75"
+    },
+    {
+      "path": "supabase/migrations/20261023102000_rc19_p0_report_revision_rpc_invoker.sql",
+      "sha1": "e298d18193aad4a55275599209f46a076e86de71"
+    },
+    {
+      "path": "supabase/migrations/20261023103500_rc19_p0_report_revision_invoker_identity_fix.sql",
+      "sha1": "d44748b04c759a96833894f705dc692e579d4e09"
+    },
+    {
+      "path": "supabase/migrations/20261023112000_rc19_report_authorized_shift_display_context.sql",
+      "sha1": "23a983db90ec369034b4f99e01ca7ace62167c93"
+    },
+    {
+      "path": "supabase/migrations/20261023144000_rc19_p2_04b_drive_photo_checkin.sql",
+      "sha1": "a295e39a54a0def556291d51c3757d0ec947c80b"
+    },
+    {
+      "path": "supabase/migrations/20261023153500_rc19_reports_historical_pagination_v2.sql",
+      "sha1": "454e87d01d7b47a9cf05a3d4cb0f4d7bfb7d58bc"
+    },
+    {
+      "path": "supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql",
+      "sha1": "a34bc25b4e67066ef10b689c1d6cba3b28c83488"
+    },
+    {
+      "path": "supabase/migrations/20261023160500_rc19_reports_history_staff_filter_privacy.sql",
+      "sha1": "e99652d6c9949c1b143b95ba5889213a89b06bc3"
+    },
+    {
+      "path": "supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql",
+      "sha1": "c247235a276ec506ff918acae7e2b309ee4123f3"
+    },
+    {
+      "path": "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql",
+      "sha1": "710e377de1c1fc0799c1095735ed2ae5bd9ef6c6"
+    },
+    {
+      "path": "supabase/schema.sql",
+      "sha1": "3ac1d0d3fd35b41c2b2116cb1b9ba40f956ce591"
+    },
+    {
+      "path": "supabase/tests/p1b_bootstrap_negative.sql",
+      "sha1": "e1ff4c7ee9579b8b0a9949cc337d9b399adc6735"
+    },
+    {
+      "path": "supabase/tests/p1b_rls_read.sql",
+      "sha1": "ec98ff490579a6d589c90bebd868e66932bbde83"
+    },
+    {
+      "path": "supabase/tests/p1b_rls_write.sql",
+      "sha1": "577b79a7e6874df697375a495da10eb7b6c5157f"
+    },
+    {
+      "path": "supabase/tests/p1c_shift_capacity_rc.sql",
+      "sha1": "9803156fc7aff5182e6b26ee31944f4583fd35d8"
+    },
+    {
+      "path": "supabase/tests/p1c_shift_rls.sql",
+      "sha1": "d6511e5e54fb9bd638c3340c911f9711475af5fb"
+    },
+    {
+      "path": "supabase/tests/p1c_shift_rpc.sql",
+      "sha1": "18dbc67010faf0721d40e22da2b83cd68cd86d03"
+    },
+    {
+      "path": "supabase/tests/release_blockers_member_privacy_report_revisions.sql",
+      "sha1": "980bba066e3afecbed734813ec50106500f93eb0"
+    },
+    {
+      "path": "test_reports/rc19-u06/after-en-1440.png",
+      "sha1": "fdfd363525ffe180302bbfd7f36c5a3b73e79d4c"
+    },
+    {
+      "path": "test_reports/rc19-u06/after-vi-390.png",
+      "sha1": "2e4929ae726f70bf12a37242043407640049d855"
+    },
+    {
+      "path": "test-results/.last-run.json",
+      "sha1": "88c0fbfd9f479fde0aa7cbd4151210bbbf778319"
+    },
+    {
+      "path": "test-results/rc19-u14-self-attendance-f-0f696-e-and-no-attendance-request-chromium/error-context.md",
+      "sha1": "d7a27d8c8a228a0596521ea830bbe79f4b71e73e"
+    },
+    {
+      "path": "test-results/rc19-u14-self-attendance-f-0f696-e-and-no-attendance-request-chromium/test-failed-1.png",
+      "sha1": "bae041550e93d8e68ecb73a3f435dca9fee3d856"
+    },
+    {
+      "path": "test-results/rc19-u14-self-attendance-f-0f696-e-and-no-attendance-request-chromium/trace.zip",
+      "sha1": "2cc0e1e2289916c2e0a2559a20656420823ad035"
+    },
+    {
+      "path": "test-results/rc19-u14-self-attendance-f-0f696-e-and-no-attendance-request-chromium/video.webm",
+      "sha1": "77c53eb207087243df5095b7632de18bd4ad1bd6"
+    },
+    {
+      "path": "tests/account-lifecycle-contracts.test.ts",
+      "sha1": "00662181185296561495a5ce22a80b3bc683b1c8"
+    },
+    {
+      "path": "tests/account-management-core-v1.test.ts",
+      "sha1": "8a59ea76c8864a40260f8f017fea018db7e691f5"
+    },
+    {
+      "path": "tests/account-request-active-lifecycle.test.ts",
+      "sha1": "66f39bb5ccb756e70a394273cb88d3db0196c948"
+    },
+    {
+      "path": "tests/account-request-patch1.test.ts",
+      "sha1": "7a1c4f7e92b22de5feff0036e95273fa591d0fd9"
+    },
+    {
+      "path": "tests/account-request-patch2.test.ts",
+      "sha1": "2af46c1443f85380af34d14e9e5d1ced19949291"
+    },
+    {
+      "path": "tests/account-request-phase1.test.ts",
+      "sha1": "b877321cddea9b5afa3212c16be2cf8f20f1f494"
+    },
+    {
+      "path": "tests/account-request-phase2-staging.test.ts",
+      "sha1": "3e4e180127e94391062fd12f79256ef8eb6b6118"
+    },
+    {
+      "path": "tests/account-request-phase2.test.ts",
+      "sha1": "3189d10af95c3306653619846f93a986749b3074"
+    },
+    {
+      "path": "tests/account-request-phase3.test.ts",
+      "sha1": "cca8c28e56061588d3bbff78973e739572ddbe1a"
+    },
+    {
+      "path": "tests/account-request-provisioning-boundary-hardening.test.ts",
+      "sha1": "6501437dc25184e3b448624ef84375cae0ce2b15"
+    },
+    {
+      "path": "tests/account-request-provisioning-composite.test.ts",
+      "sha1": "83e037a1d3f000017eaccc1475c336ba3c069308"
+    },
+    {
+      "path": "tests/ada-hls-player.test.ts",
+      "sha1": "6506b35756f2db924c1fbdf75971f181e60bb10c"
+    },
+    {
+      "path": "tests/ada-hls-security.test.ts",
+      "sha1": "6fff828fa22a72d60bde3a22da34c82296f49fb9"
+    },
+    {
+      "path": "tests/analytics-actor-key.test.ts",
+      "sha1": "235d967d6ba046010ca5b50761f98be3d9b1ded1"
+    },
+    {
+      "path": "tests/auth-confirm-route.test.ts",
+      "sha1": "0580f4c86d7bbac4f4db0ac64bfc2afa39aca5c2"
+    },
+    {
+      "path": "tests/auth-identity-bridge.test.tsx",
+      "sha1": "c6fe70dc5afa0602b833dbc15d984448027bd6ab"
+    },
+    {
+      "path": "tests/auth-session-foundation.test.ts",
+      "sha1": "797a4953e6047833a03a317d520a2f2a64a040bd"
+    },
+    {
+      "path": "tests/bulk-staffing-approval.test.ts",
+      "sha1": "5c37676b1cba382af64f709930cd1cc0e21019a6"
+    },
+    {
+      "path": "tests/calendar-all-time-completeness.test.ts",
+      "sha1": "97b8396df7b401ee12ed67a3e56ec915f88c3b63"
+    },
+    {
+      "path": "tests/calendar-bulk-delete.test.ts",
+      "sha1": "5ad1147ffea02ce788c81453193e86ff2de3c6b5"
+    },
+    {
+      "path": "tests/calendar-business-month-contract.test.ts",
+      "sha1": "d44ff7c12954c312ad6e1c9109830fb8d8941904"
+    },
+    {
+      "path": "tests/calendar-filters.test.ts",
+      "sha1": "cdb3ee45a32649705e604489238b01ee543bd9c5"
+    },
+    {
+      "path": "tests/calendar-range-fetching.test.ts",
+      "sha1": "6cf51619bf47c42fd681b5b2dd3756ef8934f997"
+    },
+    {
+      "path": "tests/calendar-role-filter.test.ts",
+      "sha1": "50c51afb5afe740cbcbc57525959e1906ffd8f18"
+    },
+    {
+      "path": "tests/cloud-file-ingestion.test.ts",
+      "sha1": "3a47e3f97a8f5ff8b16452e1a511452de5807419"
+    },
+    {
+      "path": "tests/cloud-source-integration.test.ts",
+      "sha1": "5bff94716d8d9303998a1a416f44f47bdbcc7fa9"
+    },
+    {
+      "path": "tests/cloud-storage-management.test.ts",
+      "sha1": "cd250c7f77f0330712806707e69c3e1bcc3dc9c3"
+    },
+    {
+      "path": "tests/core-data-integrity-contracts.test.ts",
+      "sha1": "2fa520ef7308077b21d7fb27d863489481779f99"
+    },
+    {
+      "path": "tests/core-data-integrity-p1b.test.ts",
+      "sha1": "5d32a144f60b5e62375297b2e24f42b1e40785ec"
+    },
+    {
+      "path": "tests/core-v1-3role-matrix.test.ts",
+      "sha1": "e45af6edd0607983cca1197a953df1088ba3668d"
+    },
+    {
+      "path": "tests/core-v1-permission-rls-final.test.ts",
+      "sha1": "03db3f2c1c5e2ae3033f737a04b926bdcf44c07c"
+    },
+    {
+      "path": "tests/dashboard-aggregate.test.ts",
+      "sha1": "71186a9d0f8df9f8acadf710ca4a31a2d5b1f99f"
+    },
+    {
+      "path": "tests/dashboard-fixtures.test.ts",
+      "sha1": "248fea67cae356a4b17695eb8e94645d0861c731"
+    },
+    {
+      "path": "tests/dashboard-region-detection.test.ts",
+      "sha1": "a93380578eb2632408d3dc10504f884f04d86a5f"
+    },
+    {
+      "path": "tests/data-quality-multiselect.test.ts",
+      "sha1": "43aaba596aaa3ecff2f69442f2fe7039db93202c"
+    },
+    {
+      "path": "tests/dual-file-provider.test.ts",
+      "sha1": "421736de74fc58fed1e382ec246c870782d9e022"
+    },
+    {
+      "path": "tests/e1-role-ux.test.ts",
+      "sha1": "4a034bc7cfdde2f840e50d5358049819e4df7005"
+    },
+    {
+      "path": "tests/e3-dashboard-domain.test.ts",
+      "sha1": "f3f9f46e582aa647cc922d01bfef5219a756976b"
+    },
+    {
+      "path": "tests/e4-action-priority.test.ts",
+      "sha1": "03f8dd11709bbafafb26dc4b354d2e13820190d3"
+    },
+    {
+      "path": "tests/e5-operational-attention.test.ts",
+      "sha1": "a8416a8f75b423199ff6caacdc27a2fc7596faca"
+    },
+    {
+      "path": "tests/f10-analytics-business-timezone.test.ts",
+      "sha1": "83a8b65bd56cdf5267e212d2c30ac0c1da88d7ba"
+    },
+    {
+      "path": "tests/f10-report-active-user-rls.test.ts",
+      "sha1": "b9cedcedad4fad7ee2897a460638a0dae7417e62"
+    },
+    {
+      "path": "tests/f11-recursive-audit-sanitizer.test.ts",
+      "sha1": "d2a578c61d347946ea136b36c396b8d3d6eb7296"
+    },
+    {
+      "path": "tests/f11-sanitizer-case-normalization.test.ts",
+      "sha1": "3fe912d4d87a75051e817adf8773e4f74902a15a"
+    },
+    {
+      "path": "tests/f6-import-completion-ux.test.ts",
+      "sha1": "5c8674bfa23387efd0fe19d37436d0d75b9b5301"
+    },
+    {
+      "path": "tests/f6-import-outcome-link-migration.test.ts",
+      "sha1": "a04449927cb6545ea2e904ee42d0d78c905e1772"
+    },
+    {
+      "path": "tests/f6-import.test.ts",
+      "sha1": "38126fc9581e3b1326d1949cb21ec6fa6d163451"
+    },
+    {
+      "path": "tests/f9-campaign-leader-edit.test.ts",
+      "sha1": "1e65285e238543859df1d7e8c1a8485e5147a511"
+    },
+    {
+      "path": "tests/f9-delete-archive-integrity.test.ts",
+      "sha1": "7063310df2c7a071a5437193ddb30169d8afb967"
+    },
+    {
+      "path": "tests/fixtures/p0_audit_security_assertions.sql",
+      "sha1": "903b99fdf315618f212595c08391e14b74b1df21"
+    },
+    {
+      "path": "tests/fixtures/p0_shift_status_supabase_base.sql",
+      "sha1": "cab0e520e08c01286f31500a288c32d4f236961e"
+    },
+    {
+      "path": "tests/fixtures/rc14-production-storage-usage.json",
+      "sha1": "9269357036bb5e8a8d4ac4bccfc539d0922de811"
+    },
+    {
+      "path": "tests/fixtures/rc15_production_shift_rpc_baseline.sql",
+      "sha1": "7a0201abe90406e71ee6d417d8b413448e4519bc"
+    },
+    {
+      "path": "tests/fixtures/rc16_payroll_bootstrap.sql",
+      "sha1": "61b797701a4391ac31c97ccfdf0dda8d4df105f5"
+    },
+    {
+      "path": "tests/fixtures/rc16_payroll_integrity.sql",
+      "sha1": "676d9a4a37515110f8e7c02d93f4d7494e1d10c5"
+    },
+    {
+      "path": "tests/fixtures/rc16b_payroll_correction.sql",
+      "sha1": "8a3fb8f59373e9d76221363dfb6065ed352b3925"
+    },
+    {
+      "path": "tests/fixtures/rc16f_synthetic_uat.json",
+      "sha1": "0bb8df67502f0f066bfc4de1df48240884c05fe2"
+    },
+    {
+      "path": "tests/fixtures/rc16f_synthetic_uat.sql",
+      "sha1": "6b8bfd705e625abd99814aeefa818ecab9382948"
+    },
+    {
+      "path": "tests/fixtures/rc16g_staging_catalog.json",
+      "sha1": "05c779153f5a1160409d7078fc0ab5fd9302dd67"
+    },
+    {
+      "path": "tests/fixtures/rc16h_production_catalog.json",
+      "sha1": "82eada00573b138d4de1f04ac139d1b8c21028dd"
+    },
+    {
+      "path": "tests/fixtures/rc17a_actual_staffing_assertions.sql",
+      "sha1": "8ab91a863ca60b6cdc68a41d6c93116a868b7085"
+    },
+    {
+      "path": "tests/fixtures/report_notification_supabase_base.sql",
+      "sha1": "c414842e28d89d2c98aa0566db474addb4c9a4df"
+    },
+    {
+      "path": "tests/fixtures/report_obligation_supabase_base.sql",
+      "sha1": "04926dc8afe8d0ad931c4bb3167d15ab55e24bca"
+    },
+    {
+      "path": "tests/fixtures/storage-hydration-browser.tsx",
+      "sha1": "75d2b1d99dc17296e0198dbd961bfc4b94afa7a3"
+    },
+    {
+      "path": "tests/s2-shift-staffing.test.ts",
+      "sha1": "80c073f613a0c67606e82cc147714721bcee8d0b"
+    },
+    {
+      "path": "tests/s2b-staff-management-writes.test.ts",
+      "sha1": "e994a344b54369eee82bcf2b3f6fba9237dbe416"
+    },
+    {
+      "path": "tests/s4e-import-recovery-migration.test.ts",
+      "sha1": "1ba6cd009f065bdec73a7c2a5100c9d7d0d71b1b"
+    },
+    {
+      "path": "tests/s4f-lite-staffing-labels.test.tsx",
+      "sha1": "ff31c2f0c3726f586689824f54db0d50811105a4"
+    },
+    {
+      "path": "tests/s5-staff-identity-mapping.test.tsx",
+      "sha1": "65b99d23fdbd6afe0569df9fd075321b12785f04"
+    },
+    {
+      "path": "tests/safe-degradation-swaps-reports.test.ts",
+      "sha1": "1e7808ad161b8588f31a13c12cf85f958e744398"
+    },
+    {
+      "path": "tests/schedule-export.test.ts",
+      "sha1": "1b3d9e1135480cc8c3675287f843ae86880959f3"
+    },
+    {
+      "path": "tests/schedule-import-batch.test.ts",
+      "sha1": "229d19b7c8e87e2a62bc948eaa345b03c34162c5"
+    },
+    {
+      "path": "tests/schedule-import-draft.test.ts",
+      "sha1": "1d91bfc552221befe548681e1ac6108fc04b743c"
+    },
+    {
+      "path": "tests/schedule-import-enrichment.test.ts",
+      "sha1": "2292e34c2b0a43c87ca61b1b37927de4a6173382"
+    },
+    {
+      "path": "tests/schedule-import-mapping.test.ts",
+      "sha1": "213acfcf8268fc45a6d0fbed571db4527a1a572e"
+    },
+    {
+      "path": "tests/schedule-import-readiness.test.ts",
+      "sha1": "61d96ce1ebab662a5a41d3fed0b0217ba05fc369"
+    },
+    {
+      "path": "tests/schedule-import-recovery.test.ts",
+      "sha1": "df0767be0973a0799f29983ad1c1b4cf124895df"
+    },
+    {
+      "path": "tests/security-qa-header-trust.test.ts",
+      "sha1": "81f049ebbb41326fe92ced62f0e59c3739cb8333"
+    },
+    {
+      "path": "tests/shift-detail-foundation.test.tsx",
+      "sha1": "8dd5af0078195f764939cfca396db936fd332cc6"
+    },
+    {
+      "path": "tests/shift-lifecycle.test.ts",
+      "sha1": "adf46e690177e1667f319edccb0a6dca9c96d428"
+    },
+    {
+      "path": "tests/shift-registration-eligibility.test.ts",
+      "sha1": "3de3eaf3490e737e7c350336432e58769aa51e28"
+    },
+    {
+      "path": "tests/shift-swap-p0.test.ts",
+      "sha1": "0f63f1c14364b61f8f928b3e47af55c809fd3e78"
+    },
+    {
+      "path": "tests/shift-swap-two-flow.test.ts",
+      "sha1": "5a755b5aa0fc408afa533ea2ee89a072b8854693"
+    },
+    {
+      "path": "tests/shopee-ocr-and-staffing.test.ts",
+      "sha1": "15f4d3c54519c4c56a5847f18f1141133bb279e8"
+    },
+    {
+      "path": "tests/shopee-sequential-ocr.test.ts",
+      "sha1": "00264b9ba71935aef24464fe1eb664d03a9fe00c"
+    },
+    {
+      "path": "tests/spatial-ocr-geometry.test.ts",
+      "sha1": "d4238b5a71874685117f8c7f95a8a5bfba697f21"
+    },
+    {
+      "path": "tests/staffing-safe-projection.test.ts",
+      "sha1": "538ee606d2894a927d5fa4fbfb6cfa22daedb24d"
+    },
+    {
+      "path": "tests/staging-release-blockers.integration.test.ts",
+      "sha1": "718e070f920d5a66ead9b67c9be0f702c19fa0ed"
+    },
+    {
+      "path": "tests/storage-hydration-browser.integration.mjs",
+      "sha1": "37dc065f454be36ae55ac60bd11d1a872a039163"
+    },
+    {
+      "path": "tests/storage-hydration-regression.test.ts",
+      "sha1": "31c6f76ca20f609f6471e82b77bc18a21d7d1b1d"
+    },
+    {
+      "path": "tests/supabase-master-data-runtime.test.ts",
+      "sha1": "d544e93488d88fc11d19aa0f888b7328625775ff"
+    },
+    {
+      "path": "tests/supabase-p1b-migration-contract.test.ts",
+      "sha1": "716b17cd1de3dde3a765295f75181d121e1e5de1"
+    },
+    {
+      "path": "tests/supabase-p1c-shift-lifecycle-contract.test.ts",
+      "sha1": "af5ae68ee3d1df0eee1239d29cd1bdcd09284bf0"
+    },
+    {
+      "path": "tests/supabase-p1c-shift-migration-contract.test.ts",
+      "sha1": "eedd1841edb38c8ca4c1f0b1720b5c1194886804"
+    },
+    {
+      "path": "tests/supabase-p3-report-runtime.test.ts",
+      "sha1": "5c8120b1a3848fadbc5320e095fff4ba2431a301"
+    },
+    {
+      "path": "tests/supabase-schedule-import-port.test.ts",
+      "sha1": "11e952fed137c81b3cad71bba209636b572458bc"
+    },
+    {
+      "path": "tests/supabase-shift-registration-runtime.test.ts",
+      "sha1": "e4115db70f7b8cc48d18c32151cb9518be57bb42"
+    },
+    {
+      "path": "tests/supabase-shift-runtime.test.ts",
+      "sha1": "cc1e2454abbcfe4b74ebf5eb1b536f8d6b1f7a45"
+    },
+    {
+      "path": "tests/swap-request-modes.test.ts",
+      "sha1": "a8c5f4b736d54f14e27273e4a9634c8d2000751e"
+    },
+    {
+      "path": "tests/swap-ui.test.ts",
+      "sha1": "cf6b1a04db9533d5d9807dbcf2193f554a615ecd"
+    },
+    {
+      "path": "tests/swaps-filter-regression.test.ts",
+      "sha1": "f57cea6e7c0833bd373c374f80d3443d41708d60"
+    },
+    {
+      "path": "tests/test-rc17b-db.mjs",
+      "sha1": "59e307726a578d71107f8c7d0eb06e520f4a23cb"
+    },
+    {
+      "path": "tests/tiktok-layout-independent-ocr.test.ts",
+      "sha1": "f81949c20cb9a528f414b215e21243e11c3f2626"
+    },
+    {
+      "path": "tests/timezone-contract.test.ts",
+      "sha1": "cf6ce885aec65c9188c8cd9c24b297918c54a5de"
+    },
+    {
+      "path": "tests/typescript-alias-loader.mjs",
+      "sha1": "75a8f673732e394151880d82342507c3287a885e"
+    },
+    {
+      "path": "tests/u02-dashboard-progressive.test.tsx",
+      "sha1": "d2fa4cf9da4b42d3270f4d9471e0ccadb98e74b2"
+    },
+    {
+      "path": "tests/ux-import-01.test.tsx",
+      "sha1": "bb59104ddb69c1c4192c26d2a904cbc5ca7dc70d"
+    },
+    {
+      "path": "tests/ux-w1-browser-hardening.mjs",
+      "sha1": "93525e0c49e88511e1057ea56161d5905a56c06f"
+    },
+    {
+      "path": "tests/ux-w1-shifts-and-nav-capability.test.ts",
+      "sha1": "4335f4758aa256a1a8c6843bdced043ddefbc4ed"
+    },
+    {
+      "path": "tests/vision-ocr-phase-a.test.ts",
+      "sha1": "c94ddc44b78aa610d6758fe22815c0b747e6320d"
+    },
+    {
+      "path": "tests/vision-ocr-route.test.ts",
+      "sha1": "f39b2fa2bf2d3207d830ec1ec6a479c764e02c8a"
+    },
+    {
+      "path": "tests/workflow-restoration.test.ts",
+      "sha1": "b6e4f69820f866083ce3a03d10da89e7d9649940"
+    },
+    {
+      "path": "tests/workforce-period.test.ts",
+      "sha1": "d7449115a432d9b64ae1645eeca14c43b03b970f"
+    },
+    {
+      "path": "tests/workforce-scope-pagination.test.ts",
+      "sha1": "dcd0749a411c7d5f9649325ddf8359574479277f"
+    },
+    {
+      "path": "tsconfig.base.json",
+      "sha1": "296852c76a75f9498486321ed906caab964fa155"
+    },
+    {
+      "path": "tsconfig.json",
+      "sha1": "924875f1480a74bbf082ed58d917e92d105b5cf7"
+    },
+    {
+      "path": "tsconfig.tsbuildinfo",
+      "sha1": "9933e3df8d0f02e7cdc1641568f5f2969da5688a"
+    },
+    {
+      "path": "vercel.json",
+      "sha1": "beae74b888138f5e8e96a5b8dc181e813937288e"
+    }
+  ]
+}
