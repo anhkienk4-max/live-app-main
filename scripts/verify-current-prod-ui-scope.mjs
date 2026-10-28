@@ -9,11 +9,16 @@ for(const p of changed)assert.ok(allowed.has(p),'NO-GO unexpected path '+p)
 for(const p of changed)assert.ok(!/^supabase\/|^lib\/services\/|^lib\/server\/|^lib\/auth\/|^app\/api\/|^proxy\.ts$/.test(p),'NO-GO backend/auth source modified: '+p)
 const old=p=>git('show',base+':'+p)
 const current=p=>readFileSync(p,'utf8')
-for(const p of ['components/layout/BottomNav.tsx','components/layout/Header.tsx','components/layout/Sidebar.tsx']){
- assert.ok(old(p).includes('filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser)'),'baseline missing role filter: '+p)
- assert.ok(current(p).includes('filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser)'),'role filter changed: '+p)
+for(const p of ['components/layout/BottomNav.tsx','components/layout/Header.tsx']){
+ const roleExpr='filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser)'
+ assert.ok(old(p).includes(roleExpr),'baseline missing role filter: '+p)
+ assert.ok(current(p).includes(roleExpr),'role filter changed: '+p)
  assert.ok(!current(p).includes('getSharedNavigation('),'role-nav regression: '+p)
 }
+// The new Production Sidebar uses a separately computed permission value.
+// It is intentionally byte-for-byte untouched by this UI-only patch.
+assert.equal(current('components/layout/Sidebar.tsx'),old('components/layout/Sidebar.tsx'),'Sidebar behavior changed unexpectedly')
+assert.ok(current('components/layout/Sidebar.tsx').includes('filterNav(getNavigationForRole(permission), currentUser)'),'Sidebar role filter missing')
 const calls=s=>[...new Set([...s.matchAll(/\b(?:userService|shiftService|reportService|payrollService|workforceService)\.([A-Za-z_]\w*)\s*\(/g)].map(m=>m[0]))].sort()
 for(const p of ['components/features/staff/StaffList.tsx','components/features/reports/ReportsList.tsx','app/(dashboard)/payroll/page.tsx','app/(dashboard)/workforce/page.tsx'])assert.deepEqual(calls(old(p)),calls(current(p)),'service method usage changed: '+p)
 for(const token of ['establishPasswordSession','startGoogleOAuth','clearLocalSession']){
