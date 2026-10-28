@@ -184,3 +184,16 @@ position, input width, presence of Google OAuth and page overflow. Screenshots
 are uploaded to the GitHub Actions artifact `ada-ops-pwa-login-visual-evidence`.
 The test does not submit credentials or access Production data. A CI PASS is a
 layout contract, not proof of pixel-perfect typography or official-logo accuracy.
+
+## PWA UI W8: mobile workflow fidelity
+- Profile screen #7: account menu stays the default mobile view. The existing
+  profile edit form is revealed only by the explicit "Hồ sơ cá nhân" action;
+  its avatar upload, save and role checks are unchanged. Desktop form unchanged.
+- Payroll screen #6: the admin-only mobile financial card now shows real net
+  breakdowns per operational role. The full periods/workspace/rates administration
+  surface is collapsed on mobile until requested; "Chọn kỳ" opens the period tab.
+  No non-admin salary disclosure and no changes to payroll calculation logic.
+- Calendar screen #4: a segmented "Ca của tôi / Tất cả ca" filter displays only
+  directly assigned shifts or approved/manual shift registrations for the current
+  business user when "Ca của tôi" is selected. No mutation to registration status.
+These changes do not touch the approved Login UI, authentication, Storage or database.

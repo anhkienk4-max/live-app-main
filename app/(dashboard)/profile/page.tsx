@@ -34,6 +34,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = React.useState(false)
   const [signingOut, setSigningOut] = React.useState(false)
   const [helpOpen, setHelpOpen] = React.useState(false)
+  const [mobileEditOpen, setMobileEditOpen] = React.useState(false)
   const signOut = async () => {
     if (signingOut) return
     setSigningOut(true)
@@ -160,7 +161,7 @@ export default function ProfilePage() {
   }
 
   return <div className="ada-profile-page space-y-6 p-4 sm:p-6" data-testid="profile-page">
-    <section data-testid="ada-reference-profile-mobile" className="space-y-4 lg:hidden">
+    <section data-testid="ada-reference-profile-mobile" className={mobileEditOpen ? 'hidden' : 'space-y-4 lg:hidden'}>
       <div className="flex items-center gap-3 rounded-[16px] border border-[#E7ECF7] bg-white p-4">
         <Avatar className="h-12 w-12 shrink-0"><AvatarImage src={displayedAvatar} /><AvatarFallback className="bg-[#3976F7] font-bold text-white">{initials}</AvatarFallback></Avatar>
         <div className="min-w-0 flex-1">
@@ -170,8 +171,13 @@ export default function ProfilePage() {
         </div>
       </div>
       <div className="divide-y divide-[#EEF1F8] overflow-hidden rounded-[16px] border border-[#E7ECF7] bg-white">
+        <button type="button" data-testid="pwa-profile-open-edit" onClick={() => setMobileEditOpen(true)}
+          aria-expanded={mobileEditOpen}
+          className="flex min-h-[52px] w-full items-center gap-3 px-4 text-left text-[12px] font-medium text-[#17305C]">
+          <UserIcon className="h-[17px] w-[17px] text-[#2563EB]" aria-hidden="true" />
+          <span className="flex-1">Hồ sơ cá nhân</span><ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
+        </button>
         {[
-          { href: '#profile-edit', label: 'Hồ sơ cá nhân', icon: UserIcon },
           { href: '/notifications', label: 'Thông báo', icon: Bell },
           { href: '/settings', label: 'Cài đặt', icon: Settings },
         ].map(item => {
@@ -193,7 +199,11 @@ export default function ProfilePage() {
       </button>
     </section>
     <div className="hidden lg:block"><h1 className="text-3xl font-bold">{t('profile')}</h1><p className="mt-1 text-muted-foreground">{t('accountDetails')}</p></div>
-    <form id="profile-edit" onSubmit={save}>
+    {mobileEditOpen && <button type="button" onClick={() => setMobileEditOpen(false)} data-testid="pwa-profile-close-edit"
+      className="flex min-h-11 items-center gap-2 rounded-xl border border-[#DCE5F5] bg-white px-4 text-[12px] font-semibold text-[#2563EB] lg:hidden">
+      <ChevronRight className="h-4 w-4 rotate-180" aria-hidden="true" /> Quay lại tài khoản
+    </button>}
+    <form id="profile-edit" onSubmit={save} className={mobileEditOpen ? 'block' : 'hidden lg:block'}>
       <div className="grid gap-6 lg:grid-cols-3">
         <Card><CardHeader className="items-center text-center">
           <Avatar className="h-24 w-24"><AvatarImage src={displayedAvatar} /><AvatarFallback>{initials}</AvatarFallback></Avatar>

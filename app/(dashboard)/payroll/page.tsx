@@ -47,6 +47,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
   const { toast } = useToast()
 
   const [activeTab, setActiveTab] = React.useState<'workspace' | 'periods' | 'rates'>('periods')
+  const [mobileAdvancedOpen, setMobileAdvancedOpen] = React.useState(false)
   const [selectedPeriod, setSelectedPeriod] = React.useState<PayrollPeriod | null>(null)
   const [lines, setLines] = React.useState<PayrollLine[]>([])
   const [audit, setAudit] = React.useState<PayrollAudit[]>([])
@@ -172,14 +173,24 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
       <section data-testid="ada-reference-payroll-mobile" className="space-y-4 lg:hidden">
         <div className="flex items-center justify-between gap-2 rounded-xl border border-[#E6ECF8] bg-white px-3 py-3">
           <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-[#2563EB]" /><span className="text-[12px] font-semibold text-[#142650]">{selectedPeriod ? `${selectedPeriod.period_start} – ${selectedPeriod.period_end}` : 'Chưa chọn chu kỳ lương'}</span></div>
-          <button type="button" onClick={() => setActiveTab('periods')} className="shrink-0 text-[11px] font-bold text-[#2563EB]">Chọn kỳ</button>
+          <button type="button" onClick={() => { setActiveTab('periods'); setMobileAdvancedOpen(true) }} className="shrink-0 text-[11px] font-bold text-[#2563EB]">Chọn kỳ</button>
         </div>
         {selectedPeriod ? (
           <div className="overflow-hidden rounded-[16px] bg-gradient-to-br from-[#091C49] via-[#0C285E] to-[#07142E] p-5 text-white shadow-[0_8px_22px_rgba(8,25,61,.14)]">
             <p className="text-[11px] text-blue-100">Tổng giá trị quyết toán · {selectedPeriod.status}</p>
             <p className="mt-3 text-[27px] font-extrabold tabular-nums tracking-tight">{loadingDetails ? 'Đang tải...' : formatCurrency(lines.filter(line => !line.voided_at).reduce((sum, line) => sum + line.net_vnd, 0))}</p>
-            <div className="mt-4 border-t border-white/15 pt-3 text-[11px] text-blue-100">
-              {lines.filter(line => !line.voided_at).length} phân đoạn ca trong kỳ · Chỉ dành cho Admin
+            <div className="mt-4 space-y-2 border-t border-white/15 pt-3">
+              {[
+                { role: 'host', label: 'Host' },
+                { role: 'support', label: 'Trợ livestream' },
+                { role: 'technical', label: 'Kỹ thuật' },
+              ].map(item => (
+                <div key={item.role} className="flex items-center justify-between gap-3 text-[11px] text-blue-100">
+                  <span>{item.label}</span>
+                  <span className="font-semibold tabular-nums text-white">{loadingDetails ? '…' : formatCurrency(lines.filter(line => !line.voided_at && line.operational_role === item.role).reduce((sum, line) => sum + line.net_vnd, 0))}</span>
+                </div>
+              ))}
+              <p className="pt-1 text-[10px] text-blue-200">{lines.filter(line => !line.voided_at).length} phân đoạn ca · Chỉ dành cho Admin</p>
             </div>
           </div>
         ) : (
@@ -208,7 +219,14 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
             )}
           </div>
         )}
+        <button type="button" data-testid="pwa-payroll-advanced-toggle" aria-expanded={mobileAdvancedOpen}
+          onClick={() => setMobileAdvancedOpen(value => !value)}
+          className="flex min-h-11 w-full items-center justify-center rounded-[12px] border border-[#DCE4F5] bg-white px-4 text-[12px] font-semibold text-[#2563EB]">
+          {mobileAdvancedOpen ? 'Ẩn công cụ đối soát' : 'Mở công cụ đối soát / Đơn giá'}
+        </button>
       </section>
+      {/* Keep all existing admin workflows mounted and accessible after explicit expansion. */}
+      <div className={mobileAdvancedOpen ? 'block' : 'hidden lg:block'}>
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="space-y-4">
         <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-3 bg-slate-100 p-1 rounded-lg">
@@ -278,6 +296,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
           <PayrollRateManager />
         </TabsContent>
       </Tabs>
+      </div>
     </PageShell>
   )
 }

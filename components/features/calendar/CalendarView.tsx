@@ -539,13 +539,19 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
   // Hook order must be stable even while account identity/loading state changes.
   const [mobileAdvanced, setMobileAdvanced] = React.useState(false)
+  const [mobileMyShifts, setMobileMyShifts] = React.useState(false)
   if (loadedIdentity && loadedIdentity !== identity) return <ContentSkeleton />
 
   // Reference-board phone layout shares the existing authoritative calendar dataset.
   // Advanced calendar controls remain available without changing any shift permissions.
   const focusedDate = format(currentDate, 'yyyy-MM-dd')
   const mobileWeek = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), index))
-  const mobileDayShifts = filteredShifts.filter(shift => shift.date === focusedDate)
+  const myRegisteredShiftIds = new Set(registrations
+    .filter(item => item.user_id === currentUser?.id && ['approved', 'manually_assigned'].includes(item.status))
+    .map(item => item.shift_id))
+  const mobileDayShifts = filteredShifts
+    .filter(shift => shift.date === focusedDate)
+    .filter(shift => !mobileMyShifts || shift.host_id === currentUser?.id || shift.support_id === currentUser?.id || shift.technical_id === currentUser?.id || myRegisteredShiftIds.has(shift.id))
     .sort((left, right) => left.start_time.localeCompare(right.start_time))
 
   return (
@@ -569,6 +575,12 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             })}
           </div>
         </div>
+        <div data-testid="ada-calendar-scope" className="grid grid-cols-2 gap-1 rounded-xl bg-[#F0F4FB] p-1">
+          <button type="button" aria-pressed={mobileMyShifts} onClick={() => setMobileMyShifts(true)}
+            className={`min-h-10 rounded-[10px] px-3 text-[12px] font-semibold ${mobileMyShifts ? 'bg-[#155EF2] text-white shadow-sm' : 'text-[#52678C]'}`}>Ca của tôi</button>
+          <button type="button" aria-pressed={!mobileMyShifts} onClick={() => setMobileMyShifts(false)}
+            className={`min-h-10 rounded-[10px] px-3 text-[12px] font-semibold ${!mobileMyShifts ? 'bg-[#155EF2] text-white shadow-sm' : 'text-[#52678C]'}`}>Tất cả ca</button>
+        </div>
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-[14px] font-bold text-[#07183B]">Ca ngày {format(currentDate, 'dd/MM')}</h3>
           <span className="text-[11px] font-medium text-slate-500">{mobileDayShifts.length} ca</span>
@@ -581,7 +593,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           <div className="rounded-[15px] border border-[#E4EBF8] bg-white p-6 text-center">
             <CalendarIcon className="mx-auto h-7 w-7 text-[#2563EB]" />
             <p className="mt-2 text-[13px] font-semibold text-[#07183B]">Chưa có ca trong ngày này</p>
-            <p className="mt-1 text-[11px] text-slate-500">Chọn ngày khác hoặc xem ca đang mở đăng ký.</p>
+            <p className="mt-1 text-[11px] text-slate-500">{mobileMyShifts ? 'Bạn chưa có ca được phân công trong ngày này.' : 'Chọn ngày khác hoặc xem ca đang mở đăng ký.'}</p>
           </div>
         ) : (
           <div className="space-y-2">
