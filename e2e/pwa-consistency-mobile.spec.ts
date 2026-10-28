@@ -40,11 +40,14 @@ for (const route of pages) {
       if (route.name === 'calendar') {
         const tabs = page.getByTestId('calendar-stable-tabs').locator('[data-slot="tabs-list"]')
         await expect(tabs).toBeVisible({ timeout: 45000 })
-        const layout = await tabs.evaluate(element => ({
-          wrap: getComputedStyle(element).flexWrap,
-          height: element.getBoundingClientRect().height,
-        }))
-        expect(layout.wrap).toBe('nowrap')
+        const layout = await tabs.evaluate(element => {
+          const positions = Array.from(element.querySelectorAll('[data-slot="tabs-trigger"]'))
+            .map(tab => tab.getBoundingClientRect().top)
+          return { positions, height: element.getBoundingClientRect().height }
+        })
+        expect(layout.positions.length, 'Expected all five Calendar tabs').toBe(5)
+        const rowDifference = Math.max(...layout.positions) - Math.min(...layout.positions)
+        expect(rowDifference, 'Calendar tabs must share the same visual row').toBeLessThanOrEqual(2)
         expect(layout.height, 'Calendar tabs should occupy one row').toBeLessThanOrEqual(56)
       }
       const metrics = await page.evaluate(() => {
