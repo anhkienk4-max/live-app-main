@@ -75,8 +75,11 @@ export function StaffList() {
   React.useEffect(() => {
     if (loading || detailInitialized.current || !visibleStaff.length) return
     if (window.matchMedia('(max-width: 767px)').matches) return
-    detailInitialized.current = true
-    setDetailStaff(visibleStaff[0])
+    const frame = window.requestAnimationFrame(() => {
+      detailInitialized.current = true
+      setDetailStaff(visibleStaff[0])
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [loading, visibleStaff])
 
   const workload = (userId: string, role: OperationalRole) => workloadRows.find(row => row.staff_id === userId && row.role === role)?.shift_count ?? 0
