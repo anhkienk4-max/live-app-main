@@ -59,8 +59,8 @@ export function BottomNav() {
               )}
               data-testid={`nav-${item.name.toLowerCase()}`}
             >
-              <Icon className="h-5 w-5" />
-              <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-0.5 line-clamp-1">{getLabel(item)}</span>
+              <Icon className="h-[22px] w-[22px]" />
+              <span className="text-[11px] sm:text-xs font-medium text-center leading-tight px-0.5 line-clamp-1">{getLabel(item)}</span>
             </Link>
           )
         })}
@@ -75,8 +75,8 @@ export function BottomNav() {
               data-testid="nav-menu-more"
               aria-label={t('moreMenu')}
             >
-              <Menu className="h-5 w-5" />
-              <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-0.5 line-clamp-1">{t('moreMenu')}</span>
+              <Menu className="h-[22px] w-[22px]" />
+              <span className="text-[11px] sm:text-xs font-medium text-center leading-tight px-0.5 line-clamp-1">{t('moreMenu')}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 mb-2">
               {overflowNav.map((item) => {

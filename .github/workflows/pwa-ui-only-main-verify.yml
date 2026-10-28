@@ -1,0 +1,58 @@
+name: ADA OPS PWA UI-only main baseline review (NO DEPLOY)
+on:
+  push:
+    branches:
+      - release/ada-pwa-ui-only-main-20261028
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ui-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Verify main baseline and changed file allowlist
+        run: |
+          set -euo pipefail
+          base=9b5f3889b243f9ee795e4466a18f24cd896c162f
+          git merge-base --is-ancestor "$base" HEAD
+          git diff --name-only "$base" HEAD >/tmp/ui-only.txt
+          cat /tmp/ui-only.txt
+          while IFS= read -r file; do
+            case "$file" in
+              app/globals.css|components/layout/ProductionAppShell.tsx|components/layout/BottomNav.tsx|components/ui/archetypes.tsx|components/features/staff/StaffList.tsx|docs/releases/ADA_OPS_UI_ONLY_MAIN_CANDIDATE_20261028.md|tests/pwa-main-ui-only-contract.test.mjs|.github/workflows/pwa-ui-only-main-verify.yml) ;;
+              *) echo "NO-GO: file outside UI allowlist: $file"; exit 1 ;;
+            esac
+          done </tmp/ui-only.txt
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: UI and service-shape contract
+        run: node --test tests/pwa-main-ui-only-contract.test.mjs
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Scoped ESLint
+        run: pnpm exec eslint components/layout/ProductionAppShell.tsx components/layout/BottomNav.tsx components/ui/archetypes.tsx components/features/staff/StaffList.tsx
+      - name: Build without credentials
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm build
+      - name: Record non-release status
+        if: always()
+        run: echo 'NO DEPLOY. Production source parity and real role UAT remain mandatory.' >> "$GITHUB_STEP_SUMMARY"
