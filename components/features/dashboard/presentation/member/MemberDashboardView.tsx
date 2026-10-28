@@ -1,4 +1,6 @@
 ﻿import React from 'react'
+import { OpsMobileHome } from '../OpsMobileHome'
+import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import {
   Calendar, CheckCircle, Clock, MapPin, ArrowRight,
   ArrowLeftRight, FileText, AlertTriangle,
@@ -65,6 +67,7 @@ export interface MemberDashboardViewModel {
   myRequests: RequestEntry[] | null
   /** null = source unavailable; [] = loaded, verified empty */
   notifications: NotificationEntry[] | null
+  userName?: string
 }
 
 // Sub-components
@@ -161,10 +164,22 @@ function NotificationItem({ title, time, unread }: NotificationItemProps) {
 // Main export
 
 export function MemberDashboardView({
-  nextShift, onOpenNextShift, mySchedule, myActions, openShifts, myRequests, notifications,
+  nextShift, onOpenNextShift, mySchedule, myActions, openShifts, myRequests, notifications, userName,
 }: MemberDashboardViewModel) {
+  const todayShiftCount = mySchedule.filter(item => item.date === getCurrentBusinessDate()).length
+  const attention = myActions?.map((item, index) => ({
+    key: item.type + index, title: item.title, description: item.description,
+    href: item.type === 'swap' ? '/swaps' : item.type === 'report' ? '/reports' : '/data-quality',
+    level: item.type === 'warning' ? 'critical' as const : 'info' as const,
+  })) ?? null
   return (
-    <main className="p-4 sm:p-8 min-w-0 flex flex-col gap-6 overflow-y-auto">
+    <>
+    <OpsMobileHome
+      role="member" userName={userName} shiftCount={todayShiftCount} shiftLabel="Ca được phân công hôm nay"
+      liveCount={null} pendingCount={myRequests === null ? null : myRequests.filter(item => item.status === 'pending').length}
+      attention={attention} shift={nextShift ? { key: nextShift.brand + nextShift.time, brand: nextShift.brand, platform: nextShift.platform, time: nextShift.time, status: nextShift.role, onView: onOpenNextShift } : null}
+    />
+    <main className="hidden min-w-0 flex-col gap-6 overflow-y-auto p-4 md:flex sm:p-8">
       <div className="flex flex-col gap-1 mb-1">
         <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">My Workspace</h1>
         <p className="text-[14px] text-slate-500 font-medium">Welcome back! Ready for your upcoming shifts today?</p>
@@ -301,5 +316,6 @@ export function MemberDashboardView({
       </div>
     <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a></nav>
     </main>
+    </>
   )
 }
