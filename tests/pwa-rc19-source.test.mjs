@@ -89,3 +89,18 @@ test('Member mobile shortcuts and today KPI use valid role workflow and business
   assert.ok(member.includes('item.date === getCurrentBusinessDate()'))
   assert.ok(member.includes('shiftCount={todayShiftCount}'))
 });
+
+test('PWA role UAT and desktop visual release gates are present', () => {
+  const workflow = source('.github/workflows/ada-ops-pwa-verify.yml')
+  const roleSpec = source('e2e/pwa-dashboard-roles.uat.spec.ts')
+  const mockSpec = source('e2e/pwa-dashboard-mobile.spec.ts')
+  const config = source('playwright.pwa-dashboard.uat.config.ts')
+  for (const name of [
+    'OpsMobileHome.tsx','AdminDashboardView.tsx','LeaderDashboardView.tsx',
+    'MemberDashboardView.tsx','DashboardOverview.tsx',
+  ]) assert.ok(workflow.includes(name), 'Missing lint scope: ' + name)
+  assert.ok(roleSpec.includes('loginWithCredentials'))
+  assert.ok(roleSpec.includes("toHaveAttribute('data-role', role)"))
+  assert.ok(mockSpec.includes('RC19 desktop dashboard remains active at 900px'))
+  assert.ok(config.includes('E2E_BASE_URL'))
+})

@@ -47,7 +47,7 @@ export function OpsMobileHome({
     { href: admin ? '/staff' : '/profile', title: admin ? 'Nhân sự' : 'Cá nhân', Icon: UsersRound, color: 'text-indigo-600', background: 'bg-indigo-50' },
   ]
   return (
-    <main data-testid="ada-reference-mobile-home" className="min-w-0 bg-[#F7F9FE] pb-7 md:hidden">
+    <main data-testid="ada-reference-mobile-home" data-role={role} className="min-w-0 bg-[#F7F9FE] pb-7 md:hidden">
       <div className="flex min-h-[82px] items-center gap-3 bg-[#081F4A] px-4 pb-5 pt-4 text-white">
         <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full border border-white/25 bg-blue-500 text-[14px] font-bold">{initial}</span>
         <div className="min-w-0 flex-1">

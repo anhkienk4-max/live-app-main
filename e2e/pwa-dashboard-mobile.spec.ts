@@ -24,3 +24,14 @@ for (const viewport of [
     console.log('PWA_DASHBOARD_VIEW ' + JSON.stringify({ viewport, widths }))
   })
 }
+
+test('RC19 desktop dashboard remains active at 900px', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 1100 })
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('production-main-content')).toBeVisible()
+  await expect(page.getByTestId('ada-reference-mobile-home')).toBeHidden({ timeout: 60000 })
+  await expect(page.getByTestId('production-bottom-nav')).toBeHidden()
+  await expect(page.locator('main.hidden[class*="md:flex"]')).toBeVisible()
+  const width = await page.evaluate(() => document.documentElement.scrollWidth)
+  expect(width).toBeLessThanOrEqual(901)
+})
