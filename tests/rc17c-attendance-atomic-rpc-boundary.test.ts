@@ -51,6 +51,7 @@ function makeHandler(client: SupabaseClient) {
   return createHistoricalAttendanceHandler({
     client: () => client,
     resolveUser: actor,
+    isEnabled: () => true,
   })
 }
 
@@ -72,6 +73,23 @@ test('preview rejects missing source identity and invalid date order before data
   assert.equal(invalid.status, 400)
   assert.equal((await invalid.json()).error.code, 'INVALID_DATE_ORDER')
   assert.equal(ctx.getWrites(), 0)
+})
+
+test('attendance importer defaults OFF and rejects before RPC or table writes', async () => {
+  const original = process.env.FEATURE_IMPORT_BATCH
+  delete process.env.FEATURE_IMPORT_BATCH
+  const ctx = guardedClient()
+  const handler = createHistoricalAttendanceHandler({ client: () => ctx.client, resolveUser: actor })
+  try {
+    const response = await handler.POST(postBody('confirm_drafts', { batchId: 'deferred-batch', version: 1 }))
+    assert.equal(response.status, 404)
+    assert.equal((await response.json()).error.code, 'WORKFORCE_FEATURE_DISABLED')
+    assert.equal(ctx.getRpcCalls(), 0)
+    assert.equal(ctx.getWrites(), 0)
+  } finally {
+    if (original === undefined) delete process.env.FEATURE_IMPORT_BATCH
+    else process.env.FEATURE_IMPORT_BATCH = original
+  }
 })
 
 test('confirmation fails closed without an atomic RPC and does not touch tables', async () => {

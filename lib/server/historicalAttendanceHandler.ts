@@ -9,6 +9,7 @@ import {
   type ServerUserResolver,
 } from '@/lib/server/authGuards'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
+import { isFeatureEnabled } from '@/lib/flags'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { randomUUID } from 'node:crypto'
 import {
@@ -38,7 +39,7 @@ export interface HistoricalAttendanceHandlerDepends {
 }
 
 export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceHandlerDepends = {}) {
-  const isEnabled = depends.isEnabled ?? (() => true)
+  const isEnabled = depends.isEnabled ?? (() => isFeatureEnabled('import_batch_management'))
   const getClient = depends.client ?? createSupabaseAdminClient
 
   return {

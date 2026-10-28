@@ -15,10 +15,12 @@ export default defineConfig({
     env:{
       NEXT_PUBLIC_USE_MOCK_DATA:'true',
       NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER:'true',
+      NEXT_PUBLIC_FEATURE_IMPORT_BATCH:'',
       NEXT_PUBLIC_SUPABASE_URL:'',
       NEXT_PUBLIC_SUPABASE_ANON_KEY:'',
       SUPABASE_URL:'',
       SUPABASE_SECRET_KEY:'',
+      FEATURE_IMPORT_BATCH:'',
       OPERATIONAL_STORAGE_ROUTING_MODE:'compat',
     },
   },

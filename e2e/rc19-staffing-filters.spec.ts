@@ -1,6 +1,16 @@
 import { expect, test } from '@playwright/test'
 
 // Isolated layout and user interaction only, never contacts Production.
+test('deferred Attendance Import stays unavailable when its feature flag is OFF', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user', '1')
+    localStorage.setItem('livestream-ops-language', 'vi')
+  })
+  await page.goto('/staffing?tab=attendance')
+  await expect(page.getByRole('button', { name: /Nhập chấm công/ })).toHaveCount(0)
+  await expect(page.getByTestId('staffing-production-workspace')).toBeVisible()
+})
+
 for (const width of [390, 1440]) {
   test('Staffing gap action, applied filter drawer and Eye detail at '+width+'px', async ({ page }) => {
     await page.setViewportSize({width,height:900})

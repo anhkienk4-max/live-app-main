@@ -18,19 +18,20 @@ function StaffingContent() {
   const router = useRouter()
   const { currentUser } = useCurrentUser()
   const tabParam = searchParams.get('tab')
+  const canImportAttendance = process.env.NEXT_PUBLIC_FEATURE_IMPORT_BATCH === 'true'
 
   const canReview = currentUser ? hasPermission(currentUser, 'shifts.approve_registration') : false
   const activeTab =
     tabParam === 'registration' && canReview
       ? 'registration'
-      : tabParam === 'attendance' && canReview
+      : tabParam === 'attendance' && canReview && canImportAttendance
       ? 'attendance'
       : 'staffing'
 
   const handleTabChange = (nextTab: 'staffing' | 'registration' | 'attendance') => {
     if (nextTab === 'registration') {
       router.push('/staffing?tab=registration')
-    } else if (nextTab === 'attendance') {
+    } else if (nextTab === 'attendance' && canImportAttendance) {
       router.push('/staffing?tab=attendance')
     } else {
       router.push('/staffing')
@@ -49,7 +50,7 @@ function StaffingContent() {
 
             {/* TAB SELECTOR */}
             {canReview && (
-              <div className="grid w-full min-w-0 grid-cols-1 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:w-auto sm:grid-cols-3">
+              <div className={`grid w-full min-w-0 grid-cols-1 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:w-auto ${canImportAttendance ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
                 <button
                   type="button"
                   onClick={() => handleTabChange('staffing')}
@@ -74,7 +75,7 @@ function StaffingContent() {
                   <UserCheck className="h-3.5 w-3.5" />
                   <span className="min-w-0 text-center leading-tight">Xét duyệt đăng ký (Registration)</span>
                 </button>
-                <button
+                {canImportAttendance && <button
                   type="button"
                   onClick={() => handleTabChange('attendance')}
                   className={`flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-md px-3 py-2 font-medium transition-all ${
@@ -85,7 +86,7 @@ function StaffingContent() {
                 >
                   <FileSpreadsheet className="h-3.5 w-3.5" />
                   <span className="min-w-0 text-center leading-tight">Nhập chấm công (Attendance)</span>
-                </button>
+                </button>}
               </div>
             )}
           </div>

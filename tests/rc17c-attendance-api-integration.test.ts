@@ -10,6 +10,9 @@ import {
   calculatePayrollLine,
 } from '../lib/workforce/payrollCalculation'
 
+// These integration fixtures exercise the importer while opting into its feature gate.
+process.env.FEATURE_IMPORT_BATCH = 'true'
+
 // -----------------------------------------------------------------------------
 // POSTGRESQL DB FIXTURE SETUP WITH PGLITE
 // -----------------------------------------------------------------------------
