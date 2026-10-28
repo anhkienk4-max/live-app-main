@@ -17,6 +17,9 @@ test('PWA shared visual system spans key workspaces without modifying authentica
     assert.ok(source(path).includes('ada-' + page + '-page'), page + ' missing mobile class')
     assert.ok(workflow.includes(path), page + ' outside lint')
   }
+  for (const page of ['analytics', 'storage', 'notifications']) {
+    assert.ok(source('app/(dashboard)/' + page + '/page.tsx').includes('ada-workspace-page'))
+  }
   assert.ok(config.includes('consistency'))
   assert.ok(workflow.includes('tests/pwa-consistency-source.test.mjs'))
   assert.ok(source('e2e/pwa-consistency-mobile.spec.ts').includes('PWA desktop preserved'))

@@ -11,6 +11,9 @@ const pages = [
   { path: '/profile', name: 'profile' },
   { path: '/payroll', name: 'payroll' },
   { path: '/workforce', name: 'workforce' },
+  { path: '/analytics', name: 'analytics' },
+  { path: '/storage', name: 'storage' },
+  { path: '/notifications', name: 'notifications' },
 ] as const
 
 for (const route of pages) {
