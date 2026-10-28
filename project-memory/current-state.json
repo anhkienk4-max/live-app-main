@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "1609db684de290e2a49f4c790f8ecdf3d1e9e461",
+    "head": "d4b1785fc47c4e15f45edc8efd59fab1ae2abc9b",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -100,9 +100,9 @@
         "lib": 251,
         "scripts": 26,
         "supabase": 109,
-        "tests": 265
+        "tests": 266
       },
-      "total": 888
+      "total": 889
     },
     "tests": {
       "files": [
@@ -192,6 +192,7 @@
         "tests/ocr-text-application.test.ts",
         "tests/one-drive-file-provider.test.ts",
         "tests/openai-vision-ocr-provider.test.ts",
+        "tests/operational-references-cache.test.ts",
         "tests/operational-role-authority.test.ts",
         "tests/operational-storage-placement.test.ts",
         "tests/operations-page-cache.test.ts",
@@ -327,7 +328,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 220
+      "count": 221
     },
     "migrations": {
       "files": [
@@ -436,5 +437,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-28T22:51:19+07:00"
+  "synced_at": "2026-10-29T00:52:14+07:00"
 }
