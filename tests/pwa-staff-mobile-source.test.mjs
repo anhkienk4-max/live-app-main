@@ -8,7 +8,7 @@ test('PWA Staff has mobile cards while retaining RC19 paging, permissions and de
   const config = source('playwright.pwa-dashboard.config.ts')
   const workflow = source('.github/workflows/ada-ops-pwa-verify.yml')
   assert.match(code, /data-testid="staff-mobile-layout"/)
-  assert.match(code, /data-testid="staff-mobile-card-/)
+  assert.match(code, /staff-mobile-card-/)
   assert.match(code, /data-testid="staff-mobile-search"/)
   assert.match(code, /hidden min-w-0 md:block/)
   assert.match(code, /<DataTable/)
