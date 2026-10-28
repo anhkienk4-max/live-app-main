@@ -41,7 +41,9 @@ export function OpsMobileHome({
     { href: '/reports', title: 'Báo cáo', Icon: FileText, color: 'text-violet-600', background: 'bg-violet-50' },
     admin
       ? { href: '/payroll', title: 'Bảng lương', Icon: Wallet, color: 'text-emerald-600', background: 'bg-emerald-50' }
-      : { href: '/registration', title: 'Đăng ký ca', Icon: ClipboardList, color: 'text-emerald-600', background: 'bg-emerald-50' },
+      : role === 'leader'
+        ? { href: '/staffing?tab=registration', title: 'Duyệt đăng ký', Icon: ClipboardList, color: 'text-emerald-600', background: 'bg-emerald-50' }
+        : { href: '/calendar?tab=open', title: 'Đăng ký ca', Icon: ClipboardList, color: 'text-emerald-600', background: 'bg-emerald-50' },
     { href: admin ? '/staff' : '/profile', title: admin ? 'Nhân sự' : 'Cá nhân', Icon: UsersRound, color: 'text-indigo-600', background: 'bg-indigo-50' },
   ]
   return (
@@ -66,11 +68,12 @@ export function OpsMobileHome({
           <p className="relative mt-1 text-[11px] text-slate-500">{shiftLabel}</p>
           <div className="relative mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[11px] font-medium">
             <span className="flex items-center gap-1.5 text-[#2563EB]"><Radio className="size-3.5" aria-hidden="true" /> Đang live <strong className="tabular-nums">{liveCount === null ? '—' : liveCount}</strong></span>
-            <span className="flex items-center gap-1.5 text-[#E48714]"><ClipboardList className="size-3.5" aria-hidden="true" /> Chờ xử lý <strong className="tabular-nums">{pendingCount === null ? '—' : pendingCount}</strong></span>
+            <span className="flex items-center gap-1.5 text-[#E48714]"><ClipboardList className="size-3.5" aria-hidden="true" /> {role === 'member' ? 'Yêu cầu đang chờ' : 'Chờ xử lý'} <strong className="tabular-nums">{pendingCount === null ? '—' : pendingCount}</strong></span>
           </div>
           <div className="relative my-3 h-px bg-[#EDF1F8]" />
           {shift ? (
             <div data-testid="ada-mobile-home-shift" className="relative space-y-1">
+              {role === 'member' && <p className="text-[10px] font-semibold text-[#577092]">Ca sắp tới</p>}
               <p className="break-words text-[12px] font-bold leading-snug text-[#102753]">{shift.brand} · {shift.platform}</p>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#577092]">
                 <span className="flex items-center gap-1"><Clock3 className="size-3.5" aria-hidden="true" />{shift.time}</span>

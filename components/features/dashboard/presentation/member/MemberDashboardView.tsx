@@ -1,5 +1,6 @@
 ﻿import React from 'react'
 import { OpsMobileHome } from '../OpsMobileHome'
+import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import {
   Calendar, CheckCircle, Clock, MapPin, ArrowRight,
   ArrowLeftRight, FileText, AlertTriangle,
@@ -165,6 +166,7 @@ function NotificationItem({ title, time, unread }: NotificationItemProps) {
 export function MemberDashboardView({
   nextShift, onOpenNextShift, mySchedule, myActions, openShifts, myRequests, notifications, userName,
 }: MemberDashboardViewModel) {
+  const todayShiftCount = mySchedule.filter(item => item.date === getCurrentBusinessDate()).length
   const attention = myActions?.map((item, index) => ({
     key: item.type + index, title: item.title, description: item.description,
     href: item.type === 'swap' ? '/swaps' : item.type === 'report' ? '/reports' : '/data-quality',
@@ -173,7 +175,7 @@ export function MemberDashboardView({
   return (
     <>
     <OpsMobileHome
-      role="member" userName={userName} shiftCount={mySchedule.length} shiftLabel="Ca trong lịch của tôi"
+      role="member" userName={userName} shiftCount={todayShiftCount} shiftLabel="Ca được phân công hôm nay"
       liveCount={null} pendingCount={myRequests === null ? null : myRequests.filter(item => item.status === 'pending').length}
       attention={attention} shift={nextShift ? { key: nextShift.brand + nextShift.time, brand: nextShift.brand, platform: nextShift.platform, time: nextShift.time, status: nextShift.role, onView: onOpenNextShift } : null}
     />

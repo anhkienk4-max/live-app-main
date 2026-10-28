@@ -78,3 +78,13 @@ test('Authenticated mobile topbar displays ADA OPS brand, not old LiveStream Ops
   assert.ok(header.includes('className="ada-header sticky'))
   assert.ok(!header.includes('              LiveStream Ops'))
 });
+
+test('Member mobile shortcuts and today KPI use valid role workflow and business date', () => {
+  const mobile = source('components/features/dashboard/presentation/OpsMobileHome.tsx')
+  const member = source('components/features/dashboard/presentation/member/MemberDashboardView.tsx')
+  assert.ok(mobile.includes("href: '/calendar?tab=open', title: 'Đăng ký ca'"))
+  assert.ok(mobile.includes("href: '/staffing?tab=registration', title: 'Duyệt đăng ký'"))
+  assert.ok(!mobile.includes("href: '/registration', title: 'Đăng ký ca'"))
+  assert.ok(member.includes('item.date === getCurrentBusinessDate()'))
+  assert.ok(member.includes('shiftCount={todayShiftCount}'))
+});
