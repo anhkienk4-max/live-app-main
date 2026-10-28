@@ -56,11 +56,19 @@ test('source picker pages only staffed registrations for current actor and filte
   assert.match(modal, /sourceSnapshot\?\.key === sourceKey/)
   assert.match(modal, /return \(\) => \{ active = false \}/)
   assert.match(modal, /submitLock\.current/)
+  assert.match(modal, /Legacy-only shifts without a registration cannot be used as a source/)
 })
 
 test('PASS recipient is blocked when its conflict check is incomplete or fails', () => {
   const modal = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
   assert.match(modal, /Boolean\(conflict\) && !conflict\?\.reason && !conflict\?\.error/)
+})
+
+test('cancelled shifts do not create a client-side PASS conflict', () => {
+  const modal = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
+  const persistence = readFileSync(fileURLToPath(new URL('../supabase/migrations/20260814085659_p1c_shift_persistence.sql', import.meta.url)), 'utf8')
+  assert.match(modal, /shift\.id === selectedSource\.id \|\| shift\.status === 'cancelled'/)
+  assert.match(persistence, /other_shift\.status <> 'cancelled'[\s\S]*?other_shift\.start_at < p_shift\.end_at/)
 })
 
 test('swap detail and cancel actions are rebound to the current actor page', () => {

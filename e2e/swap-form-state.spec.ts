@@ -21,7 +21,7 @@ for (const { width, language } of [{ width: 1440, language: 'en' }, { width: 390
     const fromDate = dialog.getByLabel(language === 'vi' ? 'Từ ngày' : 'From date')
     const originalDate = await fromDate.inputValue()
     await fromDate.fill('2099-01-01')
-    await expect(dialog.getByText(language === 'vi' ? 'Không có ca được phân công phù hợp' : 'No matching assigned shifts')).toBeVisible()
+    await expect(dialog.getByText(language === 'vi' ? /Không có ca được phân công phù hợp/ : /No matching approved or manually assigned registrations/)).toBeVisible()
     await fromDate.fill(originalDate)
     await expect(dialog.getByRole('group', { name: language === 'vi' ? 'Chọn ca được phân công' : 'Choose assigned shift' }).getByRole('button', { name: /Beauty flash sale/ })).toBeVisible()
     await dialog.getByLabel('Brand').selectOption({ label: 'Beauty Essentials' })
@@ -32,7 +32,7 @@ for (const { width, language } of [{ width: 1440, language: 'en' }, { width: 390
 
     await dialog.getByLabel(language === 'vi' ? 'Tìm ca' : 'Search shifts').fill('no-such-shift')
     await dialog.getByRole('button', { name: language === 'vi' ? 'Tìm kiếm' : 'Search', exact: true }).click()
-    await expect(dialog.getByText(language === 'vi' ? 'Không có ca được phân công phù hợp' : 'No matching assigned shifts')).toBeVisible()
+    await expect(dialog.getByText(language === 'vi' ? /Không có ca được phân công phù hợp/ : /No matching approved or manually assigned registrations/)).toBeVisible()
     await dialog.getByLabel(language === 'vi' ? 'Tìm ca' : 'Search shifts').fill('Beauty')
     await dialog.getByRole('button', { name: language === 'vi' ? 'Tìm kiếm' : 'Search', exact: true }).click()
     await dialog.getByRole('group', { name: language === 'vi' ? 'Chọn ca được phân công' : 'Choose assigned shift' }).getByRole('button', { name: /Beauty flash sale/ }).click()

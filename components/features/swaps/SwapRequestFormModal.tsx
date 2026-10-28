@@ -108,7 +108,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
       if (!active) return
       const assignedHere = result.items.some(shift => shift.id === selectedSource.id)
       const overlap = result.items.some(shift => {
-        if (shift.id === selectedSource.id) return false
+        if (shift.id === selectedSource.id || shift.status === 'cancelled') return false
         const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
         return other?.valid && other.startAt < sourceTime.endAt && other.endAt > sourceTime.startAt
       })
@@ -196,7 +196,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
           {!from && <p role="alert" className="text-xs text-red-600">{copy('Chọn ngày bắt đầu', 'Choose a start date')}</p>}
           {!source && from && !(to && to < from) && <p role="status" className="text-xs text-muted-foreground">{t('loading')}</p>}
           {source?.error && <p role="alert" className="text-xs text-red-600">{source.error} <Button type="button" size="sm" variant="outline" onClick={() => setSourceRevision(n => n + 1)}>{copy('Thử lại', 'Retry')}</Button></p>}
-          {source && !source.error && sourceRows.length === 0 && <p role="status" className="text-xs text-muted-foreground">{copy('Không có ca được phân công phù hợp', 'No matching assigned shifts')}</p>}
+          {source && !source.error && sourceRows.length === 0 && <p role="status" className="text-xs text-muted-foreground">{copy('Không có ca được phân công phù hợp. Chỉ ca có đăng ký đã duyệt hoặc được phân công thủ công mới dùng làm nguồn; ca legacy chưa có đăng ký không thể gửi yêu cầu.', 'No matching approved or manually assigned registrations. Legacy-only shifts without a registration cannot be used as a source.')}</p>}
           <div role="group" aria-label={copy('Chọn ca được phân công', 'Choose assigned shift')} className="max-h-44 space-y-1 overflow-y-auto">
             {sourceRows.map(shift => <button key={shift.id} type="button" aria-pressed={sourceId === shift.id} onClick={() => { setSourceId(shift.id); setRole(''); setReplacementId(''); setTargetId(''); setCounterpartId('') }}
               className={`w-full rounded-md border p-2 text-left text-xs focus-visible:ring-2 focus-visible:ring-primary ${sourceId === shift.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
