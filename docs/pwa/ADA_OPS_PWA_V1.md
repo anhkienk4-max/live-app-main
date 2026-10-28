@@ -205,3 +205,23 @@ default only on mobile to preserve the reference board's compact detail screen.
 The editor's mutation handlers and permission checks are unchanged and still rendered
 when expanded. Reopened reports now show a distinct reopened state in the mobile
 summary instead of being mislabeled 'Đã duyệt'.
+
+## Four-screen phone UAT (W9)
+`playwright.pwa-mobile.config.ts` starts a **local dev-only**, credential-free
+NEXT_PUBLIC_USE_MOCK_DATA=true application on port 3102. Supabase URL and keys are unset,
+and VERCEL/VERCEL_ENV are cleared. The existing runtime guard prevents this fixture from
+being deployed. No Production/Staging auth tokens, user credentials or database writes.
+
+`e2e/pwa-mobile-ops.spec.ts` runs eight mobile scenarios, two viewports (390x844
+and 412x915), covering:
+- Calendar own/all and advanced control toggle, screenshot.
+- Reports list and real detail dialog if fixture permissions/data expose it; otherwise
+  an explicit `SKIP_DETAIL` annotation and list screenshot, **not** a false claim of PASS.
+- Payroll admin feature gate with `SKIP_PAYROLL` when capabilities absent, with access
+  gate screenshot; no invented salary totals.
+- Profile account menu, edit form reveal/hide, bottom nav column count, More menu,
+  screenshot and horizontal overflow guard.
+
+CI artifacts: `ada-ops-pwa-mobile-uat-evidence`. Source/mock UAT cannot establish
+auth, RBAC, staging-backed data, iOS Safari installation or true pixel fidelity. Those
+remain manual UAT requirements before merging to main.

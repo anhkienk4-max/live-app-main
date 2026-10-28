@@ -249,3 +249,16 @@ test('Mobile report prioritizes summary while retaining gated OCR review control
   assert.ok(report.includes("setActiveTab('images')"))
   assert.ok(report.includes("setActiveTab('versions')"))
 })
+
+test('Four-screen mobile UAT uses credential-free dev mock, never deployed auth bypass', () => {
+  const config = source('playwright.pwa-mobile.config.ts')
+  const suite = source('e2e/pwa-mobile-ops.spec.ts')
+  const env = source('lib/supabase/environmentIdentity.ts')
+  assert.ok(config.includes("NEXT_PUBLIC_USE_MOCK_DATA: 'true'"))
+  assert.ok(config.includes("NEXT_PUBLIC_SUPABASE_URL: ''"))
+  assert.ok(config.includes("VERCEL_ENV: ''"))
+  assert.ok(env.includes("fail('ENV_MOCK_MODE_FORBIDDEN')"))
+  for (const screen of ['04-calendar-', '05-reports-', '06-payroll-', '07-profile-menu-']) assert.ok(suite.includes(screen))
+  assert.ok(suite.includes("SKIP_PAYROLL"))
+  assert.ok(suite.includes('No document-level horizontal overflow'))
+})

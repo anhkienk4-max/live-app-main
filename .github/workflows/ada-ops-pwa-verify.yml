@@ -38,6 +38,18 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Capture and assert Login reference viewports
         run: pnpm exec playwright test --config=playwright.pwa.config.ts
+      - name: Validate operational phone screens in credential-free local mock
+        run: pnpm exec playwright test --config=playwright.pwa-mobile.config.ts
+      - name: Upload PWA four-screen visual evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ada-ops-pwa-mobile-uat-evidence
+          path: |
+            test-results/pwa-ops-mobile/*.png
+            test-results/**/trace.zip
+            test-results/**/test-failed-*.png
+          if-no-files-found: warn
       - name: Upload PWA login visual evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
