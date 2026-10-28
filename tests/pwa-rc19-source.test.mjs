@@ -71,3 +71,10 @@ test('Dashboard visual QA runs actual responsive app and preserves mock/Producti
  assert.ok(spec.includes('ada-reference-mobile-home'))
  assert.ok(mobile.includes('liveCount === null'))
 });
+
+test('Authenticated mobile topbar displays ADA OPS brand, not old LiveStream Ops mark', () => {
+  const header = source('components/layout/Header.tsx')
+  assert.ok(header.includes('<AdaBrand inverse compact className="ada-header__brand" />'))
+  assert.ok(header.includes('className="ada-header sticky'))
+  assert.ok(!header.includes('              LiveStream Ops'))
+});
