@@ -7,7 +7,7 @@ import { BottomNav } from './BottomNav'
 
 export function ProductionAppShell({ children, user }: { children: ReactNode; user?: Parameters<typeof Header>[0]['user'] }) {
   return (
-    <div data-testid="production-app-shell" data-shell="persistent" className="flex h-dvh min-w-0 overflow-hidden bg-slate-50 text-slate-900">
+    <div data-testid="production-app-shell" data-shell="persistent" className="ada-pwa-shell flex h-dvh min-w-0 overflow-hidden bg-slate-50 text-slate-900">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header user={user} />

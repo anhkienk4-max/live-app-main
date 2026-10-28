@@ -416,7 +416,7 @@ export function ReportsList() {
         </div>
       )}
       <p className="text-xs text-muted-foreground">{t('currentPage')}</p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div data-testid="reports-mobile-metrics" className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric title={t('reportCount')} value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
         <Metric title={t('confirmedRevenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
         <Metric title={t('averageOrderValue')} value={formatCurrency(confirmed.reduce((sum, report) => sum + (typeof report.normalized_metrics?.average_order_value === 'number' ? report.normalized_metrics.average_order_value : report.average_order_value ?? (report.orders ? (reportRevenue(report) ?? 0) / report.orders : 0)), 0))} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
@@ -427,17 +427,17 @@ export function ReportsList() {
 
       <CommandToolbar label={t('filters')} className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-1 items-center gap-2">
-            <div className="relative max-w-sm flex-1">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center">
+            <div className="relative w-full min-w-0 flex-1 md:max-w-sm">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9 bg-background" value={draftFilters.search}
                 onChange={event => updateFilters(current => ({ ...current, search: event.target.value }))}
                 onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyFilters() } }}
                 placeholder={t('reportSearchPlaceholder')} />
             </div>
-            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}{appliedFilterChips.length > 0 ? <span aria-label="Số bộ lọc đang áp dụng" className="ml-1.5 rounded-full bg-muted px-1.5 text-xs">{appliedFilterChips.length}</span> : null}</Button>
+            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="w-full shrink-0 min-[420px]:w-auto"><Filter className="mr-2 h-4 w-4" />{t('filters')}{appliedFilterChips.length > 0 ? <span aria-label="Số bộ lọc đang áp dụng" className="ml-1.5 rounded-full bg-muted px-1.5 text-xs">{appliedFilterChips.length}</span> : null}</Button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="default" size="sm" onClick={applyFilters} disabled={!hasUnappliedChanges || invalidDraftDates} data-testid="reports-apply-filters">Áp dụng</Button>
             <Button variant="outline" size="icon" onClick={resetFilters} title={t('resetFilters')} aria-label={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
             {currentUser && hasPermission(currentUser, 'reports.export') && (
@@ -856,12 +856,12 @@ export function ReportsList() {
 function Metric({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
   return (
     <Card className="shadow-none">
-      <CardContent className="flex items-center p-4">
-        <div className="flex-1 space-y-1">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
+      <CardContent className="flex min-w-0 items-start gap-2 p-3 md:items-center md:p-4">
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="break-words text-xs font-medium leading-snug text-muted-foreground md:text-sm">{title}</p>
+          <p className="break-all text-[15px] font-bold tracking-tight tabular-nums md:text-2xl">{value}</p>
         </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted/50">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/50 md:h-10 md:w-10">
           {icon}
         </div>
       </CardContent>
