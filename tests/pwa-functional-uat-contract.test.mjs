@@ -22,7 +22,7 @@ test('Functional UAT requires real 3-role credentials, pinned Preview, and read-
   assert.ok(runner.includes('Get-SecretInput'))
   assert.ok(runner.includes('ZeroFreeBSTR'))
   assert.ok(runner.includes('validate-pwa-functional-uat.mjs'))
-  assert.ok(spec.includes("PINNED_PREVIEW_SHA = '0e1c82cf0c60a73be6916029b457732f8960b9ee'"))
+  assert.ok(spec.includes("PINNED_PREVIEW_SHA = '42e93633a4ce16eaabe4b98bee2e090ca2df21e6'"))
   assert.ok(spec.includes("x-vercel-protection-bypass"))
   assert.ok(spec.includes("requestUrl.origin !== expectedOrigin"))
   assert.ok(runner.includes("-WithVercelBypass") || runner.includes("WithVercelBypass"))

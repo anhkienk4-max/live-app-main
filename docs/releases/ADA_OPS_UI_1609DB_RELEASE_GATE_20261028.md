@@ -87,3 +87,12 @@ In the Core/UI candidate, `/profile` and `/notifications` routes exist and Heade
 The UI-only fix adds each of these routes **exactly once** to Overview on all roles without changing role permissions. Mobile dashboard shows a `Thông báo` tile for all roles and a `Hồ sơ` tile for Admin; Leader/Member's existing `/profile` tile now reads `Hồ sơ`. Mobile QA asserts 6 Admin or 5 Leader/Member quick links, paths and More drawer entries. Unit `tests/e1-role-ux.test.ts` runs in CI with role uniqueness contract. No API, auth, RLS or data services changed.
 
 Release remains Draft **NO-GO** pending exact-commit CI, new branch Preview, real-role Staging UAT and attestation for the changed live Production alias.
+
+## 2026-10-29 Overview navigation Preview READY
+
+- **App SHA**: `42e93633a4ce16eaabe4b98bee2e090ca2df21e6` (includes direct `/profile` and `/notifications` Overview links in Admin, Leader, Member navigation, plus role-safe mobile dashboard shortcuts).
+- **UI CI**: https://github.com/anhkienk4-max/live-app-main/actions/runs/40841634131 (SUCCESS).
+- **P0 PostgreSQL CI**: https://github.com/anhkienk4-max/live-app-main/actions/runs/40841642679 (SUCCESS).
+- **Protected Preview**: `dpl_D5shdAgzARUdvCCJiGRcujE2pahK`, https://livestream-ops-demo-b0ffgp44g-livestream2.vercel.app, **READY**, target `null`. Exact GitSource SHA `42e93633a4ce16eaabe4b98bee2e090ca2df21e6`.
+- **3-role UAT**: runner, suite, contract and runbook now pinned to this Preview and SHA, still **NOT EXECUTED** with real credentials. Keep Preview protection on.
+- **Production hold**: aliased Production observed as `dpl_6KfC7VLRAwHkTcGnFyqhv6gkucqL`; no promotion, alias assignment or DB change was performed. The older 29-Oct Vercel snapshot describes a previous deployment, not this alias. Live source parity remains independent blocker.
