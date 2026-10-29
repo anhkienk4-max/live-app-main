@@ -237,8 +237,7 @@ export function DashboardAnalytics() {
         count: (prev?.count ?? 0) + (row.reportCount ?? 0)
       })
     }
-    return [...groups.values()].sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))
-  }
+    return [...groups.values()].sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))  }
 
   const userMap = new Map(users.map(user => [user.id, user]))
   const workload = snapshot.workload.filter(row => userMap.has(row.user_id)).map(row => ({
@@ -449,7 +448,7 @@ export function DashboardAnalytics() {
         {primaryMetrics.map(metric => (
           <Metric
             key={metric.key}
-            title={t(metric.key === 'revenue' ? 'confirmedRevenue' : metric.key)}
+            title={metric.key === 'revenue' ? t('confirmedRevenue') : metric.label}
             value={display(biMetricValue(totals as unknown as Record<string, unknown>, metric.key), metric.unit)}
             note={compare ? delta(metric.key) + ' ' + t('previousPeriod') : metric.source}
           />
@@ -477,8 +476,7 @@ export function DashboardAnalytics() {
                 <div key={metric.key}>
                   <strong className="text-slate-700">{metric.label}</strong>
                   <p className="text-[11px] text-slate-500">{metric.source}</p>
-                </div>
-              ))}
+                </div>              ))}
             </div>
             <p className="mt-2 text-[11px] text-slate-400">
               * Dữ liệu chỉ tính từ báo cáo ca đã xác nhận (confirmed). Giá trị chưa phát sinh hiển thị là &quot;—&quot;; số 0 hợp lệ được giữ nguyên.
@@ -512,7 +510,6 @@ export function DashboardAnalytics() {
                 <span className="font-medium text-slate-500 hidden sm:inline">{tr('metric', 'Chỉ số', 'Metric')}:</span>
                 <select
                   aria-label={tr('metric', 'Chỉ số', 'Metric')} data-testid="bi-metric-selector"
-                  data-testid="bi-metric-selector"
                   value={selectedMetric}
                   onChange={e => {
                     const nextMetric = e.target.value as MetricKey
@@ -717,8 +714,7 @@ export function DashboardAnalytics() {
                       <span className="shrink-0 text-right">
                         {display(item.revenue, 'currency')}
                         {share !== null ? ' (' + share.toFixed(1) + '%)' : ''}
-                      </span>
-                    </div>
+                      </span>                    </div>
                     {share !== null && (
                       <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                         <div className="h-full rounded-full bg-indigo-600" style={{ width: share + '%' }} />
