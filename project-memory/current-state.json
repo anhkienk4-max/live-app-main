@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "26c224859ac6b640ee29cf5bc203edb88ae6563a",
+    "head": "064306a8a7bedc8d91a7edc4b85630af138673e3",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -48,6 +48,7 @@
       "app/(dashboard)/staff/page.tsx",
       "app/(dashboard)/staffing/page.tsx",
       "app/(dashboard)/storage/page.tsx",
+      "app/(dashboard)/storage/resources/page.tsx",
       "app/(dashboard)/storage/setup/page.tsx",
       "app/(dashboard)/swaps/page.tsx",
       "app/(dashboard)/workforce/page.tsx",
@@ -76,6 +77,7 @@
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
       "app/api/staff/invite/route.ts",
+      "app/api/storage-resources/route.ts",
       "app/api/workforce/actual/route.ts",
       "app/api/workforce/attendance-import/route.ts",
       "app/api/workforce/attendance-photo-review/route.ts",
@@ -96,14 +98,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 68,
-        "components": 173,
-        "lib": 254,
-        "scripts": 26,
-        "supabase": 113,
-        "tests": 278
+        "app": 70,
+        "components": 174,
+        "lib": 257,
+        "scripts": 29,
+        "supabase": 116,
+        "tests": 284
       },
-      "total": 912
+      "total": 930
     },
     "tests": {
       "files": [
@@ -268,6 +270,12 @@
         "tests/rc19-staffing-failclosed.test.ts",
         "tests/rc19-staffing-refresh-contract.test.ts",
         "tests/rc19-staffing-role-filter.test.ts",
+        "tests/rc19-sto01-storage-seed-postgres17.test.ts",
+        "tests/rc19-sto01-storage-seed-preflight.test.ts",
+        "tests/rc19-sto02-api-errors.test.ts",
+        "tests/rc19-sto02-migration-policy.test.ts",
+        "tests/rc19-sto02-resource-registry-postgres17.test.ts",
+        "tests/rc19-sto02-resource-validation.test.ts",
         "tests/rc19-storage-scoped-search.test.ts",
         "tests/rc19-storage-security-patch.test.ts",
         "tests/rc19-swap-exchange-page.test.ts",
@@ -333,7 +341,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 225
+      "count": 231
     },
     "migrations": {
       "files": [
@@ -444,5 +452,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-29T22:02:06+07:00"
+  "synced_at": "2026-10-29T22:48:06+07:00"
 }
