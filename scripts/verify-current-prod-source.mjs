@@ -52,3 +52,5 @@ console.log(JSON.stringify({listed:manifest.files.length,trackedFiles,matched,te
 if(recordedDocDrift.length!==knownDocDrift.size){console.error('NO-GO unexpected metadata drift count');process.exitCode=1}
 if(recordedDocDrift.length)console.warn('SOURCE NOT FULLY IDENTICAL: two generated metadata files differ; staging release requires separate approval: '+JSON.stringify(recordedDocDrift))
 if(errors.length){console.error('NO-GO executable/tracked source mismatch: '+JSON.stringify(errors.slice(0,50)));process.exitCode=1}
+
+console.warn('HISTORICAL ONLY: this verifier checks 28 Oct deployment dpl_12GW7ZnV1gw2KmQpXmJtHFBAbKbA. It does not attest current live dpl_5eqzn3dHR9pKnnna8MvBY2F7AnMX. Release remains NO-GO pending independent full-source parity.')

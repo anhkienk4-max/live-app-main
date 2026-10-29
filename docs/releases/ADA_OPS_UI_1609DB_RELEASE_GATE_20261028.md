@@ -42,3 +42,13 @@ CI initially failed immutable source attestation: 676/678 visible tracked files 
 5. Stage Production with domain assignment explicitly suppressed, inspect the exact staged build and prepare rollback, recheck the live alias immediately before promotion, and promote only with owner approval.
 
 This is an evidence update to the draft PR's release gate only; it does not change UI/runtime code, Supabase, CI secrets, or Production traffic.
+
+## 2026-10-29 RC19 Core-source reconciliation (read-only evidence)
+
+The live deployment remains `dpl_5eqzn3dHR9pKnnna8MvBY2F7AnMX` on `ops5729.top`; a separate READY production-target build `dpl_6KfC7VLRAwHkTcGnFyqhv6gkucqL` has **no production aliases**. Do not confuse readiness with promotion.
+
+The exact deployed raw SHA-1 of `lib/services/operationalReferences.ts` is `62f9e8113f076a5413efa798c550941382b6ebee`. Its bytes are matched by GitHub branch `release/rc19-core-2026-11-01` at commit `1befe23bea9380dac37061a7132ac38143cf678b`. This branch is three commits ahead of `1609db684de290e2a49f4c790f8ecdf3d1e9e461`; differences are solely the runtime cache file, two generated memory files, a test manifest and a new operational-reference cache test. These five paths do not overlap the 54-file approved UI PR #138 patch.
+
+A read-only comparison of the *visible* runtime paths of the aliased live deployment and the separate unaliased build found no changed shared `app/`, `components/`, `lib/` or `supabase/` files. This is **partial inventory evidence, not a full deploy-to-Git attestation**. The CLI upload exposed an embedded `.worktrees/` directory in one snapshot; the unaliased build did not show that directory in the visible listing. Review source-upload exclusions before a release.
+
+**Candidate merge plan:** combine the approved UI branch with Core base `1befe23bea9380dac37061a7132ac38143cf678b` via an auditable two-parent merge commit without overwriting the Core changes. Retarget PR #138 to `release/rc19-core-2026-11-01`, preserving the same branch-scoped Staging Preview environment. CI scope checks must now diff from `1befe23bea9380dac37061a7132ac38143cf678b`. Old 28 Oct source attestation stays historical and cannot authorize a release. The new Preview needs a confirmed deployment SHA and real Admin/Leader/Member Staging UAT. Do not promote Production.

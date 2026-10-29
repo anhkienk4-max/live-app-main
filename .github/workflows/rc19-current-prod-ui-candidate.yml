@@ -1,4 +1,4 @@
-name: ADA OPS UI on current live RC19 base (NO PRODUCTION DEPLOY)
+name: ADA OPS UI on RC19 Core baseline (NO PRODUCTION DEPLOY)
 on:
   push:
     branches:
@@ -23,7 +23,7 @@ jobs:
           corepack prepare pnpm@10.26.0 --activate
       - name: Install locked deps
         run: pnpm install --frozen-lockfile
-      - name: Current production source provenance (partial Vercel inventory)
+      - name: Historical 28 Oct provenance (NOT live source parity)
         run: node scripts/verify-current-prod-source.mjs
       - name: UI boundary and role authorization guard
         run: node scripts/verify-current-prod-ui-scope.mjs
@@ -35,7 +35,7 @@ jobs:
         run: pnpm exec tsc --noEmit --incremental false
       - name: Scoped ESLint
         run: |
-          git diff --name-only 1609db684de290e2a49f4c790f8ecdf3d1e9e461 HEAD | grep -E '\.(tsx?|mjs)$' | tr '\n' '\0' | xargs -0 -r pnpm exec eslint
+          git diff --name-only 1befe23bea9380dac37061a7132ac38143cf678b HEAD | grep -E '\.(tsx?|mjs)$' | tr '\n' '\0' | xargs -0 -r pnpm exec eslint
       - name: Production build without credentials
         env:
           NEXT_PUBLIC_SUPABASE_URL: ''
@@ -63,4 +63,4 @@ jobs:
           if-no-files-found: warn
       - name: Production release gate
         if: always()
-        run: echo 'NO PRODUCTION DEPLOY. Exact latest deployment, branch-scoped Staging env and real-role smoke are mandatory before promotion.' >> "$GITHUB_STEP_SUMMARY"
+        run: echo 'NO PRODUCTION DEPLOY. The old 28 Oct provenance is historical only; live CLI source parity, fresh Core-based preview SHA, branch-scoped Staging UAT and release approval are required.' >> "$GITHUB_STEP_SUMMARY"
