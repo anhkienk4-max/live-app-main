@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { addDays, addMonths, addWeeks, format, parseISO } from 'date-fns'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { PAGE_SIZES, type PageSize } from '@/lib/utils/pagination'
 import { getAuthMode } from '@/lib/auth/authMode'
@@ -8,7 +9,7 @@ import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/se
 import { readTransientData } from '@/lib/services/transientDataCache'
 import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2, LayoutGrid, Table as TableIcon } from 'lucide-react'
+import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2, LayoutGrid, Table as TableIcon, List as ListIcon, CalendarDays } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
   reportImageService,
@@ -50,7 +51,10 @@ import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { HistoryPagination } from '@/components/ui/history-pagination'
-import { reportQueueState, sortReportableShifts } from '@/lib/utils/reportQueue'
+import { isConfirmedReportForKpi, reportQueueDisplayState, reportQueuePageRange, sortReportableShifts } from '@/lib/utils/reportQueue'
+import { collectAuthorizedReportCalendar, reportCalendarWindow, type ReportWorkspaceView, type ReportCalendarScale, type ReportCalendarEntry } from '@/lib/utils/reportMultiView'
+import { businessLocalDate } from '@/lib/utils/shiftUtils'
+import { CompactReportRows, ReportCalendarGrid } from './ReportsMultiView'
 import { clearReportShiftQuery, loadReportTarget, type ReportTarget } from '@/lib/utils/reportTarget'
 
 type Filters = {
@@ -106,7 +110,18 @@ export function ReportsList() {
   const [candidateShifts, setCandidateShifts] = React.useState<Shift[]>([])
   const [candidateReports, setCandidateReports] = React.useState<Report[]>([])
   const [queueTotal, setQueueTotal] = React.useState(0)
-  const [createdViewMode, setCreatedViewMode] = React.useState<'table' | 'cards'>('cards')
+  // View and Calendar date live in the URL so back/forward and deep links are authoritative.
+  const modeParam = searchParams.get('reports_view')
+  const createdViewMode: ReportWorkspaceView = modeParam === 'table' || modeParam === 'list' || modeParam === 'calendar' ? modeParam : 'cards'
+  const scaleParam = searchParams.get('reports_calendar_scale')
+  const calendarScale: ReportCalendarScale = scaleParam === 'week' || scaleParam === 'day' ? scaleParam : 'month'
+  const requestedCalendarDate = searchParams.get('reports_calendar_date') || businessLocalDate()
+  const calendarDate = reportCalendarWindow(requestedCalendarDate, 'day') ? requestedCalendarDate : businessLocalDate()
+  const setCreatedViewMode = (view: ReportWorkspaceView) => navigate({ reports_view: view === 'cards' ? null : view })
+  const [calendarData, setCalendarData] = React.useState<{ entries: ReportCalendarEntry[]; queueTotal: number; reportTotal: number; missingShiftCount: number } | null>(null)
+  const [calendarLoading, setCalendarLoading] = React.useState(false)
+  const [calendarError, setCalendarError] = React.useState<unknown>(null)
+  const [calendarReload, setCalendarReload] = React.useState(0)
   const [filters, setFilters] = React.useState<Filters>(() => {
     if (typeof window === 'undefined' || !window.location || !window.location.search) return emptyFilters
     const p = new URLSearchParams(window.location.search)
@@ -124,7 +139,8 @@ export function ReportsList() {
       metricsStatuses: p.get('metricsStatuses')?.split(',').filter(Boolean) || [],
     }
   })
-  const [draftFilters, setDraftFilters] = React.useState<Filters>(emptyFilters)
+  const [draftFilters, setDraftFilters] = React.useState<Filters>(filters)
+  const lastUrlFilters = React.useRef(JSON.stringify(filters))
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [showForm, setShowForm] = React.useState(false)
@@ -147,21 +163,50 @@ export function ReportsList() {
     brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
     hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds,
     reportStatuses: filters.reportStatuses, metricsStatuses: filters.metricsStatuses })
+  // Apply/Reset use exactly the same URL-sourced filter contract in every view.
+  const syncFilterUrl = React.useCallback((value: Filters) => {
+    const keys: (keyof Filters)[] = ['search','start','end','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']
+    const changes: Record<string,string|null> = { reports_page: null }
+    for (const key of keys) {
+      const field = value[key]
+      changes[key] = Array.isArray(field) ? (field.length ? field.join(',') : null) : (field || null)
+    }
+    navigate(changes)
+  }, [navigate])
+  React.useEffect(() => {
+    const p = new URLSearchParams(searchParams.toString())
+    const fromUrl: Filters = {
+      search: p.get('search') || '', start: p.get('start') || '', end: p.get('end') || '',
+      brandIds: p.get('brandIds')?.split(',').filter(Boolean) || [], platformIds: p.get('platformIds')?.split(',').filter(Boolean) || [],
+      campaignIds: p.get('campaignIds')?.split(',').filter(Boolean) || [], hostIds: p.get('hostIds')?.split(',').filter(Boolean) || [],
+      supportIds: p.get('supportIds')?.split(',').filter(Boolean) || [], technicalIds: p.get('technicalIds')?.split(',').filter(Boolean) || [],
+      reportStatuses: p.get('reportStatuses')?.split(',').filter(Boolean) || [], metricsStatuses: p.get('metricsStatuses')?.split(',').filter(Boolean) || [],
+    }
+    const encoded = JSON.stringify(fromUrl)
+    if (encoded !== lastUrlFilters.current) {
+      lastUrlFilters.current = encoded
+      setFilters(fromUrl)
+      setDraftFilters(fromUrl)
+      setQueuePage(1)
+    }
+  }, [searchParams])
   const updateFilters = React.useCallback((next: React.SetStateAction<Filters>) => {
     setDraftFilters(next)
   }, [])
   const applyFilters = React.useCallback(() => {
     if (draftFilters.start && draftFilters.end && draftFilters.start > draftFilters.end) return
     setFilters(draftFilters)
+    syncFilterUrl(draftFilters)
     setReportPage(1)
     setQueuePage(1)
-  }, [draftFilters, setReportPage])
+  }, [draftFilters, setReportPage, syncFilterUrl])
   const resetFilters = React.useCallback(() => {
     setDraftFilters(emptyFilters)
     setFilters(emptyFilters)
+    syncFilterUrl(emptyFilters)
     setReportPage(1)
     setQueuePage(1)
-  }, [setReportPage])
+  }, [setReportPage, syncFilterUrl])
   const hasUnappliedChanges = JSON.stringify(draftFilters) !== JSON.stringify(filters)
   const invalidDraftDates = Boolean(draftFilters.start && draftFilters.end && draftFilters.start > draftFilters.end)
   const appliedFilterChips = React.useMemo(() => {
@@ -182,6 +227,7 @@ export function ReportsList() {
     const next = { ...filters, [key]: Array.isArray(filters[key]) ? [] : '' } as Filters
     setDraftFilters(next)
     setFilters(next)
+    syncFilterUrl(next)
     setReportPage(1)
     setQueuePage(1)
   }
@@ -347,6 +393,62 @@ export function ReportsList() {
     }
   }
 
+  const calendarKey = identity + ':' + calendarScale + ':' + calendarDate + ':' + encodedFilters + ':' + calendarReload
+  const appliedCalendarFilters = React.useMemo(() => JSON.parse(encodedFilters), [encodedFilters])
+  React.useEffect(() => {
+    if (createdViewMode !== 'calendar' || !currentUser || userLoading) return
+    const controller = new AbortController()
+    let active = true
+    // Schedule loading state outside the synchronous effect body (React 19 effect rule).
+    void Promise.resolve().then(() => {
+      if (!active) return
+      setCalendarLoading(true)
+      setCalendarError(null)
+      setCalendarData(null)
+    })
+    void collectAuthorizedReportCalendar(calendarDate, calendarScale, appliedCalendarFilters, {
+      getQueuePage: (query, signal) => getReportObligationPage(query, signal),
+      getReportsPage: (query, signal) => reportService.getFilteredPage(query, signal),
+      getShiftsByIds: ids => shiftService.getByIds(ids),
+    }, controller.signal).then(async result => {
+      if (!active || controller.signal.aborted) return
+      if (getAuthMode() === 'supabase') {
+        const actor = await currentUserService.getCurrent()
+        if (!actor || operationalReferenceIdentity(actor) !== operationalReferenceIdentity(currentUser)) throw new Error('LIST_IDENTITY_CHANGED')
+      }
+      if (active && !controller.signal.aborted) setCalendarData(result)
+    }).catch(error => {
+      if (active && !controller.signal.aborted) setCalendarError(error)
+    }).finally(() => {
+      if (active && !controller.signal.aborted) setCalendarLoading(false)
+    })
+    return () => { active = false; controller.abort() }
+  // The exact view/date/actor/filters are part of this key; switching view cancels requests.
+  }, [calendarKey, createdViewMode, currentUser, userLoading, calendarDate, calendarScale, appliedCalendarFilters])
+  const navigateCalendar = (direction: 'previous' | 'today' | 'next') => {
+    const next = direction === 'today' ? businessLocalDate() : format(
+      calendarScale === 'month' ? addMonths(parseISO(calendarDate), direction === 'next' ? 1 : -1) :
+      calendarScale === 'week' ? addWeeks(parseISO(calendarDate), direction === 'next' ? 1 : -1) :
+      addDays(parseISO(calendarDate), direction === 'next' ? 1 : -1), 'yyyy-MM-dd')
+    navigate({ reports_calendar_date: next })
+  }
+  const openCalendarEntry = (entry: ReportCalendarEntry) => {
+    setTargetedShift(entry.shift)
+    const report = entry.report
+    if (!report) {
+      if (currentUser && hasPermission(currentUser, 'reports.submit')) {
+        setEditingReport(undefined); setInitialShiftId(entry.shift.id); setShowForm(true)
+      }
+      return
+    }
+    const state = reportQueueDisplayState(report)
+    if ((state === 'draft' || state === 'reopened') && currentUser && hasPermission(currentUser, 'reports.submit')) {
+      setEditingReport(report); setInitialShiftId(entry.shift.id); setShowForm(true)
+    } else {
+      setEditingReport(undefined); setShowForm(false); setSelectedReport(report)
+    }
+  }
+
   const shiftById = React.useMemo(() => new Map(shifts.map(shift => [shift.id, shift])), [shifts])
   const nameById = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || '—' : '—'
@@ -371,8 +473,17 @@ export function ReportsList() {
 
   const filteredReports = reports
 
-  const confirmed = filteredReports.filter(report => report.metrics_confirmed)
+  // Page-scoped financial KPIs only use reports with fully confirmed status AND metrics.
+  const confirmed = filteredReports.filter(isConfirmedReportForKpi)
   const totalRevenue = confirmed.reduce((sum, report) => sum + (reportRevenue(report) ?? 0), 0)
+  const confirmedOrders = confirmed.reduce((sum, report) => sum + (report.orders ?? 0), 0)
+  const averageOrderValue = confirmedOrders > 0 ? totalRevenue / confirmedOrders : null
+  const queueRange = reportQueuePageRange(queueTotal, queuePage, queuePageSize, pagedQueue.length)
+  const queueScope = [
+    filters.start || filters.end ? `Ngày ca: ${filters.start || 'không giới hạn'} đến ${filters.end || 'không giới hạn'}` : 'Ngày ca: toàn bộ thời gian',
+    currentUser?.system_permission === 'member' ? 'Phạm vi: ca được phân công hoặc báo cáo do bạn gửi' : 'Phạm vi: theo quyền tài khoản',
+    appliedFilterChips.length ? `${appliedFilterChips.length} bộ lọc đang áp dụng` : 'Không áp dụng bộ lọc bổ sung',
+  ].join(' · ')
   const exportContext = {
     historicalShiftContexts:historicalContexts,
     shifts,
@@ -411,19 +522,19 @@ export function ReportsList() {
     <div className="space-y-6">
       {currentUser && hasPermission(currentUser, 'reports.submit') && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
-          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
+          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? `${completedShifts.length} ca đang hiển thị trong trang hàng đợi, không phải tổng ca có thể tạo Draft` : t('noReportDraftReady')}</p></div>
           <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
         </div>
       )}
-      <p className="text-xs text-muted-foreground">{t('currentPage')}</p>
+      <p className="text-xs text-muted-foreground">KPI tài chính và báo cáo chưa xác nhận: trang Báo cáo hiện tại · {queueScope}. Tổng báo cáo và tổng ca chờ xử lý: mọi trang theo bộ lọc.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric title={t('reportCount')} value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
-        <Metric title={t('confirmedRevenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
-        <Metric title={t('averageOrderValue')} value={formatCurrency(confirmed.reduce((sum, report) => sum + (typeof report.normalized_metrics?.average_order_value === 'number' ? report.normalized_metrics.average_order_value : report.average_order_value ?? (report.orders ? (reportRevenue(report) ?? 0) / report.orders : 0)), 0))} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
-        <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
+        <Metric title="Tổng báo cáo theo bộ lọc" value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
+        <Metric title="Doanh thu đã xác nhận · trang này" value={confirmed.length ? formatCurrency(totalRevenue) : '—'} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
+        <Metric title="Giá trị đơn trung bình · trang này" value={averageOrderValue === null ? '—' : formatCurrency(averageOrderValue)} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
+        <Metric title="Báo cáo chưa xác nhận · trang này" value={filteredReports.filter(report => !isConfirmedReportForKpi(report)).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
 
-      {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">{t('reportDraftCandidates', { count: completedShifts.length })}</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
+      {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">Đang hiển thị {completedShifts.length} ca trong trang hàng đợi, không phải toàn bộ ca chưa có báo cáo</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
 
       <CommandToolbar label={t('filters')} className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -502,9 +613,11 @@ export function ReportsList() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 id="needs-report-heading" className="text-lg font-semibold">{t('needsReport')}</h2>
-            <p className="text-sm text-muted-foreground">{t('reportDraftPolicy')}</p>
+            <p className="text-sm text-muted-foreground">{t('reportDraftPolicy')} · Gồm ca chưa lập báo cáo, Draft, In Review hoặc Reopened chưa hoàn tất. Đơn vị: ca, không phải bản ghi.</p>
+            <p className="text-xs text-muted-foreground" data-testid="report02-queue-scope">{queueScope}</p>
+            <p className="text-xs text-muted-foreground" data-testid="report02-queue-page-range">{queueTotal ? `Hiển thị ca ${queueRange.start}–${queueRange.end} trong tổng ${queueTotal} ca` : 'Không có ca chờ xử lý trong phạm vi'}</p>
           </div>
-          <Badge variant="secondary">{queueTotal}</Badge>
+          <Badge variant="secondary" aria-label="Tổng ca chờ xử lý theo bộ lọc">{queueTotal}</Badge>
         </div>
         <Card className="overflow-hidden shadow-none">
           {pagedQueue.length === 0 ? (
@@ -519,18 +632,26 @@ export function ReportsList() {
               </div>
               {pagedQueue.map(shift => {
                 const report = reportByShift.get(shift.id)
-                const state = reportQueueState(report)
+                const state = reportQueueDisplayState(report)
+                const readOnlyQueueItem = state === 'in_review' || state === 'unconfirmed' || state === 'confirmed'
+                const stateLabel = state === 'not_started' ? t('notStarted')
+                  : state === 'in_review' ? t('inReview')
+                  : state === 'reopened' ? t('reopened')
+                  : state === 'unconfirmed' ? 'Chưa xác nhận'
+                  : state === 'confirmed' ? t('confirmed')
+                  : t('draft')
                 return <div key={shift.id} className="grid gap-3 border-b px-4 py-3 last:border-b-0 md:grid-cols-7 md:items-center">
                   <div><p className="font-medium">{shift.date}</p><p className="text-xs text-muted-foreground">{shift.start_time}–{shift.end_time}</p></div>
                   <span className="truncate">{nameById(brands, shift.brand_id)}</span>
                   <span className="truncate">{nameById(campaigns, shift.campaign_id)}</span>
                   <span className="truncate">{nameById(platforms, shift.platform_id)}</span>
                   <Badge variant="outline" className="w-fit">{t(shift.status)}</Badge>
-                  <Badge variant="secondary" className="w-fit">{state === 'draft' ? t('draft') : t('notStarted')}</Badge>
-                  <Button type="button" size="sm" variant={state === 'draft' ? 'secondary' : 'default'} onClick={() => {
-                    if (report) { setEditingReport(report); setShowForm(true) }
+                  <div className="flex flex-col gap-1"><Badge variant="secondary" className="w-fit">{stateLabel}</Badge>{report && report.metrics_confirmed !== true && <span className="text-xs text-muted-foreground">Số liệu chưa xác nhận</span>}</div>
+                  <Button type="button" size="sm" variant={state === 'not_started' ? 'default' : 'secondary'} onClick={() => {
+                    if (report && readOnlyQueueItem) { setSelectedReport(report); setShowForm(false) }
+                    else if (report) { setEditingReport(report); setShowForm(true) }
                     else { setInitialShiftId(shift.id); setShowForm(true) }
-                  }}>{state === 'draft' ? t('continueReport') : t('createFinalReport')}</Button>
+                  }}>{readOnlyQueueItem ? t('viewDetails') : state === 'not_started' ? t('createFinalReport') : t('continueReport')}</Button>
                 </div>
               })}
               <HistoryPagination page={queuePage} pageSize={queuePageSize} total={queueTotal} onPageChange={setQueuePage} onPageSizeChange={size => {
@@ -551,7 +672,7 @@ export function ReportsList() {
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">Danh sách các báo cáo livestream đã lập, cập nhật chỉ số hoặc lưu trữ theo quyền phân cấp.</p>
           </div>
-          <div className="flex items-center gap-1.5 self-start sm:self-auto">
+          <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
             <Button
               type="button"
               variant={createdViewMode === 'cards' ? 'secondary' : 'outline'}
@@ -576,10 +697,51 @@ export function ReportsList() {
               <TableIcon className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Chế độ bảng</span>
             </Button>
+            <Button type="button" variant={createdViewMode === 'list' ? 'secondary' : 'outline'} size="sm"
+              onClick={() => setCreatedViewMode('list')} className="h-8 gap-1.5 text-xs" aria-label="Chế độ danh sách">
+              <ListIcon className="h-3.5 w-3.5" /><span className="hidden sm:inline">Danh sách</span>
+            </Button>
+            <Button type="button" variant={createdViewMode === 'calendar' ? 'secondary' : 'outline'} size="sm"
+              onClick={() => setCreatedViewMode('calendar')} className="h-8 gap-1.5 text-xs" aria-label="Chế độ lịch">
+              <CalendarDays className="h-3.5 w-3.5" /><span className="hidden sm:inline">Lịch</span>
+            </Button>
           </div>
         </div>
-      {filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noReports')}</CardContent></Card> : (
-        createdViewMode === 'table' ? (
+      {createdViewMode !== 'calendar' && filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noReports')}</CardContent></Card> : (
+        createdViewMode === 'calendar' ? (
+          <div className="space-y-3" data-testid="reports-multiview-calendar">
+            <div className="flex flex-wrap items-center gap-2" aria-label="Độ chi tiết lịch">
+              {(['month', 'week', 'day'] as const).map(scale =>
+                <Button key={scale} type="button" size="sm" variant={calendarScale === scale ? 'secondary' : 'outline'}
+                  onClick={() => navigate({ reports_calendar_scale: scale === 'month' ? null : scale })}>
+                  {scale === 'month' ? 'Tháng' : scale === 'week' ? 'Tuần' : 'Ngày'}
+                </Button>)}
+            </div>
+            {calendarLoading && <p role="status" className="rounded-md border p-5 text-sm text-muted-foreground">Đang tải đủ dữ liệu lịch theo phạm vi quyền và khoảng ngày…</p>}
+            {!calendarLoading && Boolean(calendarError) && <div role="alert" className="space-y-2 rounded-md border border-destructive/40 p-4">
+              <p className="text-sm">Không thể tải đầy đủ dữ liệu lịch. Không hiển thị dữ liệu phân trang một phần.</p>
+              <Button type="button" variant="outline" onClick={() => setCalendarReload(v => v + 1)}>Thử lại</Button>
+            </div>}
+            {!calendarLoading && !calendarError && calendarData && <>
+              <p className="text-xs text-muted-foreground" data-testid="reports-calendar-completeness">
+                Đã tải đủ {calendarData.queueTotal} ca chờ xử lý và {calendarData.reportTotal} báo cáo theo khoảng ngày, bộ lọc và quyền hiện tại. Không sử dụng 20 ca của trang hàng đợi.
+              </p>
+              {calendarData.missingShiftCount > 0 && <p role="status" className="rounded-md border border-amber-300 p-3 text-xs text-amber-700">
+                Có {calendarData.missingShiftCount} báo cáo lịch sử không còn ngữ cảnh ca khả dụng để định vị trên lịch. Vẫn có thể xem chúng trong Bảng/Thẻ/Danh sách đã được phân quyền.
+              </p>}
+              <ReportCalendarGrid date={calendarDate} scale={calendarScale} entries={calendarData.entries} brands={brands} platforms={platforms}
+                onSelectDay={day => navigate({ reports_calendar_scale: 'day', reports_calendar_date: day })}
+                onSelectEntry={openCalendarEntry} onNavigate={navigateCalendar}/>
+            </>}
+          </div>
+        ) : createdViewMode === 'list' ? (
+          <CompactReportRows reports={filteredReports} shiftById={shiftById} brands={brands} platforms={platforms}
+            onHistorical={setSelectedHistoricalReport} onView={report => {
+              const state = reportQueueDisplayState(report)
+              if (state === 'draft' || state === 'reopened') { setEditingReport(report); setShowForm(true) }
+              else { setEditingReport(undefined); setSelectedReport(report); setShowForm(false) }
+            }}/>
+        ) : createdViewMode === 'table' ? (
           <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
             <table className="w-full text-left text-xs">
               <thead className="bg-muted/50 text-muted-foreground border-b uppercase text-[10px] tracking-wider font-semibold">
@@ -804,7 +966,7 @@ export function ReportsList() {
         </div>
         )
       )}
-      <HistoryPagination page={reportPage} pageSize={reportPageSize} total={reportTotal} onPageChange={setReportPage} onPageSizeChange={size => { setReportPageSize(size); setReportPage(1) }} />
+      {createdViewMode !== 'calendar' && <HistoryPagination page={reportPage} pageSize={reportPageSize} total={reportTotal} onPageChange={setReportPage} onPageSizeChange={size => { setReportPageSize(size); setReportPage(1) }} />}
       </section>
 
       {showForm && <ReportFormModal open={showForm} onOpenChange={open => { if (!open) closeReportModal() }} initialReport={editingReport} initialShiftId={initialShiftId} completedShifts={formShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); closeReportModal() }} />}
