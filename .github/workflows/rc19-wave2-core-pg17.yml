@@ -40,13 +40,16 @@ jobs:
           tests/rc19-staffing-role-filter.test.ts
           tests/rc19-reg02-contract.test.mjs
           tests/rc19-wave2-compatibility.test.mjs
+          tests/rc19-wave2-combined-postgres.integration.mjs
       - name: Start disposable PostgreSQL 17 databases
         run: |
           docker run --detach --rm --name ada-staffing-pg17 --network none \
             -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
           docker run --detach --rm --name ada-reg02-pg17 --network none \
             -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
-          for container in ada-staffing-pg17 ada-reg02-pg17; do
+          docker run --detach --rm --name ada-wave2-combined-pg17 --network none \
+            -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
+          for container in ada-staffing-pg17 ada-reg02-pg17 ada-wave2-combined-pg17; do
             ready=false
             for attempt in $(seq 1 30); do
               if docker exec "$container" pg_isready -U postgres -d postgres >/dev/null 2>&1; then ready=true; break; fi
@@ -64,6 +67,10 @@ jobs:
         env:
           REG02_PG_CONTAINER: ada-reg02-pg17
         run: node tests/rc19-reg02-postgres.integration.mjs
+      - name: Run sequential Wave 2 migrations and compatibility on one PG17 database
+        env:
+          WAVE2_PG_CONTAINER: ada-wave2-combined-pg17
+        run: node tests/rc19-wave2-combined-postgres.integration.mjs
       - name: Run focused Staffing contracts
         run: >-
           node --import ./tests/typescript-alias-loader.mjs --test
@@ -72,6 +79,6 @@ jobs:
           tests/rc19-staffing-failclosed.test.ts
       - name: Stop disposable PostgreSQL 17 databases
         if: always()
-        run: docker stop ada-staffing-pg17 ada-reg02-pg17 || true
+        run: docker stop ada-staffing-pg17 ada-reg02-pg17 ada-wave2-combined-pg17 || true
       - name: No deployment declaration
         run: 'echo "NO DEPLOY: disposable PostgreSQL 17 and source tests only."'
