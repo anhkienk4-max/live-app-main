@@ -187,7 +187,9 @@ console.log('MANUAL_ASSIGNMENT_AND_ROLE_SCOPED_GAPS=PASS')
 // RLS and actor authorization hold after both migrations are installed.
 assert.equal(query(as(1,"select count(*) from public.shift_registrations where shift_id='one'")),'1')
 assert.equal(filtered(1,'all',{}),'one')
-assert.match(psql(as(1,`select public.approve_shift_registration('${registrationId('support-gap',1)}',null,1);`),true),/OPERATION_NOT_ALLOWED/)
+const memberApprovalTarget = registrationId('support-gap',1)
+const memberApprovalVersion = query(`select version from public.shift_registrations where id='${memberApprovalTarget}'`)
+assert.match(psql(as(1,`select public.approve_shift_registration('${memberApprovalTarget}',null,${memberApprovalVersion});`),true),/OPERATION_NOT_ALLOWED/)
 assert.match(psql("set role anon; select * from private.filtered_shift_ids('all','{}');",true),/permission denied|42501/i)
 console.log('RLS_MEMBER_SCOPE_AND_REVIEWER_AUTHORIZATION=PASS')
 
