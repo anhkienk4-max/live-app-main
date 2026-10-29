@@ -38,6 +38,7 @@ test('backend, integration and post-main delivery disable Git auto-deploy while 
       'feat/rc16k-ui-consistency-pagination': false,
       'release/rc19-core-2026-11-01-integrated': false,
       'feat/rc19-rbac-security-20261029': false,
+      'feat/rc19-rbac02-account-overrides': false,
     } },
   })
 })
