@@ -28,12 +28,15 @@ const deployedProduction = {
   NEXT_PUBLIC_SUPABASE_URL: production, SUPABASE_URL: production,
 }
 
-test('backend, integration and post-main delivery disable Git auto-deploy while retaining Production defaults', () => {
+test('backend, integration, post-main and task branches disable Git auto-deploy while retaining Production defaults', () => {
   const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
-  assert.deepEqual(config, {
-    $schema: 'https://openapi.vercel.sh/vercel.json',
-    git: { deploymentEnabled: { 'feat/rc16-payroll-workforce-backend': false, 'integration/rc14-rc15-rc16-prod': false, 'feat/rc16k-ui-consistency-pagination': false } },
-  })
+  assert.equal(config.$schema, 'https://openapi.vercel.sh/vercel.json')
+  const deploymentEnabled = config.git?.deploymentEnabled
+  assert.ok(deploymentEnabled && typeof deploymentEnabled === 'object')
+  assert.equal(deploymentEnabled['feat/rc16-payroll-workforce-backend'], false)
+  assert.equal(deploymentEnabled['integration/rc14-rc15-rc16-prod'], false)
+  assert.equal(deploymentEnabled['feat/rc16k-ui-consistency-pagination'], false)
+  assert.ok(Object.values(deploymentEnabled).every((enabled: unknown) => enabled === false))
 })
 
 function rejects(env: SupabaseEnvironment, code: string, purpose: EnvironmentPurpose = 'runtime') {
