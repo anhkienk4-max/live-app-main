@@ -40,7 +40,6 @@ Registration approval remains controlled by the existing `system_settings.requir
 
 ## Current evidence
 
-- Isolated PostgreSQL 17 candidate suites: PASS on the Wave 2 integration source SHA recorded by GitHub Actions.
-- Same-database sequential migration compatibility gate: pending CI on the updated candidate.
+- The workflow `.github/workflows/rc19-wave2-core-pg17.yml` runs the candidate suites and applies Registration then Staffing on one disposable PostgreSQL 17 database. Record the exact pushed SHA and run result in the review handoff; do not infer current evidence from an earlier SHA.
 - Production backup/restore, signed-session UAT, post-commit compensation rehearsal, and Owner migration approval: **NOT VERIFIED / PENDING**.
 - No Production migration, deployment, feature-flag change, or attendance-photo upload is authorized here.
