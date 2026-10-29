@@ -27,7 +27,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "pnpm.cmd exec next dev -p 3101",
+    command: "pnpm exec next dev -p 3101",
     url: "http://127.0.0.1:3101",
     reuseExistingServer: true,
     timeout: 180_000,

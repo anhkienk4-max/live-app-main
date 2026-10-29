@@ -1,0 +1,91 @@
+name: RC19 attendance photo review PostgreSQL 17 proposal gate
+
+on:
+  push:
+    branches: [fix/rc19-p2-04-attendance-photo-review]
+    paths:
+      - 'supabase/proposals/rc19-attendance-photo-review/20261029140000_rc19_p2_04_attendance_photo_review.sql'
+      - 'supabase/proposals/rc19-attendance-photo-review/manifest.json'
+      - 'tests/rc19-attendance-photo-review*'
+      - 'tests/fixtures/rc19_attendance_photo_review_base.sql'
+      - '.github/workflows/rc19-attendance-photo-review-pg17.yml'
+      - 'vercel.json'
+      - 'tests/rc16-environment-security.test.ts'
+  pull_request:
+    branches: [integration/rc19-wave2-core]
+    paths:
+      - 'supabase/proposals/rc19-attendance-photo-review/20261029140000_rc19_p2_04_attendance_photo_review.sql'
+      - 'supabase/proposals/rc19-attendance-photo-review/manifest.json'
+      - 'tests/rc19-attendance-photo-review*'
+      - 'tests/fixtures/rc19_attendance_photo_review_base.sql'
+      - '.github/workflows/rc19-attendance-photo-review-pg17.yml'
+      - 'vercel.json'
+      - 'tests/rc16-environment-security.test.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact checked out source
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Focused API and feature gate regression
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc19-attendance-photo-review.test.ts tests/rc19-self-attendance-contract.test.ts tests/rc16-environment-security.test.ts
+      - name: Scoped ESLint
+        run: pnpm exec eslint app/api/workforce/attendance-photo-review/route.ts components/features/attendance/AttendanceCorrectionPanel.tsx components/features/attendance/AttendancePhotoReviewPanel.tsx components/features/attendance/SelfAttendancePanel.tsx components/features/shifts/ShiftDetailModal.tsx lib/server/attendancePhotoReviewHandler.ts lib/server/selfAttendancePhotoHandler.ts lib/server/workforceCapabilitiesHandler.ts lib/services/workforceService.ts tests/rc19-attendance-photo-review.test.ts tests/rc19-self-attendance-contract.test.ts tests/rc16-environment-security.test.ts e2e/rc19-attendance-photo-review.spec.ts playwright.rc19-attendance-photo-review.config.ts
+      - name: Memory validation
+        run: pnpm run memory:validate
+      - name: Install Chromium for mock browser flow
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright mock review and correction flow
+        run: pnpm exec playwright test --config playwright.rc19-attendance-photo-review.config.ts --reporter=line
+      - name: Credential-free guarded Next.js production build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_SELF_ATTENDANCE_REVIEW: 'false'
+          FEATURE_SELF_ATTENDANCE_PHOTO: 'false'
+          FILE_STORAGE_ENABLED: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Start isolated PostgreSQL 17
+        run: |
+          docker run --detach --rm --name ada-rc19-attendance-review-pg17 \
+            --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
+          for attempt in $(seq 1 30); do
+            if docker exec ada-rc19-attendance-review-pg17 pg_isready -U postgres -d postgres >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          docker logs ada-rc19-attendance-review-pg17
+          exit 1
+      - name: Apply proposal and run PostgreSQL negative/atomicity checks
+        run: bash tests/rc19-attendance-photo-review-pg17.sh
+      - name: Stop disposable database
+        if: always()
+        run: docker stop ada-rc19-attendance-review-pg17 || true
+      - name: No deploy declaration
+        run: echo 'This workflow does not deploy, apply Production SQL, or change Storage/Drive.' >> "$GITHUB_STEP_SUMMARY"

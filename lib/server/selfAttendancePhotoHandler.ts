@@ -13,6 +13,7 @@ import { createFileStorageService } from '@/lib/services/fileStorageService'
 import { readFormDataBody, RequestBodyError, consumeRateLimit, rateLimitResponse } from '@/lib/server/apiSecurity'
 import { attendancePhotoFolder, attendancePhotoName } from '@/lib/utils/attendancePhotoNaming'
 import { decodeSelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
+import { isFeatureEnabled } from '@/lib/flags'
 
 const LIMIT=4*1024*1024
 const UUID=z.string().uuid()
@@ -25,6 +26,14 @@ const contextSchema=z.object({
   brand:z.string().min(1),platform:z.string().min(1),
   studio:z.string().nullable().optional(),title:z.string().nullable().optional(),
 })
+const correctionContextSchema=contextSchema.extend({
+  event_id:UUID,event:z.enum(['check_in','check_out']),previous_request_id:UUID,expected_revision:z.number().int().min(1),
+})
+type ExistingEvidence = {
+  request_id:string;shift_id:string;staff_id:string;operational_role:string;event_kind?:string
+  external_file_id:string;external_parent_id:string;file_name:string;mime_type:string
+  size_bytes:number;checksum_sha256:string
+}
 const ERROR_HEADERS={ 'Cache-Control':'no-store' }
 function failed(code:string,status:number) {
   return Response.json({ok:false,error:{code}}, {status,headers:ERROR_HEADERS})
@@ -95,7 +104,10 @@ export async function POST(request:Request) {
     const eventKind=z.enum(['check_in','check_out']).parse(form.get('event_kind')??'check_in')
     currentEventKind=eventKind
     const requestId=UUID.parse(form.get('request_id'))
+    const correctionEventId=form.has('correction_event_id')?UUID.parse(form.get('correction_event_id')):null
     const recoverOnly=form.get('recover_only')==='true'
+    if(correctionEventId&&(!isFeatureEnabled('self_attendance_review')||recoverOnly))
+      return failed('ATTENDANCE_CORRECTION_UNAVAILABLE',404)
     // The client may retry after a browser reload with no original image in
     // memory. Recovery is only permitted when the same actor already owns an
     // immutable provider object for the exact shift and role.
@@ -108,25 +120,56 @@ export async function POST(request:Request) {
       return failed('ATTENDANCE_PHOTO_REQUIRED',file instanceof File?413:400)
 
     const admin=createSupabaseAdminClient()
+    const session=await createSessionClient()
     const evidenceColumns='request_id,shift_id,staff_id,operational_role,event_kind,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256'
-    const [byRequest,byAssignment]=await Promise.all([
-      admin.from('self_attendance_photo_evidence')
-        .select(evidenceColumns).eq('request_id',requestId).maybeSingle(),
-      admin.from('self_attendance_photo_evidence')
-        .select(evidenceColumns).eq('shift_id',shiftId)
-        .eq('staff_id',actor.businessUserId).eq('operational_role',kind).eq('event_kind',eventKind).maybeSingle(),
-    ])
-    if(byRequest.error||byAssignment.error)
-      return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
-    if(byRequest.data&&
-      (byRequest.data.staff_id!==actor.businessUserId||
-       byRequest.data.shift_id!==shiftId||byRequest.data.operational_role!==kind||
-       (byRequest.data.event_kind && byRequest.data.event_kind!==eventKind)))
-      return failed('ATTENDANCE_PHOTO_REQUEST_REUSED',409)
+    let existingData:ExistingEvidence|null=null
+    let correctionContext:z.infer<typeof correctionContextSchema>|null=null
+    if(correctionEventId) {
+      const retry=await admin.from('self_attendance_photo_evidence_revisions')
+        .select('request_id,attendance_event_id,submitted_by,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256,revision')
+        .eq('request_id',requestId).maybeSingle()
+      if(retry.error)return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
+      if(retry.data) {
+        if(retry.data.attendance_event_id!==correctionEventId||retry.data.submitted_by!==actor.businessUserId)
+          return failed('ATTENDANCE_PHOTO_REQUEST_REUSED',409)
+        const {drive:priorDrive}=photoProvider()
+        const stored=await priorDrive.getMetadata(retry.data.external_file_id)
+        if(stored.id!==retry.data.external_file_id||stored.parent_ids?.[0]!==retry.data.external_parent_id||
+          stored.name!==retry.data.file_name||stored.size_bytes!==retry.data.size_bytes)
+          return failed('ATTENDANCE_PHOTO_RETRY_INTEGRITY_FAILED',409)
+        const priorBytes=await priorDrive.read(retry.data.external_file_id)
+        if(priorBytes.byteLength!==retry.data.size_bytes||
+          createHash('sha256').update(priorBytes).digest('hex')!==retry.data.checksum_sha256||
+          mimeFromBytes(priorBytes)?.mime!==retry.data.mime_type)
+          return failed('ATTENDANCE_PHOTO_RETRY_INTEGRITY_FAILED',409)
+        return Response.json({ok:true,correction:{event_id:correctionEventId,revision:retry.data.revision,replayed:true}},
+          {headers:ERROR_HEADERS})
+      }
+      const preflight=await session.rpc('get_self_attendance_photo_correction_context',{p_event_id:correctionEventId})
+      if(preflight.error)return failed('ATTENDANCE_CORRECTION_NOT_ALLOWED',403)
+      const parsed=correctionContextSchema.safeParse(preflight.data)
+      if(!parsed.success||parsed.data.event_id!==correctionEventId||parsed.data.staff_id!==actor.businessUserId||
+        parsed.data.shift_id!==shiftId||parsed.data.role!==kind||parsed.data.event!==eventKind)
+        return failed('ATTENDANCE_PHOTO_CONTEXT_INVALID',409)
+      correctionContext=parsed.data
+    } else {
+      const [byRequest,byAssignment]=await Promise.all([
+        admin.from('self_attendance_photo_evidence')
+          .select(evidenceColumns).eq('request_id',requestId).maybeSingle(),
+        admin.from('self_attendance_photo_evidence')
+          .select(evidenceColumns).eq('shift_id',shiftId)
+          .eq('staff_id',actor.businessUserId).eq('operational_role',kind).eq('event_kind',eventKind).maybeSingle(),
+      ])
+      if(byRequest.error||byAssignment.error)return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
+      if(byRequest.data&&
+        (byRequest.data.staff_id!==actor.businessUserId||byRequest.data.shift_id!==shiftId||
+         byRequest.data.operational_role!==kind||(byRequest.data.event_kind&&byRequest.data.event_kind!==eventKind)))
+        return failed('ATTENDANCE_PHOTO_REQUEST_REUSED',409)
+      existingData=byAssignment.data??byRequest.data
+    }
     // Recover a reserved photo after a page reload/network timeout. The server
-    // reuses the original request UUID without accepting a client-supplied
-    // foreign staff or photo ID, and verifies the Drive bytes below.
-    const existing={data:byAssignment.data??byRequest.data}
+    // reuses the original request UUID without accepting a client-supplied foreign photo ID.
+    const existing={data:existingData}
     const committedRequestId=existing.data?.request_id??requestId
     if(recoverOnly&&!existing.data)
       return failed('ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE',404)
@@ -148,8 +191,7 @@ export async function POST(request:Request) {
         return failed('ATTENDANCE_PHOTO_RETRY_INTEGRITY_FAILED',409)
     }
 
-    const session=await createSessionClient()
-    let prepared: z.infer<typeof contextSchema>|null=null
+    let prepared: z.infer<typeof contextSchema>|null=correctionContext
     if(!existing.data) {
       if(!(file instanceof File)||!captureSource)
         return failed('ATTENDANCE_PHOTO_REQUIRED',400)
@@ -171,15 +213,17 @@ export async function POST(request:Request) {
       }
       if(cleanBytes.byteLength<1||cleanBytes.byteLength>LIMIT)
         return failed('ATTENDANCE_PHOTO_TOO_LARGE',413)
-      const preflight=await session.rpc('get_self_attendance_photo_context',{
-        p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,
-      })
-      if(preflight.error)return failed('ATTENDANCE_PHOTO_SHIFT_NOT_ELIGIBLE',403)
-      const parsed=contextSchema.safeParse(preflight.data)
-      if(!parsed.success||parsed.data.staff_id!==actor.businessUserId||
-        parsed.data.shift_id!==shiftId||parsed.data.role!==kind)
-        return failed('ATTENDANCE_PHOTO_CONTEXT_INVALID',409)
-      prepared=parsed.data
+      if(!prepared) {
+        const preflight=await session.rpc('get_self_attendance_photo_context',{
+          p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,
+        })
+        if(preflight.error)return failed('ATTENDANCE_PHOTO_SHIFT_NOT_ELIGIBLE',403)
+        const parsed=contextSchema.safeParse(preflight.data)
+        if(!parsed.success||parsed.data.staff_id!==actor.businessUserId||
+          parsed.data.shift_id!==shiftId||parsed.data.role!==kind)
+          return failed('ATTENDANCE_PHOTO_CONTEXT_INVALID',409)
+        prepared=parsed.data
+      }
       const {root,drive:provider}=photoProvider()
       drive=provider
       // No writes outside the explicitly configured attendance root.
@@ -252,6 +296,46 @@ export async function POST(request:Request) {
         mimeFromBytes(persisted)?.mime!=='image/jpeg'||
         createHash('sha256').update(persisted).digest('hex')!==hash)
         throw new Error('ATTENDANCE_PHOTO_PROVIDER_INTEGRITY_FAILED')
+      if(correctionContext) {
+        const saved=await session.rpc('commit_self_attendance_photo_correction',{
+          p_event_id:correctionContext.event_id,
+          p_expected_revision:correctionContext.expected_revision,
+          p_previous_request_id:correctionContext.previous_request_id,
+          p_request_id:requestId,
+          p_external_file_id:uploadedId,
+          p_external_parent_id:parentId,
+          p_file_name:fileName,
+          p_size_bytes:cleanBytes.byteLength,
+          p_checksum_sha256:hash,
+          p_shift_context:contextSnapshot(prepared),
+          p_capture_source:captureSource,
+        })
+        if(saved.error) {
+          // PostgREST may lose the response after the transaction committed. Confirm
+          // by request UUID before cleanup so a valid immutable revision is not orphaned.
+          const committed=await admin.from('self_attendance_photo_evidence_revisions')
+            .select('attendance_event_id,submitted_by,external_file_id,checksum_sha256')
+            .eq('request_id',requestId).maybeSingle()
+          if(committed.error) {
+            committedMetadata=true
+            return failed('ATTENDANCE_CORRECTION_COMMIT_UNCONFIRMED',503)
+          }
+          if(committed.data) {
+            if(committed.data.attendance_event_id!==correctionContext.event_id||
+              committed.data.submitted_by!==actor.businessUserId||
+              committed.data.external_file_id!==uploadedId||committed.data.checksum_sha256!==hash)
+              throw new Error('ATTENDANCE_CORRECTION_REQUEST_REUSED')
+            committedMetadata=true
+            return Response.json({ok:true,correction:{event_id:correctionContext.event_id,replayed:true}},{headers:ERROR_HEADERS})
+          }
+          if(saved.error.code==='42501')return failed('ATTENDANCE_CORRECTION_NOT_ALLOWED',403)
+          if(['23505','23514','40001'].includes(saved.error.code??''))
+            return failed('ATTENDANCE_CORRECTION_CONFLICT',409)
+          throw new Error(saved.error.message||'ATTENDANCE_CORRECTION_METADATA_FAILED')
+        }
+        committedMetadata=true
+        return Response.json({ok:true,correction:saved.data},{headers:ERROR_HEADERS})
+      }
       const saved=await admin.from('self_attendance_photo_evidence').insert({
         request_id:requestId,shift_id:shiftId,staff_id:actor.businessUserId,
         operational_role:kind,event_kind:eventKind,provider:'google_drive',external_file_id:uploadedId,
@@ -259,8 +343,7 @@ export async function POST(request:Request) {
         size_bytes:cleanBytes.byteLength,checksum_sha256:hash,
         shift_context:contextSnapshot(prepared),capture_source:captureSource,
       }).select('request_id').single()
-      if(saved.error || saved.data?.request_id!==requestId)
-        throw new Error('ATTENDANCE_PHOTO_METADATA_FAILED')
+      if(saved.error || saved.data?.request_id!==requestId)throw new Error('ATTENDANCE_PHOTO_METADATA_FAILED')
       committedMetadata=true
     }
 
@@ -303,6 +386,8 @@ export async function GET(request:Request) {
     if(active.error)return failed('PERMISSION_DENIED',403)
     const url=new URL(request.url)
     const eventId=UUID.parse(url.searchParams.get('event_id'))
+    const revisionValue=url.searchParams.get('revision')
+    const revision=revisionValue===null?1:z.number().int().min(1).max(100).parse(Number(revisionValue))
     const admin=createSupabaseAdminClient()
     const event=await admin.from('self_attendance_events')
       .select('request_id,shift_id,staff_id,event_kind').eq('id',eventId).maybeSingle()
@@ -315,9 +400,13 @@ export async function GET(request:Request) {
       const visible=await session.from('shifts').select('id').eq('id',event.data.shift_id).maybeSingle()
       if(visible.error||!visible.data)return failed('PERMISSION_DENIED',403)
     }
-    const metadata=await admin.from('self_attendance_photo_evidence')
-      .select('external_file_id,mime_type,size_bytes,checksum_sha256')
-      .eq('request_id',event.data.request_id).maybeSingle()
+    const metadata=revision===1
+      ? await admin.from('self_attendance_photo_evidence')
+        .select('external_file_id,mime_type,size_bytes,checksum_sha256')
+        .eq('request_id',event.data.request_id).maybeSingle()
+      : await admin.from('self_attendance_photo_evidence_revisions')
+        .select('external_file_id,mime_type,size_bytes,checksum_sha256')
+        .eq('attendance_event_id',eventId).eq('revision',revision).maybeSingle()
     if(metadata.error||!metadata.data)return failed('ATTENDANCE_PHOTO_NOT_FOUND',404)
     const {drive}=photoProvider()
     const bytes=await drive.read(metadata.data.external_file_id)

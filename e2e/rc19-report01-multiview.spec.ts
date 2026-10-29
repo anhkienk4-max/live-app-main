@@ -1,0 +1,62 @@
+import { expect, test } from '@playwright/test'
+
+for (const width of [390, 768, 1440]) {
+  test('REPORT-01 four views, calendar navigation and screenshots at ' + width + 'px', async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.addInitScript(() => {
+      localStorage.setItem('livestream-ops-current-user', '1')
+      localStorage.setItem('livestream-ops-language', 'vi')
+    })
+    await page.goto('/reports')
+    await expect(page.getByTestId('command-toolbar')).toBeVisible({timeout:30000})
+    await expect(page.locator('#created-reports-heading')).toBeVisible()
+    await page.screenshot({path:'test-results/report01-before-cards-' + width + '.png',fullPage:true})
+    await page.getByRole('button',{name:'Chế độ bảng'}).click()
+    await expect(page).toHaveURL(/reports_view=table/)
+    await page.getByRole('button',{name:'Chế độ danh sách'}).click()
+    await expect(page).toHaveURL(/reports_view=list/)
+    // The URL-driven view survives a reload and back/forward history navigation.
+    await page.reload()
+    await expect(page.getByRole('button',{name:'Chế độ danh sách'})).toBeVisible()
+    await page.getByRole('button',{name:'Chế độ lịch'}).click()
+    await expect(page).toHaveURL(/reports_view=calendar/)
+    const calendar=page.getByTestId('reports-multiview-calendar')
+    await expect(calendar).toBeVisible()
+    await expect(calendar.getByText(/Đã tải đủ|Không thể tải đầy đủ/)).toBeVisible({timeout:40000})
+    await expect(page.getByTestId('reports-calendar')).toBeVisible()
+    await page.getByRole('button',{name:'Tuần',exact:true}).click()
+    await expect(page).toHaveURL(/reports_calendar_scale=week/)
+    await page.getByRole('button',{name:'Ngày',exact:true}).click()
+    await expect(page).toHaveURL(/reports_calendar_scale=day/)
+    await expect(page.getByTestId('reports-calendar-day')).toBeVisible()
+    await page.getByRole('button',{name:'Kỳ sau'}).click()
+    await expect(page).toHaveURL(/reports_calendar_date=/)
+    await page.goBack()
+    await expect(page.getByTestId('reports-calendar-day')).toBeVisible()
+    await page.getByRole('button',{name:'Tháng',exact:true}).click()
+    await expect(page.getByTestId('reports-calendar')).toBeVisible()
+    await page.screenshot({path:'test-results/report01-after-calendar-' + width + '.png',fullPage:true})
+    await page.getByRole('button',{name:'Chế độ danh sách'}).click()
+    await expect(page).toHaveURL(/reports_view=list/)
+    await page.screenshot({path:'test-results/report01-after-list-' + width + '.png',fullPage:true})
+    await page.getByRole('button',{name:'Chế độ thẻ'}).click()
+    await expect(page).not.toHaveURL(/reports_view=calendar/)
+  })
+}
+
+test('REPORT-01 view switching retains applied search and role isolation in Member mock', async ({ page }) => {
+  await page.setViewportSize({width:390,height:900})
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user','3')
+    localStorage.setItem('livestream-ops-language','vi')
+  })
+  await page.goto('/reports?search=Mars&reports_view=list')
+  await expect(page.getByTestId('command-toolbar')).toBeVisible({timeout:30000})
+  await expect(page).toHaveURL(/search=Mars/)
+  await page.getByRole('button',{name:'Chế độ lịch'}).click()
+  await expect(page).toHaveURL(/search=Mars/)
+  await expect(page.getByTestId('reports-multiview-calendar')).toBeVisible()
+  await expect(page.getByTestId('reports-calendar')).toBeVisible({timeout:40000})
+  // Mock-scoped output is checked here; actual signed-JWT/RLS UAT remains a Production release gate.
+  await expect(page.getByTestId('reports-calendar-completeness')).toContainText(/theo khoảng ngày, bộ lọc và quyền/)
+})

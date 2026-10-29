@@ -1,0 +1,130 @@
+name: RC19 payroll integration candidate gate (NO DEPLOY)
+
+on:
+  push:
+    branches: [codex/rc19-payroll-release-candidate]
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact candidate SHA
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm and dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+          pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm run type-check
+      - name: ESLint
+        run: pnpm run lint
+      - name: Payroll, Wave 2, Attendance, Reports and BI focused regression
+        run: >-
+          node --import ./tests/typescript-alias-loader.mjs --test
+          tests/rc19-my-payslip.test.ts
+          tests/rc18-payroll-ada-rulebook.test.ts
+          tests/rc18-ada-attendance-link.test.ts
+          tests/rc16-workforce-payroll.test.ts
+          tests/rc17b-payroll-autocalc.test.ts
+          tests/rc16-production-readiness.test.ts
+          tests/rc16l-api.test.ts
+          tests/rc19-attendance-photo-review.test.ts
+          tests/rc19-self-attendance-contract.test.ts
+          tests/rc19-reg02-contract.test.mjs
+          tests/rc19-wave2-compatibility.test.mjs
+          tests/rc19-report01-multiview.test.ts
+          tests/bi01-catalog.test.ts
+          tests/report-work-queue.test.ts
+          tests/rc19-report-apply-filters.test.ts
+      - name: Start isolated PostgreSQL 17 databases
+        run: |
+          docker run --detach --rm --name ada-wave2-combined-pg17 --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17-alpine
+          docker run --detach --rm --name ada-rc19-attendance-review-pg17 --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17-alpine
+          docker run --detach --rm --name rc16f-pg17-payroll-candidate --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17-alpine
+          for container in ada-wave2-combined-pg17 ada-rc19-attendance-review-pg17 rc16f-pg17-payroll-candidate; do
+            ready=false
+            for attempt in $(seq 1 30); do
+              if docker exec "$container" pg_isready -U postgres -d postgres >/dev/null 2>&1; then ready=true; break; fi
+              sleep 2
+            done
+            if [ "$ready" != true ]; then docker logs "$container"; exit 1; fi
+          done
+      - name: Sequential Registration then Staffing migration compatibility on one PG17 database
+        env:
+          WAVE2_PG_CONTAINER: ada-wave2-combined-pg17
+        run: node tests/rc19-wave2-combined-postgres.integration.mjs
+      - name: Attendance photo proposal PG17 authorization, revisions and rollback
+        run: bash tests/rc19-attendance-photo-review-pg17.sh
+        env:
+          RC19_ATTENDANCE_PG_CONTAINER: ada-rc19-attendance-review-pg17
+      - name: Payroll PG17 locked-period, audit, concurrency and rollback regression
+        run: node tests/rc16-payroll-postgres.integration.mjs --container rc16f-pg17-payroll-candidate
+        env:
+          RC16_PG_MAJOR: '17'
+      - name: Stop disposable PostgreSQL 17 databases
+        if: always()
+        run: docker stop ada-wave2-combined-pg17 ada-rc19-attendance-review-pg17 rc16f-pg17-payroll-candidate || true
+      - name: Full repository regression
+        run: node scripts/run-final-regression.mjs
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Payslip and Payroll mock browser flows
+        run: |
+          pnpm exec playwright test --config playwright.config.ts e2e/rc19-pay01-payslip.spec.ts --reporter=line
+          pnpm exec playwright test --config playwright.rc18-payroll-rules.config.ts --reporter=line
+        env:
+          NEXT_PUBLIC_USE_MOCK_DATA: 'true'
+          NEXT_PUBLIC_ENABLE_MOCK_USER_SWITCHER: 'true'
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          NEXT_PUBLIC_FEATURE_MY_PAYSLIP: 'true'
+          NEXT_PUBLIC_FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: compat
+      - name: Reports, BI, Attendance review and Registration mock browser flows
+        run: |
+          pnpm exec playwright test --config playwright.rc19-report01.config.ts --reporter=line
+          pnpm exec playwright test --config playwright.rc19-bi01.config.ts --reporter=line
+          pnpm exec playwright test --config playwright.rc19-attendance-photo-review.config.ts --reporter=line
+          pnpm exec playwright test --config playwright.rc19-reg02.config.ts --reporter=line
+      - name: Memory validation and whitespace checks
+        run: |
+          pnpm run memory:validate
+          git diff --check
+      - name: Guarded build with all deferred features OFF
+        run: pnpm run build
+        env:
+          CI: 'true'
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_MY_PAYSLIP: 'false'
+          NEXT_PUBLIC_FEATURE_MY_PAYSLIP: 'false'
+          FEATURE_SELF_ATTENDANCE_REVIEW: 'false'
+          FEATURE_SELF_ATTENDANCE_PHOTO: 'false'
+          FEATURE_ATTENDANCE_IMPORT: 'false'
+          NEXT_PUBLIC_FEATURE_ATTENDANCE_IMPORT: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+          FILE_STORAGE_ENABLED: 'false'
+      - name: No deployment declaration
+        if: always()
+        run: |
+          echo 'NO DEPLOY: CI source tests and disposable PostgreSQL 17 only.' >> "$GITHUB_STEP_SUMMARY"

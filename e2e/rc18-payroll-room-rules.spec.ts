@@ -31,6 +31,9 @@ for(const width of [390,1440]){
     await expect(page.getByTestId('payroll-room-rules')).toBeVisible()
     await expect(page.getByTestId('ada-full-rulebook')).toBeVisible()
     await expect(page.getByTestId('payroll-attendance-link')).toBeVisible()
+    await expect(page.getByTestId('ada-full-rulebook')).toContainText('Host và Trợ live trong ca Daily/Campaign')
+    await expect(page.getByTestId('payroll-room-rules')).toContainText('Mặc định chỉ là giả định')
+    await expect(page.getByTestId('payroll-room-rules')).toContainText('Đối soát, phê duyệt và khóa kỳ lương thực hiện trong các tab Payroll riêng')
     for (const section of ['I','II','III','IV','V','VI']) {
       await expect(page.getByTestId('room-rule-section-'+section)).toHaveCount(1)
     }
@@ -46,6 +49,7 @@ for(const width of [390,1440]){
     await page.getByTestId('evaluate-ada-rule').click()
     await expect(page.getByTestId('ada-rule-result')).toContainText('20.000')
     await expect(page.getByTestId('ada-rule-result')).toContainText('chưa trừ lương')
+    await expect(page.getByTestId('ada-rule-result')).toContainText('Chưa xác minh chứng cứ cho case này')
     await page.getByLabel('Ngày ca',{exact:true}).fill('2026-10-21')
     await page.getByTestId('evaluate-ada-rule').click()
     await expect(page.getByTestId('ada-rule-result')).toContainText('Ngoài thời hạn hiệu lực')

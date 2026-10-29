@@ -11,6 +11,7 @@ import {
   recoverSelfAttendancePhotoCheckOut,
 } from '@/lib/services/supabaseSelfAttendanceService'
 import type { AttendanceRole, AttendanceEventKind, SelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
+import { AttendanceCorrectionPanel } from './AttendanceCorrectionPanel'
 
 export interface SelfAttendanceShiftContext {
   date: string
@@ -521,6 +522,7 @@ export function SelfAttendancePanel({
       ) : null}
 
       {writeError ? <p role="alert" className="text-xs text-red-600">{writeError}</p> : null}
+      {photoFeatureReady&&<AttendanceCorrectionPanel key={`${actorId}:${shiftId}`} shiftId={shiftId} />}
 
       <div className="flex flex-wrap gap-2">
         <Button
