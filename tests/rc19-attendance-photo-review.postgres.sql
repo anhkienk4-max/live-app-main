@@ -88,6 +88,7 @@ do $$ declare v jsonb; c jsonb; begin
     raise exception 'non-owner member correction context was accepted';
   exception when insufficient_privilege then null; end;
 
+  perform set_config('rc19.test_actor','leader-1',false);
   begin perform public.review_self_attendance_photo('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0005',1,1,'approved','Stale evidence revision denied','cccccccc-cccc-4ccc-8ccc-cccccccc0008');
     raise exception 'stale evidence revision was accepted';
   exception when serialization_failure then null; end;
