@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import type { Report, Shift } from '../lib/types/database.types.ts'
-import { isFinalizedReport, limitReportCandidates, reportQueueState, sortReportableShifts } from '../lib/utils/reportQueue.ts'
+import { isConfirmedReportForKpi, isFinalizedReport, limitReportCandidates, reportQueueState, reportQueueDisplayState, reportQueuePageRange, sortReportableShifts } from '../lib/utils/reportQueue.ts'
 import { reportMetricState, serializeFinalReportMetricState } from '../lib/utils/ocrMetricSerialization.ts'
 
 const shift = (id: string, startAt: string, status: Shift['status'] = 'completed'): Shift => ({
@@ -101,4 +101,39 @@ test('draft continuation opens the editable form and hydrates the existing repor
   assert.match(formSource, /setMetricValues\(initialReport \? reportMetricState\(initialReport\) : \{\}\)/)
   assert.match(formSource, /reportService\.update\(\s*existingReport\.id,\s*payload,\s*existingReport\.version_number,\s*currentUser\.id,\s*'Saved report draft',\s*'save',\s*\)/)
   assert.match(formSource, /serializeFinalReportMetricState\(dashboardPlatform, metricValues\)/)
+})
+
+
+test('REPORT-02 queue range distinguishes page length from scoped total at boundary counts', () => {
+  assert.deepEqual(reportQueuePageRange(0, 1, 20, 0), { start: 0, end: 0 })
+  assert.deepEqual(reportQueuePageRange(1, 1, 20, 1), { start: 1, end: 1 })
+  assert.deepEqual(reportQueuePageRange(20, 1, 20, 20), { start: 1, end: 20 })
+  assert.deepEqual(reportQueuePageRange(101, 6, 20, 1), { start: 101, end: 101 })
+  assert.deepEqual(reportQueuePageRange(864, 1, 20, 20), { start: 1, end: 20 })
+})
+
+test('REPORT-02 workflow and metric states remain distinct', () => {
+  assert.equal(reportQueueDisplayState(undefined), 'not_started')
+  assert.equal(reportQueueDisplayState(report('draft')), 'draft')
+  assert.equal(reportQueueDisplayState(report('in_review')), 'in_review')
+  assert.equal(reportQueueDisplayState(report('reopened')), 'reopened')
+  assert.equal(reportQueueDisplayState(report('confirmed', false)), 'unconfirmed')
+  assert.equal(reportQueueDisplayState(report('confirmed', true)), 'confirmed')
+})
+
+test('REPORT-02 confirmed KPI excludes Draft and unconfirmed workflow rows', () => {
+  assert.equal(isConfirmedReportForKpi(report('confirmed', true)), true)
+  assert.equal(isConfirmedReportForKpi(report('confirmed', false)), false)
+  assert.equal(isConfirmedReportForKpi(report('draft', true)), false)
+})
+
+
+test('REPORT-02 UI labels report count, obligation total, and visible page as different measures', () => {
+  const list = readFileSync(new URL('../components/features/reports/ReportsList.tsx', import.meta.url), 'utf8')
+  assert.match(list, /Tổng báo cáo theo bộ lọc/)
+  assert.match(list, /data-testid="report02-queue-page-range"/)
+  assert.match(list, /Đang hiển thị \$\{completedShifts\.length\} ca trong trang hàng đợi/)
+  assert.match(list, /reportQueuePageRange\(queueTotal, queuePage, queuePageSize, pagedQueue\.length\)/)
+  assert.match(list, /getReportObligationPage\(\{ page: queuePage, pageSize: queuePageSize, filters: JSON\.parse\(encodedQueueFilters\) \}\)/)
+  assert.match(list, /getAllFilteredWithHistoricalContext\(JSON\.parse\(encodedFilters\)\)/)
 })

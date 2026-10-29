@@ -1,0 +1,53 @@
+name: RC19 REPORT-02 Counter and Status Source Gate (NO DEPLOY)
+on:
+  push:
+    branches:
+      - fix/rc19-report02-core-counter-20261029
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  report02:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint
+        run: pnpm run lint
+      - name: REPORT-02 focused status, paging, filter, financial regression
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/report-work-queue.test.ts tests/rc19-report-apply-filters.test.ts tests/report-history-access.test.ts tests/final-report-kpi-filter.test.tsx
+      - name: Full repository regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Chromium for mock Reports E2E (NOT Production UAT)
+        run: pnpm exec playwright install --with-deps chromium
+      - name: REPORT-02 Playwright mock workflow
+        run: pnpm exec playwright test --config playwright.rc19-reports.config.ts --reporter=line
+      - name: Guarded build without credentials
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ATTENDANCE_IMPORT: 'false'
+          NEXT_PUBLIC_FEATURE_ATTENDANCE_IMPORT: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Candidate provenance, NO DEPLOY
+        if: always()
+        run: |
+          echo "REPORT-02 source candidate SHA $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "CI and localhost mock browser only; no Production/Preview/Staging deployment, SQL, tokens, employee data or environment changes." >> "$GITHUB_STEP_SUMMARY"
