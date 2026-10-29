@@ -267,7 +267,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     navigate({ [mode + '_view']: next, [mode + '_page']: null, [mode + '_size']: next === 'table' ? '20' : '10', [mode + '_pending']: null })
   }
 
-  const runAction = async (id: string, action: () => Promise<unknown>, success: string, openShiftId?: string) => {
+  const runAction = async (id: string, action: () => Promise<unknown>, success: string, openShiftId?: string, throwAfterToast = false) => {
     setBusyId(id)
     try {
       await action()
@@ -283,6 +283,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         description: error instanceof Error ? error.message : t('validationError'),
         variant: 'destructive',
       })
+      if (throwAfterToast) throw error
     } finally {
       setBusyId(null)
     }
@@ -491,7 +492,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         <ShiftSummaryTable
           allShifts={shifts}
           currentUser={currentUser}
-          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
+          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId, true)}
           shifts={visibleShifts}
           registrations={registrations}
           roleFilter={filters.roles}
@@ -507,7 +508,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           capacities={capacities}
           currentUser={currentUser}
           onManage={setDetailShift}
-          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
+          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId, true)}
           platforms={platforms}
           registrations={registrations}
           roleFilter={filters.roles}
@@ -561,9 +562,11 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                     </Button>
                     <ShiftRegistrationActions
                       allShifts={shifts}
+                       brandName={brandName(brands, shift.brand_id)}
+                       platformName={platformName(platforms, shift.platform_id)}
                       compact
                       currentUser={currentUser}
-                      onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'), shift.id)}
+                      onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'), shift.id, true)}
                       registrations={registrations}
                       shift={shift}
                     />
