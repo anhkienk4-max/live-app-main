@@ -9,6 +9,12 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
+    orientation: "any",
+    shortcuts: [
+      { name: "Lịch ca", short_name: "Lịch ca", url: "/calendar" },
+      { name: "Hồ sơ", short_name: "Hồ sơ", url: "/profile" },
+      { name: "Thông báo", short_name: "Thông báo", url: "/notifications" },
+    ],
     background_color: "#07183B",
     theme_color: "#07183B",
     icons: [

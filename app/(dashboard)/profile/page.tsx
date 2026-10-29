@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { removeProfileAvatar, uploadProfileAvatar } from '@/lib/services/profileAvatarStorageService'
+import { PwaInstallControl } from '@/components/pwa/PwaInstallControl'
 
 const acceptedAvatarTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const maxAvatarBytes = 5 * 1024 * 1024
@@ -152,6 +153,7 @@ export default function ProfilePage() {
 
   return <div className="ada-workspace-page ada-profile-page mx-auto w-full min-w-0 max-w-4xl space-y-4 p-4 md:space-y-6 md:p-6" data-testid="profile-page">
     <div className="min-w-0"><h1 className="text-xl font-bold tracking-tight md:text-3xl">{t('profile')}</h1><p className="mt-1 break-words text-[13px] leading-relaxed text-muted-foreground md:text-sm">{t('accountDetails')}</p></div>
+    <div className="max-w-sm"><PwaInstallControl /></div>
     <form onSubmit={save}>
       <div className="grid gap-6 lg:grid-cols-3">
         <Card><CardHeader className="items-center text-center">
