@@ -14,10 +14,11 @@ test('REG-02 baseline old code reproduces auto-approved registration and no atom
   assert.match(old,/case when settings_row\.require_registration_approval then 'pending' else 'approved' end/)
   assert.doesNotMatch(old,/ROLE_CAPACITY_FILLED/)
 })
-test('REG-02 is pending regardless of legacy require_registration_approval setting',()=>{
+test('REG-02 preserves legacy auto-approval and requires approval only when the existing workflow setting is enabled',()=>{
   const fn=migration.split('-- Apply rejection')[0]
-  assert.match(fn,/insert into public\.shift_registrations[\s\S]*'pending',[\s\S]*'self_registration'/i)
-  assert.doesNotMatch(fn,/case when settings_row\.require_registration_approval then 'pending' else 'approved' end/i)
+  assert.match(fn,/case when settings_row\.require_registration_approval then 'pending' else 'approved' end/i)
+  assert.match(fn,/case when settings_row\.require_registration_approval then null else actor_id end/i)
+  assert.match(fn,/if not settings_row\.require_registration_approval and settings_row\.auto_lock_filled_shifts then[\s\S]*private\.refresh_shift_registration_lock\(p_shift_id, false\)/i)
   assert.match(fn,/private\.assert_shift_capacity\(target_shift, p_role, null\)/i)
   assert.match(fn,/private\.assert_no_shift_registration_conflict\(actor_id, target_shift, p_role, null\)/i)
 })
