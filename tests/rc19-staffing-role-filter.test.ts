@@ -4,10 +4,10 @@ import { test } from 'node:test'
 import { PGlite } from '@electric-sql/pglite'
 
 const migration = readFileSync(new URL('../supabase/migrations/20261029120000_rc19_staffing_role_scoped_gap_filter.sql', import.meta.url), 'utf8')
-const filterFunction = migration.match(/create (?:or replace )?function private\.filtered_shift_ids\([\s\S]*?\n\$\$;/i)?.[0]
+const filterFunction = migration.match(/^\s*create or replace function private\.filtered_shift_ids\([\s\S]*?\n\$\$;/im)?.[0]
 
 test('gap staffing state is evaluated only across the selected operational roles', async () => {
-  assert.ok(filterFunction, 'expected the production filtered_shift_ids definition')
+  assert.ok(filterFunction, 'expected the production filtered_shift_ids definition outside SQL comments')
   const db = new PGlite()
   try {
     await db.exec(`

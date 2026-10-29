@@ -1,5 +1,6 @@
 -- Reviewable additive replacement for private.filtered_shift_ids.
--- Staffing state is evaluated only for roles selected by operationalRoles.create or replace function private.filtered_shift_ids(p_scope text,p_filters jsonb)
+-- Staffing state is evaluated only for roles selected by operationalRoles.
+create or replace function private.filtered_shift_ids(p_scope text,p_filters jsonb)
 returns table(id text,date date,start_time time,status text)
 language plpgsql stable security invoker set search_path=''
 as $$
