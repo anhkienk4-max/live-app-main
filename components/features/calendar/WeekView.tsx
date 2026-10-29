@@ -34,6 +34,7 @@ interface WeekViewProps {
   currentUser?: User | null;
   onClearFilters?: () => void;
   onCreateShift?: () => void;
+  fullOnMobile?: boolean;
 }
 
 
@@ -50,6 +51,7 @@ export function WeekView({
   currentUser = null,
   onClearFilters,
   onCreateShift,
+  fullOnMobile = false,
 }: WeekViewProps) {
   const context: CalendarFilterContext = {
     currentDate: new Date(),
@@ -94,7 +96,7 @@ export function WeekView({
       <div
         data-testid="calendar-week-scroller"
         aria-label={language === 'vi' ? 'Lịch tuần, cuộn ngang để xem đủ bảy ngày' : 'Week calendar, scroll horizontally to see all seven days'}
-        className="relative hidden max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-md border bg-background sm:block"
+        className={`relative max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-md border bg-background ${fullOnMobile ? 'block' : 'hidden sm:block'}`}
         style={{ scrollbarWidth: "thin" }}
       >
         {shifts.length === 0 && (
@@ -134,7 +136,7 @@ export function WeekView({
             return (
               <div
                 key={`header-${day.toString()}`}
-                className={`bg-background flex flex-col items-center gap-1 py-2 px-1 border-b border-r last:border-r-0 ${isToday ? "border-primary/40 bg-primary/[0.02]" : "border-border"}`}
+                className={`relative bg-background flex flex-col items-center gap-1 py-2 px-1 border-b border-r last:border-r-0 ${isToday ? "border-primary/40 bg-primary/[0.02]" : "border-border"}`}
               >
                 <span
                   className={`text-[10px] uppercase tracking-wider font-semibold ${isToday ? "text-primary" : "text-muted-foreground"}`}
@@ -150,6 +152,15 @@ export function WeekView({
                   <span className="text-[10px] text-muted-foreground font-medium">
                     {dayShifts.length}
                   </span>
+                )}
+                {fullOnMobile && (
+                  <button
+                    type="button"
+                    className="absolute inset-0 z-10 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:hidden"
+                    aria-label={`${t("viewDetails")} · ${format(day, "dd/MM")} · ${dayShifts.length} ${t("totalShifts")}`}
+                    data-testid={`calendar-week-full-day-${format(day, "yyyy-MM-dd")}`}
+                    onClick={() => { setDetailIds(null); setDetailDay(day); setDetailPage(1) }}
+                  />
                 )}
               </div>
             );
@@ -255,7 +266,7 @@ export function WeekView({
       </div>
 
       {/* MOBILE: Compact date-grouped agenda */}
-      <div className="sm:hidden divide-y divide-border">
+      <div className={fullOnMobile ? "hidden" : "sm:hidden divide-y divide-border"}>
         {weekDays.map((day) => {
           const dayShifts = getShiftsForDate(day);
           const isToday = isSameDay(day, today);
