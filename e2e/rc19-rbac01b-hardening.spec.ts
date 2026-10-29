@@ -5,6 +5,7 @@ type BrowserDiagnostics = {
   pageErrors: string[]
   failedRequests: Array<{ path: string; error: string }>
   capabilityResponses: Array<{ status: number; path: string }>
+  apiResponses: Array<{ method: string; path: string; status: number }>
 }
 
 const safeText = (value: string) => value
@@ -18,6 +19,7 @@ function installBrowserDiagnostics(page: Page): BrowserDiagnostics {
     pageErrors: [],
     failedRequests: [],
     capabilityResponses: [],
+    apiResponses: [],
   }
   page.on('console', message => {
     if (message.type() === 'error') diagnostics.consoleErrors.push(safeText(message.text()))
@@ -30,9 +32,17 @@ function installBrowserDiagnostics(page: Page): BrowserDiagnostics {
     })
   })
   page.on('response', response => {
-    const path = new URL(response.url()).pathname
+    const url = new URL(response.url())
+    const path = url.pathname
     if (path === '/api/audit/team-capability') {
       diagnostics.capabilityResponses.push({ path, status: response.status() })
+    }
+    if (path.startsWith('/api/') || path.startsWith('/rest/v1/')) {
+      diagnostics.apiResponses.push({
+        method: response.request().method(),
+        path,
+        status: response.status(),
+      })
     }
   })
   return diagnostics
@@ -47,6 +57,14 @@ async function waitForMockAuditRow(page: Page, testInfo: TestInfo, diagnostics: 
       title: document.title,
       auditActorId: localStorage.getItem('livestream-ops-current-user'),
       mockAuditHistoryPresent: Boolean(sessionStorage.getItem('livestream-ops-audit-history')),
+      mockAuditFixtureCount: (() => {
+        try {
+          const fixture = sessionStorage.getItem('livestream-ops-audit-history')
+          return fixture ? JSON.parse(fixture).length : 0
+        } catch {
+          return -1
+        }
+      })(),
       mainText: document.querySelector('main')?.textContent?.slice(0, 3000) || '',
     }))
     const payload = {
