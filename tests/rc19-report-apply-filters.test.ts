@@ -30,3 +30,11 @@ test('date and multi-select editors change only drafts, not applied server filte
   assert.match(source, /disabled=\{!hasUnappliedChanges \|\| invalidDraftDates\}/)
   assert.match(source, /event\.key === 'Enter'/)
 })
+
+
+test('REPORT-02 applied filters initialize from URL and are shared by queue, history and export', () => {
+  assert.match(source, /React\.useState<Filters>\(filters\)/)
+  assert.match(source, /getReportObligationPage\(\{ page: queuePage, pageSize: queuePageSize, filters: JSON\.parse\(encodedQueueFilters\) \}\)/)
+  assert.match(source, /reportService\.getFilteredPage\(\{ page: reportPage, pageSize: reportPageSize, filters: JSON\.parse\(encodedFilters\) \}\)/)
+  assert.match(source, /getAllFilteredWithHistoricalContext\(JSON\.parse\(encodedFilters\)\)/)
+})

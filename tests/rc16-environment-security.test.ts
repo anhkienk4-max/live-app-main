@@ -28,21 +28,25 @@ const deployedProduction = {
   NEXT_PUBLIC_SUPABASE_URL: production, SUPABASE_URL: production,
 }
 
-test('backend, integration and post-main delivery disable Git auto-deploy while retaining Production defaults', () => {
+test('backend, integration, post-main and task branches disable Git auto-deploy while retaining Production defaults', () => {
   const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
-  assert.deepEqual(config, {
-    $schema: 'https://openapi.vercel.sh/vercel.json',
-    git: { deploymentEnabled: {
-      'feat/rc16-payroll-workforce-backend': false,
-      'integration/rc14-rc15-rc16-prod': false,
-      'feat/rc16k-ui-consistency-pagination': false,
-      'fix/rc19-staffing-73': false,
-      'fix/rc19-reg128-lane1': false,
-      'release/rc19-core-2026-11-01-integrated': false,
-      'integration/rc19-wave2-core': false,
-      'fix/rc19-p2-04-attendance-photo-review': false,
-    } },
-  })
+  assert.equal(config.$schema, 'https://openapi.vercel.sh/vercel.json')
+  const deploymentEnabled = config.git?.deploymentEnabled
+  assert.ok(deploymentEnabled && typeof deploymentEnabled === 'object')
+  for (const branch of [
+    'feat/rc16-payroll-workforce-backend',
+    'integration/rc14-rc15-rc16-prod',
+    'feat/rc16k-ui-consistency-pagination',
+    'fix/rc19-staffing-73',
+    'fix/rc19-reg128-lane1',
+    'release/rc19-core-2026-11-01-integrated',
+    'integration/rc19-wave2-core',
+    'fix/rc19-p2-04-attendance-photo-review',
+    'fix/rc19-report02-core-counter-20261029',
+    'feat/rc19-bi01-analytics-composer-20261029',
+    'codex/rc19-payroll-release-candidate',
+  ]) assert.equal(deploymentEnabled[branch], false, `${branch} must not auto-deploy`)
+  assert.ok(Object.values(deploymentEnabled).every((enabled: unknown) => enabled === false))
 })
 
 function rejects(env: SupabaseEnvironment, code: string, purpose: EnvironmentPurpose = 'runtime') {
