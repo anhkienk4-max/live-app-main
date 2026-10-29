@@ -38,7 +38,11 @@ if [[ $a_status -eq $b_status ]]; then
   echo 'Expected exactly one concurrent review to win' >&2
   exit 1
 fi
-grep -q 'ATTENDANCE_REVIEW_VERSION_CONFLICT' /tmp/rc19-review-a.log /tmp/rc19-review-b.log
+if ! grep -q 'ATTENDANCE_REVIEW_VERSION_CONFLICT' /tmp/rc19-review-a.log /tmp/rc19-review-b.log; then
+  cat /tmp/rc19-review-a.log /tmp/rc19-review-b.log
+  echo 'Concurrent loser did not receive ATTENDANCE_REVIEW_VERSION_CONFLICT' >&2
+  exit 1
+fi
 
 # The migration's rollback can be rehearsed transactionally without retaining synthetic data.
 "${psql[@]}" <<'SQL'
