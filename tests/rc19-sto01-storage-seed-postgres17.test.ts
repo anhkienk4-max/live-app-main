@@ -425,8 +425,8 @@ test('PostgreSQL 17 Server: Preflight fails closed on route contract conflict (b
   }
 })
 
-// 8. Successful execution of unmodified seed-v1-production-routes.sql (14 routes)
-test('PostgreSQL 17 Server: Raw unmodified seed script activates exactly 14 routes with valid admin approver', async (t) => {
+// 8. Atomic rollback on a PostgreSQL 17 Server
+test('PostgreSQL 17 Server: A failure after the first route insert rolls back the whole seed transaction', async (t) => {
   const client = await getPostgresClient()
   if (!client) {
     t.skip('PostgreSQL 17 server not reachable on localhost:5432 (local non-CI dev mode)')
@@ -436,6 +436,43 @@ test('PostgreSQL 17 Server: Raw unmodified seed script activates exactly 14 rout
   try {
     await initPostgresSchema(client)
     await seedPrerequisites(client, { useTempTable: true, approvedUserId: 'usr-ops-lead' })
+    const failingSeedSql = rawSeedSql.replace(
+      /-- Route 2:/,
+      "RAISE EXCEPTION 'SYNTHETIC FAILURE INJECTED FOR POSTGRES 17 ROLLBACK TEST';\n-- Route 2:",
+    )
+    assert.notEqual(failingSeedSql, rawSeedSql, 'Rollback injection point must exist in the seed source')
+
+    await assert.rejects(
+      () => client.query(failingSeedSql),
+      (err: Error) => {
+        assert.match(err.message, /SYNTHETIC FAILURE INJECTED FOR POSTGRES 17 ROLLBACK TEST/)
+        return true
+      },
+    )
+
+    await client.query('ROLLBACK')
+    const routes = await client.query('SELECT count(*)::int AS count FROM public.operational_storage_routes')
+    assert.equal(routes.rows[0].count, 0, 'No partial route rows may survive a failed seed transaction')
+  } finally {
+    await client.query('ROLLBACK').catch(() => undefined)
+    await client.end()
+  }
+})
+
+// 9. Successful execution of the internal-only 13-route activation seed
+test('PostgreSQL 17 Server: Internal-only seed activates exactly 13 routes with valid admin approver', async (t) => {
+  const client = await getPostgresClient()
+  if (!client) {
+    t.skip('PostgreSQL 17 server not reachable on localhost:5432 (local non-CI dev mode)')
+    return
+  }
+
+  try {
+    await initPostgresSchema(client)
+    await seedPrerequisites(client, { useTempTable: true, approvedUserId: 'usr-ops-lead' })
+
+    assert.doesNotMatch(rawSeedSql, /'agency'/i, 'Activation seed must not declare any Agency route')
+    assert.equal((rawSeedSql.match(/-- Route \d+:/g) ?? []).length, 13, 'Seed source must contain exactly 13 route blocks')
 
     // Execute unmodified raw SQL seed file
     await client.query(rawSeedSql)
@@ -450,7 +487,17 @@ test('PostgreSQL 17 Server: Raw unmodified seed script activates exactly 14 rout
       ORDER BY b.name, p.name
     `)
 
-    assert.equal(res.rows.length, 14, 'Exactly 14 schema-compatible routes must be active')
+    assert.equal(res.rows.length, 13, 'Exactly 13 internal routes must be active')
+    assert.ok(res.rows.every((row) => row.execution_source === 'internal'), 'Every activated route must be internal')
+    assert.equal(res.rows.filter((row) => row.execution_source === 'agency').length, 0, 'Agency routes must never be activated by this seed')
+    assert.equal(new Set(res.rows.map((row) => `${row.brand_name}|${row.platform_name ?? ''}|${row.execution_source}`)).size, 13, 'Route keys must be unique')
+    const rootMapping = await client.query(`
+      SELECT count(DISTINCT root_folder_id)::int AS roots,
+             count(DISTINCT base_folder_id)::int AS bases,
+             count(*) FILTER (WHERE base_folder_id = root_folder_id)::int AS root_bases
+      FROM public.operational_storage_routes WHERE active = true
+    `)
+    assert.deepEqual(rootMapping.rows[0], { roots: 1, bases: 11, root_bases: 3 }, 'Three canonical routes share the root as base; ten internal routes map to distinct brand bases')
 
     for (const row of res.rows) {
       assert.equal(row.approved_by, 'usr-ops-lead', 'approved_by must match the verified approver')
@@ -468,8 +515,8 @@ test('PostgreSQL 17 Server: Raw unmodified seed script activates exactly 14 rout
   }
 })
 
-// 9. Strict Idempotency on second run
-test('PostgreSQL 17 Server: Unmodified seed script is strictly idempotent on consecutive executions', async (t) => {
+// 10. Strict Idempotency on second run
+test('PostgreSQL 17 Server: Internal-only seed is strictly idempotent on consecutive executions', async (t) => {
   const client = await getPostgresClient()
   if (!client) {
     t.skip('PostgreSQL 17 server not reachable on localhost:5432 (local non-CI dev mode)')
@@ -483,12 +530,12 @@ test('PostgreSQL 17 Server: Unmodified seed script is strictly idempotent on con
     // First execution
     await client.query(rawSeedSql)
     const firstCount = await client.query('SELECT count(*)::int AS count FROM public.operational_storage_routes WHERE active = true')
-    assert.equal(firstCount.rows[0].count, 14)
+    assert.equal(firstCount.rows[0].count, 13)
 
     // Second execution (re-run)
     await client.query(rawSeedSql)
     const secondCount = await client.query('SELECT count(*)::int AS count FROM public.operational_storage_routes WHERE active = true')
-    assert.equal(secondCount.rows[0].count, 14, 'Re-running seed must NOT duplicate active routes')
+    assert.equal(secondCount.rows[0].count, 13, 'Re-running seed must NOT duplicate active routes')
   } finally {
     await client.end()
   }

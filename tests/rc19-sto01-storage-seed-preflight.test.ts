@@ -400,10 +400,13 @@ test('PGlite preflight: Atomic rollback guarantees 0 state mutation when an erro
   assert.equal(countRes.rows[0].count, 0, 'Atomic rollback MUST leave 0 rows in operational_storage_routes')
 })
 
-// 11. Preflight and Seed Succeed for 14 Schema-Valid Routes via temp_release_approval_session
-test('PGlite preflight: Preflight and seed succeed for 14 routes using temp_release_approval_session', async () => {
+// 11. Preflight and Seed Succeed for 13 Internal Routes via temp_release_approval_session
+test('PGlite preflight: Preflight and seed succeed for 13 internal routes using temp_release_approval_session', async () => {
   const db = await createProductionEquivalentDb()
   await seedPrerequisiteData(db, { useTempTable: true })
+
+  assert.doesNotMatch(seedSql, /'agency'/i, 'Activation seed must not declare Agency routes')
+  assert.equal((seedSql.match(/-- Route \d+:/g) ?? []).length, 13, 'Seed source must contain exactly 13 route blocks')
 
   await db.exec(seedSql)
 
@@ -417,7 +420,17 @@ test('PGlite preflight: Preflight and seed succeed for 14 routes using temp_rele
     ORDER BY b.name, p.name
   `)
 
-  assert.equal(routesResult.rows.length, 14, 'Exactly 14 schema-valid routes should be activated')
+  assert.equal(routesResult.rows.length, 13, 'Exactly 13 internal routes should be activated')
+  assert.ok(routesResult.rows.every((row) => row.execution_source === 'internal'), 'All activated routes must use internal execution')
+  assert.equal(routesResult.rows.filter((row) => row.execution_source === 'agency').length, 0, 'No Agency route may be activated')
+  assert.equal(new Set(routesResult.rows.map((row) => `${row.brand_name}|${row.platform_name ?? ''}|${row.execution_source}`)).size, 13, 'Activated route keys must be unique')
+  const rootMapping = await db.query(`
+    SELECT count(DISTINCT root_folder_id)::int AS roots,
+           count(DISTINCT base_folder_id)::int AS bases,
+           count(*) FILTER (WHERE base_folder_id = root_folder_id)::int AS root_bases
+    FROM public.operational_storage_routes WHERE active = true
+  `)
+  assert.deepEqual(rootMapping.rows[0], { roots: 1, bases: 11, root_bases: 3 }, 'Seed root/base mapping must match the approved 13-route candidate')
 
   for (const row of routesResult.rows) {
     assert.equal(row.approved_by, 'usr-verified-admin', 'approved_by must be set to verified operator')
@@ -439,12 +452,12 @@ test('PGlite preflight: Seed script is idempotent and preserves identical active
   // First run
   await db.exec(seedSql)
   const firstCount = await db.query(`SELECT count(*)::int AS count FROM public.operational_storage_routes WHERE active = true`)
-  assert.equal(firstCount.rows[0].count, 14)
+  assert.equal(firstCount.rows[0].count, 13)
 
   // Second run (re-run)
   await db.exec(seedSql)
   const secondCount = await db.query(`SELECT count(*)::int AS count FROM public.operational_storage_routes WHERE active = true`)
-  assert.equal(secondCount.rows[0].count, 14, 'Re-running seed must NOT create duplicates (idempotent)')
+  assert.equal(secondCount.rows[0].count, 13, 'Re-running seed must NOT create duplicates (idempotent)')
 })
 
 // 13. Rollback Preflight Check: Fails closed on INACTIVE routes with TEMP_AGENCY_BRAND_PERIOD_CATEGORY

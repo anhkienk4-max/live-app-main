@@ -5,6 +5,7 @@ on:
     branches:
       - feat/ops-full-app-upgrade-rc19
       - main
+      - fix/rc19-sto01-storage-production
     paths:
       - '.github/workflows/rc19-sto01-storage-gate.yml'
       - 'scripts/storage/**'
@@ -24,6 +25,7 @@ on:
   push:
     branches:
       - fix/rc19-sto01-storage-production
+      - fix/rc19-sto01-internal-only
   workflow_dispatch:
 
 permissions:
