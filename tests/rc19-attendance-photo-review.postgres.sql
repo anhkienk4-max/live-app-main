@@ -60,6 +60,12 @@ do $$ declare v jsonb; c jsonb; begin
   if c->>'previous_request_id'<>'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0005' or c->>'expected_revision'<>'1' then
     raise exception 'owner correction context invalid: %',c;
   end if;
+  begin perform public.commit_self_attendance_photo_correction(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0005',1,'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0005','dddddddd-dddd-4ddd-8ddd-dddddddd0006',
+    'drive-file-duplicate-original','private-folder-123456','attendance-correction-r2-duplicate.jpg',32000,repeat('a',64),
+    '{"sanitized":true}'::jsonb,'file_picker');
+    raise exception 'duplicate original evidence was accepted';
+  exception when unique_violation then null; end;
   v:=public.commit_self_attendance_photo_correction(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0005',1,'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0005','dddddddd-dddd-4ddd-8ddd-dddddddd0005',
     'drive-file-revision-2','private-folder-123456','attendance-correction-r2.jpg',32000,repeat('b',64),
@@ -77,13 +83,6 @@ do $$ declare v jsonb; c jsonb; begin
   begin update public.self_attendance_photo_evidence set checksum_sha256=repeat('b',64) where request_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0005';
     raise exception 'original evidence update was accepted';
   exception when insufficient_privilege then null; end;
-  begin perform public.commit_self_attendance_photo_correction(
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0005',1,'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0005','dddddddd-dddd-4ddd-8ddd-dddddddd0006',
-    'drive-file-revision-3','private-folder-123456','attendance-correction-r3.jpg',32000,repeat('b',64),
-    '{"sanitized":true}'::jsonb,'file_picker');
-    raise exception 'duplicate correction image was accepted';
-  exception when unique_violation then null; end;
-
   perform set_config('rc19.test_actor','member-1',false);
   begin perform public.get_self_attendance_photo_correction_context('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002');
     raise exception 'non-owner member correction context was accepted';
