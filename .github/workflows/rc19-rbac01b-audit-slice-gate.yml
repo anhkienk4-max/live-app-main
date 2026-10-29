@@ -1,0 +1,110 @@
+name: RC19 RBAC-01B Audit Slice End-to-End Security Gate (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feat/rc19-rbac01b-enforcement
+      - feat/rc19-rbac-security-20261029
+      - integration/rc19-final-rbac
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rbac01b:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint
+        run: pnpm run lint
+      - name: RBAC01B focused server forged-request and legacy role regression
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc19-rbac01b-audit-slice.test.ts tests/rc19-rbac01-security.test.ts tests/core-v1-3role-matrix.test.ts
+      - name: Actual PostgreSQL 17 approved-version negative security proof
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: postgres
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          psql -X -v ON_ERROR_STOP=1 -Atc "SELECT current_setting('server_version_num')" | grep -E '^17[0-9]{4}$'
+          psql -X -v ON_ERROR_STOP=1 -f tests/rbac01b/pg17_fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f docs/rbac01/RC19_RBAC01_REVIEW_ONLY.sql
+          psql -X -v ON_ERROR_STOP=1 -f docs/rbac01/RC19_RBAC01B_AUDIT_TEAM_REVIEW_ONLY.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/rbac01b/pg17_assertions.sql
+      - name: "PostgreSQL policy bypass negative: refuse a second permissive SELECT policy"
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: postgres
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -c "CREATE POLICY rbac01b_test_bypass ON public.audit_logs FOR SELECT TO authenticated USING (true)"
+          if psql -X -v ON_ERROR_STOP=1 -f docs/rbac01/RC19_RBAC01B_AUDIT_TEAM_REVIEW_ONLY.sql > /tmp/rbac01b-policy-guard.log 2>&1; then
+            echo "SECURITY ERROR: Patch accepted a second permissive SELECT policy"
+            exit 1
+          fi
+          grep -q RBAC01B_UNEXPECTED_AUDIT_SELECT_POLICIES /tmp/rbac01b-policy-guard.log
+          psql -X -v ON_ERROR_STOP=1 -c "DROP POLICY rbac01b_test_bypass ON public.audit_logs"
+          echo "RBAC01B_ADDITIONAL_SELECT_POLICY_REJECTED: PASS"
+      - name: Full repository regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
+      - name: Install Chromium for mock-only revocation UX
+        timeout-minutes: 8
+        run: pnpm exec playwright install chromium
+      - name: AuditHistory revocation mock at 390, 768 and 1440px
+        run: pnpm exec playwright test --config playwright.rc19-rbac01b-hardening.config.ts --reporter=line
+      - name: Upload failed RBAC01B browser traces and screenshots
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rbac01b-playwright-failure-${{ github.run_id }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Guarded build, flags OFF and no credentials
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_RBAC01_ROLE_DEFAULTS: 'false'
+          FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT: 'false'
+          NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT: 'false'
+          FEATURE_ATTENDANCE_IMPORT: 'false'
+          NEXT_PUBLIC_FEATURE_ATTENDANCE_IMPORT: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Candidate and no-deploy declaration
+        if: always()
+        run: |
+          echo "RBAC01B source SHA $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "SQL is docs-only, test-only approved rows are synthetic PG17. No Production SQL, feature activation or deployment." >> "$GITHUB_STEP_SUMMARY"

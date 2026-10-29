@@ -72,6 +72,7 @@ export function ReportCalendarGrid({ date, scale, entries, brands, platforms, on
   for (let current = first; current <= last; current = addDays(current, 1)) days.push(format(current, 'yyyy-MM-dd'))
   const byDay = new Map<string, ReportCalendarEntry[]>()
   for (const entry of entries) byDay.set(entry.shift.date, [...(byDay.get(entry.shift.date) ?? []), entry])
+  const dayEntries = byDay.get(date) ?? []
   const brandById = new Map(brands.map(b => [b.id, b.name]))
   const platformById = new Map(platforms.map(p => [p.id, p.name]))
   const entryLabel = (entry: ReportCalendarEntry) => {
@@ -103,7 +104,11 @@ export function ReportCalendarGrid({ date, scale, entries, brands, platforms, on
       </div>
       {entries.length === 0 && <div className="flex items-center gap-2 rounded-md border border-dashed p-4 text-sm text-muted-foreground"><CalendarDays className="h-4 w-4" />Không có ca/báo cáo được cấp quyền trong khoảng ngày và bộ lọc này.</div>}
       {scale === 'day'
-        ? <div className="space-y-2" data-testid="reports-calendar-day">{(byDay.get(date) ?? []).map(entry => renderEntry(entry))}</div>
+        ? <div className="space-y-2" data-testid="reports-calendar-day">
+          {dayEntries.length > 0
+            ? dayEntries.map(entry => renderEntry(entry))
+            : <p role="status" className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Không có ca/báo cáo trong ngày này.</p>}
+        </div>
         : <div className="w-full overflow-x-auto" tabIndex={0} aria-label="Lịch báo cáo, cuộn ngang trên màn hình nhỏ">
           <div className="grid min-w-[700px] grid-cols-7 gap-px overflow-hidden rounded-md border bg-border">
             {['Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy', 'Chủ nhật'].map(day => <div className="bg-muted px-2 py-2 text-center text-xs font-semibold" key={day}>{day}</div>)}

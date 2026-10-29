@@ -45,6 +45,10 @@ test('backend, integration, post-main and task branches disable Git auto-deploy 
     'fix/rc19-report02-core-counter-20261029',
     'feat/rc19-bi01-analytics-composer-20261029',
     'codex/rc19-payroll-release-candidate',
+    'fix/rc19-sto01-internal-only',
+    'integration/rc19-final-storage-prep',
+    'feat/rc19-rbac-security-20261029',
+    'integration/rc19-final-rbac',
   ]) assert.equal(deploymentEnabled[branch], false, `${branch} must not auto-deploy`)
   assert.ok(Object.values(deploymentEnabled).every((enabled: unknown) => enabled === false))
 })
