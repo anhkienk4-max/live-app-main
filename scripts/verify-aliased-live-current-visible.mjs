@@ -41,7 +41,13 @@ const allowedDocDifferences=new Map([
   ['project-memory/generated/project-memory.md', '007dd7cb9439a50c65041dd2c0dc239d8b7fb105'],
   ['e2e/rc16k-ui.spec.ts', '84b8db99d7dc30aa96afb257512d057dfd4c06ad'],
 ])
-const errors=[],extras=[],docDrifts=[],modes={}
+// This specific E2E-only test file was uploaded with visibly mojibaked UTF-8
+// Vietnamese labels. The API provides only its first ~1500 decoded bytes;
+// do NOT call the full file reviewed, and NEVER treat this as a runtime match.
+const quarantinedTestDifferences = new Map([
+  ['e2e/swap-form-state.spec.ts', '346fc17a90afb95c258caf9fc6273b57e38f6b00'],
+])
+const errors=[],extras=[],docDrifts=[],quarantinedTests=[],modes={}
 let compared=0,matched=0,securityFiles=0
 for(const {path,sha1:expected} of snapshot.files){
   if(!path || path.startsWith('/') || path.includes('..') || path.includes('\\')){errors.push({path,error:'invalid_path'});continue}
@@ -56,11 +62,19 @@ for(const {path,sha1:expected} of snapshot.files){
   const mode=exactMatch(git('show',core+':'+path),expected)
   if(mode){matched++;modes[mode]=(modes[mode]||0)+1;continue}
   if(allowedDocDifferences.get(path)===expected){docDrifts.push(path);continue}
+  if(quarantinedTestDifferences.get(path)===expected){
+    quarantinedTests.push(path)
+    continue
+  }
   errors.push({path,error:'core_git_vs_uploaded_hash_mismatch'})
 }
 if(snapshot.embeddedWorktreeVisibleFiles!==extras.filter(x=>x.startsWith('.worktrees/')).length)errors.push({error:'worktree_count_changed'})
 if(snapshot.unresolvedPaths.length!==1 || snapshot.unresolvedPaths[0]!=='tests/auth-session-foundation.test.ts')errors.push({error:'unresolved_source_list_changed'})
-const out={status:errors.length?'VISIBLE-SOURCE-MISMATCH':'VISIBLE-COMPARISON-ONLY',deployment,core,listed:snapshot.visibleFileCount,compared,matched,securityFiles,docDrifts,untrackedWorktreeFiles:extras.length,unresolved:snapshot.unresolvedPaths,depthTruncationMarkers:snapshot.depthTruncationMarkers,errors:errors.slice(0,30),modes}
+const out={status:errors.length?'VISIBLE-SOURCE-MISMATCH':'PARTIAL-RUNTIME-MATCH_WITH_UNREVIEWED_TEST_DRIFT',releaseGate:'NO-GO',deployment,core,listed:snapshot.visibleFileCount,compared,matched,securityFiles,docDrifts,quarantinedTests,untrackedWorktreeFiles:extras.length,unresolved:snapshot.unresolvedPaths,depthTruncationMarkers:snapshot.depthTruncationMarkers,errors:errors.slice(0,30),modes}
 console.log(JSON.stringify(out))
+if(quarantinedTests.length!==1 || quarantinedTests[0]!=='e2e/swap-form-state.spec.ts'){
+  console.error('NO-GO: expected explicit test-only quarantine is missing or changed')
+  process.exitCode=1
+}
 if(errors.length){console.error('NO-GO unexpected visible uploaded source mismatch');process.exitCode=1}
-console.warn('RELEASE NO-GO: CURRENT CLI source inventory is incomplete due to depth limits and contains one truncated test hash. Visible worktree files are zero. A successful result proves ONLY visible files checked against Core; missing-depth files, source/upload provenance and real 3-role Staging UAT remain outstanding.')
+console.warn('RELEASE NO-GO: CURRENT CLI source inventory is depth-limited and includes a truncated test hash plus a quarantined, unreadable-whole UTF-8-corrupted E2E-only file. 151 visible sensitive/runtime files match Core; source upload provenance and real 3-role Staging UAT remain outstanding. Do not promote even when this partial comparison step is green.')

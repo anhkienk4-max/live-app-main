@@ -28,7 +28,9 @@ jobs:
       - name: 29 Oct visible live source / RC19 Core reconciliation (PARTIAL ONLY)
         run: node scripts/verify-aliased-live-core-visible.mjs
       - name: CURRENT aliased 29 Oct visible CLI source vs Core (PARTIAL / NO-GO)
-        run: node scripts/verify-aliased-live-current-visible.mjs
+        run: |
+          node scripts/verify-aliased-live-current-visible.mjs
+          echo 'NO-GO: this verifies visible hashes only; one uploaded E2E test is SHA-pinned as UNREVIEWED and cannot authorize Production.' >> "$GITHUB_STEP_SUMMARY"
       - name: UI boundary and role authorization guard
         run: node scripts/verify-current-prod-ui-scope.mjs
       - name: Validate 3-role Staging UAT definition (no private credentials)
