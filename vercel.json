@@ -12,7 +12,9 @@
       "fix/rc19-p2-04-attendance-photo-review": false,
       "fix/rc19-report02-core-counter-20261029": false,
       "feat/rc19-bi01-analytics-composer-20261029": false,
-      "codex/rc19-payroll-release-candidate": false
+      "codex/rc19-payroll-release-candidate": false,
+      "fix/rc19-sto01-internal-only": false,
+      "integration/rc19-final-storage-prep": false
     }
   }
 }

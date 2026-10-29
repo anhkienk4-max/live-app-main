@@ -1,0 +1,158 @@
+name: RC19 Storage Source Gate (STO-01 + STO-02)
+
+on:
+  pull_request:
+    branches:
+      - feat/ops-full-app-upgrade-rc19
+      - fix/rc19-sto01-storage-production
+      - integration/rc19-final-storage-prep
+      - main
+    paths:
+      - '.github/workflows/rc19-sto01-storage-gate.yml'
+      - 'scripts/storage/**'
+      - 'config/storage-v1-production-routes.proposed.json'
+      - 'docs/storage/**'
+      - 'lib/files/**'
+      - 'lib/server/**'
+      - 'components/features/storage/**'
+      - 'app/api/operational-files/**'
+      - 'app/api/operational-storage-setup/**'
+      - 'app/(dashboard)/storage/**'
+      - 'tests/rc14-*.test.ts'
+      - 'tests/rc15-*.test.ts'
+      - 'tests/operational-storage-placement.test.ts'
+      - 'tests/rc19-sto01-storage-seed-preflight.test.ts'
+      - 'tests/rc19-sto01-storage-seed-postgres17.test.ts'
+      - 'supabase/proposals/rc19-sto02-resource-registry/**'
+      - 'lib/files/storageResourceValidation.ts'
+      - 'lib/server/storageResourceRegistryHandler.ts'
+      - 'components/features/storage/StorageResourceRegistry.tsx'
+      - 'app/api/storage-resources/**'
+      - 'app/(dashboard)/storage/resources/**'
+      - 'tests/rc19-sto02-*'
+      - 'tests/rc19-storage-security-patch.test.ts'
+      - 'e2e/rc19-storage-explorer.spec.ts'
+      - 'playwright.rc19-storage.config.ts'
+      - 'openspec/changes/rc19-sto02-resource-registry/**'
+  push:
+    branches:
+      - fix/rc19-sto01-storage-production
+      - fix/rc19-sto01-internal-only
+      - feat/rc19-sto02-resource-registry
+      - integration/rc19-final-storage-prep
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage-integration-gate:
+    name: RC19 Storage Contract & Registry Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres17:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: rc19_sto01_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - name: Checkout reviewed branch at exact commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Verify exact HEAD SHA
+        run: |
+          echo "Current Git Commit SHA: ${{ github.sha }}"
+          git rev-parse HEAD
+
+      - name: Create isolated STO-02 PostgreSQL database
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto02_disposable'
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+
+      - name: Verify package lock consistency
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: Verify TypeScript types (tsc --noEmit)
+        run: |
+          pnpm run type-check
+
+      - name: Verify ESLint code quality
+        run: |
+          pnpm run lint
+
+      - name: Run PostgreSQL 17 server integration test suite
+        env:
+          DATABASE_URL: postgresql://postgres@localhost:5432/rc19_sto01_disposable
+          RC19_STO01_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto01-storage-seed-postgres17.test.ts
+
+      - name: Run STO-02 PostgreSQL 17 proposal integration test
+        env:
+          DATABASE_URL: postgresql://postgres@localhost:5432/rc19_sto02_disposable
+          RC19_STO02_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto02-resource-registry-postgres17.test.ts
+
+      - name: Run focused STO-02 canonical URL validation tests
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto02-migration-policy.test.ts \
+            tests/rc19-sto02-api-errors.test.ts \
+            tests/rc19-sto02-resource-validation.test.ts
+
+      - name: Run full Node regression suite
+        shell: bash
+        run: |
+          mapfile -t TEST_FILES < <(find tests -maxdepth 1 -type f \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.mjs' \) ! -name '*postgres17*' -print)
+          node --import ./tests/typescript-alias-loader.mjs --test "${TEST_FILES[@]}"
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Storage mock browser regression
+        run: pnpm exec playwright test --config playwright.rc19-storage.config.ts --reporter=line
+
+      - name: Upload Storage registry UI screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rc19-sto02-storage-registry-ui
+          path: docs/handoffs/evidence/rc19-sto02-resource-registry.png
+          if-no-files-found: warn
+
+      - name: Run isolated PGlite storage regression test suite
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc15-operational-file-storage.test.ts \
+            tests/rc15-storage-setup.test.ts \
+            tests/operational-storage-placement.test.ts \
+            tests/rc19-sto01-storage-seed-preflight.test.ts
+
+      - name: Verify production build (Turbopack)
+        run: |
+          pnpm run build

@@ -653,3 +653,39 @@ test('search by literal filename is scoped, case-insensitive and counted before 
   const invalid=await route.GET(new Request(prefix+'&provider_filter=not-a-provider'))
   assert.equal(invalid.status,400)
 })
+
+test('catalog endpoint surfaces provider_availability distinguishing configured Google Drive from unconfigured OneDrive', async () => {
+  const state = client()
+  const route = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'leader', systemPermission: 'leader', businessUserId: 'leader' }),
+    storage: {
+      upload: async () => { throw new Error('not implemented') },
+      read: async () => new Uint8Array([]),
+      delete: async () => {},
+      ensureFolder: async () => ({ id: 'f', name: 'f', provider: 'google_drive' }),
+      getMetadata: async () => ({ id: 'f', name: 'f', kind: 'folder', provider: 'google_drive' }),
+      getViewUrl: async () => 'https://drive.google.com',
+      providerAvailability: {
+        google_drive: true,
+        onedrive: false,
+        supabase_legacy: false,
+      },
+    },
+    routingMode: 'database',
+  })
+  const response = await route.GET(new Request('https://example.test/api/operational-files?catalog=1'))
+  assert.equal(response.status, 200)
+  const data = await response.json() as {
+    ok: boolean
+    active_route_count: number | null
+    provider_availability: { google_drive: boolean; onedrive: boolean }
+  }
+  assert.equal(data.ok, true)
+  assert.equal(data.active_route_count, 0)
+  assert.deepEqual(data.provider_availability, {
+    google_drive: true,
+    onedrive: false,
+    supabase_legacy: false,
+  })
+})
