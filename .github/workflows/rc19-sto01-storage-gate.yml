@@ -1,0 +1,106 @@
+name: RC19 STO-01 Storage Production Integration Gate
+
+on:
+  pull_request:
+    branches:
+      - feat/ops-full-app-upgrade-rc19
+      - main
+      - fix/rc19-sto01-storage-production
+    paths:
+      - '.github/workflows/rc19-sto01-storage-gate.yml'
+      - 'scripts/storage/**'
+      - 'config/storage-v1-production-routes.proposed.json'
+      - 'docs/storage/**'
+      - 'lib/files/**'
+      - 'lib/server/**'
+      - 'components/features/storage/**'
+      - 'app/api/operational-files/**'
+      - 'app/api/operational-storage-setup/**'
+      - 'app/(dashboard)/storage/**'
+      - 'tests/rc14-*.test.ts'
+      - 'tests/rc15-*.test.ts'
+      - 'tests/operational-storage-placement.test.ts'
+      - 'tests/rc19-sto01-storage-seed-preflight.test.ts'
+      - 'tests/rc19-sto01-storage-seed-postgres17.test.ts'
+  push:
+    branches:
+      - fix/rc19-sto01-storage-production
+      - fix/rc19-sto01-internal-only
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage-integration-gate:
+    name: RC19 STO-01 Storage Contract & Preflight Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres17:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: rc19_sto01_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - name: Checkout reviewed branch at exact commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Verify exact HEAD SHA
+        run: |
+          echo "Current Git Commit SHA: ${{ github.sha }}"
+          git rev-parse HEAD
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+
+      - name: Verify package lock consistency
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: Verify TypeScript types (tsc --noEmit)
+        run: |
+          pnpm run type-check
+
+      - name: Verify ESLint code quality
+        run: |
+          pnpm run lint
+
+      - name: Run PostgreSQL 17 server integration test suite
+        env:
+          DATABASE_URL: postgresql://postgres@localhost:5432/rc19_sto01_disposable
+          RC19_STO01_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto01-storage-seed-postgres17.test.ts
+
+      - name: Run isolated PGlite storage regression test suite
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc15-operational-file-storage.test.ts \
+            tests/rc15-storage-setup.test.ts \
+            tests/operational-storage-placement.test.ts \
+            tests/rc19-sto01-storage-seed-preflight.test.ts
+
+      - name: Verify production build (Turbopack)
+        run: |
+          pnpm run build
