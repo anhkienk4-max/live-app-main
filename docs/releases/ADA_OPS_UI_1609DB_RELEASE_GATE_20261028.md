@@ -96,3 +96,13 @@ Release remains Draft **NO-GO** pending exact-commit CI, new branch Preview, rea
 - **Protected Preview**: `dpl_D5shdAgzARUdvCCJiGRcujE2pahK`, https://livestream-ops-demo-b0ffgp44g-livestream2.vercel.app, **READY**, target `null`. Exact GitSource SHA `42e93633a4ce16eaabe4b98bee2e090ca2df21e6`.
 - **3-role UAT**: runner, suite, contract and runbook now pinned to this Preview and SHA, still **NOT EXECUTED** with real credentials. Keep Preview protection on.
 - **Production hold**: aliased Production observed as `dpl_6KfC7VLRAwHkTcGnFyqhv6gkucqL`; no promotion, alias assignment or DB change was performed. The older 29-Oct Vercel snapshot describes a previous deployment, not this alias. Live source parity remains independent blocker.
+
+## 2026-10-29 15:xx ICT — NEW LIVE CLI snapshot replaces earlier alias assumption
+
+The Vercel **current live** alias was checked and points at READY Production deployment `dpl_6KfC7VLRAwHkTcGnFyqhv6gkucqL`. This is **not** the earlier `dpl_5eqzn3dHR9pKnnna8MvBY2F7AnMX`, so an attestation of the latter is historical only.
+
+Current visible CLI source-file listing contains **679 entries** (678 with valid 40-character SHA-1 hashes and one truncated test hash for `tests/auth-session-foundation.test.ts`), plus **356 depth-limited subtree placeholders**. Unlike the previous upload, **zero visible paths start with `.worktrees/`**. Comparing the two partial Vercel trees showed 594 common paths; three changed hashes were test `e2e/rc16k-ui.spec.ts` and two generated project-memory metadata files. New source entries visible in the current upload do not imply they were absent from the previous depth-limited response.
+
+CI now includes **CURRENT deployment visible-file attestation** via `scripts/verify-aliased-live-current-visible.mjs` and pinned immutable snapshot `docs/releases/VERCEL_ALIASED_LIVE_20261029_CURRENT_VISIBLE_SHA1.json`, in addition to historic checks. The script fails closed on unrecognized, changed or untracked visible files, with explicit SHA-pinned documentary/test exceptions. The result will never prove omitted files, upload root, Git SHA or complete release equivalence.
+
+**Production release remains NO-GO** until complete source mapping, credentialed three-role Staging UAT, cross-role authorization checks and explicit owner approval. No release or DB modification was performed by this evidence capture.
