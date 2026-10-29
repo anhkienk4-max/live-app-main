@@ -78,7 +78,7 @@ jobs:
         if: always()
         run: docker stop ada-wave2-combined-pg17 ada-rc19-attendance-review-pg17 rc16f-pg17-payroll-candidate || true
       - name: Full repository regression
-        run: node scripts/run-final-regression.mjs
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
         env:
           SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
           TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
