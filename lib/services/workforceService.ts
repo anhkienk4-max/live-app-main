@@ -296,6 +296,7 @@ export class WorkforceServiceError extends Error {
 
 export interface WorkforceCapabilities {
   actual_staffing: boolean
+  self_attendance_review?: boolean
   team_performance: boolean
   own_performance: boolean
   payroll: boolean
@@ -421,6 +422,8 @@ export const workforceService = {
       .every(key => typeof result.capabilities[key as keyof WorkforceCapabilities] === 'boolean')) {
       throw new WorkforceServiceError('WORKFORCE_CAPABILITIES_INVALID', 503)
     }
+    if (result.capabilities.self_attendance_review !== undefined && typeof result.capabilities.self_attendance_review !== 'boolean')
+      throw new WorkforceServiceError('WORKFORCE_CAPABILITIES_INVALID',503)
     return result
   },
   // PAYROLL DISCOVERY & CRUD
