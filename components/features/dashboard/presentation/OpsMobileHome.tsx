@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, CalendarDays, ClipboardList, Clock3, FileText, Radio, UsersRound, Wallet, CheckCircle2, AlertCircle } from 'lucide-react'
+import { ArrowRight, Bell, CalendarDays, ClipboardList, Clock3, FileText, Radio, UserRound, UsersRound, Wallet, CheckCircle2, AlertCircle } from 'lucide-react'
 
 export type OpsMobileAttention = {
   key: string
@@ -44,7 +44,9 @@ export function OpsMobileHome({
       : role === 'leader'
         ? { href: '/staffing?tab=registration', title: 'Duyệt đăng ký', Icon: ClipboardList, color: 'text-emerald-600', background: 'bg-emerald-50' }
         : { href: '/calendar?tab=open', title: 'Đăng ký ca', Icon: ClipboardList, color: 'text-emerald-600', background: 'bg-emerald-50' },
-    { href: admin ? '/staff' : '/profile', title: admin ? 'Nhân sự' : 'Cá nhân', Icon: UsersRound, color: 'text-indigo-600', background: 'bg-indigo-50' },
+    { href: admin ? '/staff' : '/profile', title: admin ? 'Nhân sự' : 'Hồ sơ', Icon: UsersRound, color: 'text-indigo-600', background: 'bg-indigo-50' },
+    ...(admin ? [{ href: '/profile', title: 'Hồ sơ', Icon: UserRound, color: 'text-sky-600', background: 'bg-sky-50' }] : []),
+    { href: '/notifications', title: 'Thông báo', Icon: Bell, color: 'text-amber-600', background: 'bg-amber-50' },
   ]
   return (
     <main data-testid="ada-reference-mobile-home" data-role={role} className="min-w-0 bg-[#F7F9FE] pb-7 md:hidden">
@@ -97,7 +99,7 @@ export function OpsMobileHome({
         </section>
         <nav aria-label="Truy cập nhanh" data-testid="ada-mobile-home-quick-links" className="grid grid-cols-2 gap-3">
           {links.map(({ href, title, Icon, color, background }) => (
-            <Link key={href} href={href} className="flex min-h-[86px] flex-col items-center justify-center gap-2 rounded-[16px] border border-[#E2E9F6] bg-white px-2 py-3 text-center shadow-[0_3px_12px_rgba(10,38,90,.035)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+            <Link key={href} href={href} data-testid={href === '/profile' ? 'ada-mobile-profile-link' : href === '/notifications' ? 'ada-mobile-notifications-link' : undefined} className="flex min-h-[86px] flex-col items-center justify-center gap-2 rounded-[16px] border border-[#E2E9F6] bg-white px-2 py-3 text-center shadow-[0_3px_12px_rgba(10,38,90,.035)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
               <span className={'flex size-10 items-center justify-center rounded-xl ' + background}>
                 <Icon className={'size-5 ' + color} aria-hidden="true" />
               </span>

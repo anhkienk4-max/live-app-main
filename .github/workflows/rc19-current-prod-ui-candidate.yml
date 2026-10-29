@@ -33,6 +33,8 @@ jobs:
         run: |
           node --test tests/pwa-functional-uat-contract.test.mjs
           pnpm exec playwright test --config=playwright.pwa-functional.uat.config.ts --list
+      - name: Three-role Overview navigation contract
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/e1-role-ux.test.ts
       - name: TypeScript
         run: pnpm exec tsc --noEmit --incremental false
       - name: Scoped ESLint
