@@ -70,7 +70,7 @@ create trigger self_attendance_photo_immutable before update or delete on public
   for each row execute function private.reject_self_attendance_mutation();
 
 insert into public.business_users values
-  ('admin-1','admin'),('leader-1','leader'),('leader-2','leader'),('member-1','member');
+  ('admin-1','admin'),('leader-1','leader'),('leader-2','leader'),('member-1','member'),('member-2','member');
 insert into public.brands values('brand-1','Test Brand');
 insert into public.platforms values('platform-1','Test Platform');
 insert into public.shifts(id,owner_leader_id,brand_id,platform_id,title) values
@@ -84,7 +84,7 @@ insert into public.self_attendance_events(id,request_id,shift_id,staff_id,operat
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0005','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0005','shift-1','member-1','support','check_out'),
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0006','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0006','shift-1','member-1','host','check_out'),
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0007','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0007','shift-1','member-1','technical','check_in'),
- ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0008','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0008','shift-1','member-1','technical','check_out');
+ ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0008','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0008','shift-1','member-2','technical','check_out');
 insert into public.self_attendance_photo_evidence(
   request_id,shift_id,staff_id,operational_role,event_kind,external_file_id,external_parent_id,
   file_name,mime_type,size_bytes,checksum_sha256,shift_context,capture_source
