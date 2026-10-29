@@ -72,6 +72,7 @@ import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { ShiftLifecycleActions } from './ShiftLifecycleActions'
 import { resolveStaffingLabelsForRole, StaffingLabel } from '@/lib/utils/staffingResolver'
 import { ActualStaffingPanel } from './ActualStaffingPanel'
+import { AttendancePhotoReviewPanel } from '@/components/features/attendance/AttendancePhotoReviewPanel'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
@@ -575,6 +576,8 @@ export function ShiftDetailModal({
     ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id && isStaffedRegistration(r)) : undefined
   const myAttendanceRegistration = myRegistration ?? (staffingActorId === currentUser?.id && currentUser
     ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id) : undefined)
+  const visibleShiftTabCount = 3 + Number(Boolean(myAttendanceRegistration))
+    + Number(Boolean(capabilities?.actual_staffing)) + Number(Boolean(capabilities?.self_attendance_review))
   const attendanceShiftEligible = !shift.deleted_at && !shift.archived_at && ['scheduled', 'preparing', 'live', 'paused', 'completed'].includes(shift.status)
   const registrationContext = allRegistrations ?? registrations
   const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
@@ -794,11 +797,12 @@ export function ShiftDetailModal({
 
           <DialogBody className="mx-0 pb-1 bg-muted/5 p-0 overflow-y-auto">
             <Tabs key={`${shift.id}:${currentUser?.id ?? ''}`} defaultValue="overview" className="min-w-0">
-              <TabsList className={`mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-2 sm:mx-6 ${myAttendanceRegistration && capabilities?.actual_staffing ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
+              <TabsList className={`mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-2 sm:mx-6 ${visibleShiftTabCount >= 6 ? 'sm:grid-cols-6' : visibleShiftTabCount === 5 ? 'sm:grid-cols-5' : visibleShiftTabCount === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
                 {myAttendanceRegistration && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="self-attendance">Check-in / Check-out</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
                 {capabilities?.actual_staffing && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="actual">{language === 'en' ? 'Actual staffing' : 'Chấm công thực tế'}</TabsTrigger>}
+                {capabilities?.self_attendance_review && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="attendance-review">{language === 'en' ? 'Photo review' : 'Đối soát ảnh'}</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
               </TabsList>
 
@@ -865,6 +869,10 @@ export function ShiftDetailModal({
 
               {capabilities?.actual_staffing && <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
                 <ActualStaffingPanel shift={shift} currentUser={currentUser} />
+              </TabsContent>}
+
+              {capabilities?.self_attendance_review && <TabsContent value="attendance-review" className="min-w-0 p-4 sm:p-6">
+                <AttendancePhotoReviewPanel key={`${shift.id}:${currentUser?.id ?? ''}`} shiftId={shift.id} />
               </TabsContent>}
 
               <TabsContent value="details" className="space-y-4 p-4 sm:p-6">

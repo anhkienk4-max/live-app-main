@@ -40,6 +40,7 @@ test('backend, integration and post-main delivery disable Git auto-deploy while 
       'fix/rc19-reg128-lane1': false,
       'release/rc19-core-2026-11-01-integrated': false,
       'integration/rc19-wave2-core': false,
+      'fix/rc19-p2-04-attendance-photo-review': false,
     } },
   })
 })
