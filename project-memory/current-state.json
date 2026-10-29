@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "d0e3d88904ba53e0871ece164ac1c56b60ace605",
+    "head": "d329f3d16a31a9fd53b9d78afb5a53504904d44f",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -59,6 +59,7 @@
       "app/api/account-requests/[id]/reject/route.ts",
       "app/api/account-requests/route.ts",
       "app/api/ai/chat/route.ts",
+      "app/api/audit/team-capability/route.ts",
       "app/api/auth/callback/route.ts",
       "app/api/auth/providers/route.ts",
       "app/api/file-sources/ingest/route.ts",
@@ -73,8 +74,10 @@
       "app/api/operations/calendar-export/route.ts",
       "app/api/operations/collection/route.ts",
       "app/api/operations/registration-context/route.ts",
+      "app/api/rbac/account-overrides/route.ts",
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
+      "app/api/role-defaults/route.ts",
       "app/api/staff/invite/route.ts",
       "app/api/workforce/actual/route.ts",
       "app/api/workforce/attendance-import/route.ts",
@@ -95,14 +98,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 67,
-        "components": 170,
-        "lib": 251,
+        "app": 70,
+        "components": 172,
+        "lib": 256,
         "scripts": 26,
         "supabase": 109,
-        "tests": 266
+        "tests": 275
       },
-      "total": 889
+      "total": 908
     },
     "tests": {
       "files": [
@@ -210,6 +213,7 @@
         "tests/preview-loading-performance.test.tsx",
         "tests/production-shell-convergence.test.ts",
         "tests/profile-avatar-storage.test.ts",
+        "tests/rbac02-account-overrides.test.ts",
         "tests/rc12-provider-runtime-diagnostics.test.ts",
         "tests/rc12-report-file-provider.test.ts",
         "tests/rc13a-execution-source-routes.test.ts",
@@ -255,6 +259,8 @@
         "tests/rc19-auth-responsive-layout.test.tsx",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-my-payslip.test.ts",
+        "tests/rc19-rbac01-security.test.ts",
+        "tests/rc19-rbac01b-audit-slice.test.ts",
         "tests/rc19-report-apply-filters.test.ts",
         "tests/rc19-reports-app-router-wiring.test.ts",
         "tests/rc19-self-attendance-contract.test.ts",
@@ -328,7 +334,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 221
+      "count": 224
     },
     "migrations": {
       "files": [
@@ -437,5 +443,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-29T11:44:20+07:00"
+  "synced_at": "2026-10-30T00:54:33+07:00"
 }
