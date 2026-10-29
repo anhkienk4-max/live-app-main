@@ -63,3 +63,11 @@ A read-only comparison of the *visible* runtime paths of the aliased live deploy
 - **Preview env preflight:** five branch-scoped Preview variables are configured, server and public Supabase URLs match, mock data is disabled. No decrypted or private credentials are recorded.
 - **Remaining blocker:** run real read-only three-role Staging UAT; test capability/RLS and mutation safety separately, establish complete live CLI source provenance and prepare staged Production build/rollback before any release.
 - **Release decision: NO-GO**, Production `ops5729.top` remains aliased to `dpl_5eqzn3dHR9pKnnna8MvBY2F7AnMX` at this observation.
+
+## 2026-10-29 visible-file Core proof (explicitly partial)
+
+Vercel source-list response for the currently aliased `dpl_5eqzn3dHR9pKnnna8MvBY2F7AnMX` exposed **678 file entries**, of which **677 have usable 40-character SHA-1 hashes**. Exactly **one** displayed hash is truncated: `e2e/rc16k-ui.spec.ts`. The same response includes **612 depth-truncation placeholders**, so it is not a complete source tree or a deployment-to-Git attestation.
+
+The upload also exposes **84 files inside `.worktrees/rc19-pass-swap-93/`**. This is an avoidable build-context issue. The next source upload must explicitly exclude worktrees, local credentials, environment files, reports and development-only artifacts; confirm the upload exclusion configuration in the CLI workflow. No uploaded worktree source is authorized to replace the canonical Core branch.
+
+The immutable visibility snapshot is `docs/releases/VERCEL_ALIASED_LIVE_20261029_VISIBLE_SHA1.json`. The CI verifier `scripts/verify-aliased-live-core-visible.mjs` compares every visible SHA-1 file that exists in Git at Core `1befe23bea9380dac37061a7132ac38143cf678b`, allows *only specifically hashed* generated memory metadata differences, and fails on unexpected executable/config/source mismatches. Nested worktree files and the truncated hash are reported separately. **Even a successful verifier cannot lift NO-GO**: exhaustive upload provenance, 3-role live-auth Staging UAT, RLS/mutation negative tests and owner approval remain mandatory.

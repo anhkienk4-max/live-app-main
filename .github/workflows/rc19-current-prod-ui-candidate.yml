@@ -25,6 +25,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Historical 28 Oct provenance (NOT live source parity)
         run: node scripts/verify-current-prod-source.mjs
+      - name: 29 Oct visible live source / RC19 Core reconciliation (PARTIAL ONLY)
+        run: node scripts/verify-aliased-live-core-visible.mjs
       - name: UI boundary and role authorization guard
         run: node scripts/verify-current-prod-ui-scope.mjs
       - name: Validate 3-role Staging UAT definition (no private credentials)
