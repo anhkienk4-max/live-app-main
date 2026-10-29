@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "99000e73a8e877d9549a1e8b142b889f2ebcf637",
+    "head": "76d24c25fc51993b16d76308e4441c83da46ddb8",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -78,6 +78,7 @@
       "app/api/staff/invite/route.ts",
       "app/api/workforce/actual/route.ts",
       "app/api/workforce/attendance-import/route.ts",
+      "app/api/workforce/attendance-photo-review/route.ts",
       "app/api/workforce/capabilities/route.ts",
       "app/api/workforce/my-payslip/route.ts",
       "app/api/workforce/overview/route.ts",
@@ -95,14 +96,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 67,
-        "components": 170,
-        "lib": 251,
+        "app": 68,
+        "components": 172,
+        "lib": 252,
         "scripts": 26,
-        "supabase": 111,
-        "tests": 273
+        "supabase": 113,
+        "tests": 276
       },
-      "total": 898
+      "total": 907
     },
     "tests": {
       "files": [
@@ -252,6 +253,7 @@
         "tests/rc18a-shift-change-subscription.test.ts",
         "tests/rc18a-shift-date-window.test.ts",
         "tests/rc18a-shift-list-url-state.test.ts",
+        "tests/rc19-attendance-photo-review.test.ts",
         "tests/rc19-auth-responsive-layout.test.tsx",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-my-payslip.test.ts",
@@ -329,7 +331,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 222
+      "count": 223
     },
     "migrations": {
       "files": [
@@ -440,5 +442,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-29T15:50:02+07:00"
+  "synced_at": "2026-10-29T17:39:06+07:00"
 }
