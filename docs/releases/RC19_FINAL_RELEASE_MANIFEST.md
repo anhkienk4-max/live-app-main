@@ -1,6 +1,6 @@
 # RC19 Final Release Manifest — Working Candidate
 
-Status: **PREPARATION ONLY — NO PRODUCTION MERGE, DEPLOY, SEED, OR SQL APPLY**  
+Status: **PREPARATION ONLY — NO PRODUCTION MERGE, DEPLOY, SEED, OR SQL APPLY**
 Updated: 2026-10-29
 
 ## Source identity
