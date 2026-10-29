@@ -20,6 +20,7 @@
     "tests/auth-confirm-route.test.ts",
     "tests/auth-identity-bridge.test.tsx",
     "tests/auth-session-foundation.test.ts",
+    "tests/bi01-catalog.test.ts",
     "tests/bulk-staffing-approval.test.ts",
     "tests/calendar-all-time-completeness.test.ts",
     "tests/calendar-bulk-delete.test.ts",

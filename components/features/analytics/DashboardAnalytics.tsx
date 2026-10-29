@@ -44,16 +44,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/toast'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { reportMetricValue, resolveAnalyticsDateRange } from '@/lib/utils/analytics'
+import { BI_CHART_CATALOG, biChartCompatibilityMessage, biChartCompatibilityReason, biMetricValue, biPersonalViewStorageKey, firstCompatibleBiChart, hasBiMetricObservation, hasNegativeBiMetric, parseBiPersonalView, analyticsPeriodBucket, type BiChartKey, type BiDimension, type BiMetricKey } from '@/lib/utils/bi01Catalog'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { usePagedList } from '@/lib/hooks/usePagedList'
 import { getOperationalReferences } from '@/lib/services/operationalReferences'
-import { cn } from '@/lib/utils'
 
 type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom'
 type Filters = { range: RangeKey; start: string; end: string; brandIds: string[]; platformIds: string[]; campaignIds: string[]; hostIds: string[]; supportIds: string[]; technicalIds: string[] }
-type MetricKey = 'revenue' | 'gmv' | 'orders' | 'viewers' | 'productClicks' | 'ctr' | 'cvr' | 'averageOrderValue' | 'liveDuration' | 'reportCount'
-type AnalyticsDimension = 'time' | 'brand' | 'platform' | 'campaign' | 'host'
-type AnalyticsChartType = 'line' | 'bar' | 'area' | 'pie'
+type MetricKey = BiMetricKey
+type AnalyticsDimension = BiDimension
+type AnalyticsChartType = BiChartKey
 
 const addRange = (range: Exclude<RangeKey, 'custom'>) => resolveAnalyticsDateRange(range)
 const initialFilters = (): Filters => ({ range: '30d', ...addRange('30d'), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [] })
@@ -93,6 +93,8 @@ export function DashboardAnalytics() {
   const [selectedMetric, setSelectedMetric] = React.useState<MetricKey>('revenue')
   const [selectedDimension, setSelectedDimension] = React.useState<AnalyticsDimension>('time')
   const [selectedChartType, setSelectedChartType] = React.useState<AnalyticsChartType>('area')
+  const personalViewKey = currentUser ? biPersonalViewStorageKey(currentUser.id) : ''
+  const [hasPersonalView, setHasPersonalView] = React.useState(false)
 
   const snapshotFilters = filters ? { from: filters.start, to: filters.end, brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds, hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds } : {}
   const filtersKey = JSON.stringify(snapshotFilters)
@@ -101,6 +103,16 @@ export function DashboardAnalytics() {
   const setFilters: typeof setFiltersRaw = action => { setFiltersRaw(action); list.reset() }
   const setPage = list.setPage
   const pageSize = list.pageSize
+
+  React.useEffect(() => {
+    let active = true
+    void Promise.resolve().then(() => {
+      if (!active) return
+      try { setHasPersonalView(Boolean(personalViewKey && window.localStorage.getItem(personalViewKey))) }
+      catch { setHasPersonalView(false) }
+    })
+    return () => { active = false }
+  }, [personalViewKey])
 
   const exportComplete = async () => {
     if (!filters || !currentUser || !hasPermission(currentUser, 'reports.export')) return
@@ -201,7 +213,8 @@ export function DashboardAnalytics() {
   const currentCount = totals.reportCount ?? 0
   const shiftById = new Map((pageResult?.shifts ?? []).map(shift => [shift.id, shift]))
   const delta = (key: MetricKey) => {
-    const before = previous[key], after = totals[key]
+    const before = biMetricValue(previous as unknown as Record<string, unknown>, key)
+    const after = biMetricValue(totals as unknown as Record<string, unknown>, key)
     return before == null || after == null || before === 0 ? '—' : (((after - before) / before) * 100).toFixed(1) + '%'
   }
   const trend = snapshot.trend
@@ -209,16 +222,18 @@ export function DashboardAnalytics() {
   const dimensionData = (dimension: 'brand' | 'platform' | 'campaign', metric: MetricKey = 'revenue') => {
     const items = dimension === 'brand' ? brands : dimension === 'platform' ? platforms : campaigns
     const rows = dimension === 'brand' ? snapshot.brands : dimension === 'platform' ? snapshot.platforms : snapshot.campaigns
-    const groups = new Map<string, { name: string; value: number | null; revenue: number | null; count: number }>()
+    const groups = new Map<string, { id: string | null; name: string; value: number | null; revenue: number | null; count: number }>()
     for (const row of rows) {
       const name = items.find(item => item.id === row.id)?.name ?? '—'
-      const prev = groups.get(name)
-      const rowVal = row[metric] ?? 0
-      const rowRev = row.revenue ?? 0
-      groups.set(name, {
+      const key = row.id ?? '__unassigned__'
+      const prev = groups.get(key)
+      const rowValue = biMetricValue(row as unknown as Record<string, unknown>, metric)
+      const rowRevenue = row.revenue
+      groups.set(key, {
+        id: row.id,
         name,
-        value: row[metric] === null ? prev?.value ?? null : (prev?.value ?? 0) + Number(rowVal),
-        revenue: row.revenue === null ? prev?.revenue ?? null : (prev?.revenue ?? 0) + Number(rowRev),
+        value: rowValue === null ? prev?.value ?? null : (prev?.value ?? 0) + rowValue,
+        revenue: rowRevenue === null ? prev?.revenue ?? null : (prev?.revenue ?? 0) + rowRevenue,
         count: (prev?.count ?? 0) + (row.reportCount ?? 0)
       })
     }
@@ -233,6 +248,7 @@ export function DashboardAnalytics() {
     technical: row.technical
   }))
   const hostPerformance = snapshot.hostPerformance.filter(row => row.revenue !== null && userMap.get(row.user_id)?.operational_roles?.includes('host')).map(row => ({
+    id: row.user_id,
     name: userMap.get(row.user_id)!.full_name,
     revenue: row.revenue
   }))
@@ -245,16 +261,16 @@ export function DashboardAnalytics() {
   const display = (value: number | null, unit = '') => value === null ? '—' : unit === 'currency' ? formatCurrency(value) : value.toLocaleString(undefined, { maximumFractionDigits: 2 }) + unit
 
   const metricDefinitions: Array<{ key: MetricKey; unit: string; source: string; label: string }> = [
-    { key: 'revenue', unit: 'currency', source: 'SUM revenue', label: t('revenue') },
-    { key: 'gmv', unit: 'currency', source: 'SUM gmv', label: 'GMV' },
-    { key: 'orders', unit: '', source: 'SUM orders', label: t('orders') },
-    { key: 'viewers', unit: '', source: 'SUM engaged viewers', label: t('viewers') },
-    { key: 'productClicks', unit: '', source: 'SUM product clicks', label: t('productClicks') },
-    { key: 'ctr', unit: '%', source: 'AVG reported CTR', label: 'CTR' },
-    { key: 'cvr', unit: '%', source: 'AVG reported conversion rate', label: 'CVR' },
-    { key: 'averageOrderValue', unit: 'currency', source: 'Revenue / orders with both metrics present', label: t('averageOrderValue') },
-    { key: 'liveDuration', unit: ' ' + t('minuteShort'), source: 'SUM reported live duration', label: t('liveDuration') },
-    { key: 'reportCount', unit: '', source: 'COUNT confirmed reports', label: t('reportCount') }
+    { key: 'revenue', unit: 'currency', source: 'SUM confirmed report revenue; source field varies by platform', label: t('revenue') },
+    { key: 'gmv', unit: 'currency', source: 'SUM confirmed GMV; never substituted with Revenue', label: 'GMV' },
+    { key: 'orders', unit: '', source: 'SUM confirmed report orders', label: t('orders') },
+    { key: 'viewers', unit: '', source: 'SUM reported engaged viewers; missing observations excluded', label: t('viewers') },
+    { key: 'productClicks', unit: '', source: 'SUM reported product clicks; missing observations excluded', label: t('productClicks') },
+    { key: 'ctr', unit: '%', source: 'Unweighted average of observed confirmed-report CTR', label: 'CTR' },
+    { key: 'cvr', unit: '%', source: 'Unweighted average of observed confirmed-report CVR', label: 'CVR' },
+    { key: 'averageOrderValue', unit: 'currency', source: 'Paired Revenue / Orders using verified weighted formula', label: t('averageOrderValue') },
+    { key: 'liveHours', unit: ' h', source: 'Reported live minutes / 60; not scheduled shift length', label: tr('liveHours', 'Giờ livestream', 'Livestream hours') },
+    { key: 'reportCount', unit: '', source: 'Count confirmed report records; not distinct shifts', label: t('reportCount') }
   ]
   const primaryMetricKeys: MetricKey[] = ['revenue', 'orders', 'averageOrderValue', 'viewers', 'ctr', 'cvr']
   const primaryMetrics = metricDefinitions.filter(metric => primaryMetricKeys.includes(metric.key))
@@ -268,6 +284,7 @@ export function DashboardAnalytics() {
   const isSelectedMetricCurrency = selectedMetric === 'revenue' || selectedMetric === 'gmv' || selectedMetric === 'averageOrderValue'
   const isSelectedMetricPercent = selectedMetric === 'ctr' || selectedMetric === 'cvr'
   const selectedMetricDef = metricDefinitions.find(m => m.key === selectedMetric) || metricDefinitions[0]
+  const activeChartReason = biChartCompatibilityMessage(selectedMetric, selectedDimension, selectedChartType, isEn)
 
   let interactiveChartData: Array<Record<string, string | number | null>> = []
   let interactiveXKey = 'period'
@@ -276,7 +293,8 @@ export function DashboardAnalytics() {
   if (selectedDimension === 'time') {
     interactiveChartData = trend.map(item => ({
       period: item.period,
-      [selectedMetric]: item[selectedMetric]
+      [selectedMetric]: biMetricValue(item as unknown as Record<string, unknown>, selectedMetric),
+      drilldownId: item.period
     }))
     interactiveXKey = 'period'
     interactiveDataKey = selectedMetric
@@ -285,7 +303,8 @@ export function DashboardAnalytics() {
     interactiveChartData = dimRows.map(row => ({
       name: row.name,
       value: row.value,
-      [selectedMetric]: row.value
+      [selectedMetric]: row.value,
+      drilldownId: row.id
     }))
     interactiveXKey = 'name'
     interactiveDataKey = selectedMetric
@@ -293,13 +312,63 @@ export function DashboardAnalytics() {
     interactiveChartData = hostPerformance.map(row => ({
       name: row.name,
       value: row.revenue,
-      [selectedMetric]: row.revenue
+      [selectedMetric]: row.revenue,
+      drilldownId: row.id
     }))
     interactiveXKey = 'name'
     interactiveDataKey = selectedMetric
   }
 
-  const hasInteractiveData = currentCount > 0 && interactiveChartData.length > 0 && interactiveChartData.some(d => d[interactiveDataKey] !== null && Number(d[interactiveDataKey]) > 0)
+  const interactiveValues = interactiveChartData.map(row => typeof row[interactiveDataKey] === 'number' ? Number(row[interactiveDataKey]) : null)
+  const hasInteractiveData = currentCount > 0 && interactiveChartData.length > 0 && hasBiMetricObservation(interactiveValues)
+  const pieHasNegativeValues = (selectedChartType === 'pie' || selectedChartType === 'donut') && hasNegativeBiMetric(interactiveValues)
+  const pieHasPositiveValues = interactiveValues.some(value => typeof value === 'number' && value > 0)
+  const pieChartBlockedByValues = (selectedChartType === 'pie' || selectedChartType === 'donut') && (pieHasNegativeValues || !pieHasPositiveValues)
+  const pieData = interactiveChartData.filter(row => row[interactiveDataKey] !== null && typeof row[interactiveDataKey] === 'number' && Number(row[interactiveDataKey]) > 0)
+  const drilldownOptions = interactiveChartData.filter(row => typeof row.drilldownId === 'string' && row.drilldownId.length > 0)
+  const applyDrilldown = (id: string) => {
+    const selected = interactiveChartData.find(row => row.drilldownId === id)
+    if (!selected || !filters) return
+    if (selectedDimension === 'time') {
+      const period = typeof selected.period === 'string' ? selected.period : ''
+      const range = analyticsPeriodBucket(period, filters.start, filters.end)
+      if (range) setFilters(current => current ? { ...current, range: 'custom', start: range.start, end: range.end } : current)
+      return
+    }
+    if (selectedDimension === 'brand') setFilters(current => current ? { ...current, brandIds: [id] } : current)
+    else if (selectedDimension === 'platform') setFilters(current => current ? { ...current, platformIds: [id] } : current)
+    else if (selectedDimension === 'campaign') setFilters(current => current ? { ...current, campaignIds: [id] } : current)
+    else setFilters(current => current ? { ...current, hostIds: [id] } : current)
+  }
+  const savePersonalView = () => {
+    if (!personalViewKey || !filters || typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(personalViewKey, JSON.stringify({ version: 1, metric: selectedMetric, dimension: selectedDimension, chart: selectedChartType, filters }))
+      setHasPersonalView(true)
+      toast({ title: tr('viewSaved', 'Đã lưu chế độ xem cá nhân', 'Personal view saved') })
+    } catch {
+      toast({ title: tr('viewSaveFailed', 'Không thể lưu chế độ xem trên thiết bị này', 'Could not save this view on this device'), variant: 'destructive' })
+    }
+  }
+  const restorePersonalView = () => {
+    if (!personalViewKey || typeof window === 'undefined') return
+    try {
+      const serialized = window.localStorage.getItem(personalViewKey)
+      const view = serialized ? parseBiPersonalView(serialized) : null
+      if (!view) {
+        setHasPersonalView(false)
+        return
+      }
+      setFilters(view.filters)
+      setPage(1)
+      setSelectedMetric(view.metric)
+      setSelectedDimension(view.dimension)
+      setSelectedChartType(view.chart)
+      toast({ title: tr('viewLoaded', 'Đã tải chế độ xem cá nhân', 'Personal view loaded') })
+    } catch {
+      setHasPersonalView(false)
+    }
+  }
 
   return (
     <div className="min-w-0 space-y-3 text-slate-900" data-testid="analytics-ready">
@@ -323,10 +392,20 @@ export function DashboardAnalytics() {
             </SelectContent>
           </Select>
           {filters.range === 'custom' && (
-            <div className="flex items-center gap-1.5 text-xs">
-              <Input type="date" value={filters.start} onChange={e => { setPage(1); setFilters(c => c ? { ...c, start: e.target.value } : c) }} className="h-8 w-32" />
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <Input type="month" aria-label={tr('yearMonth', 'Năm và tháng', 'Year and month')} value={filters.start.slice(0, 7)} onChange={e => {
+                const value = e.target.value
+                if (!/^\\d{4}-\\d{2}$/.test(value)) return
+                const [year, month] = value.split('-').map(Number)
+                if (month < 1 || month > 12) return
+                const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+                const end = value + '-' + String(lastDay).padStart(2, '0')
+                setPage(1)
+                setFilters(current => current ? { ...current, range: 'custom', start: value + '-01', end } : current)
+              }} className="h-8 w-36" />
+              <Input type="date" aria-label={tr('startDate', 'Từ ngày', 'Start date')} value={filters.start} onChange={e => { setPage(1); setFilters(c => c ? { ...c, start: e.target.value } : c) }} className="h-8 w-32" />
               <span>–</span>
-              <Input type="date" value={filters.end} onChange={e => { setPage(1); setFilters(c => c ? { ...c, end: e.target.value } : c) }} className="h-8 w-32" />
+              <Input type="date" aria-label={tr('endDate', 'Đến ngày', 'End date')} value={filters.end} onChange={e => { setPage(1); setFilters(c => c ? { ...c, end: e.target.value } : c) }} className="h-8 w-32" />
             </div>
           )}
           <Button variant={compare ? 'default' : 'outline'} size="sm" onClick={() => setCompare(!compare)} className="text-xs">
@@ -371,7 +450,7 @@ export function DashboardAnalytics() {
           <Metric
             key={metric.key}
             title={t(metric.key === 'revenue' ? 'confirmedRevenue' : metric.key)}
-            value={display(totals[metric.key], metric.unit)}
+            value={display(biMetricValue(totals as unknown as Record<string, unknown>, metric.key), metric.unit)}
             note={compare ? delta(metric.key) + ' ' + t('previousPeriod') : metric.source}
           />
         ))}
@@ -385,8 +464,8 @@ export function DashboardAnalytics() {
             {secondaryMetrics.map(metric => (
               <Metric
                 key={metric.key}
-                title={t(metric.key)}
-                value={display(totals[metric.key], metric.unit)}
+                title={metric.label}
+                value={display(biMetricValue(totals as unknown as Record<string, unknown>, metric.key), metric.unit)}
                 note={compare ? delta(metric.key) + ' ' + t('previousPeriod') : metric.source}
               />
             ))}
@@ -432,27 +511,24 @@ export function DashboardAnalytics() {
               <div className="flex items-center gap-1.5 text-xs">
                 <span className="font-medium text-slate-500 hidden sm:inline">{tr('metric', 'Chỉ số', 'Metric')}:</span>
                 <select
-                  aria-label={tr('metric', 'Ch\u1EC9 s\u1ED1', 'Metric')}
+                  aria-label={tr('metric', 'Chỉ số', 'Metric')} data-testid="bi-metric-selector"
+                  data-testid="bi-metric-selector"
                   value={selectedMetric}
                   onChange={e => {
                     const nextMetric = e.target.value as MetricKey
                     setSelectedMetric(nextMetric)
-                    if ((nextMetric === 'ctr' || nextMetric === 'cvr') && selectedChartType === 'pie') {
-                      setSelectedChartType('bar')
+                    if (biChartCompatibilityReason(nextMetric, selectedDimension, selectedChartType)) {
+                      setSelectedChartType(firstCompatibleBiChart(nextMetric, selectedDimension))
                     }
                   }}
                   className="h-8 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 >
-                  <option value="revenue">{t('revenue')}</option>
-                  <option value="orders" disabled={selectedDimension === 'host'}>{t('orders')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
-                  <option value="gmv" disabled={selectedDimension === 'host'}>GMV{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
-                  <option value="viewers" disabled={selectedDimension === 'host'}>{t('viewers')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
-                  <option value="productClicks" disabled={selectedDimension === 'host'}>{t('productClicks')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
-                  <option value="ctr" disabled={selectedDimension === 'host'}>CTR (%){selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
-                  <option value="cvr" disabled={selectedDimension === 'host'}>CVR (%){selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
-                  <option value="averageOrderValue" disabled={selectedDimension === 'host'}>{t('averageOrderValue')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
-                  <option value="liveDuration" disabled={selectedDimension === 'host'}>{t('liveDuration')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
-                  <option value="reportCount" disabled={selectedDimension === 'host'}>{t('reportCount')}{selectedDimension === 'host' ? ' (' + tr('unsupportedForHost', 'Ch\u01B0a h\u1ED7 tr\u1EE3 cho Host', 'Unsupported for Host') + ')' : ''}</option>
+                  {metricDefinitions.map(metric => {
+                    const reason = biChartCompatibilityReason(metric.key, selectedDimension, 'bar')
+                    return <option key={metric.key} value={metric.key} disabled={Boolean(reason)} title={reason ?? undefined}>
+                      {metric.label}{reason ? ' — ' + (isEn ? reason : 'Chỉ số này chưa được API cung cấp cho chiều đã chọn') : ''}
+                    </option>
+                  })}
                 </select>
               </div>
 
@@ -460,18 +536,15 @@ export function DashboardAnalytics() {
               <div className="flex items-center gap-1.5 text-xs">
                 <span className="font-medium text-slate-500 hidden sm:inline">{tr('dimension', 'Chiều', 'Dimension')}:</span>
                 <select
-                  aria-label={tr('dimension', 'Chiều phân tích', 'Dimension')}
+                  aria-label={tr('dimension', 'Chiều phân tích', 'Dimension')} data-testid="bi-dimension-selector"
                   value={selectedDimension}
                   onChange={e => {
                     const nextDim = e.target.value as AnalyticsDimension
+                    const nextMetric = nextDim === 'host' ? 'revenue' : selectedMetric
                     setSelectedDimension(nextDim)
-                    if (nextDim === 'host' && selectedMetric !== 'revenue') {
-                      setSelectedMetric('revenue')
-                    }
-                    if (nextDim === 'time' && selectedChartType === 'pie') {
-                      setSelectedChartType('line')
-                    } else if (nextDim !== 'time' && (selectedChartType === 'line' || selectedChartType === 'area')) {
-                      setSelectedChartType('bar')
+                    setSelectedMetric(nextMetric)
+                    if (biChartCompatibilityReason(nextMetric, nextDim, selectedChartType)) {
+                      setSelectedChartType(firstCompatibleBiChart(nextMetric, nextDim))
                     }
                   }}
                   className="h-8 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -484,34 +557,68 @@ export function DashboardAnalytics() {
                 </select>
               </div>
 
-              {/* Chart Type Selector Buttons */}
-              <div className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-medium">
-                <button
-                  type="button"
-                  disabled={selectedDimension === 'time' || selectedMetric === 'ctr' || selectedMetric === 'cvr'}
-                  onClick={() => setSelectedChartType('pie')}
-                  title={selectedDimension === 'time' ? tr('pieNoTime', 'Bi\u1EC3u \u0111\u1ED3 tr\u00F2n kh\u00F4ng \u00E1p d\u1EE5ng cho chu\u1ED7i th\u1EDDi gian', 'Pie chart not applicable for time series') : (selectedMetric === 'ctr' || selectedMetric === 'cvr') ? tr('pieNoRatio', 'Bi\u1EC3u \u0111\u1ED3 tr\u00F2n kh\u00F4ng \u00E1p d\u1EE5ng cho t\u1EF7 l\u1EC7 ph\u1EA7n tr\u0103m', 'Pie chart not applicable for ratio/percentage') : 'Pie / Donut Chart'}
-                  aria-label="Pie Chart"
-                  className={cn("rounded-md px-2 py-1 transition-all", selectedChartType === 'pie' ? "bg-white text-indigo-600 shadow-sm font-semibold" : "text-slate-600 hover:text-slate-900", (selectedDimension === 'time' || selectedMetric === 'ctr' || selectedMetric === 'cvr') ? "opacity-40 cursor-not-allowed hover:text-slate-600" : "")}
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="font-medium text-slate-500 hidden sm:inline">{tr('chartType', 'Biểu đồ', 'Chart')}:</span>
+                <select
+                  aria-label={tr('chartType', 'Loại biểu đồ', 'Chart type')} data-testid="bi-chart-selector"
+                  value={selectedChartType}
+                  onChange={e => setSelectedChartType(e.target.value as AnalyticsChartType)}
+                  className="h-8 max-w-52 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 >
-                  Pie
-                </button>
+                  {BI_CHART_CATALOG.map(chart => {
+                    const reason = biChartCompatibilityReason(selectedMetric, selectedDimension, chart.key)
+                    const explanation = biChartCompatibilityMessage(selectedMetric, selectedDimension, chart.key, isEn)
+                    return <option key={chart.key} value={chart.key} disabled={Boolean(reason)} title={explanation}>
+                      {chart.label}{reason ? ' — ' + explanation : ''}
+                    </option>
+                  })}
+                </select>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button data-testid="bi-save-view" type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={savePersonalView} disabled={!personalViewKey || !filters}>
+                  {tr('saveView', 'Lưu chế độ xem', 'Save view')}
+                </Button>
+                <Button data-testid="bi-load-view" type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={restorePersonalView} disabled={!hasPersonalView}>
+                  {tr('loadView', 'Tải chế độ xem', 'Load view')}
+                </Button>
               </div>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="p-4">
-          {!hasInteractiveData ? (
+        <CardContent className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs text-slate-500">
+              {activeChartReason || tr('confirmedOnlyNote', 'Chỉ dữ liệu báo cáo đã xác nhận được tổng hợp; dữ liệu thiếu không được đổi thành 0.', 'Only confirmed report data is aggregated; missing observations are not converted to zero.')}
+            </div>
+            {drilldownOptions.length > 0 && (
+              <label className="flex items-center gap-2 text-xs">
+                <span>{tr('drillDown', 'Đi sâu vào', 'Drill down')}</span>
+                <select aria-label={tr('drillDown', 'Đi sâu vào', 'Drill down')} value=""
+                  onChange={event => applyDrilldown(event.target.value)}
+                  className="h-8 max-w-56 rounded-md border bg-white px-2 text-xs">
+                  <option value="">{tr('selectDimensionValue', 'Chọn giá trị', 'Choose a value')}</option>
+                  {drilldownOptions.map(row => <option key={String(row.drilldownId)} value={String(row.drilldownId)}>
+                    {String(row[interactiveXKey] ?? '—')}
+                  </option>)}
+                </select>
+              </label>
+            )}
+          </div>
+          {!hasInteractiveData || pieChartBlockedByValues ? (
             <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center animate-in fade-in-50">
               <div className="rounded-full bg-slate-100 p-3 mb-3 text-slate-400">
                 <BarChart3 className="h-6 w-6 text-slate-500" />
               </div>
               <p className="font-semibold text-sm text-slate-800">
-                {t('noConfirmedData')}
+                {pieHasNegativeValues
+                  ? tr('pieNegativeUnsupported', 'Pie/Donut không hiển thị giá trị âm.', 'Pie/Donut cannot represent negative values.')
+                  : hasInteractiveData
+                    ? tr('noMetricObservation', 'Không có quan sát hợp lệ cho chỉ số đã chọn; giá trị thiếu vẫn để trống.', 'No valid observations for this metric; missing values remain blank.')
+                    : tr('noConfirmedData', 'Chưa có dữ liệu báo cáo được xác nhận.', 'No confirmed report data.')}
               </p>
               <p className="mt-1.5 max-w-md text-xs text-slate-500 leading-relaxed">
-                Biểu đồ và chỉ số phân tích chỉ tổng hợp từ các ca livestream đã hoàn thành và có báo cáo được phê duyệt (confirmed metrics). Thử mở rộng khoảng thời gian hoặc điều chỉnh bộ lọc Thương hiệu / Nền tảng.
+                {tr('analyticsConfirmedOnlyHelp', 'KPI chỉ dùng báo cáo confirmed và metrics_confirmed. Mở rộng khoảng ngày hoặc điều chỉnh Brand / Platform / Campaign.', 'KPIs use confirmed reports with metrics_confirmed. Expand the date range or adjust Brand / Platform / Campaign filters.')}
               </p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 <Button size="sm" variant="outline" className="text-xs" onClick={() => updateRange('30d')}>
@@ -565,16 +672,16 @@ export function DashboardAnalytics() {
                     <Tooltip formatter={(value) => [isSelectedMetricCurrency ? formatCurrency(Number(value)) : isSelectedMetricPercent ? Number(value).toFixed(2) + '%' : Number(value).toLocaleString(), selectedMetricDef.label]} />
                     <Legend />
                     <Pie
-                      data={interactiveChartData.filter(d => d[interactiveDataKey] !== null && Number(d[interactiveDataKey]) > 0)}
+                      data={pieData}
                       dataKey={interactiveDataKey}
                       nameKey={interactiveXKey}
                       cx="50%"
                       cy="50%"
-                      innerRadius={45}
+                      innerRadius={selectedChartType === 'donut' ? 45 : 0}
                       outerRadius={85}
                       paddingAngle={2}
                     >
-                      {interactiveChartData.map((_, idx) => (
+                      {pieData.map((_, idx) => (
                         <Cell key={'cell-' + idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
                       ))}
                     </Pie>

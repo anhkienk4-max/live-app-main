@@ -36,6 +36,9 @@ test('backend, integration, post-main and task branches disable Git auto-deploy 
   assert.equal(deploymentEnabled['feat/rc16-payroll-workforce-backend'], false)
   assert.equal(deploymentEnabled['integration/rc14-rc15-rc16-prod'], false)
   assert.equal(deploymentEnabled['feat/rc16k-ui-consistency-pagination'], false)
+  assert.equal(deploymentEnabled['release/rc19-core-2026-11-01-integrated'], false)
+  assert.equal(deploymentEnabled['fix/rc19-report02-core-counter-20261029'], false)
+  assert.equal(deploymentEnabled['feat/rc19-bi01-analytics-composer-20261029'], false)
   assert.ok(Object.values(deploymentEnabled).every((enabled: unknown) => enabled === false))
 })
 
