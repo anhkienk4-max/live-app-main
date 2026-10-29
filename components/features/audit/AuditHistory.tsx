@@ -61,6 +61,11 @@ export function AuditHistory() {
   const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
+  const [teamCapabilityDenied, setTeamCapabilityDenied] = React.useState(false)
+  const clearAuditSurface = React.useCallback(() => {
+    setLogs([]); setSelected(null); setTotal(0); setActors([])
+    setArchived([]); setArchivedTotal(0); setRestoreTarget(null)
+  }, [])
 
   const canView = Boolean(currentUser && hasAnyPermission(currentUser, ['audit.view', 'audit.view_team']))
   const isAdmin = Boolean(currentUser && hasPermission(currentUser, 'audit.view'))
@@ -82,14 +87,32 @@ export function AuditHistory() {
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const load = React.useCallback(async () => {
-    if (!currentUser || !canView) {
-      setLoading(false)
-      return
-    }
     const request=next()
     setLoading(true)
     setLoadError(null)
+    clearAuditSurface()
+    if (!currentUser || !canView || teamCapabilityDenied) {
+      setTeamCapabilityDenied(true)
+      setLoadedIdentity(identity)
+      setLoading(false)
+      return
+    }
+    setTeamCapabilityDenied(false)
     try {
+      if (resolveSystemPermission(currentUser) === 'leader'
+        && process.env.NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT === 'true') {
+        const capability = await fetch('/api/audit/team-capability', { method: 'GET', cache: 'no-store', credentials: 'same-origin' })
+        if (!isCurrent(request)) return
+        if (capability.status === 401 || capability.status === 403) {
+          setTeamCapabilityDenied(true); setLoadedIdentity(identity); return
+        }
+        if (!capability.ok) throw new Error('AUDIT_TEAM_CAPABILITY_UNAVAILABLE')
+        const result: unknown = await capability.json()
+        if (!result || typeof result !== 'object' || !('allowed' in result) || result.allowed !== true)
+          throw new Error('AUDIT_TEAM_CAPABILITY_UNAVAILABLE')
+      }
+      if (!isCurrent(request)) return
+      setTeamCapabilityDenied(false)
       const [visible, deleted] = await Promise.all([
         auditService.getAuditLogs({ user: currentUser, page, pageSize, filters: { ...filters, actor: filters.actorIds, role: filters.roles, module: filters.modules, action: filters.actions, status: filters.statuses, source: filters.sources }, sort }),
         isAdmin ? lifecycleService.getArchivedPage(currentUser.id,{page:archivedPage,pageSize:archivedPageSize as 10|20|50}) : Promise.resolve({items:[],total:0,page:1}),
@@ -103,16 +126,37 @@ export function AuditHistory() {
       if (visible.page !== page) setPage(visible.page)
       setArchived(deleted.items);setArchivedTotal(deleted.total);setArchivedPage(deleted.page)
     } catch (error) {
-      if(isCurrent(request))setLoadError(error)
+      if(isCurrent(request)){
+        clearAuditSurface()
+        setTeamCapabilityDenied(false)
+        setLoadedIdentity(identity)
+        setLoadError(error)
+      }
     } finally {
       if(isCurrent(request))setLoading(false)
     }
-  }, [canView, currentUser, filters, isAdmin, page, pageSize, sort,archivedPage,archivedPageSize,identity,next,isCurrent])
+  }, [canView, currentUser, filters, isAdmin, page, pageSize, sort,archivedPage,archivedPageSize,identity,next,isCurrent,clearAuditSurface])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void load() })
-    return () => cancelAnimationFrame(frame)
+    return () => { cancelAnimationFrame(frame); invalidate() }
   }, [load,invalidate])
+
+  React.useEffect(() => {
+    if (process.env.NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT !== 'true') return
+    if (!currentUser || resolveSystemPermission(currentUser) !== 'leader') return
+    const onReturn = () => { void load() }
+    const onVisibility = () => { if (document.visibilityState === 'visible') onReturn() }
+    window.addEventListener('focus', onReturn)
+    window.addEventListener('pageshow', onReturn)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onReturn)
+      window.removeEventListener('pageshow', onReturn)
+      document.removeEventListener('visibilitychange', onVisibility)
+      invalidate()
+    }
+  }, [currentUser, load, invalidate])
 
   if (userLoading || loading || canView&&identity!==loadedIdentity) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
   if (!currentUser || !canView) {
