@@ -168,7 +168,7 @@ assert.equal(memberRpc.total, 1)
 assert.deepEqual(memberRpc.registrations.map(row => row.id), ['own-registration'])
 const leaderRows = query(as('leader', "select count(*) from private.filtered_shift_ids('all','{}')"))
 assert.equal(leaderRows, '16')
-psql(as('anon', "select * from private.filtered_shift_ids('all','{}');"), true)
+psql("set role anon; select * from private.filtered_shift_ids('all','{}');", true)
 
 // The documented rollback compensation is replaying the exact pre-change helper
 // with its original execute boundary; it must remain callable and preserve ACLs.
