@@ -28,8 +28,8 @@ run_decision() {
     -c "select set_config('rc19.test_actor','${actor}',false); select pg_sleep(0.15); select public.review_self_attendance_photo('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0006',0,1,'approved','Concurrent reviewer verified','${key}');" >"$output" 2>&1
 }
 set +e
-run_decision admin-1 cccccccc-cccc-4ccc-8ccc-cccccccc0008 /tmp/rc19-review-a.log & a=$!
-run_decision leader-1 cccccccc-cccc-4ccc-8ccc-cccccccc0009 /tmp/rc19-review-b.log & b=$!
+run_decision admin-1 cccccccc-cccc-4ccc-8ccc-cccccccc0012 /tmp/rc19-review-a.log & a=$!
+run_decision leader-1 cccccccc-cccc-4ccc-8ccc-cccccccc0013 /tmp/rc19-review-b.log & b=$!
 wait "$a"; a_status=$?
 wait "$b"; b_status=$?
 set -e
