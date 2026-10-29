@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "d0e3d88904ba53e0871ece164ac1c56b60ace605",
+    "head": "22340efe59440b14c905561a04555a0c091b7b72",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -99,10 +99,10 @@
         "components": 170,
         "lib": 251,
         "scripts": 26,
-        "supabase": 109,
-        "tests": 266
+        "supabase": 111,
+        "tests": 272
       },
-      "total": 889
+      "total": 897
     },
     "tests": {
       "files": [
@@ -263,6 +263,7 @@
         "tests/rc19-staffing-candidates.test.ts",
         "tests/rc19-staffing-failclosed.test.ts",
         "tests/rc19-staffing-refresh-contract.test.ts",
+        "tests/rc19-staffing-role-filter.test.ts",
         "tests/rc19-storage-scoped-search.test.ts",
         "tests/rc19-storage-security-patch.test.ts",
         "tests/rc19-swap-exchange-page.test.ts",
@@ -328,7 +329,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 221
+      "count": 222
     },
     "migrations": {
       "files": [
@@ -421,9 +422,11 @@
         "supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql",
         "supabase/migrations/20261023160500_rc19_reports_history_staff_filter_privacy.sql",
         "supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql",
-        "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql"
+        "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql",
+        "supabase/migrations/20261028010000_rc19_reg02_multi_applicant_approval.sql",
+        "supabase/migrations/20261029120000_rc19_staffing_role_scoped_gap_filter.sql"
       ],
-      "count": 90
+      "count": 92
     }
   },
   "verification": {
@@ -437,5 +440,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-29T11:44:20+07:00"
+  "synced_at": "2026-10-29T15:07:00+07:00"
 }
