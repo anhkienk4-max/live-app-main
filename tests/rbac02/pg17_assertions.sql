@@ -153,7 +153,7 @@ BEGIN
   SELECT value INTO latest FROM jsonb_array_elements(public.rbac02_list_account_overrides()) AS value
     WHERE value->>'target_id'='leader-a';
   IF latest->>'effective'<>'false' THEN RAISE EXCEPTION 'ROLE_DENY_OVERRIDDEN'; END IF;
-  BEGIN PERFORM public.rbac02_set_account_override('leader-a','audit.view_team','allow','cannot override role deny',NULL,4);
+  BEGIN PERFORM public.rbac02_set_account_override('leader-a','audit.view_team','allow','cannot override role deny',NULL,(latest->>'version')::integer);
   EXCEPTION WHEN insufficient_privilege THEN denied:=true; END;
   IF NOT denied THEN RAISE EXCEPTION 'ACCOUNT_ALLOW_BYPASSED_ROLE_DENY'; END IF;
 END $test$;
