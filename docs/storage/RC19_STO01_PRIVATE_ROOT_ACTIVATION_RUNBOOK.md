@@ -1,4 +1,4 @@
-# RC19 STO-01 Private Operational Root Activation Runbook
+# RC19 STO-01 Existing Operational Root Activation Runbook
 
 **Status: EXTERNAL APPROVAL REQUIRED — NOT READY FOR ACTIVATION**
 
@@ -6,57 +6,62 @@ This runbook is source-side preparation only. It does not create folders, change
 
 ## Approved activation contract
 
-- Activation seed: exactly 13 `execution_source='internal'` Google Drive routes.
-- Agency routes: 0 activated. One schema-valid Mars Snacking Agency route is deferred by policy; seven additional Agency routes require a separately approved profile migration.
-- Attendance evidence: a distinct private root and separate ACL boundary. It is not a child of this operational root and the Attendance feature remains OFF.
+- Activation seed: exactly 13 `execution_source='internal'` Google Drive routes and 0 Agency routes.
+- Do not invent a fourteenth internal route. The schema-valid Mars Snacking Agency route is excluded; seven other Agency routes remain subject to their separately reviewed proposal.
+- Use the existing Google Drive root `LIVESTREAM REPORT` and preserve its current Brand/Platform/Period mappings. Do not create a replacement root, rename or move folders, or alter archive contents or IDs.
+- Period folders continue to resolve beneath each existing mapped route according to the existing storage placement contract; this source change does not change the route map.
+- Attendance evidence remains on its separate private root and ACL boundary. It must never resolve under the operational root. Attendance remains OFF.
 - Google Drive-only activation does not require OneDrive connectivity.
-- Existing `LIVESTREAM REPORT` root, archives, legacy route folders, and their file IDs remain untouched.
 
-## Physical root status
+## Existing root and ACL risk
 
-The currently seeded tree inherits an `anyone:writer` permission from an ancestor. Treat every descendant under that permission chain as **UNSAFE for activation**. This is a content-integrity and unauthorized-write risk; it is not evidence that anonymous read is enabled. No ACL was changed.
+The existing `LIVESTREAM REPORT` parent chain currently inherits an `anyone:writer` permission. The Owner has accepted use of this existing root while ACL hardening is handled separately. No ACL has been changed by this work.
 
-No Owner-approved replacement root or verified production runtime identity access evidence is available in this handoff. Therefore no current route can be marked writable or safe.
+Treat that grant as a temporary content-integrity and unauthorized-write risk. It does not by itself establish anonymous read access. Until ACL hardening is completed, use the operational root only for synthetic or explicitly approved non-confidential operational materials. Do not store attendance evidence, HR or payroll data, personal data, contracts, credentials/secrets, or unpublished commercially sensitive reports/KPIs there.
+
+The current source-side physical folder mapping is retained as previously verified. Production runtime identity, provider connection, and effective write capability have not been verified in this handoff; a human Drive connection is not evidence of runtime access. Therefore the root is selected, but activation remains blocked pending the checks below.
 
 ## 13-route mapping inventory
 
-The current seed’s brand/platform mappings are listed below for reconciliation. Physical IDs are intentionally omitted from this operational handoff. Every row currently points through the legacy shared root and remains unsafe until a newly approved private-root mapping is verified.
+Physical IDs are omitted from this handoff. Preserve the existing mapped base folders and their parent relationships; year/month placement remains governed by the existing resolver. Do not remap routes as part of this runbook correction.
 
-| Route | Brand | Platform | Provider | Physical target | ACL / writable | Status | Required action |
+| Route | Brand | Platform | Provider | Physical target | ACL / writable | Status | Action |
 |---|---|---|---|---|---|---|---|
-| 1 | ASM AI Livestream | All | Google Drive | Canonical root | Inherited public writer / runtime write unverified | UNSAFE | Create approved private-root mapping |
-| 2 | Female AI livestream | All | Google Drive | Canonical root | Inherited public writer / runtime write unverified | UNSAFE | Create approved private-root mapping |
-| 3 | Male AI livestream | All | Google Drive | Canonical root | Inherited public writer / runtime write unverified | UNSAFE | Create approved private-root mapping |
-| 4 | Mars Snacking | All | Google Drive | Existing internal brand base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
-| 5 | ASTROMAN | All | Google Drive | Existing brand base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
-| 6 | Female | All | Google Drive | Existing brand base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
-| 7 | X-men | All | Google Drive | Existing brand base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
-| 8 | CUREL | All | Google Drive | Existing brand base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
-| 9 | KATE | All | Google Drive | Existing brand base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
-| 10 | KAO | All | Google Drive | Existing brand base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
-| 11 | OPELLA | Shopee Live | Google Drive | Existing platform base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
-| 12 | OPELLA | TikTok Shop | Google Drive | Existing platform base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
-| 13 | Pepsico | All | Google Drive | Existing brand base | Inherited public writer / runtime write unverified | UNSAFE | Map a new private target; preserve old folder |
+| 1 | ASM AI Livestream | All | Google Drive | Existing canonical root | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Verify runtime principal and effective access |
+| 2 | Female AI livestream | All | Google Drive | Existing canonical root | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Verify runtime principal and effective access |
+| 3 | Male AI livestream | All | Google Drive | Existing canonical root | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Verify runtime principal and effective access |
+| 4 | Mars Snacking | All | Google Drive | Existing internal Brand base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
+| 5 | ASTROMAN | All | Google Drive | Existing Brand base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
+| 6 | Female | All | Google Drive | Existing Brand base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
+| 7 | X-men | All | Google Drive | Existing Brand base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
+| 8 | CUREL | All | Google Drive | Existing Brand base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
+| 9 | KATE | All | Google Drive | Existing Brand base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
+| 10 | KAO | All | Google Drive | Existing Brand base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
+| 11 | OPELLA | Shopee Live | Google Drive | Existing Platform base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
+| 12 | OPELLA | TikTok Shop | Google Drive | Existing Platform base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
+| 13 | Pepsico | All | Google Drive | Existing Brand base | Inherited `anyone:writer`; runtime write unverified | OWNER ACTION REQUIRED | Preserve mapping; verify runtime access |
 
-## Owner approval and verification sequence
+The 13 rows above are internal routes only. Agency routes are not part of this activation candidate.
 
-1. Owner designates a new Google Drive operational root with no `anyone:reader` or `anyone:writer` direct or inherited grants.
-2. Owner confirms the root’s full parent chain, shared-drive restrictions, owner/control boundary, and that inherited access remains private.
-3. The Production runtime identity is verified against the root and each target: it can enumerate/read required metadata and add a child file. Do not infer runtime identity from the connected human Drive account.
-4. Owner approves a route-by-route mapping for these 13 internal routes. Keep existing archive and legacy folders unchanged. Produce a new seed candidate if root or base IDs change.
-5. Verify that Attendance evidence uses its own separately approved private root and never resolves into a Brand operational route.
-6. Run isolated PostgreSQL 17 preflight/seed assertions on the exact candidate: 13 total, 13 internal, 0 Agency, unique route key, approved root/base mapping, valid active Admin approver, rollback and idempotency.
-7. Perform a synthetic provider read/write/readback test only after Owner authorizes a non-Production test folder. Verify checksum and delete only that explicitly designated synthetic artifact.
-8. Confirm Google Drive provider readiness. OneDrive remains optional.
-9. Owner reviews the exact source SHA, route manifest, physical ACL evidence, rollback plan, and signed role UAT before activation.
+## Activation checklist
+
+Complete and retain this evidence against the exact candidate SHA before any activation:
+
+1. **Production runtime identity:** identify the effective service principal used by the deployed provider adapter through the approved secret-safe method. Record a non-secret principal fingerprint; do not infer it from a human connector session.
+2. **Provider read/write capability:** verify the runtime principal can enumerate/read required route metadata and add a child under each mapped target. Any write probe must use a separately designated synthetic folder/artifact with explicit Owner authorization; do not upload to an operational or archive folder for testing.
+3. **Routing mode:** record the effective `OPERATIONAL_STORAGE_ROUTING_MODE` and approved transition value. Do not change environment configuration as part of this preparation.
+4. **Pre-seed snapshot:** capture the route-table schema/version and a protected snapshot of existing route keys, row state, and opaque route IDs; record existing route count. Keep sensitive IDs out of general reports.
+5. **Approval and seed:** verify an active authorized Admin approver and retain the Owner-approved approval artifact. Execute only the exact approved 13-internal/0-Agency seed after runtime/provider checks and exact-SHA activation approval.
+6. **Post-seed readback:** compare route keys and counts with the snapshot. Securely record the exact route IDs inserted by this run separately from pre-existing IDs; verify all 13 resolve to their preserved mapped targets and no Agency route was inserted.
+7. **Rollback:** restore the prior routing mode and deactivate/delete only rows proven to have been inserted by this specific approved seed, using the reviewed recovery transaction. Never delete or move pre-existing route rows, physical folders, or archive files. Verify the post-rollback route counts against the snapshot.
+8. **Final release review:** Owner reviews the exact source SHA, route manifest, protected physical-access evidence, approval artifact, readback, and rollback evidence before activation.
 
 ## Rollback and release boundary
 
-- Current Production route table state remains as previously reported; this task performs no DB query or mutation.
-- Do not run the seed while any route points to the currently unsafe shared-root chain.
-- Roll back by restoring the prior routing configuration and route rows through an Owner-approved recovery plan. Do not delete/move historical files or routes as a substitute for restoring configuration.
-- STO-02 remains a review-only schema proposal stacked on STO-01. The 13-route seed retains the existing `operational_storage_routes` columns and keys; no schema, RLS, grants, or approved route rows are modified by this source correction. Re-run STO-02 combined PG17 integration against this seed candidate before treating the stack as compatible.
+No Production route query, seed, configuration change, provider write, or ACL change is performed by this runbook update. If activation is later approved, rollback must use the recorded pre-seed snapshot and affect only exact rows inserted by that release; preserve all prior mappings and physical data.
 
-## Evidence required to change status
+STO-02 remains a review-only schema proposal stacked on STO-01. The corrected seed retains the existing `operational_storage_routes` route columns and uniqueness contract and does not drop or overwrite approved route rows. Combined PostgreSQL 17 evidence must run on a disposable database using the exact corrected STO-01 seed and STO-02 proposal before declaring compatibility; do not infer this from separate, older gates.
 
-Mark **READY FOR ACTIVATION** only when the replacement root, inherited ACL chain, Production runtime identity read/write capability, all 13 route mappings, Attendance isolation, exact-SHA PG17 suite, and independent Owner approval are recorded. Until then: **EXTERNAL APPROVAL REQUIRED**.
+## Readiness decision
+
+The selected root and 13-route source mapping are ready for activation review. Activation itself is **not ready** until Production runtime identity and provider read/write capability are evidenced, the approved business approver artifact is verified, the exact route snapshot/readback/rollback plan is prepared, and the Owner approves activation for the exact SHA. Keep the inherited writer risk visible until the separate ACL-hardening work is complete.
