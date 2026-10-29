@@ -91,8 +91,13 @@ export function AuditHistory() {
     setLoading(true)
     setLoadError(null)
     clearAuditSurface()
+    if (userLoading) {
+      setTeamCapabilityDenied(false)
+      setLoadedIdentity('')
+      return
+    }
     if (!currentUser || !canView || teamCapabilityDenied) {
-      setTeamCapabilityDenied(true)
+      setTeamCapabilityDenied(false)
       setLoadedIdentity(identity)
       setLoading(false)
       return
@@ -135,7 +140,7 @@ export function AuditHistory() {
     } finally {
       if(isCurrent(request))setLoading(false)
     }
-  }, [canView, currentUser, filters, isAdmin, page, pageSize, sort,archivedPage,archivedPageSize,identity,next,isCurrent,clearAuditSurface])
+  }, [canView, currentUser, filters, isAdmin, page, pageSize, sort, archivedPage, archivedPageSize, identity, userLoading, next, isCurrent, clearAuditSurface])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void load() })
