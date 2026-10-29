@@ -35,7 +35,7 @@ function sourceFunction(filename, name) {
 
 const registrationMigration = read('supabase/migrations/20261028010000_rc19_reg02_multi_applicant_approval.sql')
 const staffingMigration = read('supabase/migrations/20261029120000_rc19_staffing_role_scoped_gap_filter.sql')
-const callerMigration = read('supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql')
+const callerMigrationPath = 'supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql'
 const transactional = sql => sql.replace(/^\s*begin\s*;/i, '').replace(/\s*commit\s*;\s*$/i, '')
 const regFixture = 'tests/fixtures/rc19_reg02_pg17_base.sql'
 const foundation = 'supabase/migrations/20260814085659_p1c_shift_persistence.sql'
@@ -130,7 +130,7 @@ revoke all on function public.bulk_review_shift_registrations(text[],text,text,j
 grant execute on function public.bulk_review_shift_registrations(text[],text,text,jsonb) to authenticated;
 `)
 
-const baselineHelper = sourceFunction(callerMigration, 'private.filtered_shift_ids')
+const baselineHelper = sourceFunction(callerMigrationPath, 'private.filtered_shift_ids')
 psql(baselineHelper + '\nrevoke all on function private.filtered_shift_ids(text,jsonb) from public,anon,service_role; grant execute on function private.filtered_shift_ids(text,jsonb) to authenticated;')
 
 // Verify legacy auto-approval before and after Registration #128.
