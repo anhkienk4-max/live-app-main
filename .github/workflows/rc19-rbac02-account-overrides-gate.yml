@@ -28,6 +28,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
@@ -39,6 +40,16 @@ jobs:
         run: pnpm exec tsc --noEmit --incremental false
       - name: ESLint
         run: pnpm run lint
+      - name: Verify Git refs required by Memory validation
+        run: |
+          git show-ref --verify --quiet refs/remotes/origin/main
+          git show-ref --verify --quiet refs/remotes/origin/feat/ops-full-app-upgrade-rc19
+          test "${GITHUB_REF_TYPE}" = "branch"
+          git show-ref --verify --quiet "refs/remotes/origin/${GITHUB_REF_NAME}"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor \
+            "$(git rev-parse refs/remotes/origin/feat/ops-full-app-upgrade-rc19)" \
+            "${GITHUB_SHA}"
       - name: Project Memory validation
         run: pnpm run memory:validate
       - name: RBAC-02 API and contract negative tests
