@@ -32,7 +32,16 @@ test('backend, integration and post-main delivery disable Git auto-deploy while 
   const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
   assert.deepEqual(config, {
     $schema: 'https://openapi.vercel.sh/vercel.json',
-    git: { deploymentEnabled: { 'feat/rc16-payroll-workforce-backend': false, 'integration/rc14-rc15-rc16-prod': false, 'feat/rc16k-ui-consistency-pagination': false } },
+    git: { deploymentEnabled: {
+      'feat/rc16-payroll-workforce-backend': false,
+      'integration/rc14-rc15-rc16-prod': false,
+      'feat/rc16k-ui-consistency-pagination': false,
+      'fix/rc19-staffing-73': false,
+      'fix/rc19-reg128-lane1': false,
+      'release/rc19-core-2026-11-01-integrated': false,
+      'integration/rc19-wave2-core': false,
+      'fix/rc19-p2-04-attendance-photo-review': false,
+    } },
   })
 })
 

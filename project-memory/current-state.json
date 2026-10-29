@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "d0e3d88904ba53e0871ece164ac1c56b60ace605",
+    "head": "1adf1f756941533a411a8ae9ec088fcb972ac4e7",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -78,6 +78,7 @@
       "app/api/staff/invite/route.ts",
       "app/api/workforce/actual/route.ts",
       "app/api/workforce/attendance-import/route.ts",
+      "app/api/workforce/attendance-photo-review/route.ts",
       "app/api/workforce/capabilities/route.ts",
       "app/api/workforce/my-payslip/route.ts",
       "app/api/workforce/overview/route.ts",
@@ -95,14 +96,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 67,
-        "components": 170,
-        "lib": 251,
+        "app": 68,
+        "components": 172,
+        "lib": 252,
         "scripts": 26,
-        "supabase": 109,
-        "tests": 266
+        "supabase": 113,
+        "tests": 276
       },
-      "total": 889
+      "total": 907
     },
     "tests": {
       "files": [
@@ -252,6 +253,7 @@
         "tests/rc18a-shift-change-subscription.test.ts",
         "tests/rc18a-shift-date-window.test.ts",
         "tests/rc18a-shift-list-url-state.test.ts",
+        "tests/rc19-attendance-photo-review.test.ts",
         "tests/rc19-auth-responsive-layout.test.tsx",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-my-payslip.test.ts",
@@ -263,6 +265,7 @@
         "tests/rc19-staffing-candidates.test.ts",
         "tests/rc19-staffing-failclosed.test.ts",
         "tests/rc19-staffing-refresh-contract.test.ts",
+        "tests/rc19-staffing-role-filter.test.ts",
         "tests/rc19-storage-scoped-search.test.ts",
         "tests/rc19-storage-security-patch.test.ts",
         "tests/rc19-swap-exchange-page.test.ts",
@@ -328,7 +331,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 221
+      "count": 223
     },
     "migrations": {
       "files": [
@@ -421,9 +424,11 @@
         "supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql",
         "supabase/migrations/20261023160500_rc19_reports_history_staff_filter_privacy.sql",
         "supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql",
-        "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql"
+        "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql",
+        "supabase/migrations/20261028010000_rc19_reg02_multi_applicant_approval.sql",
+        "supabase/migrations/20261029120000_rc19_staffing_role_scoped_gap_filter.sql"
       ],
-      "count": 90
+      "count": 92
     }
   },
   "verification": {
@@ -437,5 +442,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-29T11:44:20+07:00"
+  "synced_at": "2026-10-29T18:12:45+07:00"
 }

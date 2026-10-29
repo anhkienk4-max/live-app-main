@@ -510,7 +510,7 @@ test('U14.1 self attendance photo handler enforces separate check-out photo, rej
   const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
   assert.match(handler,/z\.enum\(\['check_in','check_out'\]\)\.parse\(form\.get\('event_kind'\)\?\?'check_in'\)/)
   assert.match(handler,/\.eq\('event_kind',eventKind\)/)
-  assert.match(handler,/byRequest\.data\.event_kind && byRequest\.data\.event_kind!==eventKind/)
+  assert.match(handler,/\(byRequest\.data\.event_kind&&byRequest\.data\.event_kind!==eventKind\)/)
   assert.match(handler,/ATTENDANCE_PHOTO_REQUEST_REUSED/)
   assert.match(handler,/p_event_kind:eventKind/)
   assert.match(handler,/ATTENDANCE_PHOTO_CHECKOUT_PENDING_RECONCILIATION/)
@@ -539,7 +539,7 @@ test('P1-3: Cross-event SHA-256 duplicate detection and request isolation in pho
   // Preserves separate request UUID and capture source tracking
   assert.match(handler,/const requestId=UUID\.parse\(form\.get\('request_id'\)\)/)
   assert.match(handler,/z\.enum\(\['camera','file_picker'\]\)\.parse\(form\.get\('capture_source'\)\)/)
-  assert.match(handler,/byRequest\.data\.event_kind && byRequest\.data\.event_kind!==eventKind/)
+  assert.match(handler,/\(byRequest\.data\.event_kind&&byRequest\.data\.event_kind!==eventKind\)/)
   assert.match(handler,/failed\('ATTENDANCE_PHOTO_REQUEST_REUSED',409\)/)
 })
 

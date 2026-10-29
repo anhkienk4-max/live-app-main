@@ -72,6 +72,7 @@ import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { ShiftLifecycleActions } from './ShiftLifecycleActions'
 import { resolveStaffingLabelsForRole, StaffingLabel } from '@/lib/utils/staffingResolver'
 import { ActualStaffingPanel } from './ActualStaffingPanel'
+import { AttendancePhotoReviewPanel } from '@/components/features/attendance/AttendancePhotoReviewPanel'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
@@ -522,7 +523,12 @@ export function ShiftDetailModal({
   const canAssignStaff = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
   const registrationTotalPages = Math.max(1, Math.ceil(registrations.length / registrationPageSize))
   const safeRegistrationPage = Math.min(registrationPage, registrationTotalPages)
-  const visibleRegistrations = registrations.slice(
+  const sortedRegistrations = [...registrations].sort((left, right) =>
+    operationalRoles.indexOf(left.operational_role) - operationalRoles.indexOf(right.operational_role) ||
+    left.requested_at.localeCompare(right.requested_at) ||
+    left.id.localeCompare(right.id),
+  )
+  const visibleRegistrations = sortedRegistrations.slice(
     (safeRegistrationPage - 1) * registrationPageSize,
     safeRegistrationPage * registrationPageSize,
   )
@@ -570,6 +576,8 @@ export function ShiftDetailModal({
     ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id && isStaffedRegistration(r)) : undefined
   const myAttendanceRegistration = myRegistration ?? (staffingActorId === currentUser?.id && currentUser
     ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id) : undefined)
+  const visibleShiftTabCount = 3 + Number(Boolean(myAttendanceRegistration))
+    + Number(Boolean(capabilities?.actual_staffing)) + Number(Boolean(capabilities?.self_attendance_review))
   const attendanceShiftEligible = !shift.deleted_at && !shift.archived_at && ['scheduled', 'preparing', 'live', 'paused', 'completed'].includes(shift.status)
   const registrationContext = allRegistrations ?? registrations
   const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
@@ -645,7 +653,7 @@ export function ShiftDetailModal({
     }
   }
 
-  const runStaffingAction = async (action: () => Promise<unknown>, message: string) => {
+  const runStaffingAction = async (action: () => Promise<unknown>, message: string, throwAfterToast = false) => {
     if (!currentUser) return
     setBusy(true)
     try {
@@ -655,6 +663,7 @@ export function ShiftDetailModal({
       onUpdate()
     } catch (error) {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      if (throwAfterToast) throw error
     } finally {
       setBusy(false)
     }
@@ -703,6 +712,7 @@ export function ShiftDetailModal({
     await runStaffingAction(
       () => shiftRegistrationService.register(shift.id, currentUser.id, role),
       t('registrationPending'),
+      true,
     )
   }
 
@@ -787,11 +797,12 @@ export function ShiftDetailModal({
 
           <DialogBody className="mx-0 pb-1 bg-muted/5 p-0 overflow-y-auto">
             <Tabs key={`${shift.id}:${currentUser?.id ?? ''}`} defaultValue="overview" className="min-w-0">
-              <TabsList className={`mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-2 sm:mx-6 ${myAttendanceRegistration && capabilities?.actual_staffing ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
+              <TabsList className={`mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-2 sm:mx-6 ${visibleShiftTabCount >= 6 ? 'sm:grid-cols-6' : visibleShiftTabCount === 5 ? 'sm:grid-cols-5' : visibleShiftTabCount === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
                 {myAttendanceRegistration && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="self-attendance">Check-in / Check-out</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
                 {capabilities?.actual_staffing && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="actual">{language === 'en' ? 'Actual staffing' : 'Chấm công thực tế'}</TabsTrigger>}
+                {capabilities?.self_attendance_review && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="attendance-review">{language === 'en' ? 'Photo review' : 'Đối soát ảnh'}</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
               </TabsList>
 
@@ -858,6 +869,10 @@ export function ShiftDetailModal({
 
               {capabilities?.actual_staffing && <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
                 <ActualStaffingPanel shift={shift} currentUser={currentUser} />
+              </TabsContent>}
+
+              {capabilities?.self_attendance_review && <TabsContent value="attendance-review" className="min-w-0 p-4 sm:p-6">
+                <AttendancePhotoReviewPanel key={`${shift.id}:${currentUser?.id ?? ''}`} shiftId={shift.id} />
               </TabsContent>}
 
               <TabsContent value="details" className="space-y-4 p-4 sm:p-6">
@@ -967,6 +982,9 @@ export function ShiftDetailModal({
                  <section className="space-y-4">
                     <ShiftRegistrationActions
                       allShifts={allShifts ?? [shift]}
+                       brandName={brand?.name}
+                       platformName={platform?.name}
+                       disabled={busy}
                       currentUser={currentUser}
                       onRegister={registerForRole}
                       registrations={registrationContext}
@@ -1041,8 +1059,16 @@ export function ShiftDetailModal({
                         </div>
                         <div className="p-0">
                           <div className="max-h-[400px] overflow-auto p-2 space-y-2">
-                            {visibleRegistrations.map(registration => (
-                              <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-muted/50 bg-background p-3 hover:bg-muted/10 transition-colors">
+                            {visibleRegistrations.map((registration, index) => (
+                              <React.Fragment key={registration.id}>
+                              {(index === 0 || visibleRegistrations[index - 1].operational_role !== registration.operational_role) && (
+                                <div className="rounded-md bg-muted/30 px-3 py-2 text-xs font-semibold" data-testid={`reg02-role-group-${registration.operational_role}`}>
+                                  {t(registration.operational_role)} · Định biên {capacities.find(item => item.role === registration.operational_role)?.required ?? 0}
+                                  {' / Đã duyệt '}{capacities.find(item => item.role === registration.operational_role)?.approved ?? 0}
+                                  {' / Chờ duyệt '}{capacities.find(item => item.role === registration.operational_role)?.pending ?? 0}
+                                </div>
+                              )}
+                              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-muted/50 bg-background p-3 hover:bg-muted/10 transition-colors">
                                 <div className="min-w-0">
                                   <p className="break-words font-medium text-sm text-foreground">
                                     {userName(registration.user_id)}
@@ -1062,12 +1088,13 @@ export function ShiftDetailModal({
                                   </Badge>
                                   {registration.status === 'pending' && currentUser && hasPermission(currentUser, 'shifts.approve_registration') ? (
                                     <>
-                                      <Button size="sm" variant="outline" className="h-7 text-xs border-green-200 text-green-700 hover:bg-green-50" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version), t('registrationApproved'))}><Check className="mr-1 h-3 w-3" />{t('approve')}</Button>
-                                      <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version), t('rejected'))}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
+                                      <Button size="sm" variant="outline" className="h-7 text-xs border-green-200 text-green-700 hover:bg-green-50" disabled={busy} onClick={() => { if (window.confirm(`Xác nhận duyệt ${userName(registration.user_id)} cho vai trò ${t(registration.operational_role)}?`)) void runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version), t('registrationApproved')) }}><Check className="mr-1 h-3 w-3" />{t('approve')}</Button>
+                                      <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => { if (window.confirm(`Xác nhận từ chối ${userName(registration.user_id)} cho vai trò ${t(registration.operational_role)}?`)) void runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version), t('rejected')) }}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
                                     </>
                                   ) : null}
                                 </div>
                               </div>
+                              </React.Fragment>
                             ))}
                           </div>
                           {registrations.length > registrationPageSize && (

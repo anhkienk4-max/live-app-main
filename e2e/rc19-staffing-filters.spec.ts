@@ -38,9 +38,11 @@ for (const width of [390, 1440]) {
     const gap=page.getByTestId('staffing-open-gaps')
     await gap.click()
     await expect(gap).toHaveAttribute('aria-pressed','true')
+    await expect(page).toHaveURL(/gap=missing/)
     await expect(toggle).toContainText('(1)')
     await page.getByTestId('staffing-clear-filters').click()
     await expect(gap).toHaveAttribute('aria-pressed','false')
+    await expect(page).not.toHaveURL(/gap=missing/)
     await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
     // All visible rows expose actionable details, not just a side summary.
     const eye=page.locator('[data-testid^="staffing-eye-"]').first()
