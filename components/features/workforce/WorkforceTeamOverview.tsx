@@ -79,7 +79,7 @@ export function WorkforceTeamOverview({
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i} className="animate-pulse border-slate-200 bg-white">
               <CardHeader className="h-10 pb-0" />
@@ -127,7 +127,7 @@ export function WorkforceTeamOverview({
     <div className="space-y-6">
       {view === 'team' && <>
       {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
         {/* Card 1: Attendance Coverage */}
         <Card className="border-slate-200 bg-white shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

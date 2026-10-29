@@ -150,13 +150,13 @@ export default function ProfilePage() {
     }
   }
 
-  return <div className="space-y-6">
-    <div><h1 className="text-3xl font-bold">{t('profile')}</h1><p className="mt-1 text-muted-foreground">{t('accountDetails')}</p></div>
+  return <div className="ada-workspace-page ada-profile-page mx-auto w-full min-w-0 max-w-4xl space-y-4 p-4 md:space-y-6 md:p-6" data-testid="profile-page">
+    <div className="min-w-0"><h1 className="text-xl font-bold tracking-tight md:text-3xl">{t('profile')}</h1><p className="mt-1 break-words text-[13px] leading-relaxed text-muted-foreground md:text-sm">{t('accountDetails')}</p></div>
     <form onSubmit={save}>
       <div className="grid gap-6 lg:grid-cols-3">
         <Card><CardHeader className="items-center text-center">
           <Avatar className="h-24 w-24"><AvatarImage src={displayedAvatar} /><AvatarFallback>{initials}</AvatarFallback></Avatar>
-          <CardTitle>{currentUser.full_name}</CardTitle><CardDescription>{currentUser.email}</CardDescription>
+          <CardTitle className="max-w-full break-words [overflow-wrap:anywhere]">{currentUser.full_name}</CardTitle><CardDescription className="max-w-full break-all">{currentUser.email}</CardDescription>
           <div className="flex flex-wrap justify-center gap-2"><Badge>{t(resolveSystemPermission(currentUser))}</Badge>{currentUser.operational_roles?.map(role => <Badge key={role} variant="outline">{t(role)}</Badge>)}</div>
         </CardHeader><CardContent className="space-y-3">
           <input ref={fileInputRef} className="sr-only" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={selectAvatar} />

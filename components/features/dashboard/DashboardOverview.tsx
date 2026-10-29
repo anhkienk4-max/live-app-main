@@ -531,6 +531,7 @@ function AdminDashboard(props: CommonProps) {
         </div>
       )}
       <AdminDashboardView
+        userName={props.currentUser.full_name}
         liveCount={liveCount}
         todaysShiftsCount={todaysShifts.length}
         missingStaffCount={null}
@@ -677,6 +678,7 @@ function LeaderDashboard(props: CommonProps) {
         </div>
       )}
       <LeaderDashboardView
+        userName={props.currentUser.full_name}
         liveCount={liveCount}
         todaysShiftsCount={todaysShifts.length}
         missingStaffCount={null}
@@ -770,6 +772,7 @@ function MemberDashboard(props: CommonProps) {
         </div>
       )}
       <MemberDashboardView
+        userName={currentUser.full_name}
         onOpenNextShift={nextUp ? () => props.setSelectedShift(nextUp) : undefined}
         nextShift={nextShift}
         mySchedule={mySchedule}

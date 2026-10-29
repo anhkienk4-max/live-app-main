@@ -4,14 +4,56 @@ import type { ReactNode } from 'react'
 import { CalendarDays, Radio, ShieldCheck, Video } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { PageShell } from '@/components/ui/archetypes'
+import { AdaBrand } from '@/components/branding/AdaBrand'
 
 /**
  * U01: a readable, stable authentication layout across phone, tablet and desktop.
  * Shared by sign-in, account request, password recovery and reset. Authentication
  * and form validation are intentionally owned by the caller, not this shell.
  */
-export function AuthLayout({ children, title, subtitle }: { children: ReactNode; title: string; subtitle: string }) {
+export function AuthLayout({ children, title, subtitle, variant = 'default' }: { children: ReactNode; title: string; subtitle: string; variant?: 'default' | 'login' }) {
   const { t } = useTranslation()
+
+  if (variant === 'login') return (
+    <div data-testid="ada-reference-login" className="ada-login-reference relative isolate flex min-h-dvh flex-col overflow-hidden bg-white">
+      <svg className="ada-login-reference__top" viewBox="0 0 390 200" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="ada-login-top-gradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#075EF4" />
+            <stop offset="55%" stopColor="#114EDC" />
+            <stop offset="100%" stopColor="#8656F2" />
+          </linearGradient>
+        </defs>
+        <path d="M0 0 H390 V76 C329 61 311 135 237 116 C150 89 128 163 0 119 Z" fill="url(#ada-login-top-gradient)" />
+        <path d="M0 0 H390 V40 C311 40 254 94 176 82 C99 68 40 104 0 96 Z" fill="#6DC6FF" opacity=".32" />
+        <path d="M296 0 H390 V58 C360 71 349 109 297 118 C338 70 340 38 296 0 Z" fill="#C6BBFF" opacity=".55" />
+      </svg>
+
+      <svg className="ada-login-reference__bottom" viewBox="0 0 390 200" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="ada-login-bottom-gradient" x1="0" y1="0" x2="1" y2=".72">
+            <stop offset="0%" stopColor="#0756DF" />
+            <stop offset="55%" stopColor="#3383F6" />
+            <stop offset="100%" stopColor="#8260EF" />
+          </linearGradient>
+        </defs>
+        <path d="M0 83 C100 22 158 146 274 56 C338 7 372 52 390 64 V200 H0 Z" fill="#E1EAFF" />
+        <path d="M0 128 C102 41 192 156 291 111 C331 94 365 74 390 98 V200 H0 Z" fill="url(#ada-login-bottom-gradient)" />
+        <path d="M0 168 C96 121 153 160 226 154 C291 147 339 129 390 146 V200 H0 Z" fill="#143C98" opacity=".42" />
+      </svg>
+
+      <main className="ada-login-reference__content relative z-10 mx-auto flex w-full flex-1 flex-col">
+        <div className="ada-login-reference__identity flex flex-col items-center">
+          <AdaBrand className="ada-login-reference__logo" />
+        </div>
+        <section className="ada-login-reference__form w-full">
+          <h1 className="text-center font-extrabold tracking-tight text-[#07183B]">{title}</h1>
+          <p className="sr-only">{subtitle}</p>
+          <div className="ada-login-reference__fields">{children}</div>
+        </section>
+      </main>
+    </div>
+  )
 
   return (
     <main className="flex min-h-dvh w-full min-w-0 items-start justify-center bg-gradient-to-br from-[#eef4fb] via-[#f7f9fc] to-white px-3 py-4 text-slate-900 sm:px-6 sm:py-8 lg:items-center lg:px-8 lg:py-10 xl:items-start xl:py-[11dvh]">

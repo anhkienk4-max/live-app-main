@@ -1,4 +1,5 @@
 ﻿import React from 'react'
+import { OpsMobileHome } from '../OpsMobileHome'
 import {
   Radio, Users, Calendar, FileText, ArrowRight, CheckCircle,
   AlertTriangle, Clock, ArrowLeftRight, FolderCheck, ArrowUp,
@@ -62,6 +63,7 @@ export interface LeaderDashboardViewModel {
   upcomingLive: UpcomingLiveItem | null
   /** null = source unavailable; [] = loaded, verified empty */
   activityLog: ActivityEntry[] | null
+  userName?: string
 }
 
 export interface ActivityEntry {
@@ -145,10 +147,23 @@ function DecisionRow({ type, title, subtitle, time, action, iconBg }: DecisionRo
 
 export function LeaderDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
-  decisions, todaysSchedule, staffingHealth, upcomingLive, activityLog,
+  decisions, todaysSchedule, staffingHealth, upcomingLive, activityLog, userName,
 }: LeaderDashboardViewModel) {
+  const mobileAttention = decisions?.map(item => ({
+    key: item.key, title: item.title, description: item.subtitle,
+    href: item.type === 'registration' ? '/staffing?tab=registration' : item.type === 'swap' ? '/swaps' : item.type === 'report' ? '/reports' : '/data-quality',
+    level: item.type === 'dq' ? 'critical' as const : 'warning' as const,
+  })) ?? null
+  const nextMobileShift = todaysSchedule[0]
   return (
-    <main className="p-4 sm:p-8 min-w-0 flex flex-col gap-6 overflow-y-auto">
+    <>
+    <OpsMobileHome
+      role="leader" userName={userName} shiftCount={todaysShiftsCount}
+      liveCount={todaysSchedule.filter(item => item.statusColor === 'red').length}
+      pendingCount={pendingCount} attention={mobileAttention}
+      shift={nextMobileShift ? { key: nextMobileShift.brand + nextMobileShift.time, brand: nextMobileShift.brand, platform: nextMobileShift.platform, time: nextMobileShift.time, status: nextMobileShift.status, onView: nextMobileShift.onView } : null}
+    />
+    <main className="hidden min-w-0 flex-col gap-6 overflow-y-auto p-4 md:flex sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
         <div className="flex flex-col gap-1">
           <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">Leader Dashboard</h1>
@@ -309,5 +324,6 @@ export function LeaderDashboardView({
       </div>
     <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
     </main>
+    </>
   )
 }
