@@ -75,6 +75,6 @@ test('workforce capability response keeps Actual Staffing and Payroll hidden whe
   const response = await handler.GET(new Request('http://localhost/api/workforce/capabilities'))
   assert.equal(response.status, 200)
   assert.deepEqual((await response.json()).capabilities, {
-    actual_staffing: false, team_performance: false, own_performance: false, payroll: false,
+    actual_staffing: false, self_attendance_review: false, team_performance: false, own_performance: false, payroll: false,
   })
 })
