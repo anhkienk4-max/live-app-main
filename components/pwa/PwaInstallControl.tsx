@@ -21,8 +21,7 @@ export function PwaInstallControl({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     const standalone = window.matchMedia('(display-mode: standalone)')
     const sync = () => setInstalled(standalone.matches || (navigator as Navigator & { standalone?: boolean }).standalone === true)
-    sync()
-    setIsAppleMobile(/iPhone|iPad|iPod/.test(navigator.userAgent))
+    const frame = window.requestAnimationFrame(sync)
     const capture = (event: Event) => {
       event.preventDefault()
       setInstallEvent(event as InstallEvent)
@@ -36,6 +35,7 @@ export function PwaInstallControl({ compact = false }: { compact?: boolean }) {
     window.addEventListener('appinstalled', installedHandler)
     standalone.addEventListener?.('change', sync)
     return () => {
+      window.cancelAnimationFrame(frame)
       window.removeEventListener('beforeinstallprompt', capture)
       window.removeEventListener('appinstalled', installedHandler)
       standalone.removeEventListener?.('change', sync)
@@ -43,6 +43,7 @@ export function PwaInstallControl({ compact = false }: { compact?: boolean }) {
   }, [])
 
   const install = async () => {
+    setIsAppleMobile(/iPhone|iPad|iPod/.test(navigator.userAgent))
     if (!installEvent) {
       setShowHelp(value => !value)
       return
