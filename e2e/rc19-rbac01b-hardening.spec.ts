@@ -73,6 +73,23 @@ async function openLeaderAudit(page: Page, testInfo: TestInfo) {
   await page.addInitScript(() => {
     localStorage.setItem('livestream-ops-current-user', '2')
     localStorage.setItem('livestream-ops-language', 'vi')
+    sessionStorage.setItem('livestream-ops-audit-history', JSON.stringify([{
+      id: 'rbac01b-test-audit-record',
+      timestamp: '2026-10-29T00:00:00.000Z',
+      actor_id: '1',
+      actor_name: 'Admin User',
+      actor_role: 'admin',
+      module: 'calendar',
+      action: 'update',
+      entity_type: 'shift',
+      entity_id: 'rbac01b-test-shift',
+      entity_name: 'Mock audit record RBAC01B fixture',
+      source: 'system',
+      status: 'success',
+      correlation_id: 'rbac01b-test-request',
+      entity_exists: true,
+      review_status: 'unreviewed',
+    }]))
   })
   await page.goto('/audit', { waitUntil: 'domcontentloaded' })
   await expect(page.locator('main').first()).toBeVisible({ timeout: 30000 })
