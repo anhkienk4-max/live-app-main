@@ -103,7 +103,8 @@ grant execute on function public.get_shift_staffing_summary(text[]) to authentic
 insert into public.shifts(id,start_at,end_at,registration_cutoff_at,required_host_count,required_support_count,required_technical_count,date,brand_id,platform_id,visible_to)
 values
  ('support-gap','2031-02-01T03:00:00Z','2031-02-01T05:00:00Z','2031-02-01T02:00:00Z',1,1,0,'2031-02-01','brand-a','platform-a',array['member4']),
- ('technical-gap','2031-02-02T03:00:00Z','2031-02-02T05:00:00Z','2031-02-02T02:00:00Z',1,1,1,'2031-02-02','brand-a','platform-a','{}');
+ ('technical-gap','2031-02-02T03:00:00Z','2031-02-02T05:00:00Z','2031-02-02T02:00:00Z',1,1,1,'2031-02-02','brand-a','platform-a','{}'),
+ ('rollback','2031-02-03T03:00:00Z','2031-02-03T05:00:00Z','2031-02-03T02:00:00Z',1,1,1,'2031-02-03','brand-a','platform-a','{}');
 `)
 
 const bootstrap = [
