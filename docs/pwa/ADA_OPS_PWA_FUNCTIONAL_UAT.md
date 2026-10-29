@@ -1,6 +1,6 @@
 # ADA OPS PWA | Read-only 3-role Staging UAT
 
-**Reviewed UI Preview**: https://livestream-ops-demo-2x9hddzmk-livestream2.vercel.app
+**Reviewed UI Preview**: https://livestream-ops-demo-65dgk9k3z-livestream2.vercel.app
 **Exact deployed app SHA**: `0e1c82cf0c60a73be6916029b457732f8960b9ee`.
 **CI**: https://github.com/anhkienk4-max/live-app-main/actions/runs/40831992753 (SUCCESS, Core-based candidate).
 **Protected Preview**: Vercel Authentication is enabled. This app's Staging Preview is not public; do not disable its protection.
@@ -16,7 +16,7 @@
 Open PowerShell in the repository root on the **release/rc19-ui-on-live-1609db-20261028** branch. Ensure Node.js and pnpm dependencies are installed. Run:
 
 ```powershell
-& ".\scripts\run-pwa-functional-uat.ps1" -PreviewUrl "https://livestream-ops-demo-2x9hddzmk-livestream2.vercel.app" -ExpectedSha "0e1c82cf0c60a73be6916029b457732f8960b9ee" -WithVercelBypass
+& ".\scripts\run-pwa-functional-uat.ps1" -PreviewUrl "https://livestream-ops-demo-65dgk9k3z-livestream2.vercel.app" -ExpectedSha "0e1c82cf0c60a73be6916029b457732f8960b9ee" -WithVercelBypass
 ```
 
 The runner prompts for the **Vercel Automation Bypass secret**, and then for dedicated Admin, Leader and Member Staging emails and hidden passwords. Never paste these secrets into ChatGPT, commit them, or use Production identities.
