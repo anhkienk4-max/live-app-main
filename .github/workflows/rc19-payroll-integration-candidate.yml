@@ -51,9 +51,9 @@ jobs:
           tests/rc19-report-apply-filters.test.ts
       - name: Start isolated PostgreSQL 17 databases
         run: |
-          docker run --detach --rm --name ada-wave2-combined-pg17 --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
-          docker run --detach --rm --name ada-rc19-attendance-review-pg17 --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
-          docker run --detach --rm --name rc16f-pg17-payroll-candidate --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
+          docker run --detach --rm --name ada-wave2-combined-pg17 --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17-alpine
+          docker run --detach --rm --name ada-rc19-attendance-review-pg17 --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17-alpine
+          docker run --detach --rm --name rc16f-pg17-payroll-candidate --network none -e POSTGRES_PASSWORD=synthetic-only postgres:17-alpine
           for container in ada-wave2-combined-pg17 ada-rc19-attendance-review-pg17 rc16f-pg17-payroll-candidate; do
             ready=false
             for attempt in $(seq 1 30); do
@@ -128,3 +128,4 @@ jobs:
         if: always()
         run: |
           echo 'NO DEPLOY: CI source tests and disposable PostgreSQL 17 only.' >> "$GITHUB_STEP_SUMMARY"
+
