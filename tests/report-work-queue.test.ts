@@ -132,7 +132,7 @@ test('REPORT-02 UI labels report count, obligation total, and visible page as di
   const list = readFileSync(new URL('../components/features/reports/ReportsList.tsx', import.meta.url), 'utf8')
   assert.match(list, /Tổng báo cáo theo bộ lọc/)
   assert.match(list, /data-testid="report02-queue-page-range"/)
-  assert.match(list, /Đang hiển thị \$\{completedShifts\.length\} ca trong trang hàng đợi/)
+  assert.ok(list.includes("completedShifts.length ? `${completedShifts.length} ca đang hiển thị trong trang hàng đợi"))
   assert.match(list, /reportQueuePageRange\(queueTotal, queuePage, queuePageSize, pagedQueue\.length\)/)
   assert.match(list, /getReportObligationPage\(\{ page: queuePage, pageSize: queuePageSize, filters: JSON\.parse\(encodedQueueFilters\) \}\)/)
   assert.match(list, /getAllFilteredWithHistoricalContext\(JSON\.parse\(encodedFilters\)\)/)
