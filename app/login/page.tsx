@@ -19,6 +19,7 @@ import {
 } from '@/lib/auth/session'
 import { startGoogleOAuth } from '@/lib/auth/googleOAuth'
 import { createClient } from '@/lib/supabase/client'
+import { PwaInstallControl } from '@/components/pwa/PwaInstallControl'
 
 const passwordFailureMessages: Record<PasswordSessionFailure, TranslationKey> = {
   INVALID_CREDENTIALS: 'invalidEmailOrPassword',
@@ -245,6 +246,7 @@ function LoginPageContent() {
             </p>
           )}
         </div>
+        <PwaInstallControl compact />
         <div className="flex justify-center">
           <Button
             type="button"
