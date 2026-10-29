@@ -106,6 +106,9 @@ values
  ('technical-gap','2026-10-03','09:00','10:00','2026-10-03 10:00+00','scheduled','brand-b','platform-a','Technical gap',1,1,1,'{}'),
  ('fully-staffed','2026-10-04','09:00','10:00','2026-10-04 10:00+00','scheduled','brand-b','platform-b','Full',1,1,0,'{}'),
  ('out-of-range','2026-11-01','09:00','10:00','2026-11-01 10:00+00','scheduled','brand-a','platform-a','Outside',1,1,0,'{}');
+insert into public.shifts(id,date,start_time,end_time,end_at,status,required_host_count,required_support_count,required_technical_count)
+select 'page-'||n, date '2026-10-05'+n, '09:00','10:00',('2026-10-05'::date+n+time '10:00') at time zone 'UTC','scheduled',0,0,0
+from generate_series(1,11) n;
 insert into public.staffing_test_summary values
  ('host-gap','host',1,0),('host-gap','support',1,1),
  ('support-gap','host',1,1),('support-gap','support',2,0),
@@ -144,26 +147,33 @@ const scoped = query(as('admin', "select coalesce(string_agg(id,',' order by id)
 assert.equal(scoped, 'host-gap')
 const page = query(as('admin', "with filtered as (select id from private.filtered_shift_ids('all','{\"from\":\"2026-10-01\",\"to\":\"2026-10-04\"}')), stats as (select count(*) total from filtered), rows as (select id from filtered order by id limit 2 offset 0) select (select total from stats)||'|'||string_agg(id,',' order by id) from rows"))
 assert.equal(page, '4|fully-staffed,host-gap')
-const rpcPage = JSON.parse(query(as('admin', "select public.get_shift_list_page('all',1,1,'{\"operationalRoles\":[\"host\"],\"staffingStates\":[\"missing_staff\"]}',1,false)::text")))
+const rpcPage = JSON.parse(query(as('admin', "select public.get_shift_list_page('all',1,10,'{\"operationalRoles\":[\"host\"],\"staffingStates\":[\"missing_staff\"]}',1,false)::text")))
 assert.equal(rpcPage.total, 1)
 assert.equal(rpcPage.rows.length, 1)
 assert.equal(rpcPage.rows[0].id, 'host-gap')
 const rpcFiltered = JSON.parse(query(as('admin', "select public.get_shift_list_page('all',1,10,'{\"from\":\"2026-10-01\",\"to\":\"2026-10-04\",\"brandIds\":[\"brand-a\"],\"platformIds\":[\"platform-a\"]}',1,false)::text")))
 assert.equal(rpcFiltered.total, 1)
 assert.equal(rpcFiltered.rows[0].id, 'host-gap')
+const rpcFirstPage = JSON.parse(query(as('admin', "select public.get_shift_list_page('all',1,10,'{}',1,false)::text")))
+const rpcSecondPage = JSON.parse(query(as('admin', "select public.get_shift_list_page('all',2,10,'{}',1,false)::text")))
+assert.equal(rpcFirstPage.total, 16)
+assert.equal(rpcFirstPage.rows.length, 10)
+assert.equal(rpcSecondPage.total, 16)
+assert.equal(rpcSecondPage.rows.length, 6)
+assert.equal(rpcSecondPage.page, 2)
 const memberRows = query(as('member', "select coalesce(string_agg(id,',' order by id),'') from private.filtered_shift_ids('all','{}')"))
 assert.equal(memberRows, 'host-gap')
 const memberRpc = JSON.parse(query(as('member', "select public.get_shift_list_page('all',1,10,'{}',1,false)::text")))
 assert.equal(memberRpc.total, 1)
 assert.deepEqual(memberRpc.registrations.map(row => row.id), ['own-registration'])
 const leaderRows = query(as('leader', "select count(*) from private.filtered_shift_ids('all','{}')"))
-assert.equal(leaderRows, '5')
+assert.equal(leaderRows, '16')
 psql(as('anon', "select * from private.filtered_shift_ids('all','{}');"), true)
 
 // The documented rollback compensation is replaying the exact pre-change helper
 // with its original execute boundary; it must remain callable and preserve ACLs.
 psql(legacyHelper + "\nrevoke all on function private.filtered_shift_ids(text,jsonb) from public,anon,service_role; grant execute on function private.filtered_shift_ids(text,jsonb) to authenticated;")
 assert.equal(query("select has_function_privilege('authenticated','private.filtered_shift_ids(text,jsonb)','EXECUTE')::text||'|'||has_function_privilege('anon','private.filtered_shift_ids(text,jsonb)','EXECUTE')::text"), 'true|false')
-assert.equal(query(as('admin', "select count(*) from private.filtered_shift_ids('all','{}')")), '5')
+assert.equal(query(as('admin', "select count(*) from private.filtered_shift_ids('all','{}')")), '16')
 psql(migration)
 console.log('STAFFING_ROLE_FILTER_POSTGRES_17=PASS')
