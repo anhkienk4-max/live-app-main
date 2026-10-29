@@ -172,7 +172,8 @@ psql("set role anon; select * from private.filtered_shift_ids('all','{}');", tru
 
 // The documented rollback compensation is replaying the exact pre-change helper
 // with its original execute boundary; it must remain callable and preserve ACLs.
-psql(legacyHelper + "\nrevoke all on function private.filtered_shift_ids(text,jsonb) from public,anon,service_role; grant execute on function private.filtered_shift_ids(text,jsonb) to authenticated;")
+const rollbackHelper = legacyHelper.replace(/^create function /i, 'create or replace function ')
+psql(rollbackHelper + "\nrevoke all on function private.filtered_shift_ids(text,jsonb) from public,anon,service_role; grant execute on function private.filtered_shift_ids(text,jsonb) to authenticated;")
 assert.equal(query("select has_function_privilege('authenticated','private.filtered_shift_ids(text,jsonb)','EXECUTE')::text||'|'||has_function_privilege('anon','private.filtered_shift_ids(text,jsonb)','EXECUTE')::text"), 'true|false')
 assert.equal(query(as('admin', "select count(*) from private.filtered_shift_ids('all','{}')")), '16')
 psql(migration)
