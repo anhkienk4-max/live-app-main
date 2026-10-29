@@ -4,9 +4,9 @@ container=ada-rc19-attendance-review-pg17
 psql=(docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres)
 
 cat tests/fixtures/rc19_attendance_photo_review_base.sql | "${psql[@]}"
-cat supabase/migrations/20261029140000_rc19_p2_04_attendance_photo_review.sql | "${psql[@]}"
+cat supabase/proposals/rc19-attendance-photo-review/20261029140000_rc19_p2_04_attendance_photo_review.sql | "${psql[@]}"
 # Replay is safe and verifies the proposal's idempotent DDL path.
-cat supabase/migrations/20261029140000_rc19_p2_04_attendance_photo_review.sql | "${psql[@]}"
+cat supabase/proposals/rc19-attendance-photo-review/20261029140000_rc19_p2_04_attendance_photo_review.sql | "${psql[@]}"
 cat tests/rc19-attendance-photo-review.postgres.sql | "${psql[@]}"
 
 # A rollback transaction restores the schema and an explicit compensating review write.

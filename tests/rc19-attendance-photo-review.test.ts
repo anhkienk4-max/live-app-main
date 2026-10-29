@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createAttendancePhotoReviewHandler } from '../lib/server/attendancePhotoReviewHandler.ts'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 const manager = async () => ({ id:'auth-leader', businessUserId:'leader-1', systemPermission:'leader' as const })
 function query(data: unknown, error: unknown = null) {
@@ -83,7 +83,12 @@ test('decision payload rejects short reasons and unexpected fields', async () =>
 })
 
 test('review migration is append-only, scoped, versioned and independent from Actual/Payroll', () => {
-  const sql = readFileSync(new URL('../supabase/migrations/20261029140000_rc19_p2_04_attendance_photo_review.sql', import.meta.url),'utf8')
+  const migrationPath = '../supabase/proposals/rc19-attendance-photo-review/20261029140000_rc19_p2_04_attendance_photo_review.sql'
+  const sql = readFileSync(new URL(migrationPath, import.meta.url),'utf8')
+  const manifest = JSON.parse(readFileSync(new URL('../supabase/proposals/rc19-attendance-photo-review/manifest.json', import.meta.url),'utf8'))
+  assert.equal(manifest.auto_apply,false)
+  assert.equal(manifest.migration,'20261029140000_rc19_p2_04_attendance_photo_review.sql')
+  assert.equal(existsSync(new URL('../supabase/migrations/20261029140000_rc19_p2_04_attendance_photo_review.sql', import.meta.url)),false)
   assert.match(sql,/private\.require_shift_actor\(true\)/)
   assert.match(sql,/private\.can_read_shift\(v_event\.shift_id\)/)
   assert.match(sql,/v_event\.staff_id=v_actor/)

@@ -1,0 +1,5 @@
+{
+  "proposal": "RC19 attendance photo review",
+  "auto_apply": false,
+  "migration": "20261029140000_rc19_p2_04_attendance_photo_review.sql"
+}

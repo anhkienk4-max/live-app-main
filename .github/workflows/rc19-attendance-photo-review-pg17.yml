@@ -4,7 +4,7 @@ on:
   push:
     branches: [fix/rc19-p2-04-attendance-photo-review]
     paths:
-      - 'supabase/migrations/20261029140000_rc19_p2_04_attendance_photo_review.sql'
+      - 'supabase/proposals/rc19-attendance-photo-review/20261029140000_rc19_p2_04_attendance_photo_review.sql'
       - 'tests/rc19-attendance-photo-review*'
       - 'tests/fixtures/rc19_attendance_photo_review_base.sql'
       - '.github/workflows/rc19-attendance-photo-review-pg17.yml'
@@ -13,7 +13,7 @@ on:
   pull_request:
     branches: [integration/rc19-wave2-core]
     paths:
-      - 'supabase/migrations/20261029140000_rc19_p2_04_attendance_photo_review.sql'
+      - 'supabase/proposals/rc19-attendance-photo-review/20261029140000_rc19_p2_04_attendance_photo_review.sql'
       - 'tests/rc19-attendance-photo-review*'
       - 'tests/fixtures/rc19_attendance_photo_review_base.sql'
       - '.github/workflows/rc19-attendance-photo-review-pg17.yml'
