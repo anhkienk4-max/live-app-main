@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "d1a54c04927f62150f648a5a1e114b15a7ba721d",
+    "head": "570799142da28773066587214b26b5e5d823e6cb",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -60,6 +60,7 @@
       "app/api/account-requests/[id]/reject/route.ts",
       "app/api/account-requests/route.ts",
       "app/api/ai/chat/route.ts",
+      "app/api/audit/team-capability/route.ts",
       "app/api/auth/callback/route.ts",
       "app/api/auth/providers/route.ts",
       "app/api/file-sources/ingest/route.ts",
@@ -76,6 +77,7 @@
       "app/api/operations/registration-context/route.ts",
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
+      "app/api/role-defaults/route.ts",
       "app/api/staff/invite/route.ts",
       "app/api/storage-resources/route.ts",
       "app/api/workforce/actual/route.ts",
@@ -98,14 +100,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 70,
-        "components": 174,
-        "lib": 257,
+        "app": 72,
+        "components": 175,
+        "lib": 261,
         "scripts": 29,
         "supabase": 116,
-        "tests": 284
+        "tests": 290
       },
-      "total": 930
+      "total": 943
     },
     "tests": {
       "files": [
@@ -260,6 +262,8 @@
         "tests/rc19-auth-responsive-layout.test.tsx",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-my-payslip.test.ts",
+        "tests/rc19-rbac01-security.test.ts",
+        "tests/rc19-rbac01b-audit-slice.test.ts",
         "tests/rc19-report-apply-filters.test.ts",
         "tests/rc19-report01-multiview.test.ts",
         "tests/rc19-reports-app-router-wiring.test.ts",
@@ -341,7 +345,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 231
+      "count": 233
     },
     "migrations": {
       "files": [
@@ -452,5 +456,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-29T23:24:48+07:00"
+  "synced_at": "2026-10-30T00:00:22+07:00"
 }
