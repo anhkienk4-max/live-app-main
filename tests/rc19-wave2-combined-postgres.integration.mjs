@@ -8,7 +8,7 @@ const read = path => readFileSync(path, 'utf8')
 function psql(sql, expectedFailure = false) {
   const result = spawnSync('docker', [
     'exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', 'postgres',
-    '-v', 'ON_ERROR_STOP=1', '-t', '-A',
+    '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A',
   ], { input: sql, encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024 })
   if (result.error) throw result.error
   if (expectedFailure) assert.notEqual(result.status, 0, 'Expected SQL rejection')
@@ -196,7 +196,7 @@ console.log('RLS_MEMBER_SCOPE_AND_REVIEWER_AUTHORIZATION=PASS')
 assert.equal(apply('concurrent',3),'pending')
 assert.equal(apply('concurrent',4),'pending')
 const parallelSql = sql => new Promise((resolve,reject)=>{
-  const child=spawn('docker',['exec','-i',container,'psql','-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-t','-A'])
+  const child=spawn('docker',['exec','-i',container,'psql','-X','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-q','-t','-A'])
   let stdout='',stderr=''
   child.stdout.on('data',chunk=>stdout+=chunk)
   child.stderr.on('data',chunk=>stderr+=chunk)
