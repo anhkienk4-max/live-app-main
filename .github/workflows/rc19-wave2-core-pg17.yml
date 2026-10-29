@@ -1,0 +1,77 @@
+name: RC19 Wave 2 Core PostgreSQL 17 Gate
+
+on:
+  push:
+    branches: [integration/rc19-wave2-core]
+
+permissions:
+  contents: read
+
+jobs:
+  wave2-core-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert exact pushed commit
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm run type-check
+      - name: ESLint changed workflow modules
+        run: >-
+          pnpm exec eslint
+          components/features/calendar/StaffingWorkspace.tsx
+          components/features/calendar/ShiftRegistrationActions.tsx
+          components/features/calendar/ShiftRegistrationBoard.tsx
+          components/features/shifts/ShiftDetailModal.tsx
+          lib/services/supabaseShiftRegistrationService.ts
+          tests/rc19-staffing-role-filter.test.ts
+          tests/rc19-reg02-contract.test.mjs
+          tests/rc19-wave2-compatibility.test.mjs
+      - name: Start disposable PostgreSQL 17 databases
+        run: |
+          docker run --detach --rm --name ada-staffing-pg17 --network none \
+            -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
+          docker run --detach --rm --name ada-reg02-pg17 --network none \
+            -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
+          for container in ada-staffing-pg17 ada-reg02-pg17; do
+            ready=false
+            for attempt in $(seq 1 30); do
+              if docker exec "$container" pg_isready -U postgres -d postgres >/dev/null 2>&1; then ready=true; break; fi
+              sleep 2
+            done
+            if [ "$ready" != true ]; then docker logs "$container"; exit 1; fi
+          done
+      - name: Run combined Wave 2 source compatibility contracts
+        run: node --test tests/rc19-wave2-compatibility.test.mjs tests/rc19-reg02-contract.test.mjs
+      - name: Run Staffing PG17 role/filter/totals/RLS/rollback gate
+        env:
+          STAFFING_PG_CONTAINER: ada-staffing-pg17
+        run: node tests/rc19-staffing-role-filter-postgres.integration.mjs
+      - name: Run Registration PG17 policy/capacity/concurrency/RLS/rollback gate
+        env:
+          REG02_PG_CONTAINER: ada-reg02-pg17
+        run: node tests/rc19-reg02-postgres.integration.mjs
+      - name: Run focused Staffing contracts
+        run: >-
+          node --import ./tests/typescript-alias-loader.mjs --test
+          tests/rc19-staffing-role-filter.test.ts
+          tests/rc19-staffing-candidate-contract.test.ts
+          tests/rc19-staffing-failclosed.test.ts
+      - name: Stop disposable PostgreSQL 17 databases
+        if: always()
+        run: docker stop ada-staffing-pg17 ada-reg02-pg17 || true
+      - name: No deployment declaration
+        run: 'echo "NO DEPLOY: disposable PostgreSQL 17 and source tests only."'
