@@ -113,7 +113,7 @@ test('REPORT-01 URL views share applied filters; existing Table/Cards and REPORT
   assert.match(ui,/getReportObligationPage\(query, signal\)/)
   assert.match(ui,/getReportsPage: \(query, signal\) => reportService\.getFilteredPage\(query, signal\)/)
   assert.match(ui,/getAllFilteredWithHistoricalContext\(JSON\.parse\(encodedFilters\)\)/)
-  assert.match(ui,/report\.status === 'confirmed' && report\.metrics_confirmed === true/)
+  assert.match(ui,/filteredReports\.filter\(isConfirmedReportForKpi\)/)
   assert.match(ui,/onHistorical=\{setSelectedHistoricalReport\}/)
   assert.match(ui,/setSelectedReport\(report\)/)
   assert.match(component,/items\.length > 3/)
