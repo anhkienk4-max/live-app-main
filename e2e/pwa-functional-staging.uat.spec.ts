@@ -9,8 +9,8 @@ import { readEnvIdentities, loginWithCredentials, type CoreRole } from './harnes
  * - Run the JSON evidence validator before claiming release readiness.
  */
 const target = process.env.E2E_BASE_URL ?? ''
-const PINNED_PREVIEW_SHA = '775be57e5cd4bc6abb12387ced5cf4210f4024ca'
-const PINNED_PREVIEW_HOST = 'livestream-ops-demo-68p92v1qb-livestream2.vercel.app'
+const PINNED_PREVIEW_SHA = '0e1c82cf0c60a73be6916029b457732f8960b9ee'
+const PINNED_PREVIEW_HOST = 'livestream-ops-demo-2x9hddzmk-livestream2.vercel.app'
 const expectedSha = process.env.PWA_UAT_EXPECTED_SHA ?? ''
 const identities = readEnvIdentities()
 const credentials: Record<CoreRole, { email: string; password: string } | null> = {

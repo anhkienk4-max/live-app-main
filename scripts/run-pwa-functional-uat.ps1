@@ -11,7 +11,7 @@ $uri = [uri]$PreviewUrl
 if ($uri.Scheme -ne 'https' -or $uri.Host -notmatch '^livestream-ops-demo(?:-[a-z0-9-]+)?\.vercel\.app$' -or $uri.AbsolutePath -ne '/' -or $uri.Query -or $uri.Fragment -or $ExpectedSha -notmatch '^[a-f0-9]{40}$') {
   throw 'BLOCKED: require verified HTTPS PWA Preview URL and full commit SHA. Production is forbidden.'
 }
-if ($uri.Host -ne 'livestream-ops-demo-68p92v1qb-livestream2.vercel.app' -or $ExpectedSha -ne '775be57e5cd4bc6abb12387ced5cf4210f4024ca') {
+if ($uri.Host -ne 'livestream-ops-demo-2x9hddzmk-livestream2.vercel.app' -or $ExpectedSha -ne '0e1c82cf0c60a73be6916029b457732f8960b9ee') {
   throw 'BLOCKED: target must match the approved exact SHA and Preview deployment.'
 }
 $names = @(

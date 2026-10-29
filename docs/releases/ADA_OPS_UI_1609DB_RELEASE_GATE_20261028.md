@@ -52,3 +52,14 @@ The exact deployed raw SHA-1 of `lib/services/operationalReferences.ts` is `62f9
 A read-only comparison of the *visible* runtime paths of the aliased live deployment and the separate unaliased build found no changed shared `app/`, `components/`, `lib/` or `supabase/` files. This is **partial inventory evidence, not a full deploy-to-Git attestation**. The CLI upload exposed an embedded `.worktrees/` directory in one snapshot; the unaliased build did not show that directory in the visible listing. Review source-upload exclusions before a release.
 
 **Candidate merge plan:** combine the approved UI branch with Core base `1befe23bea9380dac37061a7132ac38143cf678b` via an auditable two-parent merge commit without overwriting the Core changes. Retarget PR #138 to `release/rc19-core-2026-11-01`, preserving the same branch-scoped Staging Preview environment. CI scope checks must now diff from `1befe23bea9380dac37061a7132ac38143cf678b`. Old 28 Oct source attestation stays historical and cannot authorize a release. The new Preview needs a confirmed deployment SHA and real Admin/Leader/Member Staging UAT. Do not promote Production.
+
+## 2026-10-29 RC19 Core-based staging build verified
+
+- **Application commit:** `0e1c82cf0c60a73be6916029b457732f8960b9ee`, merged from original approved UI plus Core `1befe23bea9380dac37061a7132ac38143cf678b`.
+- **UI-only diff from Core:** 54 files; no `lib/services/`, `app/api/`, `supabase/` or auth-backend changes in the PR diff.
+- **GitHub UI CI:** https://github.com/anhkienk4-max/live-app-main/actions/runs/40831992753 (**SUCCESS** at the exact application SHA).
+- **PostgreSQL CI:** https://github.com/anhkienk4-max/live-app-main/actions/runs/40831998666 (**SUCCESS**).
+- **Verified Vercel Preview:** `dpl_7LQDADvHVuHYrxVifCN9MBvxE9Mf`, https://livestream-ops-demo-2x9hddzmk-livestream2.vercel.app, status **READY**, `target=null`, GitHub source SHA `0e1c82cf0c60a73be6916029b457732f8960b9ee`, no Production domain assigned.
+- **Preview env preflight:** five branch-scoped Preview variables are configured, server and public Supabase URLs match, mock data is disabled. No decrypted or private credentials are recorded.
+- **Remaining blocker:** run real read-only three-role Staging UAT; test capability/RLS and mutation safety separately, establish complete live CLI source provenance and prepare staged Production build/rollback before any release.
+- **Release decision: NO-GO**, Production `ops5729.top` remains aliased to `dpl_5eqzn3dHR9pKnnna8MvBY2F7AnMX` at this observation.
