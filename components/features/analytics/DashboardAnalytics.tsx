@@ -44,7 +44,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/toast'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { reportMetricValue, resolveAnalyticsDateRange } from '@/lib/utils/analytics'
-import { BI_CHART_CATALOG, biChartCompatibilityMessage, biChartCompatibilityReason, biMetricValue, biPersonalViewStorageKey, firstCompatibleBiChart, hasBiMetricObservation, hasNegativeBiMetric, parseBiPersonalView, analyticsPeriodBucket, type BiChartKey, type BiDimension, type BiMetricKey } from '@/lib/utils/bi01Catalog'
+import { BI_CHART_CATALOG, biChartCompatibilityMessage, biChartCompatibilityReason, biMetricValue, biPersonalViewStorageKey, firstCompatibleBiChart, hasBiMetricObservation, hasNegativeBiMetric, parseBiPersonalView, analyticsPeriodBucket, analyticsMonthRange, type BiChartKey, type BiDimension, type BiMetricKey } from '@/lib/utils/bi01Catalog'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { usePagedList } from '@/lib/hooks/usePagedList'
 import { getOperationalReferences } from '@/lib/services/operationalReferences'
@@ -238,7 +238,6 @@ export function DashboardAnalytics() {
       })
     }
     return [...groups.values()].sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))  }
-
   const userMap = new Map(users.map(user => [user.id, user]))
   const workload = snapshot.workload.filter(row => userMap.has(row.user_id)).map(row => ({
     name: userMap.get(row.user_id)!.full_name,
@@ -394,13 +393,10 @@ export function DashboardAnalytics() {
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <Input type="month" aria-label={tr('yearMonth', 'Năm và tháng', 'Year and month')} value={filters.start.slice(0, 7)} onChange={e => {
                 const value = e.target.value
-                if (!/^\\d{4}-\\d{2}$/.test(value)) return
-                const [year, month] = value.split('-').map(Number)
-                if (month < 1 || month > 12) return
-                const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
-                const end = value + '-' + String(lastDay).padStart(2, '0')
+                const monthRange = analyticsMonthRange(value)
+                if (!monthRange) return
                 setPage(1)
-                setFilters(current => current ? { ...current, range: 'custom', start: value + '-01', end } : current)
+                setFilters(current => current ? { ...current, range: 'custom', ...monthRange } : current)
               }} className="h-8 w-36" />
               <Input type="date" aria-label={tr('startDate', 'Từ ngày', 'Start date')} value={filters.start} onChange={e => { setPage(1); setFilters(c => c ? { ...c, start: e.target.value } : c) }} className="h-8 w-32" />
               <span>–</span>
@@ -477,8 +473,7 @@ export function DashboardAnalytics() {
                   <strong className="text-slate-700">{metric.label}</strong>
                   <p className="text-[11px] text-slate-500">{metric.source}</p>
                 </div>              ))}
-            </div>
-            <p className="mt-2 text-[11px] text-slate-400">
+            </div>            <p className="mt-2 text-[11px] text-slate-400">
               * Dữ liệu chỉ tính từ báo cáo ca đã xác nhận (confirmed). Giá trị chưa phát sinh hiển thị là &quot;—&quot;; số 0 hợp lệ được giữ nguyên.
             </p>
           </details>
@@ -717,8 +712,7 @@ export function DashboardAnalytics() {
                       </span>                    </div>
                     {share !== null && (
                       <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full rounded-full bg-indigo-600" style={{ width: share + '%' }} />
-                      </div>
+                        <div className="h-full rounded-full bg-indigo-600" style={{ width: share + '%' }} />                      </div>
                     )}
                     <p className="text-[10px] text-slate-500">{item.count} {t('reportCount')}</p>
                   </div>

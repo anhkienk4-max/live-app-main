@@ -146,6 +146,17 @@ export function biPersonalViewStorageKey(actorId: string): string {
   return 'rc19.analytics.bi01.view.v1:' + encodeURIComponent(actorId)
 }
 
+export function analyticsMonthRange(value: string): { start: string; end: string } | null {
+  if (!/^\d{4}-\d{2}$/.test(value)) return null
+  const [yearText, monthText] = value.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  if (year < 1 || month < 1 || month > 12) return null
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const monthDays = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return { start: value + '-01', end: value + '-' + String(monthDays[month - 1]).padStart(2, '0') }
+}
+
 export function analyticsPeriodBucket(period: string, rangeStart: string, rangeEnd: string): { start: string; end: string } | null {
   if (!isDateOnly(rangeStart) || !isDateOnly(rangeEnd) || rangeStart > rangeEnd) return null
   let start: string

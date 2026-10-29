@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  BI_CHART_CATALOG, BI_METRIC_CATALOG, analyticsPeriodBucket, biChartCompatibilityReason,
+  BI_CHART_CATALOG, BI_METRIC_CATALOG, analyticsMonthRange, analyticsPeriodBucket, biChartCompatibilityReason,
   biMetricValue, biPersonalViewStorageKey, firstCompatibleBiChart, hasBiMetricObservation,
   hasNegativeBiMetric, parseBiPersonalView,
 } from '../lib/utils/bi01Catalog.ts'
@@ -62,6 +62,14 @@ test('personal views are actor-keyed configuration only and reject incompatible 
   assert.equal(parseBiPersonalView('{bad json'), null)
   const oversized = { ...JSON.parse(saved), filters: { ...filters, brandIds: Array.from({ length: 101 }, (_, i) => 'brand-' + i) } }
   assert.equal(parseBiPersonalView(JSON.stringify(oversized)), null)
+})
+
+test('year/month input produces valid calendar boundaries including leap years', () => {
+  assert.deepEqual(analyticsMonthRange('2024-02'), { start: '2024-02-01', end: '2024-02-29' })
+  assert.deepEqual(analyticsMonthRange('2025-02'), { start: '2025-02-01', end: '2025-02-28' })
+  assert.equal(analyticsMonthRange('2026-13'), null)
+  assert.equal(analyticsMonthRange('2026-2'), null)
+  assert.equal(analyticsMonthRange('0000-01'), null)
 })
 
 test('time drill-down clamps day, week and month buckets to current filter range', () => {
