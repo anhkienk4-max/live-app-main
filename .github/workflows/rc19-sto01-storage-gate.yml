@@ -37,6 +37,7 @@ on:
     branches:
       - fix/rc19-sto01-storage-production
       - feat/rc19-sto02-resource-registry
+      - test/rc19-sto02-corrected-seed-compat-20261029
   workflow_dispatch:
 
 permissions:

@@ -4,7 +4,9 @@
     "deploymentEnabled": {
       "feat/rc16-payroll-workforce-backend": false,
       "integration/rc14-rc15-rc16-prod": false,
-      "feat/rc16k-ui-consistency-pagination": false
+      "feat/rc16k-ui-consistency-pagination": false,
+      "fix/rc19-sto01-internal-only": false,
+      "test/rc19-sto02-corrected-seed-compat-20261029": false
     }
   }
 }
