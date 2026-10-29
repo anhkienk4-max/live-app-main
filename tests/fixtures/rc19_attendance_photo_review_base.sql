@@ -9,7 +9,7 @@ do $$ begin
   create role service_role nologin bypassrls;
 exception when duplicate_object then null; end $$;
 
-create table public.business_users(id text primary key, system_permission text not null);
+create table public.business_users(id text primary key, system_permission text not null, full_name text not null);
 create table public.brands(id text primary key,name text not null);
 create table public.platforms(id text primary key,name text not null);
 create table public.shifts(
@@ -69,8 +69,9 @@ create trigger self_attendance_immutable before update or delete on public.self_
 create trigger self_attendance_photo_immutable before update or delete on public.self_attendance_photo_evidence
   for each row execute function private.reject_self_attendance_mutation();
 
-insert into public.business_users values
-  ('admin-1','admin'),('leader-1','leader'),('leader-2','leader'),('member-1','member'),('member-2','member');
+insert into public.business_users(id,system_permission,full_name) values
+  ('admin-1','admin','Test Admin'),('leader-1','leader','Test Leader One'),('leader-2','leader','Test Leader Two'),
+  ('member-1','member','Test Member One'),('member-2','member','Test Member Two');
 insert into public.brands values('brand-1','Test Brand');
 insert into public.platforms values('platform-1','Test Platform');
 insert into public.shifts(id,owner_leader_id,brand_id,platform_id,title) values
