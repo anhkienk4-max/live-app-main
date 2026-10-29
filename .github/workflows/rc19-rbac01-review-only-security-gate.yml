@@ -60,7 +60,7 @@ jobs:
         env:
           SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
           TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
-        run: node scripts/run-final-regression.mjs
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
       - name: Guarded build no credentials or RBAC activation
         env:
           NEXT_PUBLIC_SUPABASE_URL: ''

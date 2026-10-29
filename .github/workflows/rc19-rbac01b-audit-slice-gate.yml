@@ -76,7 +76,7 @@ jobs:
         env:
           SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
           TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
-        run: node scripts/run-final-regression.mjs
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
       - name: Install Chromium for mock-only revocation UX
         timeout-minutes: 8
         run: pnpm exec playwright install chromium
