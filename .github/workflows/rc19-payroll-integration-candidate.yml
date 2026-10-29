@@ -128,4 +128,3 @@ jobs:
         if: always()
         run: |
           echo 'NO DEPLOY: CI source tests and disposable PostgreSQL 17 only.' >> "$GITHUB_STEP_SUMMARY"
-
