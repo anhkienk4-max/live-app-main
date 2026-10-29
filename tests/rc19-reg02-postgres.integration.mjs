@@ -64,6 +64,15 @@ const old = query(as(1, "select status from public.register_for_shift('one','hos
 assert.equal(old, 'approved', 'old auto-approval must be reproduced before patch')
 psql("delete from public.shift_registrations where shift_id='one';")
 console.log('BASELINE_AUTO_APPROVAL_REPRODUCED=PASS')
+const migrationSql = read(migration)
+const transactionalMigration = migrationSql.replace(/^\s*begin\s*;/i, '').replace(/\s*commit\s*;\s*$/i, '')
+const priorRegister = query("select encode(convert_to(pg_get_functiondef('public.register_for_shift(text,text)'::regprocedure),'UTF8'),'base64')")
+const priorApprove = query("select encode(convert_to(pg_get_functiondef('public.approve_shift_registration(text,text)'::regprocedure),'UTF8'),'base64')")
+psql(`begin;${transactionalMigration}\nselect 1/0; commit;`, true)
+assert.equal(query("select encode(convert_to(pg_get_functiondef('public.register_for_shift(text,text)'::regprocedure),'UTF8'),'base64')"), priorRegister)
+assert.equal(query("select encode(convert_to(pg_get_functiondef('public.approve_shift_registration(text,text)'::regprocedure),'UTF8'),'base64')"), priorApprove)
+assert.equal(query("select to_regprocedure('private.reg02_reject_surplus(text,text,text)') is null"), 't')
+console.log('REG02_MIGRATION_TRANSACTION_ROLLBACK=PASS')
 psql(read(migration))
 
 function apply(shift, user, role = 'host') {
@@ -76,6 +85,12 @@ function getId(shift, user, role = 'host') {
 function approve(regId, user = 6) {
   return query(as(user, "select status from public.approve_shift_registration('" + regId + "',null,1)"))
 }
+
+// Legacy approval=false remains approved; approval=true enables the competitive queue.
+assert.equal(apply('one',1),'approved')
+assert.equal(query("select reviewed_by||'|'||(reviewed_at is not null)::text from public.shift_registrations where shift_id='one' and user_id='member1'"), 'member1|true')
+psql("delete from public.shift_registrations where shift_id='one'; update public.system_settings set require_registration_approval=true where id='singleton';")
+console.log('LEGACY_AUTO_APPROVAL_AND_COMPETITIVE_OPT_IN=PASS')
 
 assert.equal(apply('one',1),'pending')
 assert.equal(apply('one',2),'pending')

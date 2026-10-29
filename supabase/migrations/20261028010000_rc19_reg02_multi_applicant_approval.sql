@@ -59,11 +59,14 @@ begin
     p_shift_id,
     actor_id,
     p_role,
-    'pending',
+    case when settings_row.require_registration_approval then 'pending' else 'approved' end,
     'self_registration',
-    null,
-    null
+    case when settings_row.require_registration_approval then null else actor_id end,
+    case when settings_row.require_registration_approval then null else statement_timestamp() end
   ) returning * into created_registration;
+  if not settings_row.require_registration_approval and settings_row.auto_lock_filled_shifts then
+    perform private.refresh_shift_registration_lock(p_shift_id, false);
+  end if;
   return created_registration;
 end;
 $$;
