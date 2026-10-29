@@ -96,7 +96,7 @@ export function AuditHistory() {
       setLoadedIdentity('')
       return
     }
-    if (!currentUser || !canView || teamCapabilityDenied) {
+    if (!currentUser || !canView) {
       setTeamCapabilityDenied(false)
       setLoadedIdentity(identity)
       setLoading(false)
@@ -164,7 +164,7 @@ export function AuditHistory() {
   }, [currentUser, load, invalidate])
 
   if (userLoading || loading || canView&&identity!==loadedIdentity) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
-  if (!currentUser || !canView) {
+  if (!currentUser || !canView || teamCapabilityDenied) {
     return <Card><CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><ShieldAlert className="mb-3 h-10 w-10 text-amber-600" /><h2 className="font-semibold">{t('accessDenied')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('auditAccessDeniedHelp')}</p></CardContent></Card>
   }
   if (loadError) return <PageLoadError error={loadError} onRetry={() => { void load() }} />
