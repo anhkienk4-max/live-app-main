@@ -1,0 +1,14 @@
+# ADA OPS: Vercel CLI upload boundaries. Keep runtime source, lockfile and public assets.
+# Never upload local nested worktrees or editor/agent clones.
+.worktrees/
+**/.worktrees/
+
+# Machine-only secrets, caches, local generated evidence and temporary data.
+.env
+.env.*
+!.env.example
+test-results/
+test_reports/
+.migration-backup/
+coverage/
+*.tsbuildinfo

@@ -83,3 +83,7 @@ Thumbs.db
 
 # Playwright generated traces and screenshots
 /test-results/
+
+
+# Prevent nested local worktrees from accidental source commits or Vercel uploads
+.worktrees/
