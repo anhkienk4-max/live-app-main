@@ -305,11 +305,21 @@ export function createSupabaseShiftRegistrationRepository(
     },
 
     async getForShift(shiftId) {
-      const result = await selectRegistrations()
-        .eq('shift_id', shiftId)
-        .order('requested_at', { ascending: true })
-      return optionalRows('registration shift read', result)
-        .map(row => registrationFromRow(row as unknown as RegistrationRow))
+      // Read all pages for the selected shift. PostgREST limits un-ranged
+      // responses; Leader/Admin applicant groups cannot use truncated data.
+      // Member rows remain restricted by shift_registrations RLS.
+      const rows = new Map<string, RegistrationRow>()
+      for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+        const result = await selectRegistrations()
+          .eq('shift_id', shiftId)
+          .order('requested_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
+        const page = optionalRows('registration shift read', result)
+        page.forEach(row => rows.set(String((row as unknown as RegistrationRow).id), row as unknown as RegistrationRow))
+        if (page.length < SUPABASE_PAGE_SIZE) break
+      }
+      return [...rows.values()].map(row => registrationFromRow(row))
     },
 
     async getForShifts(shiftIds) {
