@@ -8,8 +8,8 @@ type BrowserDiagnostics = {
 }
 
 const safeText = (value: string) => value
-  .replace(/Bearer\\s+\\S+/gi, 'Bearer [redacted]')
-  .replace(/(access_token|refresh_token|token)=([^&\\s]+)/gi, '$1=[redacted]')
+  .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+  .replace(/(access_token|refresh_token|token)=([^&\s]+)/gi, '$1=[redacted]')
   .slice(0, 500)
 
 function installBrowserDiagnostics(page: Page): BrowserDiagnostics {
@@ -40,7 +40,7 @@ function installBrowserDiagnostics(page: Page): BrowserDiagnostics {
 
 async function waitForMockAuditRow(page: Page, testInfo: TestInfo, diagnostics: BrowserDiagnostics) {
   try {
-    await waitForMockAuditRow(page, testInfo, diagnostics)
+    await expect(page.getByText('Mock audit record', { exact: false }).first()).toBeVisible({ timeout: 30000 })
   } catch (error) {
     const pageState = await page.evaluate(() => ({
       path: location.pathname,
@@ -68,7 +68,7 @@ async function waitForMockAuditRow(page: Page, testInfo: TestInfo, diagnostics: 
   }
 }
 
-async function openLeaderAudit(page: Page, testInfo: TestInfo) {
+async function openLeaderAudit(page: Page) {
   const diagnostics = installBrowserDiagnostics(page);
   await page.addInitScript(() => {
     localStorage.setItem('livestream-ops-current-user', '2')
@@ -105,7 +105,7 @@ test('RBAC01B 390px: already-loaded audit rows/details vanish on 403 and stay hi
     await route.fulfill({ status: allowed ? 200 : 403, contentType: 'application/json',
       headers: { 'cache-control': 'no-store' }, body: JSON.stringify(allowed ? { allowed: true, ok: true } : { ok: false }) })
   })
-  const diagnostics = await openLeaderAudit(page, testInfo)
+  const diagnostics = await openLeaderAudit(page)
   await waitForMockAuditRow(page, testInfo, diagnostics)
   const row = page.locator('tbody tr').first()
   if (await row.count()) await row.click()
@@ -127,7 +127,7 @@ test('RBAC01B 768px: 500 network error fails closed, retry restores only after n
     await route.fulfill({ status: code, contentType: 'application/json',
       body: code === 200 ? JSON.stringify({ok:true,allowed:true}) : JSON.stringify({ok:false}) })
   })
-  const diagnostics = await openLeaderAudit(page, testInfo)
+  const diagnostics = await openLeaderAudit(page)
   await waitForMockAuditRow(page, testInfo, diagnostics)
   code = 500
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
@@ -150,7 +150,7 @@ test('RBAC01B 1440px: stale capability ALLOW cannot override later denied reques
     } else await route.fulfill({status:state==='denied'?403:200,contentType:'application/json',
       body:JSON.stringify(state==='denied'?{ok:false}:{ok:true,allowed:true})})
   })
-  const diagnostics = await openLeaderAudit(page, testInfo)
+  const diagnostics = await openLeaderAudit(page)
   await waitForMockAuditRow(page, testInfo, diagnostics)
   phase='slow'
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
@@ -168,7 +168,7 @@ test('RBAC01B user/role switch: previous Leader audit rows/details do not surviv
   await page.route('**/api/audit/team-capability', async route => {
     await route.fulfill({status:200, contentType:'application/json',body:JSON.stringify({ok:true,allowed:true})})
   })
-  const diagnostics = await openLeaderAudit(page, testInfo)
+  const diagnostics = await openLeaderAudit(page)
   await waitForMockAuditRow(page, testInfo, diagnostics)
   await page.locator('tbody tr').first().click()
   await page.evaluate(() => {
