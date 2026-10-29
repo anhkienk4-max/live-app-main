@@ -82,7 +82,7 @@ test('RBAC-01 gated Admin draft API requires live DB RPC, stores proposed only',
  const calls:string[]=[]
  const handler=createRbac01RoleDefaultsHandler({
   enabled:()=>true,resolveUser:actor('admin'),
-  createClient:async()=>({rpc:async(name:string,args:unknown)=>{calls.push(name);return{data:{version:1,status:'proposed',effective:false},error:null}}}) as never,
+  createClient:async()=>({rpc:async(name:string)=>{calls.push(name);return{data:{version:1,status:'proposed',effective:false},error:null}}}) as never,
  })
  const input={action:'propose',role:'member',decisions:{'shifts.register':'deny'}}
  const res=await handler.POST(new Request('https://local/api/role-defaults',{method:'POST',body:JSON.stringify(input)}))

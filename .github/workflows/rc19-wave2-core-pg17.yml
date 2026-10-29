@@ -2,7 +2,7 @@ name: RC19 Wave 2 Core PostgreSQL 17 Gate
 
 on:
   push:
-    branches: [integration/rc19-wave2-core, integration/rc19-final-storage-prep]
+    branches: [integration/rc19-wave2-core, integration/rc19-final-storage-prep, integration/rc19-final-rbac]
 
 permissions:
   contents: read

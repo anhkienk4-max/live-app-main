@@ -4,6 +4,7 @@ on:
     branches:
       - feat/rc19-rbac01b-enforcement
       - feat/rc19-rbac-security-20261029
+      - integration/rc19-final-rbac
   workflow_dispatch:
 permissions:
   contents: read
