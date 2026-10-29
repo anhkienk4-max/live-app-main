@@ -1,8 +1,10 @@
 -- ==============================================================================
 -- RC19 STO-01: PRODUCTION STORAGE ROUTE ACTIVATION SCRIPT (FULL CONTRACT PREFLIGHT)
 -- Target: Supabase Production (egdjnpmoasarrttvhgds)
--- Scope: Schema-Compatible Storage Routes (14/21 routes)
--- Quarantined Agency Routes (7/21): Blocked pending Owner approval of
+-- Activation seed scope: exactly 13 internal routes from the 21-route proposal.
+-- Agency routes excluded from this activation: 8 total (1 schema-valid Mars route
+-- deferred by release policy; 7 require the review-only Agency profile migration).
+-- Physical-root ACL/runtime identity verification is a separate activation gate.
 --   docs/storage/PROPOSAL_RC19_AGENCY_STORAGE_PROFILE_MIGRATION.md
 -- Root Folder: 1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm (Google Drive)
 --
@@ -226,7 +228,6 @@ BEGIN
     ('Female AI livestream', NULL, 'internal', 'CANONICAL_V1', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '{}'::jsonb, 'THANG_M_DOT_YEAR', '{}'::jsonb, '[]'::jsonb, '{}'::jsonb),
     ('Male AI livestream', NULL, 'internal', 'CANONICAL_V1', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '{}'::jsonb, 'THANG_M_DOT_YEAR', '{}'::jsonb, '[]'::jsonb, '{}'::jsonb),
     ('Mars Snacking', NULL, 'internal', 'LEGACY_CATEGORY_PERIOD', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '1SuQhXZsNr7eArHVwf9NMTqR1TEHYqOC5', '{"dashboard":"DASHBOARD","live_visual_internal":"VISIBILITY","data_report":["DATA","REPORT"],"data_source":["DATA","SOURCE"]}'::jsonb, 'THANG_M_DASH_YEAR', '{"2026-01":{"dashboard":"tháng 1 - 2026","live_visual":"Tháng 1 - 2026"},"2026-02":{"dashboard":"THÁNG 02-2026","live_visual":"THÁNG 02-2026"},"2026-03":{"dashboard":"THÁNG 03 - 2026","live_visual":"THÁNG 03 - 2026"},"2026-04":{"dashboard":"THÁNG 04 - 2026","live_visual":"Tháng 04-2026"},"2026-05":{"dashboard":"THÁNG 05-2026","live_visual":"THÁNG 5.2026"},"2026-06":{"dashboard":"Tháng 6 - 2026","live_visual":"THÁNG 6-2026"},"2026-07":{"dashboard":"Tháng 7-2026","live_visual":"Tháng 7-2026"},"2026-08":{"dashboard":"Tháng 8 - 2026","live_visual":"Tháng 8 - 2026"},"2026-09":{"dashboard":"Tháng 9 - 2026","live_visual":"Tháng 9 - 2026"},"2026-10":{"dashboard":"Tháng 10 - 2026","live_visual":"THÁNG 10 -2026"}}'::jsonb, '[]'::jsonb, '{}'::jsonb),
-    ('Mars Snacking', NULL, 'agency', 'LEGACY_PERIOD_CATEGORY', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '19cuLMvhVB8yfJslZUbLUdrsDLQ_vincE', '{"dashboard":"DASHBOARD","live_visual_agency":"VISUAL HOST","data_report":["DATA","REPORT"],"data_source":["DATA","SOURCE"]}'::jsonb, 'THANG_M_DOT_YEAR', '{}'::jsonb, '[]'::jsonb, '{}'::jsonb),
     ('ASTROMAN', NULL, 'internal', 'LEGACY_CATEGORY_PERIOD', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '1J5rnrodawxZjngKCu-thqb9peoaaMGXE', '{"dashboard":"DASHBOARD","live_visual_internal":"VISIBILITY","data_report":["DATA","REPORT"],"data_source":["DATA","SOURCE"]}'::jsonb, 'THANG_UPPER_M_DASH_YEAR', '{"2026-09":{"dashboard":"THÁNG 9. 2026","live_visual":"THÁNG 9. 2026"}}'::jsonb, '[]'::jsonb, '{}'::jsonb),
     ('Female', NULL, 'internal', 'LEGACY_CATEGORY_PERIOD', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '1QcV_-vU35f3g262h8CXgugCkSLfgBHsZ', '{"dashboard":"DASHBOARD","live_visual_internal":"VISIBILITY","data_report":["DATA","REPORT"],"data_source":["DATA","SOURCE"]}'::jsonb, 'THANG_UPPER_M_DASH_YEAR', '{"2026-06":{"dashboard":"THÁNG 6. 2026","live_visual":"THÁNG 6. 2026"},"2026-07":{"dashboard":"THÁNG 7. 2026","live_visual":"THÁNG 7. 2026"},"2026-08":{"dashboard":"THÁNG 8.2026","live_visual":"THÁNG 8.2026"},"2026-09":{"dashboard":"Tháng 9 - 2026","live_visual":"THÁNG 9. 2026"}}'::jsonb, '[]'::jsonb, '{}'::jsonb),
     ('X-men', NULL, 'internal', 'LEGACY_CATEGORY_PERIOD', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '16X2rvIuTGj_Raw2wA3bBtEAAJY53Sv_i', '{"dashboard":"DASHBOARD","live_visual_internal":"VISIBILITY","data_report":["DATA","REPORT"],"data_source":["DATA","SOURCE"]}'::jsonb, 'THANG_UPPER_M_DASH_YEAR', '{"2026-06":{"dashboard":"THÁNG 6. 2026","live_visual":"THÁNG 6. 2026"},"2026-07":{"dashboard":"THÁNG 7. 2026","live_visual":"THÁNG 7. 2026"},"2026-08":{"dashboard":"THÁNG 8.2026","live_visual":"THÁNG 8.2026"},"2026-09":{"dashboard":"Tháng 9 - 2026","live_visual":"THÁNG 9. 2026"}}'::jsonb, '[]'::jsonb, '{}'::jsonb),
@@ -260,12 +261,12 @@ BEGIN
     RAISE EXCEPTION 'PREFLIGHT FAIL-CLOSED: Conflicting active route configuration detected: %', v_conflict_detail;
   END IF;
 
-  RAISE NOTICE 'PREFLIGHT PASSED: Approver verified, 12 brands verified, platforms verified, full route contracts verified.';
+  RAISE NOTICE 'PREFLIGHT PASSED: Approver verified, prerequisites verified, 13 internal route contracts verified; all Agency routes excluded.';
 END
 $preflight$;
 
 -- ------------------------------------------------------------------------------
--- SCHEMA-VALID STORAGE ROUTES INSERTION (14 ROUTES)
+-- INTERNAL STORAGE ROUTES INSERTION (13 ROUTES)
 -- ------------------------------------------------------------------------------
 DO $seed$
 DECLARE
@@ -386,30 +387,7 @@ WHERE b.name = 'Mars Snacking' AND b.deleted_at IS NULL
 ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
 WHERE active DO NOTHING;
 
--- Route 5: Mars Snacking (All Platforms) [agency] -> LEGACY_PERIOD_CATEGORY
-INSERT INTO public.operational_storage_routes (
-  provider, execution_source, brand_id, platform_id, subbrand_key,
-  storage_profile, root_folder_id, base_folder_id, folder_labels,
-  period_naming_style, period_label_overrides, period_date_ranges,
-  folder_label_overrides, active, approved_by, approved_at
-)
-SELECT 
-  'google_drive', 'agency', b.id, NULL, NULL,
-  'LEGACY_PERIOD_CATEGORY', '1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', '19cuLMvhVB8yfJslZUbLUdrsDLQ_vincE',
-  '{"dashboard":"DASHBOARD","live_visual_agency":"VISUAL HOST","data_report":["DATA","REPORT"],"data_source":["DATA","SOURCE"]}'::jsonb,
-  'THANG_M_DOT_YEAR',
-  '{}'::jsonb,
-  '[]'::jsonb,
-  '{}'::jsonb,
-  true,
-  v_approved_by,
-  statement_timestamp()
-FROM public.brands b
-WHERE b.name = 'Mars Snacking' AND b.deleted_at IS NULL
-ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
-WHERE active DO NOTHING;
-
--- Route 6: ASTROMAN (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
+-- Route 5: ASTROMAN (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,
   storage_profile, root_folder_id, base_folder_id, folder_labels,
@@ -432,7 +410,7 @@ WHERE b.name = 'ASTROMAN' AND b.deleted_at IS NULL
 ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
 WHERE active DO NOTHING;
 
--- Route 7: Female (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
+-- Route 6: Female (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,
   storage_profile, root_folder_id, base_folder_id, folder_labels,
@@ -455,7 +433,7 @@ WHERE b.name = 'Female' AND b.deleted_at IS NULL
 ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
 WHERE active DO NOTHING;
 
--- Route 8: X-men (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
+-- Route 7: X-men (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,
   storage_profile, root_folder_id, base_folder_id, folder_labels,
@@ -478,7 +456,7 @@ WHERE b.name = 'X-men' AND b.deleted_at IS NULL
 ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
 WHERE active DO NOTHING;
 
--- Route 9: CUREL (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
+-- Route 8: CUREL (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,
   storage_profile, root_folder_id, base_folder_id, folder_labels,
@@ -501,7 +479,7 @@ WHERE b.name = 'CUREL' AND b.deleted_at IS NULL
 ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
 WHERE active DO NOTHING;
 
--- Route 10: KATE (All Platforms) [internal] -> LEGACY_PERIOD_CATEGORY
+-- Route 9: KATE (All Platforms) [internal] -> LEGACY_PERIOD_CATEGORY
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,
   storage_profile, root_folder_id, base_folder_id, folder_labels,
@@ -524,7 +502,7 @@ WHERE b.name = 'KATE' AND b.deleted_at IS NULL
 ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
 WHERE active DO NOTHING;
 
--- Route 11: KAO (All Platforms) [internal] -> LEGACY_PERIOD_CATEGORY
+-- Route 10: KAO (All Platforms) [internal] -> LEGACY_PERIOD_CATEGORY
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,
   storage_profile, root_folder_id, base_folder_id, folder_labels,
@@ -547,7 +525,7 @@ WHERE b.name = 'KAO' AND b.deleted_at IS NULL
 ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
 WHERE active DO NOTHING;
 
--- Route 12: OPELLA (Shopee Live) [internal] -> LEGACY_CATEGORY_PERIOD
+-- Route 11: OPELLA (Shopee Live) [internal] -> LEGACY_CATEGORY_PERIOD
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,
   storage_profile, root_folder_id, base_folder_id, folder_labels,
@@ -570,7 +548,7 @@ WHERE b.name = 'OPELLA' AND b.deleted_at IS NULL
 ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
 WHERE active DO NOTHING;
 
--- Route 13: OPELLA (TikTok Shop) [internal] -> LEGACY_CATEGORY_PERIOD
+-- Route 12: OPELLA (TikTok Shop) [internal] -> LEGACY_CATEGORY_PERIOD
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,
   storage_profile, root_folder_id, base_folder_id, folder_labels,
@@ -593,7 +571,7 @@ WHERE b.name = 'OPELLA' AND b.deleted_at IS NULL
 ON CONFLICT (provider, execution_source, brand_id, platform_id, subbrand_key) 
 WHERE active DO NOTHING;
 
--- Route 14: Pepsico (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
+-- Route 13: Pepsico (All Platforms) [internal] -> LEGACY_CATEGORY_PERIOD
 INSERT INTO public.operational_storage_routes (
   provider, execution_source, brand_id, platform_id, subbrand_key,
   storage_profile, root_folder_id, base_folder_id, folder_labels,

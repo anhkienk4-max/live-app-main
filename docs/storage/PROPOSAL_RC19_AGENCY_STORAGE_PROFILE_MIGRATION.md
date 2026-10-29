@@ -10,7 +10,7 @@
 
 ## 1. TỔNG QUAN VẤN ĐỀ
 
-Trong quá trình chuẩn bị kích hoạt 21 Storage Routes cho Production theo cấu hình `config/storage-v1-production-routes.proposed.json`, kiểm tra read-only đã xác nhận:
+Trong bộ đề xuất 21 Storage Routes, seed kích hoạt release này chỉ bao gồm 13 route nội bộ. Tám route Agency đều bị loại khỏi activation seed, gồm một route Mars Snacking hiện hợp lệ với schema nhưng deferred theo policy và bảy route dùng profile Agency cần migration review-only. Không chạy seed Production khi physical root chưa đạt security gate.
 
 1. **CSDL Production hiện có 0 active routes** trong bảng `public.operational_storage_routes`.
 2. **12 Brands** đề xuất đều đã tồn tại trong `public.brands`.
@@ -26,7 +26,7 @@ Trong quá trình chuẩn bị kích hoạt 21 Storage Routes cho Production the
      'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
    ))
    ```
-4. **Xung đột Schema (Quarantine 7/21 Routes):** Trong 21 routes đề xuất, có **7 routes thuộc nguồn thực thi `agency`** sử dụng profile:
+4. **Agency routes bị loại khỏi activation seed:** Có 8 route thuộc `agency`; một route Mars Snacking dùng profile schema-valid nhưng vẫn deferred theo release policy. Bảy route còn lại sử dụng profile cần proposal migration:
    ```
    TEMP_AGENCY_BRAND_PERIOD_CATEGORY
    ```
@@ -35,18 +35,20 @@ Trong quá trình chuẩn bị kích hoạt 21 Storage Routes cho Production the
 
 ---
 
-## 2. PHÂN LOẠI 21 STORAGE ROUTES
+## 2. PHÂN LOẠI 21 STORAGE ROUTES VÀ SCOPE ACTIVATION
 
 | Nhóm | Số lượng | Danh sách Routes | Base Folder ID | Trạng thái Schema Production |
 |---|---|---|---|---|
 | **A. Canonical V1 (Internal AI)** | 3 | ASM AI Livestream, Female AI livestream, Male AI livestream | `1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm` (Root) | **HỢP LỆ (SCHEMA_VALID — Sẵn sàng seed)** |
 | **B. Legacy Category-Period (Internal)** | 8 | Mars Snacking, ASTROMAN, Female, X-men, CUREL, OPELLA (Shopee Live), OPELLA (TikTok Shop), Pepsico | Từng Brand có base folder ID riêng | **HỢP LỆ (SCHEMA_VALID — Sẵn sàng seed)** |
-| **C. Legacy Period-Category (Internal & Mars Agency)** | 3 | Mars Snacking (`agency`), KATE (`internal`), KAO (`internal`) | Từng Brand có base folder ID riêng | **HỢP LỆ (SCHEMA_VALID — Sẵn sàng seed)** |
+| **C1. Legacy Period-Category (Internal)** | 2 | KATE, KAO | Từng Brand có base folder ID riêng | **HỢP LỆ VỀ SCHEMA; physical root gate riêng** |
+| **C2. Legacy Period-Category (Mars Agency)** | 1 | Mars Snacking (`agency`) | Agency base folder hiện hữu | **SCHEMA_VALID NHƯNG EXCLUDED / DEFERRED** |
 | **D. Quarantined Agency (`TEMP_AGENCY_BRAND_PERIOD_CATEGORY`)** | 7 | ASTROMAN (`agency`), CUREL (`agency`), Female (`agency`), KATE (`agency`), OPELLA (`agency`), Pepsico (`agency`), X-men (`agency`) | `1MXerAY2WdViTsVCO8G92vOepS-6BxYBC` (Dùng chung Agency Root) | **ĐANG CÁCH LY (QUARANTINED — Chờ Owner duyệt Migration)** |
 
 **Tổng kết:**
-- **14/21 routes** hoàn toàn hợp lệ với schema Production hiện tại.
-- **7/21 routes** đang được cách ly an toàn, không bị ép kiểu làm hỏng dữ liệu.
+- Activation candidate chứa **13/21 route nội bộ**; không thêm route thứ 14 khi chưa có mapping nghiệp vụ xác thực.
+- **8/21 Agency routes** đều excluded khỏi activation: một Mars Agency route schema-valid nhưng deferred theo policy; bảy route khác vẫn chờ proposal migration.
+- Seed contract PASS không chứng minh physical folder ACL, runtime identity hoặc quyền ghi an toàn.
 
 ---
 
@@ -238,10 +240,11 @@ COMMIT;
 ## 5. KẾ HOẠCH BÀN GIAO & PHÊ DUYỆT (RELEASE GATE)
 
 1. **Giai đoạn 1 (Hiện tại):**
-   - Đã kiểm tra và chứng minh 14 routes hợp lệ bằng preflight SQL có đầy đủ kiểm tra so sánh hợp đồng và phê duyệt.
+   - Candidate seed đã được thu hẹp còn 13 internal routes; các test PG17 phải xác nhận 13/13 internal, 0 Agency, mapping root/base, approver, rollback và idempotency.
+- Tất cả 13 physical mappings hiện vẫn cần remap sang Owner-approved private operational root trước activation; existing shared/archive folders không được đổi tên, di chuyển hoặc xóa.
    - Giữ nguyên trạng Production: Không chạy migration, không seed dữ liệu, không đổi biến môi trường Vercel.
 2. **Giai đoạn 2 (Sau khi Owner duyệt Proposal):**
-   - Áp dụng migration `20261028000000_rc19_agency_storage_profile.sql`.
-   - Seed toàn bộ 21/21 routes (14 routes hợp lệ + 7 routes agency).
+   - Chỉ sau khi Owner phê duyệt riêng migration Agency mới đánh giá các route Agency trong release riêng. Migration Agency không phải dependency cho seed 13 internal routes.
+   - Seed 13 internal routes từ candidate đã review; không seed bất kỳ Agency route nào trong release này.
    - Chuyển biến môi trường Vercel `OPERATIONAL_STORAGE_ROUTING_MODE` từ `compat` sang `database`.
    - Tiến hành UAT luồng upload/xem file trên `https://ops5729.top/storage`.
