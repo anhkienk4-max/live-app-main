@@ -34,6 +34,7 @@ interface WeekViewProps {
   currentUser?: User | null;
   onClearFilters?: () => void;
   onCreateShift?: () => void;
+  fullOnMobile?: boolean;
 }
 
 
@@ -50,6 +51,7 @@ export function WeekView({
   currentUser = null,
   onClearFilters,
   onCreateShift,
+  fullOnMobile = false,
 }: WeekViewProps) {
   const context: CalendarFilterContext = {
     currentDate: new Date(),
@@ -94,7 +96,7 @@ export function WeekView({
       <div
         data-testid="calendar-week-scroller"
         aria-label={language === 'vi' ? 'Lịch tuần, cuộn ngang để xem đủ bảy ngày' : 'Week calendar, scroll horizontally to see all seven days'}
-        className="relative hidden max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-md border bg-background sm:block"
+        className={`relative max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-md border bg-background ${fullOnMobile ? 'block' : 'hidden sm:block'}`}
         style={{ scrollbarWidth: "thin" }}
       >
         {shifts.length === 0 && (
@@ -255,7 +257,7 @@ export function WeekView({
       </div>
 
       {/* MOBILE: Compact date-grouped agenda */}
-      <div className="sm:hidden divide-y divide-border">
+      <div className={fullOnMobile ? "hidden" : "sm:hidden divide-y divide-border"}>
         {weekDays.map((day) => {
           const dayShifts = getShiftsForDate(day);
           const isToday = isSameDay(day, today);
