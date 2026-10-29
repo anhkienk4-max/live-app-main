@@ -28,8 +28,8 @@ assert.ok(current('components/layout/BottomNav.tsx').includes('ada-reference-tab
 assert.ok(current('app/globals.css').includes('--ada-mobile-control-height: 44px'))
 const roleNavSource=current('lib/ui/role-ux.ts')
 for(const roleName of ['adminNav','leaderNav','memberNav']) {
- const roleSection=roleNavSource.split('const '+roleName+': NavItem[] = [')[1]?.split('\\n]')[0] ?? ''
- assert.equal((roleSection.match(/navCatalogue\\.profile/g) ?? []).length,1,'Profile nav missing/duplicate: '+roleName)
- assert.equal((roleSection.match(/navCatalogue\\.notifications/g) ?? []).length,1,'Notifications nav missing/duplicate: '+roleName)
+ const roleSection=roleNavSource.split('const '+roleName+': NavItem[] = [')[1]?.split('\n]')[0] ?? ''
+ assert.equal((roleSection.match(/navCatalogue\.profile/g) ?? []).length,1,'Profile nav missing/duplicate: '+roleName)
+ assert.equal((roleSection.match(/navCatalogue\.notifications/g) ?? []).length,1,'Notifications nav missing/duplicate: '+roleName)
 }
 console.log('UI-only release source guard PASS; real-role UAT remains required.')
