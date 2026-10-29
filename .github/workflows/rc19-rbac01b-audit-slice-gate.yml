@@ -81,6 +81,14 @@ jobs:
         run: pnpm exec playwright install chromium
       - name: AuditHistory revocation mock at 390, 768 and 1440px
         run: pnpm exec playwright test --config playwright.rc19-rbac01b-hardening.config.ts --reporter=line
+      - name: Upload failed RBAC01B browser traces and screenshots
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rbac01b-playwright-failure-${{ github.run_id }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Guarded build, flags OFF and no credentials
         env:
           NEXT_PUBLIC_SUPABASE_URL: ''
