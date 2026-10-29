@@ -1,11 +1,12 @@
-name: RC19 STO-01 Storage Production Integration Gate
+name: RC19 Storage Source Gate (STO-01 + STO-02)
 
 on:
   pull_request:
     branches:
       - feat/ops-full-app-upgrade-rc19
-      - main
       - fix/rc19-sto01-storage-production
+      - integration/rc19-final-storage-prep
+      - main
     paths:
       - '.github/workflows/rc19-sto01-storage-gate.yml'
       - 'scripts/storage/**'
@@ -22,10 +23,23 @@ on:
       - 'tests/operational-storage-placement.test.ts'
       - 'tests/rc19-sto01-storage-seed-preflight.test.ts'
       - 'tests/rc19-sto01-storage-seed-postgres17.test.ts'
+      - 'supabase/proposals/rc19-sto02-resource-registry/**'
+      - 'lib/files/storageResourceValidation.ts'
+      - 'lib/server/storageResourceRegistryHandler.ts'
+      - 'components/features/storage/StorageResourceRegistry.tsx'
+      - 'app/api/storage-resources/**'
+      - 'app/(dashboard)/storage/resources/**'
+      - 'tests/rc19-sto02-*'
+      - 'tests/rc19-storage-security-patch.test.ts'
+      - 'e2e/rc19-storage-explorer.spec.ts'
+      - 'playwright.rc19-storage.config.ts'
+      - 'openspec/changes/rc19-sto02-resource-registry/**'
   push:
     branches:
       - fix/rc19-sto01-storage-production
       - fix/rc19-sto01-internal-only
+      - feat/rc19-sto02-resource-registry
+      - integration/rc19-final-storage-prep
   workflow_dispatch:
 
 permissions:
@@ -33,9 +47,9 @@ permissions:
 
 jobs:
   storage-integration-gate:
-    name: RC19 STO-01 Storage Contract & Preflight Verification
+    name: RC19 Storage Contract & Registry Verification
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     services:
       postgres17:
@@ -62,6 +76,9 @@ jobs:
         run: |
           echo "Current Git Commit SHA: ${{ github.sha }}"
           git rev-parse HEAD
+
+      - name: Create isolated STO-02 PostgreSQL database
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto02_disposable'
 
       - name: Set up Node.js 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -92,6 +109,41 @@ jobs:
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
             tests/rc19-sto01-storage-seed-postgres17.test.ts
+
+      - name: Run STO-02 PostgreSQL 17 proposal integration test
+        env:
+          DATABASE_URL: postgresql://postgres@localhost:5432/rc19_sto02_disposable
+          RC19_STO02_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto02-resource-registry-postgres17.test.ts
+
+      - name: Run focused STO-02 canonical URL validation tests
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto02-migration-policy.test.ts \
+            tests/rc19-sto02-api-errors.test.ts \
+            tests/rc19-sto02-resource-validation.test.ts
+
+      - name: Run full Node regression suite
+        shell: bash
+        run: |
+          mapfile -t TEST_FILES < <(find tests -maxdepth 1 -type f \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.mjs' \) ! -name '*postgres17*' -print)
+          node --import ./tests/typescript-alias-loader.mjs --test "${TEST_FILES[@]}"
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Storage mock browser regression
+        run: pnpm exec playwright test --config playwright.rc19-storage.config.ts --reporter=line
+
+      - name: Upload Storage registry UI screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rc19-sto02-storage-registry-ui
+          path: docs/handoffs/evidence/rc19-sto02-resource-registry.png
+          if-no-files-found: warn
 
       - name: Run isolated PGlite storage regression test suite
         run: |
