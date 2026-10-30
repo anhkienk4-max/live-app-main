@@ -298,7 +298,7 @@ begin
   foreach brand_id in array p_brand_ids loop
     insert into public.brand01_product_brands(product_id,brand_id,created_by,updated_by)
       values(p_product_id,brand_id,actor,actor)
-      on conflict(product_id,brand_id) do update set is_active=true,updated_by=excluded.updated_by,updated_at=statement_timestamp();
+      on conflict on constraint brand01_product_brands_pkey do update set is_active=true,updated_by=excluded.updated_by,updated_at=statement_timestamp();
   end loop;
   update public.brand01_products set version=version+1,updated_by=actor where id=p_product_id returning * into current_product;
   return current_product;
