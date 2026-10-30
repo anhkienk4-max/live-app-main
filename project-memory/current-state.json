@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "72c746714e404b12982c2314c90d97d2bfa9fcea",
+    "head": "093c259e5c6102a2ff655a4460eff0841eb71857",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -456,5 +456,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-30T13:11:32+07:00"
+  "synced_at": "2026-10-30T13:20:40+07:00"
 }
