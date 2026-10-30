@@ -21,7 +21,8 @@
       "feat/rc19-admin02-unified-workspace": false,
       "fix/rc19-calendar-mobile-full-after-rbac-20261030": false,
       "integration/rc19-master-calendar-20261030": false,
-      "feat/rc19-rbac02-account-overrides": false
+      "feat/rc19-rbac02-account-overrides": false,
+      "fix/rc19-lane2-ops-stabilization": false
     }
   }
 }

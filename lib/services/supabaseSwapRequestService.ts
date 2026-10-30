@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import type { OperationalRole, SwapRequest, SwapStatus } from '@/lib/types/database.types'
+import type { OperationalRole, SwapConflictCheckInput, SwapConflictCheckStatus, SwapRequest, SwapStatus } from '@/lib/types/database.types'
 
 const swapRequestColumns = [
   'id','requester_id','source_registration_id','source_shift_id','target_shift_id','counterpart_registration_id','counterpart_id','operational_role','mode','status','reason','notes','created_at','updated_at','version','responded_at','responded_by','approved_at','approved_by','completed_at','shift_id','original_staff_id','replacement_staff_id','new_host_id','new_support_id','new_technical_id','approval_history','deleted_at','deleted_by','deletion_reason',
@@ -113,6 +113,7 @@ function one<T>(op:string, r:{data:T|null;error:SupabaseErrorShape|null}):T { if
 export interface SupabaseSwapRequestRepository {
   getAll(): Promise<SwapRequest[]>
   getPending(): Promise<SwapRequest[]>
+  verifyConflict(data: SwapConflictCheckInput): Promise<SwapConflictCheckStatus>
   create(data: { shift_id?: string; sourceRegistrationId: string; targetShiftId?: string | null; replacementStaffId?: string | null; counterpartRegistrationId?: string | null; operational_role?: OperationalRole; replacement_staff_id?: string; reason: string; notes?: string; mode: 'replacement' | 'exchange' }): Promise<SwapRequest>
   approve(id: string, notes?: string, expectedVersion?: number): Promise<SwapRequest>
   reject(id: string, notes?: string, expectedVersion?: number): Promise<SwapRequest>
@@ -126,6 +127,18 @@ export function createSupabaseSwapRequestRepository(client: SupabaseClient): Sup
   return {
     async getAll() { return rows('swap request read', await select().is('deleted_at',null).order('created_at',{ascending:false})).map(r=>swapFromRow(r as unknown as NullableSwapRow)) },
     async getPending() { return rows('pending swap request read', await select().eq('status','pending').is('deleted_at',null).order('created_at',{ascending:true})).map(r=>swapFromRow(r as unknown as NullableSwapRow)) },
+    async verifyConflict(data) {
+      const result = await client.rpc('check_shift_swap_conflict', {
+        p_source_registration_id: data.sourceRegistrationId,
+        p_mode: data.mode,
+        p_replacement_staff_id: data.replacementStaffId ?? null,
+        p_target_shift_id: data.targetShiftId ?? null,
+        p_counterpart_registration_id: data.counterpartRegistrationId ?? null,
+      })
+      if (result.error) throw requestError('swap conflict verification', result.error)
+      if (result.data === 'VERIFIED_CLEAR' || result.data === 'CONFLICT') return result.data
+      return 'UNKNOWN'
+    },
     async create(data) {
       if (!data.sourceRegistrationId) throw new SwapRequestError('A source registration is required.', 'SOURCE_REGISTRATION_REQUIRED')
       const result = await client.rpc('create_shift_swap_request', {
