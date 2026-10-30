@@ -494,9 +494,6 @@ comment on table public.brand01_product_knowledge_versions is 'Append-only sourc
 comment on table public.brand01_product_resource_links is 'Links existing STO-02 metadata only. Link scope does not grant registry or provider visibility.';
 -- BRAND-01 security/integrity completion. Review-only; never placed in migrations.
 
-alter table public.brand01_user_brand_access
-  add column revoked_by text references public.business_users(id) on delete restrict;
-
 create unique index brand01_knowledge_version_natural_uidx
   on public.brand01_product_knowledge_versions (product_id, coalesce(sku_id, ''), knowledge_type, version);
 
