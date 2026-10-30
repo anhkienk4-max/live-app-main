@@ -77,6 +77,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Memory validation before test suite
+        run: pnpm run memory:validate
+
       - name: Prepare empty disposable PostgreSQL 17 databases
         env:
           PGPASSWORD: postgres
@@ -156,6 +159,12 @@ jobs:
             git fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
             git show -s --format='%H %s' "refs/remotes/origin/$branch"
           done
+          canonical_sha="$(git rev-parse "refs/remotes/origin/$canonical_branch^{commit}")"
+          validation_sha="$(git rev-parse "refs/remotes/origin/$validation_branch^{commit}")"
+          echo "Canonical SHA: $canonical_sha"
+          echo "Validation target SHA: $validation_sha"
+          echo "Ancestry merge base: $(git merge-base "$canonical_sha" "$validation_sha")"
+          git merge-base --is-ancestor "$canonical_sha" "$validation_sha"
 
       - name: Memory validation
         run: pnpm run memory:validate
