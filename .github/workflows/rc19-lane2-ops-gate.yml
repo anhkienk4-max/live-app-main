@@ -1,0 +1,97 @@
+name: RC19 Lane 2 Operations Gate
+
+on:
+  push:
+    branches: [fix/rc19-lane2-ops-stabilization]
+  pull_request:
+    branches: [integration/rc19-master-calendar-20261030]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc19-lane2-ops-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  swap-source-and-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Assert exact source commit
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Start disposable PostgreSQL 17
+        run: |
+          docker run --detach --rm --name ada-swap-pg17 --network none \
+            -e POSTGRES_PASSWORD=synthetic-only postgres:17.11-bookworm
+          for attempt in $(seq 1 30); do
+            if docker exec ada-swap-pg17 pg_isready -U postgres -d postgres >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          docker logs ada-swap-pg17
+          exit 1
+      - name: PostgreSQL 17 swap privacy and conflict preflight
+        env:
+          SWAP_PG_CONTAINER: ada-swap-pg17
+        run: node tests/rc19-swap-conflict-postgres.integration.mjs
+      - name: Focused swap regression
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc19-swap01-workflow.test.ts tests/rc19-swap-conflict-preflight.test.ts tests/shift-swap-p0.test.ts tests/safe-degradation-swaps-reports.test.ts tests/shift-swap-two-flow.test.ts tests/swap-request-modes.test.ts
+      - name: TypeScript
+        run: pnpm run type-check
+      - name: ESLint
+        run: pnpm run lint
+      - name: Full repository regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Swap workflow Playwright mock
+        run: pnpm exec playwright test --config playwright.rc19-swap.config.ts --reporter=line
+      - name: Fetch and verify Memory ancestry refs
+        if: github.event_name == 'pull_request'
+        run: |
+          git rev-parse --is-shallow-repository
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow origin
+          fi
+          git fetch --no-tags origin \
+            '+refs/heads/feat/ops-full-app-upgrade-rc19:refs/remotes/origin/feat/ops-full-app-upgrade-rc19' \
+            '+refs/heads/integration/rc19-master-calendar-20261030:refs/remotes/origin/integration/rc19-master-calendar-20261030'
+          git rev-parse origin/feat/ops-full-app-upgrade-rc19 origin/integration/rc19-master-calendar-20261030
+          git merge-base --is-ancestor origin/feat/ops-full-app-upgrade-rc19 origin/integration/rc19-master-calendar-20261030
+      - name: Memory validation
+        run: pnpm run memory:validate
+      - name: Guarded production-equivalent build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: compat
+        run: pnpm run build
+      - name: Stop disposable database
+        if: always()
+        run: docker stop ada-swap-pg17 || true
+      - name: No deployment or production database declaration
+        if: always()
+        run: |
+          echo "NO DEPLOY: This workflow uses synthetic PostgreSQL 17 only."
+          echo "No Production DB, migration application, feature flag, or Vercel deploy is performed."

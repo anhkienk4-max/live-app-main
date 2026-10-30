@@ -11,6 +11,8 @@ import {
   ReportImage,
   DashboardUpdate,
   SwapRequest,
+  SwapConflictCheckInput,
+  SwapConflictCheckStatus,
   ShiftStatus,
   OperationalRole,
   OcrReviewData,
@@ -39,7 +41,7 @@ import {
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
-import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, hasShiftTimeConflict, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import {
   normalizeStaffingDisplayNames,
   toCanonicalScheduleImportPreviewRow,
@@ -4072,6 +4074,34 @@ export const swapRequestService = {
     return Promise.resolve(swapRequests.filter(sr =>
       (sr.status === 'pending' || sr.status === 'accepted') && canViewMockSwapRequest(sr, actor),
     ))
+  },
+  async verifyConflict(input: SwapConflictCheckInput): Promise<SwapConflictCheckStatus> {
+    if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().verifyConflict(input)
+    const actor = actorFor()
+    const source = shiftRegistrations.find(reg => reg.id === input.sourceRegistrationId)
+    if (!source || source.user_id !== actor.id || !isStaffedRegistration(source)) throw new Error('SWAP_SOURCE_NOT_AUTHORIZED')
+    const sourceShift = shifts.find(shift => shift.id === source.shift_id && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
+    if (!sourceShift) throw new Error('SWAP_SOURCE_NOT_ELIGIBLE')
+    const conflictsFor = (userId: string, target: Shift, excludedRegistrationId?: string) => {
+      const targetTime = resolveShiftDateTime(target.date, target.start_time, target.end_time, target.timezone)
+      if (!targetTime?.valid) return true
+      const assignedShifts = shiftRegistrations
+        .filter(reg => reg.user_id === userId && reg.id !== excludedRegistrationId && (reg.status === 'pending' || isStaffedRegistration(reg)))
+        .map(reg => shifts.find(shift => shift.id === reg.shift_id))
+        .filter((shift): shift is Shift => Boolean(shift))
+      return hasShiftTimeConflict(assignedShifts, targetTime.startAt, targetTime.endAt, [target.id])
+    }
+    if (input.mode === 'replacement') {
+      const replacement = users.find(user => user.id === input.replacementStaffId && user.status === 'active' && !user.archived_at && !user.deleted_at)
+      if (!replacement || !replacement.operational_roles?.includes(source.operational_role)) throw new Error('SWAP_REPLACEMENT_NOT_ELIGIBLE')
+      const alreadyOnSource = shiftRegistrations.some(reg => reg.shift_id === sourceShift.id && reg.user_id === replacement.id && isStaffedRegistration(reg))
+      return alreadyOnSource || conflictsFor(replacement.id, sourceShift) ? 'CONFLICT' : 'VERIFIED_CLEAR'
+    }
+    if (input.mode !== 'exchange' || !input.targetShiftId || !input.counterpartRegistrationId) throw new Error('SWAP_EXCHANGE_PAYLOAD_INVALID')
+    const target = shifts.find(shift => shift.id === input.targetShiftId && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
+    const counterpart = shiftRegistrations.find(reg => reg.id === input.counterpartRegistrationId && reg.shift_id === input.targetShiftId && reg.operational_role === source.operational_role && isStaffedRegistration(reg))
+    if (!target || !counterpart || counterpart.user_id === actor.id) throw new Error('SWAP_COUNTERPART_NOT_ELIGIBLE')
+    return conflictsFor(actor.id, target, source.id) || conflictsFor(counterpart.user_id, sourceShift, counterpart.id) ? 'CONFLICT' : 'VERIFIED_CLEAR'
   },
   async create(
     data: Omit<SwapRequest, 'id' | 'status' | 'created_at' | 'updated_at'> & { status?: SwapRequest['status']; mode?: string; source_registration_id?: string; target_shift_id?: string | null; counterpart_registration_id?: string | null; counterpart_id?: string | null },

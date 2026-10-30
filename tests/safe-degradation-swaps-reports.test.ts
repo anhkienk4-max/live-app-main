@@ -124,6 +124,7 @@ test('swapRequestService mutations route to the Supabase repository', async () =
     const fakeRepository: SupabaseSwapRequestRepository = {
       getAll: async () => { calls.push('getAll'); return [request] },
       getPending: async () => { calls.push('getPending'); return [request] },
+      verifyConflict: async () => { calls.push('verifyConflict'); return 'VERIFIED_CLEAR' },
       create: async () => { calls.push('create'); return request },
       approve: async () => { calls.push('approve'); return { ...request, status: 'approved' } },
       reject: async () => { calls.push('reject'); return { ...request, status: 'rejected' } },
@@ -135,11 +136,12 @@ test('swapRequestService mutations route to the Supabase repository', async () =
     try {
       await swapRequestService.getAll()
       await swapRequestService.getPending()
+      assert.equal(await swapRequestService.verifyConflict({ sourceRegistrationId: 'reg-1', mode: 'replacement', replacementStaffId: '2' }), 'VERIFIED_CLEAR')
       await swapRequestService.create({ shift_id: 'shift-1', requester_id: '1', operational_role: 'host', replacement_staff_id: '2', source_registration_id: 'reg-1', mode: 'replacement', reason: 'schedule conflict' })
       await swapRequestService.approve('swap-1', '1')
       await swapRequestService.reject('swap-1', '1')
       await swapRequestService.cancel('swap-1', '1', 'reason')
-      assert.deepEqual(calls, ['getAll', 'getPending', 'create', 'approve', 'reject', 'cancel'])
+      assert.deepEqual(calls, ['getAll', 'getPending', 'verifyConflict', 'create', 'approve', 'reject', 'cancel'])
     } finally {
       setSupabaseSwapRequestRepositoryForTests(undefined)
     }
