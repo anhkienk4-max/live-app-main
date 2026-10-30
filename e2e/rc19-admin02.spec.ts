@@ -113,9 +113,11 @@ test.describe('ADMIN-02 unified workspace', () => {
 
   test('authorization service errors render retry state without exposing links', async ({ page }) => {
     const mock = await useMockAdmin(page)
-    mock.failUntilRetry()
     await page.goto('/admin')
-    await expect(page.getByText(/Could not verify Admin access|Không xác minh được quyền Admin/i)).toBeVisible()
+    await expect(page.getByTestId('admin-link-brands')).toBeVisible()
+    mock.failUntilRetry()
+    await page.evaluate(() => window.dispatchEvent(new Event('livestream-ops-current-user-change')))
+    await expect(page.getByText(/Admin access could not be verified|Không xác minh được quyền Admin/i)).toBeVisible()
     expect(mock.failureCount()).toBeGreaterThan(0)
     await expect(page.getByTestId('admin-link-brands')).toHaveCount(0)
     mock.recover()
