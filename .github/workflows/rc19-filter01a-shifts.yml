@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/rc19-lane2-filter01a
+      - integration/rc19-lane2-swap-filter-convergence
   pull_request:
     branches:
       - integration/rc19-master-calendar-20261030
@@ -25,13 +26,15 @@ jobs:
       - name: Verify exact source and target lineage
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          EXPECTED_BRANCH: fix/rc19-lane2-filter01a
           EXPECTED_BASE: integration/rc19-master-calendar-20261030
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            test "$GITHUB_REF" = "refs/heads/$EXPECTED_BRANCH"
+            case "$GITHUB_REF" in
+              refs/heads/fix/rc19-lane2-filter01a|refs/heads/integration/rc19-lane2-swap-filter-convergence) ;;
+              *) echo "Unexpected push branch: $GITHUB_REF" >&2; exit 1 ;;
+            esac
           elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             test "$GITHUB_BASE_REF" = "$EXPECTED_BASE"
             git merge-base --is-ancestor "origin/$EXPECTED_BASE" "$EXPECTED_SOURCE_SHA"

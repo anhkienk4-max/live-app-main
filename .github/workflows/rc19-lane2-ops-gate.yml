@@ -2,7 +2,7 @@ name: RC19 Lane 2 Operations Gate
 
 on:
   push:
-    branches: [fix/rc19-lane2-ops-stabilization]
+    branches: [fix/rc19-lane2-ops-stabilization, integration/rc19-lane2-swap-filter-convergence]
   pull_request:
     branches: [integration/rc19-master-calendar-20261030]
 
