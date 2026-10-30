@@ -77,7 +77,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Memory validation before test suite
+      - name: Memory validation
         run: pnpm run memory:validate
 
       - name: Prepare empty disposable PostgreSQL 17 databases
@@ -141,33 +141,6 @@ jobs:
 
       - name: Calendar mobile and desktop Playwright
         run: pnpm exec playwright test --config playwright.rc19-calendar.config.ts --reporter=line
-
-      - name: Refresh Git ancestry refs for Memory validation
-        shell: bash
-        run: |
-          set -euo pipefail
-          canonical_branch='feat/ops-full-app-upgrade-rc19'
-          memory_branch="$(node -p "require('./project-memory/current-state.json').repository.branch")"
-          test "$memory_branch" = "$canonical_branch"
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            validation_branch="$GITHUB_BASE_REF"
-          else
-            validation_branch="$GITHUB_REF_NAME"
-          fi
-          for branch in "$canonical_branch" "$validation_branch"; do
-            git check-ref-format --branch "$branch" >/dev/null
-            git fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
-            git show -s --format='%H %s' "refs/remotes/origin/$branch"
-          done
-          canonical_sha="$(git rev-parse "refs/remotes/origin/$canonical_branch^{commit}")"
-          validation_sha="$(git rev-parse "refs/remotes/origin/$validation_branch^{commit}")"
-          echo "Canonical SHA: $canonical_sha"
-          echo "Validation target SHA: $validation_sha"
-          echo "Ancestry merge base: $(git merge-base "$canonical_sha" "$validation_sha")"
-          git merge-base --is-ancestor "$canonical_sha" "$validation_sha"
-
-      - name: Memory validation
-        run: pnpm run memory:validate
 
       - name: Guarded production-equivalent build
         env:
