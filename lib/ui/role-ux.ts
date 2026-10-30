@@ -1,4 +1,4 @@
-import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, FolderArchive, Banknote, Activity, type LucideIcon } from 'lucide-react'
+import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, FolderArchive, Banknote, Activity, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { SystemPermission, User as UserType } from '@/lib/types/database.types'
 import { hasAnyPermission, Permission } from '@/lib/permissions'
 
@@ -49,6 +49,7 @@ export function mobilePrimaryNavigation(items: NavItem[]) {
 // Full catalogue of all application destinations
 const navCatalogue: Record<string, NavItem> = {
   brandCatalog:  { name: 'Product catalog', href: '/brand-catalog', icon: Package, group: 'data' },
+  adminWorkspace:{ name: 'Admin workspace', href: '/admin', icon: ShieldCheck, labelKey: 'adminWorkspace', requiredPermissions: ['settings.admin'], group: 'system' },
   dashboard:     { name: 'Dashboard',     href: '/',              icon: Home, labelKey: 'dashboard', shortLabelKey: 'myWorkspaceShort', group: 'overview' },
   calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar, labelKey: 'calendar', shortLabelKey: 'myScheduleShort', group: 'operations' },
   live:          { name: 'Live',          href: '/live',          icon: Radio, labelKey: 'live', shortLabelKey: 'live', group: 'operations' },
@@ -81,6 +82,7 @@ const navCatalogue: Record<string, NavItem> = {
 // ADMIN priority
 const adminNav: NavItem[] = [
   { ...navCatalogue.dashboard },
+  { ...navCatalogue.adminWorkspace },
   { ...navCatalogue.calendar },
   { ...navCatalogue.live },
   { ...navCatalogue.shifts },
