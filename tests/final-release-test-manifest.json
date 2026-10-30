@@ -154,6 +154,7 @@
     "tests/rc19-attendance-photo-review.test.ts",
     "tests/rc19-auth-responsive-layout.test.tsx",
     "tests/rc19-command-toolbar.test.tsx",
+    "tests/rc19-filter01a-shifts.test.ts",
     "tests/rc19-my-payslip.test.ts",
     "tests/rc19-rbac01b-audit-slice.test.ts",
     "tests/rc19-rbac01-security.test.ts",
