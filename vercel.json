@@ -16,7 +16,8 @@
       "fix/rc19-sto01-internal-only": false,
       "integration/rc19-final-storage-prep": false,
       "feat/rc19-rbac-security-20261029": false,
-      "integration/rc19-final-rbac": false
+      "integration/rc19-final-rbac": false,
+      "fix/rc19-calendar-mobile-full-after-rbac-20261030": false
     }
   }
 }
