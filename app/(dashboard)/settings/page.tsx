@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Bell, Bot, Plug, RotateCcw, ShieldCheck, SlidersHorizontal, UserCog } from 'lucide-react'
 import { settingsService } from '@/lib/services/dataService'
 import { OperationalRole, OperationalSettings, PersonalSettings } from '@/lib/types/database.types'
@@ -26,6 +27,12 @@ type SettingsTab = 'personal' | 'team' | 'system' | 'integrations' | 'audit'
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const requestedTabRef = React.useRef(requestedTab)
+  React.useEffect(() => {
+    requestedTabRef.current = requestedTab
+  }, [requestedTab])
   const { currentUser, users, loading, setCurrentUser } = useCurrentUser()
   const { language, setLanguage, t } = useTranslation()
   const { toast } = useToast()
@@ -48,7 +55,15 @@ export default function SettingsPage() {
       setSettingsLoading(false)
       return
     }
+    const validTabs: SettingsTab[] = ['personal', 'team', 'system', 'integrations', 'audit']
+    const requested = requestedTabRef.current && validTabs.includes(requestedTabRef.current as SettingsTab)
+      ? requestedTabRef.current as SettingsTab
+      : null
+    const requestedAllowed = requested === 'personal'
+      || (requested === 'team' && hasPermission(currentUser, 'settings.leader'))
+      || (requested !== null && ['system', 'integrations', 'audit'].includes(requested) && hasPermission(currentUser, 'settings.admin'))
     setActiveTab(hasPermission(currentUser, 'settings.leader') ? 'team' : 'personal')
+    if (requestedAllowed && requested) setActiveTab(requested)
     setSettingsLoading(true)
     setLoadError(null)
     try {

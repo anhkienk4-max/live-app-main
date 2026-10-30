@@ -15,6 +15,7 @@ test('E1: Admin Navigation includes all requested routes', () => {
   assert.ok(paths.includes('/reports'))
   assert.ok(paths.includes('/analytics'))
   assert.ok(paths.includes('/brands'))
+  assert.ok(paths.includes('/admin'))
   assert.ok(paths.includes('/platforms'))
   assert.ok(paths.includes('/campaigns'))
   assert.ok(paths.includes('/staff'))
@@ -34,6 +35,7 @@ test('E1: Leader Navigation includes all requested routes', () => {
   assert.ok(paths.includes('/swaps'))
   assert.ok(paths.includes('/reports'))
   assert.ok(paths.includes('/staff')) // Staff Directory
+  assert.ok(!paths.includes('/admin'), 'Leader must not see the Admin workspace')
   assert.ok(paths.includes('/notifications'))
 })
 
@@ -53,6 +55,7 @@ test('E1: Member Navigation preserves destinations and includes the authorized S
     '/workforce',
     '/notifications'
   ])
+  assert.ok(!paths.includes('/admin'), 'Member must not see the Admin workspace')
   
   assert.ok(!paths.includes('/profile'), 'Member should not see profile in main nav')
 })
