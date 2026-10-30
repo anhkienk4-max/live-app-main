@@ -96,6 +96,7 @@ assert.match(psql(as(1, "select public.check_shift_swap_conflict('swap_preflight
 assert.match(psql(as(2, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member3')"), true), /SWAP_NOT_OWNER/)
 assert.match(psql(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg',null,'member2')"), true), /SWAP_PREFLIGHT_PAYLOAD_INVALID/)
 assert.equal(query("select pg_get_function_result('public.check_shift_swap_conflict(text,text,text,text,text)'::regprocedure)"), 'text')
+psql("update public.business_users set operational_roles=array['host','support','technical'] where id='member2';")
 
 const before = query('select count(*) from public.shift_registrations')
 function concurrentCall(sql) {
