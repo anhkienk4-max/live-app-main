@@ -8,10 +8,11 @@ async function useMockAdmin(page: Page) {
     localStorage.setItem('livestream-ops-language', 'en')
   })
   let role: 'admin' | 'leader' | 'member' = 'admin'
-  let failOnce = false
+  let failUntilRetry = false
+  let failureCount = 0
   await page.route('**/api/admin/workspace', async route => {
-    if (failOnce) {
-      failOnce = false
+    if (failUntilRetry) {
+      failureCount += 1
       await route.fulfill({ status: 500, json: { ok: false } })
       return
     }
@@ -19,7 +20,9 @@ async function useMockAdmin(page: Page) {
   })
   return {
     setRole(next: 'admin' | 'leader' | 'member') { role = next },
-    failNext() { failOnce = true },
+    failUntilRetry() { failUntilRetry = true },
+    recover() { failUntilRetry = false },
+    failureCount() { return failureCount },
   }
 }
 
@@ -110,10 +113,12 @@ test.describe('ADMIN-02 unified workspace', () => {
 
   test('authorization service errors render retry state without exposing links', async ({ page }) => {
     const mock = await useMockAdmin(page)
-    mock.failNext()
+    mock.failUntilRetry()
     await page.goto('/admin')
     await expect(page.getByText(/Could not verify Admin access|Không xác minh được quyền Admin/i)).toBeVisible()
+    expect(mock.failureCount()).toBeGreaterThan(0)
     await expect(page.getByTestId('admin-link-brands')).toHaveCount(0)
+    mock.recover()
     await page.getByRole('button', { name: /Please try again|Vui lòng thử lại/i }).click()
     await expect(page.getByTestId('admin-link-brands')).toBeVisible()
   })
