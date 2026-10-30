@@ -1,0 +1,160 @@
+name: RC19 Calendar mobile source gate (no deploy)
+
+on:
+  push:
+    branches:
+      - fix/rc19-calendar-mobile-full-after-rbac-20261030
+  pull_request:
+    branches:
+      - integration/rc19-final-rbac
+
+permissions:
+  contents: read
+
+jobs:
+  calendar-source-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - name: Checkout exact PR source SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify source SHA and expected lineage
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_BRANCH: fix/rc19-calendar-mobile-full-after-rbac-20261030
+          EXPECTED_PR_BASE: integration/rc19-final-rbac
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SOURCE_SHA"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            test "$GITHUB_REF" = "refs/heads/$EXPECTED_BRANCH"
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            test "$GITHUB_BASE_REF" = "$EXPECTED_PR_BASE"
+          else
+            echo "Unexpected event: $GITHUB_EVENT_NAME" >&2
+            exit 1
+          fi
+          git merge-base --is-ancestor "origin/$EXPECTED_PR_BASE" "$actual"
+          {
+            echo "Source SHA: $actual"
+            echo "Workflow event SHA: $GITHUB_SHA"
+            echo "Event: $GITHUB_EVENT_NAME"
+            echo "Ref: $GITHUB_REF"
+            echo "PR base: ${GITHUB_BASE_REF:-not-a-pull-request}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check source diff formatting
+        run: git diff --check origin/integration/rc19-final-rbac...HEAD
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare empty disposable PostgreSQL 17 databases
+        env:
+          PGPASSWORD: postgres
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGDATABASE: postgres
+        run: |
+          set -euo pipefail
+          version="$(psql -At -v ON_ERROR_STOP=1 -d postgres -c "select current_setting('server_version_num')::int")"
+          test "$version" -ge 170000 && test "$version" -lt 180000
+          psql -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE rc19_sto01_disposable'
+          psql -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE rc19_sto02_disposable'
+          for db in rc19_sto01_disposable rc19_sto02_disposable; do
+            psql -v ON_ERROR_STOP=1 -d "$db" -c "select current_database(), current_user, current_setting('server_version_num')"
+          done
+
+      - name: PostgreSQL 17 STO-01 disposable checks (10)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rc19_sto01_disposable
+          RC19_STO01_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          set -euo pipefail
+          node --import ./tests/typescript-alias-loader.mjs --test --test-reporter=tap tests/rc19-sto01-storage-seed-postgres17.test.ts | tee "$RUNNER_TEMP/sto01.tap"
+          grep -Fx '# tests 10' "$RUNNER_TEMP/sto01.tap"
+          grep -Fx '# pass 10' "$RUNNER_TEMP/sto01.tap"
+          grep -Fx '# fail 0' "$RUNNER_TEMP/sto01.tap"
+          grep -Fx '# skipped 0' "$RUNNER_TEMP/sto01.tap"
+
+      - name: PostgreSQL 17 STO-02 disposable check (1)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rc19_sto02_disposable
+          RC19_STO02_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          set -euo pipefail
+          node --import ./tests/typescript-alias-loader.mjs --test --test-reporter=tap tests/rc19-sto02-resource-registry-postgres17.test.ts | tee "$RUNNER_TEMP/sto02.tap"
+          grep -Fx '# tests 1' "$RUNNER_TEMP/sto02.tap"
+          grep -Fx '# pass 1' "$RUNNER_TEMP/sto02.tap"
+          grep -Fx '# fail 0' "$RUNNER_TEMP/sto02.tap"
+          grep -Fx '# skipped 0' "$RUNNER_TEMP/sto02.tap"
+
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+
+      - name: ESLint
+        run: pnpm run lint
+
+      - name: Focused Calendar regression (56 tests)
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/calendar-*.test.ts tests/rc16l-calendar.test.ts
+
+      - name: Full repository regression (PG17 gates run above)
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Calendar mobile and desktop Playwright
+        run: pnpm exec playwright test --config playwright.rc19-calendar.config.ts --reporter=line
+
+      - name: Memory validation
+        run: pnpm run memory:validate
+
+      - name: Guarded production-equivalent build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+
+      - name: No deployment declaration and source provenance
+        if: always()
+        run: |
+          echo "Checked out source SHA: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow does not deploy, apply migrations, or access Production databases." >> "$GITHUB_STEP_SUMMARY"
