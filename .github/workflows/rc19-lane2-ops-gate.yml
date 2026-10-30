@@ -63,6 +63,14 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Swap workflow Playwright mock
         run: pnpm exec playwright test --config playwright.rc19-swap.config.ts --reporter=line
+      - name: Fetch and verify Memory ancestry refs
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags origin \
+            '+refs/heads/feat/ops-full-app-upgrade-rc19:refs/remotes/origin/feat/ops-full-app-upgrade-rc19' \
+            '+refs/heads/integration/rc19-master-calendar-20261030:refs/remotes/origin/integration/rc19-master-calendar-20261030'
+          git rev-parse origin/feat/ops-full-app-upgrade-rc19 origin/integration/rc19-master-calendar-20261030
+          git merge-base --is-ancestor origin/feat/ops-full-app-upgrade-rc19 origin/integration/rc19-master-calendar-20261030
       - name: Memory validation
         run: pnpm run memory:validate
       - name: Guarded production-equivalent build
