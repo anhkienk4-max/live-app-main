@@ -60,38 +60,38 @@ psql(`
 update public.business_users set full_name=id;
 insert into public.shifts(id,start_at,end_at,registration_cutoff_at,registration_locked,date,start_time,end_time,timezone)
 values
- ('source','2031-01-10T03:00:00Z','2031-01-10T05:00:00Z','2031-01-10T02:00:00Z',true,'2031-01-10','10:00','12:00','Asia/Ho_Chi_Minh'),
- ('target','2031-01-12T03:00:00Z','2031-01-12T05:00:00Z','2031-01-12T02:00:00Z',false,'2031-01-12','10:00','12:00','Asia/Ho_Chi_Minh'),
- ('overlap','2031-01-11T04:00:00Z','2031-01-11T06:00:00Z','2031-01-11T03:00:00Z',true,'2031-01-11','11:00','13:00','Asia/Ho_Chi_Minh'),
- ('overnight','2031-01-09T15:00:00Z','2031-01-09T19:00:00Z','2031-01-09T14:00:00Z',true,'2031-01-09','22:00','02:00','Asia/Ho_Chi_Minh'),
- ('cancelled','2031-01-11T04:00:00Z','2031-01-11T06:00:00Z','2031-01-11T03:00:00Z',true,'2031-01-11','11:00','13:00','Asia/Ho_Chi_Minh');
-update public.shifts set status='cancelled' where id in ('cancelled','overnight');
+ ('swap_preflight_source','2031-01-10T03:00:00Z','2031-01-10T05:00:00Z','2031-01-10T02:00:00Z',true,'2031-01-10','10:00','12:00','Asia/Ho_Chi_Minh'),
+ ('swap_preflight_target','2031-01-12T03:00:00Z','2031-01-12T05:00:00Z','2031-01-12T02:00:00Z',false,'2031-01-12','10:00','12:00','Asia/Ho_Chi_Minh'),
+ ('swap_preflight_overlap','2031-01-11T04:00:00Z','2031-01-11T06:00:00Z','2031-01-11T03:00:00Z',true,'2031-01-11','11:00','13:00','Asia/Ho_Chi_Minh'),
+ ('swap_preflight_overnight','2031-01-09T15:00:00Z','2031-01-09T19:00:00Z','2031-01-09T14:00:00Z',true,'2031-01-09','22:00','02:00','Asia/Ho_Chi_Minh'),
+ ('swap_preflight_cancelled','2031-01-11T04:00:00Z','2031-01-11T06:00:00Z','2031-01-11T03:00:00Z',true,'2031-01-11','11:00','13:00','Asia/Ho_Chi_Minh');
+update public.shifts set status='cancelled' where id in ('swap_preflight_cancelled','swap_preflight_overnight');
 insert into public.shift_registrations(id,shift_id,user_id,operational_role,status,source) values
- ('src-reg','source','member1','host','approved','member'),
- ('cp-reg','target','member2','host','approved','member'),
- ('overlap-reg','overlap','member2','host','approved','member'),
- ('overnight-reg','overnight','member2','host','approved','member'),
- ('cancelled-reg','cancelled','member2','host','approved','member');
+ ('swap_preflight_source_reg','swap_preflight_source','member1','host','approved','member'),
+ ('swap_preflight_counterpart_reg','swap_preflight_target','member2','host','approved','member'),
+ ('swap_preflight_overlap_reg','swap_preflight_overlap','member2','host','approved','member'),
+ ('swap_preflight_overnight_reg','swap_preflight_overnight','member2','host','approved','member'),
+ ('swap_preflight_cancelled_reg','swap_preflight_cancelled','member2','host','approved','member');
 `)
 psql(read(migrationPath))
 assert.equal(query("select has_function_privilege('authenticated','public.check_shift_swap_conflict(text,text,text,text,text)','EXECUTE')::text||'|'||has_function_privilege('anon','public.check_shift_swap_conflict(text,text,text,text,text)','EXECUTE')::text"), 'true|false')
 assert.equal(query(as(1, "select count(*) from public.shift_registrations where user_id='member2'")), '0', 'Member RLS must hide counterpart schedule rows')
-assert.equal(query(as(1, "select public.check_shift_swap_conflict('src-reg','replacement','member2')")), 'CONFLICT')
-psql("update public.shifts set status='cancelled' where id='overlap';")
-assert.equal(query(as(1, "select public.check_shift_swap_conflict('src-reg','replacement','member2')")), 'VERIFIED_CLEAR', 'Cancelled schedules are not conflicts')
-psql("update public.shifts set status='scheduled' where id='overlap';")
-assert.equal(query(as(1, "select public.check_shift_swap_conflict('src-reg','replacement','member2')")), 'CONFLICT', 'Active overlapping shifts block eligibility')
-assert.equal(query(as(1, "select public.check_shift_swap_conflict('src-reg','exchange',null,'target','cp-reg')")), 'CONFLICT', 'Exchange verifies both participants against private schedules')
-psql("update public.shifts set status='cancelled' where id='overlap'; update public.shifts set status='scheduled' where id='overnight';")
-assert.equal(query(as(1, "select public.check_shift_swap_conflict('src-reg','replacement','member2')")), 'CONFLICT', 'Overnight shifts conflict across midnight')
-psql("update public.shifts set status='cancelled' where id='overnight';")
-assert.equal(query(as(1, "select public.check_shift_swap_conflict('src-reg','replacement','member2')")), 'VERIFIED_CLEAR')
-psql("update public.shifts set status='scheduled' where id='target';")
-assert.equal(query(as(1, "select public.check_shift_swap_conflict('src-reg','exchange',null,'target','cp-reg')")), 'VERIFIED_CLEAR')
+assert.equal(query(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')")), 'CONFLICT')
+psql("update public.shifts set status='cancelled' where id='swap_preflight_overlap';")
+assert.equal(query(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')")), 'VERIFIED_CLEAR', 'Cancelled schedules are not conflicts')
+psql("update public.shifts set status='scheduled' where id='swap_preflight_overlap';")
+assert.equal(query(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')")), 'CONFLICT', 'Active overlapping shifts block eligibility')
+assert.equal(query(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','exchange',null,'swap_preflight_target','swap_preflight_counterpart_reg')")), 'CONFLICT', 'Exchange verifies both participants against private schedules')
+psql("update public.shifts set status='cancelled' where id='swap_preflight_overlap'; update public.shifts set status='scheduled' where id='swap_preflight_overnight';")
+assert.equal(query(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')")), 'CONFLICT', 'Overnight shifts conflict across midnight')
+psql("update public.shifts set status='cancelled' where id='swap_preflight_overnight';")
+assert.equal(query(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')")), 'VERIFIED_CLEAR')
+psql("update public.shifts set status='scheduled' where id='swap_preflight_target';")
+assert.equal(query(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','exchange',null,'swap_preflight_target','swap_preflight_counterpart_reg')")), 'VERIFIED_CLEAR')
 psql("update public.business_users set operational_roles=array['support'] where id='member2';")
-assert.notEqual(psql(as(1, "select public.check_shift_swap_conflict('src-reg','replacement','member2')"), true), '')
-assert.notEqual(psql(as(2, "select public.check_shift_swap_conflict('src-reg','replacement','member3')"), true), '')
-assert.notEqual(psql(as(1, "select public.check_shift_swap_conflict('src-reg',null,'member2')"), true), '')
+assert.notEqual(psql(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')"), true), '')
+assert.notEqual(psql(as(2, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member3')"), true), '')
+assert.notEqual(psql(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg',null,'member2')"), true), '')
 assert.equal(query("select pg_get_function_result('public.check_shift_swap_conflict(text,text,text,text,text)'::regprocedure)"), 'text')
 
 const before = query('select count(*) from public.shift_registrations')
@@ -107,8 +107,8 @@ function concurrentCall(sql) {
   })
 }
 const [a,b] = await Promise.all([
-  concurrentCall(as(1, "select public.check_shift_swap_conflict('src-reg','replacement','member2')")),
-  concurrentCall(as(1, "select public.check_shift_swap_conflict('src-reg','replacement','member2')")),
+  concurrentCall(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')")),
+  concurrentCall(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')")),
 ])
 assert.equal(a,'VERIFIED_CLEAR')
 assert.equal(b,'VERIFIED_CLEAR')
