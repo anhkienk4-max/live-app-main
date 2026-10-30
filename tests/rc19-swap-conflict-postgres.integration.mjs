@@ -60,11 +60,11 @@ psql(`
 update public.business_users set full_name=id;
 insert into public.shifts(id,start_at,end_at,registration_cutoff_at,registration_locked,date,start_time,end_time,timezone)
 values
- ('swap_preflight_source','2031-01-10T03:00:00Z','2031-01-10T05:00:00Z','2031-01-10T02:00:00Z',true,'2031-01-10','10:00','12:00','Asia/Ho_Chi_Minh'),
+ ('swap_preflight_source','2031-01-09T18:00:00Z','2031-01-09T20:00:00Z','2031-01-09T17:00:00Z',true,'2031-01-10','01:00','03:00','Asia/Ho_Chi_Minh'),
  ('swap_preflight_target','2031-01-12T03:00:00Z','2031-01-12T05:00:00Z','2031-01-12T02:00:00Z',false,'2031-01-12','10:00','12:00','Asia/Ho_Chi_Minh'),
- ('swap_preflight_overlap','2031-01-11T04:00:00Z','2031-01-11T06:00:00Z','2031-01-11T03:00:00Z',true,'2031-01-11','11:00','13:00','Asia/Ho_Chi_Minh'),
+ ('swap_preflight_overlap','2031-01-09T19:00:00Z','2031-01-09T21:00:00Z','2031-01-09T18:00:00Z',true,'2031-01-10','02:00','04:00','Asia/Ho_Chi_Minh'),
  ('swap_preflight_overnight','2031-01-09T15:00:00Z','2031-01-09T19:00:00Z','2031-01-09T14:00:00Z',true,'2031-01-09','22:00','02:00','Asia/Ho_Chi_Minh'),
- ('swap_preflight_cancelled','2031-01-11T04:00:00Z','2031-01-11T06:00:00Z','2031-01-11T03:00:00Z',true,'2031-01-11','11:00','13:00','Asia/Ho_Chi_Minh');
+ ('swap_preflight_cancelled','2031-01-09T19:00:00Z','2031-01-09T21:00:00Z','2031-01-09T18:00:00Z',true,'2031-01-10','02:00','04:00','Asia/Ho_Chi_Minh');
 update public.shifts set status='cancelled' where id in ('swap_preflight_cancelled','swap_preflight_overnight');
 insert into public.shift_registrations(id,shift_id,user_id,operational_role,status,source) values
  ('swap_preflight_source_reg','swap_preflight_source','member1','host','approved','member'),
