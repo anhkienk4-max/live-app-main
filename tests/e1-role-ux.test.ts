@@ -49,6 +49,7 @@ test('E1: Member Navigation preserves destinations and includes the authorized S
     '/swaps',
     '/live',
     '/reports',
+    '/brand-catalog',
     '/workforce',
     '/notifications'
   ])
