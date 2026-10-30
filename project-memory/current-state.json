@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "5fe918d869f8a987e8162846c0624e68252742e4",
+    "head": "b4bb88757a3ff854d03eda3065d3cb6eacea41b4",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -29,6 +29,7 @@
   ],
   "inventory": {
     "routes": [
+      "app/(dashboard)/admin/page.tsx",
       "app/(dashboard)/analytics/page.tsx",
       "app/(dashboard)/audit/page.tsx",
       "app/(dashboard)/brand-catalog/page.tsx",
@@ -60,6 +61,7 @@
       "app/api/account-requests/[id]/provision/route.ts",
       "app/api/account-requests/[id]/reject/route.ts",
       "app/api/account-requests/route.ts",
+      "app/api/admin/workspace/route.ts",
       "app/api/ai/chat/route.ts",
       "app/api/audit/team-capability/route.ts",
       "app/api/auth/callback/route.ts",
@@ -103,14 +105,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 75,
-        "components": 177,
-        "lib": 263,
+        "app": 77,
+        "components": 178,
+        "lib": 264,
         "scripts": 29,
         "supabase": 117,
-        "tests": 297
+        "tests": 298
       },
-      "total": 958
+      "total": 963
     },
     "tests": {
       "files": [
@@ -127,6 +129,7 @@
         "tests/account-request-provisioning-composite.test.ts",
         "tests/ada-hls-player.test.ts",
         "tests/ada-hls-security.test.ts",
+        "tests/admin02/api-security.test.ts",
         "tests/analytics-actor-key.test.ts",
         "tests/auth-confirm-route.test.ts",
         "tests/auth-identity-bridge.test.tsx",
@@ -351,7 +354,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 236
+      "count": 237
     },
     "migrations": {
       "files": [
@@ -462,5 +465,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-30T15:35:28+07:00"
+  "synced_at": "2026-10-30T16:25:49+07:00"
 }
