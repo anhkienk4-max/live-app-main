@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "b4bb88757a3ff854d03eda3065d3cb6eacea41b4",
+    "head": "888ee00708d518d6cacaf598977d59eebbf10da9",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -110,9 +110,9 @@
         "lib": 264,
         "scripts": 29,
         "supabase": 117,
-        "tests": 298
+        "tests": 299
       },
-      "total": 963
+      "total": 964
     },
     "tests": {
       "files": [
@@ -270,6 +270,7 @@
         "tests/rc19-attendance-photo-review.test.ts",
         "tests/rc19-auth-responsive-layout.test.tsx",
         "tests/rc19-command-toolbar.test.tsx",
+        "tests/rc19-filter01a-shifts.test.ts",
         "tests/rc19-my-payslip.test.ts",
         "tests/rc19-rbac01-security.test.ts",
         "tests/rc19-rbac01b-audit-slice.test.ts",
@@ -354,7 +355,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 237
+      "count": 238
     },
     "migrations": {
       "files": [
@@ -465,5 +466,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-30T16:25:49+07:00"
+  "synced_at": "2026-10-30T22:57:36+07:00"
 }
