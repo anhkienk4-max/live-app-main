@@ -8,8 +8,11 @@ const read = path => readFileSync(path, 'utf8')
 function psql(sql, expectedFailure = false) {
   const result = spawnSync('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A'], { input: sql, encoding: 'utf8', timeout: 30000, maxBuffer: 2 * 1024 * 1024 })
   if (result.error) throw result.error
-  if (expectedFailure) assert.notEqual(result.status, 0, 'Expected authorization or validation rejection')
-  else assert.equal(result.status, 0, `psql failed: ${result.stderr}`)
+  if (expectedFailure) {
+    assert.notEqual(result.status, 0, 'Expected authorization or validation rejection')
+    return result.stderr.trim()
+  }
+  assert.equal(result.status, 0, `psql failed: ${result.stderr}`)
   return result.stdout.trim()
 }
 function query(sql) { return psql(sql).split('\n').filter(Boolean).at(-1)?.trim() ?? '' }
@@ -89,9 +92,9 @@ assert.equal(query(as(1, "select public.check_shift_swap_conflict('swap_prefligh
 psql("update public.shifts set status='scheduled' where id='swap_preflight_target';")
 assert.equal(query(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','exchange',null,'swap_preflight_target','swap_preflight_counterpart_reg')")), 'VERIFIED_CLEAR')
 psql("update public.business_users set operational_roles=array['support'] where id='member2';")
-assert.notEqual(psql(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')"), true), '')
-assert.notEqual(psql(as(2, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member3')"), true), '')
-assert.notEqual(psql(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg',null,'member2')"), true), '')
+assert.match(psql(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member2')"), true), /ROLE_NOT_QUALIFIED/)
+assert.match(psql(as(2, "select public.check_shift_swap_conflict('swap_preflight_source_reg','replacement','member3')"), true), /SWAP_NOT_OWNER/)
+assert.match(psql(as(1, "select public.check_shift_swap_conflict('swap_preflight_source_reg',null,'member2')"), true), /SWAP_PREFLIGHT_PAYLOAD_INVALID/)
 assert.equal(query("select pg_get_function_result('public.check_shift_swap_conflict(text,text,text,text,text)'::regprocedure)"), 'text')
 
 const before = query('select count(*) from public.shift_registrations')
