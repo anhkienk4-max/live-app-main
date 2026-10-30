@@ -11,6 +11,7 @@ on:
       - '.github/workflows/rc19-attendance-photo-review-pg17.yml'
       - 'vercel.json'
       - 'tests/rc16-environment-security.test.ts'
+      - '.github/workflows/rc19-rbac02-account-overrides-gate.yml'
   pull_request:
     branches: [integration/rc19-wave2-core]
     paths:
@@ -21,6 +22,7 @@ on:
       - '.github/workflows/rc19-attendance-photo-review-pg17.yml'
       - 'vercel.json'
       - 'tests/rc16-environment-security.test.ts'
+      - '.github/workflows/rc19-rbac02-account-overrides-gate.yml'
   workflow_dispatch:
 
 permissions:
