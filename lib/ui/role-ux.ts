@@ -48,6 +48,7 @@ export function mobilePrimaryNavigation(items: NavItem[]) {
 
 // Full catalogue of all application destinations
 const navCatalogue: Record<string, NavItem> = {
+  brandCatalog:  { name: 'Product catalog', href: '/brand-catalog', icon: Package, group: 'data' },
   dashboard:     { name: 'Dashboard',     href: '/',              icon: Home, labelKey: 'dashboard', shortLabelKey: 'myWorkspaceShort', group: 'overview' },
   calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar, labelKey: 'calendar', shortLabelKey: 'myScheduleShort', group: 'operations' },
   live:          { name: 'Live',          href: '/live',          icon: Radio, labelKey: 'live', shortLabelKey: 'live', group: 'operations' },
@@ -88,6 +89,7 @@ const adminNav: NavItem[] = [
   { ...navCatalogue.storage },
   { ...navCatalogue.swaps },
   { ...navCatalogue.reports },
+  { ...navCatalogue.brandCatalog },
   { ...navCatalogue.workforce },
   { ...navCatalogue.analytics },
   { ...navCatalogue.payroll },
@@ -109,6 +111,7 @@ const leaderNav: NavItem[] = [
   { ...navCatalogue.registration },
   { ...navCatalogue.swaps },
   { ...navCatalogue.reports },
+  { ...navCatalogue.brandCatalog },
   { ...navCatalogue.workforce },
   { ...navCatalogue.staffDirectory },
   { ...navCatalogue.notifications },
@@ -123,6 +126,7 @@ const memberNav: NavItem[] = [
   { ...navCatalogue.mySwaps },
   { ...navCatalogue.live },
   { ...navCatalogue.reports },
+  { ...navCatalogue.brandCatalog },
   { ...navCatalogue.workforce, name: 'Hiệu suất cá nhân', labelKey: 'myWorkforce' },
   { ...navCatalogue.notifications },
 ]

@@ -16,6 +16,7 @@
       "fix/rc19-sto01-internal-only": false,
       "integration/rc19-final-storage-prep": false,
       "feat/rc19-rbac-security-20261029": false,
+      "feat/rc19-brand-campaign-sku-hub": false,
       "integration/rc19-final-rbac": false
     }
   }
