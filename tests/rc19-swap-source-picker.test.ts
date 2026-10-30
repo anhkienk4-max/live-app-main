@@ -68,7 +68,7 @@ test('PASS recipient is blocked when its conflict check is incomplete or fails',
 
 test('cancelled shifts do not create a client-side PASS conflict', () => {
   const persistence = readFileSync(fileURLToPath(new URL('../supabase/migrations/20260814085659_p1c_shift_persistence.sql', import.meta.url)), 'utf8')
-  const preflight = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261030103157_rc19_swap_conflict_preflight.sql', import.meta.url)), 'utf8')
+  const preflight = readFileSync(fileURLToPath(new URL('../supabase/proposals/rc19-swap-conflict-preflight/20261030103157_rc19_swap_conflict_preflight.sql', import.meta.url)), 'utf8')
   assert.match(preflight, /private\.assert_no_shift_registration_conflict/)
   assert.match(persistence, /other_shift\.status <> 'cancelled'[\s\S]*?other_shift\.start_at < p_shift\.end_at/)
 })

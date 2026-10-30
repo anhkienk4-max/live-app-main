@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { hasShiftTimeConflict, resolveShiftDateTime } from '../lib/utils/shiftUtils.ts'
 import { isStaffedRegistration } from '../lib/services/dataService.ts'
@@ -68,8 +68,13 @@ test('SWAP-01: stale actor and selection responses cannot update current conflic
   assert.match(dialogSource, /let active = true[\s\S]*?if \(active\) setExchangeConflictSnapshot/)
 })
 
-test('SWAP-01: server preflight exposes only eligibility status and retains final backend validation', () => {
-  const migration = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261030103157_rc19_swap_conflict_preflight.sql', import.meta.url)), 'utf8')
+test('SWAP-01: server preflight is proposal-only and retains final backend validation', () => {
+  const migrationPath = '../supabase/proposals/rc19-swap-conflict-preflight/20261030103157_rc19_swap_conflict_preflight.sql'
+  const migration = readFileSync(fileURLToPath(new URL(migrationPath, import.meta.url)), 'utf8')
+  const manifest = JSON.parse(readFileSync(fileURLToPath(new URL('../supabase/proposals/rc19-swap-conflict-preflight/manifest.json', import.meta.url)), 'utf8'))
+  assert.equal(manifest.auto_apply, false)
+  assert.equal(manifest.approval_required_before_release, true)
+  assert.equal(existsSync(fileURLToPath(new URL('../supabase/migrations/20261030103157_rc19_swap_conflict_preflight.sql', import.meta.url))), false)
   assert.match(migration, /actor_id text := private\.require_shift_actor\(false\)/)
   assert.match(migration, /source_registration\.user_id <> actor_id/)
   assert.match(migration, /return 'VERIFIED_CLEAR'/)

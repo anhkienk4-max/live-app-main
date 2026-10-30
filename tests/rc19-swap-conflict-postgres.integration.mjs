@@ -30,7 +30,7 @@ const identity = 'supabase/migrations/20260811110239_p1b_master_data.sql'
 const foundation = 'supabase/migrations/20260814085659_p1c_shift_persistence.sql'
 const operational = 'supabase/migrations/20260906100000_gl19c_operational_settings_consumers.sql'
 const fixture = 'tests/fixtures/rc19_reg02_pg17_base.sql'
-const migrationPath = 'supabase/migrations/20261030103157_rc19_swap_conflict_preflight.sql'
+const migrationPath = 'supabase/proposals/rc19-swap-conflict-preflight/20261030103157_rc19_swap_conflict_preflight.sql'
 
 assert.equal(Math.floor(Number(query("select current_setting('server_version_num')")) / 10000), 17)
 psql(read(fixture))

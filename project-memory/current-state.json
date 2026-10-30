@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "2f79fdd04764bc1c0853023f42de2094f06aec3a",
+    "head": "b4bb88757a3ff854d03eda3065d3cb6eacea41b4",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -109,10 +109,10 @@
         "components": 178,
         "lib": 264,
         "scripts": 29,
-        "supabase": 118,
-        "tests": 301
+        "supabase": 117,
+        "tests": 298
       },
-      "total": 967
+      "total": 963
     },
     "tests": {
       "files": [
@@ -291,10 +291,8 @@
         "tests/rc19-sto02-resource-validation.test.ts",
         "tests/rc19-storage-scoped-search.test.ts",
         "tests/rc19-storage-security-patch.test.ts",
-        "tests/rc19-swap-conflict-preflight.test.ts",
         "tests/rc19-swap-exchange-page.test.ts",
         "tests/rc19-swap-source-picker.test.ts",
-        "tests/rc19-swap01-workflow.test.ts",
         "tests/rc19-u12-settings-contract.test.ts",
         "tests/rc19-u13-navigation-account-menu.test.ts",
         "tests/rc19-u15-ux-quality.test.ts",
@@ -356,7 +354,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 239
+      "count": 237
     },
     "migrations": {
       "files": [
@@ -451,10 +449,9 @@
         "supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql",
         "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql",
         "supabase/migrations/20261028010000_rc19_reg02_multi_applicant_approval.sql",
-        "supabase/migrations/20261029120000_rc19_staffing_role_scoped_gap_filter.sql",
-        "supabase/migrations/20261030103157_rc19_swap_conflict_preflight.sql"
+        "supabase/migrations/20261029120000_rc19_staffing_role_scoped_gap_filter.sql"
       ],
-      "count": 93
+      "count": 92
     }
   },
   "verification": {
@@ -468,5 +465,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-30T22:16:05+07:00"
+  "synced_at": "2026-10-30T16:25:49+07:00"
 }
