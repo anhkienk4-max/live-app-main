@@ -1,0 +1,97 @@
+name: RC19 RBAC-02 Account Overrides Source Gate (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feat/rc19-rbac02-account-overrides
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rbac02:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint
+        run: pnpm run lint
+      - name: Verify Git refs required by Memory validation
+        run: |
+          git show-ref --verify --quiet refs/remotes/origin/main
+          git show-ref --verify --quiet refs/remotes/origin/feat/ops-full-app-upgrade-rc19
+          test "${GITHUB_REF_TYPE}" = "branch"
+          git show-ref --verify --quiet "refs/remotes/origin/${GITHUB_REF_NAME}"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor \
+            "$(git rev-parse refs/remotes/origin/feat/ops-full-app-upgrade-rc19)" \
+            "${GITHUB_SHA}"
+      - name: Project Memory validation
+        run: pnpm run memory:validate
+      - name: RBAC-02 API and contract negative tests
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rbac02-account-overrides.test.ts tests/rc19-rbac01b-audit-slice.test.ts tests/rc19-rbac01-security.test.ts
+      - name: Disposable PostgreSQL 17 security matrix
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: postgres
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          psql -X -v ON_ERROR_STOP=1 -Atc "SELECT current_setting('server_version_num')" | grep -E '^17[0-9]{4}$'
+          psql -X -v ON_ERROR_STOP=1 -f tests/rbac02/pg17_fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/rbac02/pg17_assertions.sql
+      - name: Full repository regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Install Chromium
+        run: pnpm exec playwright install chromium
+      - name: RBAC-02 Admin and Member mock browser checks
+        run: pnpm exec playwright test --config playwright.rc19-rbac02.config.ts --reporter=line
+      - name: Guarded build, all new feature gates OFF
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_RBAC02_ACCOUNT_OVERRIDES: 'false'
+          NEXT_PUBLIC_FEATURE_RBAC02_ACCOUNT_OVERRIDES: 'false'
+          FEATURE_RBAC01_ROLE_DEFAULTS: 'false'
+          FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT: 'false'
+          NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT: 'false'
+          FEATURE_ATTENDANCE_IMPORT: 'false'
+          NEXT_PUBLIC_FEATURE_ATTENDANCE_IMPORT: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Exact candidate and review-only declaration
+        if: always()
+        run: |
+          echo "RBAC-02 source SHA $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "SQL is docs-only; feature remains disabled; no database migration or deployment was performed." >> "$GITHUB_STEP_SUMMARY"

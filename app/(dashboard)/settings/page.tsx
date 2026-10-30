@@ -6,6 +6,7 @@ import { settingsService } from '@/lib/services/dataService'
 import { OperationalRole, OperationalSettings, PersonalSettings } from '@/lib/types/database.types'
 import { hasPermission, permissionMatrix, resolveSystemPermission } from '@/lib/permissions'
 import { RoleDefaultsPanel } from '@/components/features/staff/RoleDefaultsPanel'
+import { AccountPermissionOverridesPanel } from '@/components/features/staff/AccountPermissionOverridesPanel'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +22,8 @@ import { PageLoadError } from '@/components/ui/page-load-error'
 import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
 
 const roles: OperationalRole[] = ['host', 'support', 'technical']
-type SettingsTab = 'personal' | 'team' | 'system' | 'integrations' | 'audit'
+type SettingsTab = 'personal' | 'team' | 'system' | 'integrations' | 'audit' | 'accountPermissions'
+const accountOverridesUiEnabled = process.env.NEXT_PUBLIC_FEATURE_RBAC02_ACCOUNT_OVERRIDES === 'true'
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
 
@@ -300,6 +302,15 @@ export default function SettingsPage() {
                 value="audit"
               >
                 {t('audit')}
+              </TabsTrigger>
+            )}
+            {isAdmin && accountOverridesUiEnabled && (
+              <TabsTrigger
+                data-testid="settings-account-permissions-tab"
+                className="flex-none rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700 data-[state=active]:shadow-none"
+                value="accountPermissions"
+              >
+                Quyền tài khoản
               </TabsTrigger>
             )}
           </TabsList>
@@ -823,6 +834,9 @@ export default function SettingsPage() {
               </Card>
             </form>
           </TabsContent>}
+        {isAdmin && accountOverridesUiEnabled && <TabsContent value="accountPermissions">
+          <AccountPermissionOverridesPanel key={currentUser.id} />
+        </TabsContent>}
       </Tabs>
     </PageShell>
   )
