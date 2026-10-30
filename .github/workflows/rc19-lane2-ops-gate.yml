@@ -66,6 +66,10 @@ jobs:
       - name: Fetch and verify Memory ancestry refs
         if: github.event_name == 'pull_request'
         run: |
+          git rev-parse --is-shallow-repository
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow origin
+          fi
           git fetch --no-tags origin \
             '+refs/heads/feat/ops-full-app-upgrade-rc19:refs/remotes/origin/feat/ops-full-app-upgrade-rc19' \
             '+refs/heads/integration/rc19-master-calendar-20261030:refs/remotes/origin/integration/rc19-master-calendar-20261030'
