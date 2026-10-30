@@ -193,7 +193,8 @@ create table public.brand01_knowledge_reviews (
 
 create index brand01_products_status_name_idx on public.brand01_products (lifecycle_status, name) where archived_at is null;
 create index brand01_product_brands_brand_idx on public.brand01_product_brands (brand_id, product_id);
-create unique index brand01_user_brand_access_active_uidx on public.brand01_user_brand_access(user_id, brand_id) where revoked_at is null;\ncreate index brand01_user_brand_access_brand_idx on public.brand01_user_brand_access (brand_id, user_id) where revoked_at is null;
+create unique index brand01_user_brand_access_active_uidx on public.brand01_user_brand_access(user_id, brand_id) where revoked_at is null;
+create index brand01_user_brand_access_brand_idx on public.brand01_user_brand_access (brand_id, user_id) where revoked_at is null;
 create index brand01_user_brand_access_expiry_idx on public.brand01_user_brand_access (user_id, expires_at) where revoked_at is null;
 create index brand01_product_skus_product_idx on public.brand01_product_skus (product_id, lifecycle_status);
 create index brand01_platform_skus_platform_idx on public.brand01_product_platform_skus (platform_id, sku_id);
