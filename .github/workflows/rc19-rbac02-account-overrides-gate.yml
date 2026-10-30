@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feat/rc19-rbac02-account-overrides
+      - integration/rc19-master-calendar-20261030
   workflow_dispatch:
 permissions:
   contents: read

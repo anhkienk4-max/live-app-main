@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/rc19-calendar-mobile-full-after-rbac-20261030
+      - integration/rc19-master-calendar-20261030
   pull_request:
     branches:
       - integration/rc19-final-rbac
@@ -39,13 +40,14 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           EXPECTED_BRANCH: fix/rc19-calendar-mobile-full-after-rbac-20261030
+          EXPECTED_INTEGRATION_BRANCH: integration/rc19-master-calendar-20261030
           EXPECTED_PR_BASE: integration/rc19-final-rbac
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_SOURCE_SHA"
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            test "$GITHUB_REF" = "refs/heads/$EXPECTED_BRANCH"
+            test "$GITHUB_REF" = "refs/heads/$EXPECTED_BRANCH" || test "$GITHUB_REF" = "refs/heads/$EXPECTED_INTEGRATION_BRANCH"
           elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             test "$GITHUB_BASE_REF" = "$EXPECTED_PR_BASE"
           else

@@ -2,7 +2,7 @@ name: P0 shift status migration PostgreSQL proof
 
 on:
   push:
-    branches: [integration/global-stabilization-20261021]
+    branches: [integration/global-stabilization-20261021, integration/rc19-master-calendar-20261030]
     paths:
       - 'supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql'
       - 'lib/services/supabaseShiftService.ts'

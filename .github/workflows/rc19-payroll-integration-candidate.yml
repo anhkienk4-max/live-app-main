@@ -2,7 +2,7 @@ name: RC19 payroll integration candidate gate (NO DEPLOY)
 
 on:
   push:
-    branches: [codex/rc19-payroll-release-candidate, integration/rc19-final-storage-prep, integration/rc19-final-rbac]
+    branches: [codex/rc19-payroll-release-candidate, integration/rc19-final-storage-prep, integration/rc19-final-rbac, integration/rc19-master-calendar-20261030]
 
 permissions:
   contents: read
