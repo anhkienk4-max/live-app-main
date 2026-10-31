@@ -43,6 +43,10 @@ test('admin dashboard renders localized labels and source-backed app-wide metric
     applicationDashboardSubtitle: 'Tổng quan hệ thống',
     appWideOverview: 'Tổng quan toàn ứng dụng',
     appWideOverviewSubtitle: 'Số liệu từ dữ liệu đang có',
+    latestDashboardItems: 'Mục mới nhất',
+    latestDashboardItemsSubtitle: '5 bản ghi mới nhất trong dữ liệu đang tải.',
+    noLatestDashboardItems: 'Chưa có bản ghi mới trong màn hình này.',
+    openFeature: 'Mở chức năng',
     shiftsInRange: 'Ca trong kỳ',
     confirmedReportsInRange: 'Báo cáo đã xác nhận',
     activeBrands: 'Thương hiệu hoạt động',
@@ -76,6 +80,7 @@ test('admin dashboard renders localized labels and source-backed app-wide metric
     todaysOperations: [],
     performance: null,
     activityLog: null,
+    recentItems: [{ id: 'shift-1', kind: 'shift', title: 'Ca mới được tạo', description: 'Brand · Platform', createdAt: '2026-11-01T08:00:00.000Z', href: '/calendar' }],
     t: key => translations[key] ?? key,
     applicationOverview: [
       { key: 'shifts', label: 'Ca trong kỳ', value: 4, href: '/calendar' },
@@ -83,6 +88,9 @@ test('admin dashboard renders localized labels and source-backed app-wide metric
     ],
   })))
   assert.match(markup, /Tổng quan toàn ứng dụng/)
+  assert.match(markup, /Mục mới nhất/)
+  assert.match(markup, /Ca mới được tạo/)
+  assert.match(markup, /href="\/calendar"/)
   assert.match(markup, /Báo cáo đã xác nhận/)
   assert.match(markup, />4<|>4,000</)
   assert.doesNotMatch(markup, /Operations Dashboard|Operational Attention|dataQualityWarnings|dqWarningsDesc/)

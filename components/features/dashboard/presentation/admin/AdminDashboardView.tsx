@@ -2,8 +2,9 @@
 import { OpsMobileHome } from '../OpsMobileHome'
 import {
   Radio, Users, Calendar, FileText, ShieldAlert, AlertTriangle,
-  Clock, CheckCircle, Eye, TrendingUp, TrendingDown,
+  Clock, CheckCircle, Eye, TrendingUp, TrendingDown, ArrowUpRight,
 } from 'lucide-react'
+import type { DashboardRecentItem } from '@/lib/ui/dashboard-recent-items'
 
 // View-Model
 
@@ -77,6 +78,7 @@ export interface AdminDashboardViewModel {
   activityLog: ActivityLogEntry[] | null
   t: (key: string) => string
   applicationOverview: ApplicationOverviewMetric[]
+  recentItems: DashboardRecentItem[]
   userName?: string
 }
 
@@ -232,7 +234,7 @@ function ActLogRow({ iconName, iconBg, title, user, time }: ActLogRowProps) {
 
 export function AdminDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
-  dqAttention, liveShifts, todaysOperations, performance, activityLog, userName, t, applicationOverview,
+  dqAttention, liveShifts, todaysOperations, performance, activityLog, userName, t, applicationOverview, recentItems,
 }: AdminDashboardViewModel) {
   const currentShift = todaysOperations[0]
   const mobileAttention = [
@@ -302,6 +304,40 @@ export function AdminDashboardView({
           </div>
         </div>
       </div>
+
+      <section aria-labelledby="dashboard-latest-items-title" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="dashboard-latest-items-title" className="text-[16px] font-bold text-slate-900">{t('latestDashboardItems')}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t('latestDashboardItemsSubtitle')}</p>
+          </div>
+          <a href="/audit" className="inline-flex min-h-11 items-center gap-1 rounded-md px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+            {t('viewAll')} <ArrowUpRight className="size-4" aria-hidden="true" />
+          </a>
+        </div>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          {recentItems.length > 0 ? (
+            <ul className="divide-y divide-slate-100">
+              {recentItems.slice(0, 5).map(item => (
+                <li key={`${item.kind}:${item.id}`}>
+                  <a href={item.href} className="flex min-h-[64px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 sm:px-5">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-900">{item.title}</span>
+                      <span className="mt-1 block truncate text-xs text-slate-500">{item.description}</span>
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
+                      <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
+                      <span className="inline-flex items-center gap-1 font-semibold text-blue-700">{t('openFeature')} <ArrowUpRight className="size-3.5" aria-hidden="true" /></span>
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-4 py-8 text-center text-sm text-slate-500">{t('noLatestDashboardItems')}</p>
+          )}
+        </div>
+      </section>
 
       <div className="flex flex-col">
         <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('todaysOperationsTitle')}</h2>

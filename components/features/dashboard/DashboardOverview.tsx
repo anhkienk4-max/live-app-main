@@ -19,6 +19,7 @@ import { resolveSystemPermission } from '@/lib/permissions'
 import { getSwapUiActions } from '@/lib/utils/swapUi'
 import { getMemberAssignedShifts, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
 import { deriveDataQualityAttention } from '@/lib/ui/operational-attention'
+import { selectLatestDashboardItems } from '@/lib/ui/dashboard-recent-items'
 import { getAllIssues } from '@/lib/utils/dataQuality'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { AdminDashboardView } from './presentation/admin/AdminDashboardView'
@@ -466,7 +467,7 @@ const shiftStatusLabel = (status: string): string => {
 }
 
 function AdminDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, campaigns, users, registrations, filters, widgetErrors, onRetryWidget } = props
+  const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, widgetErrors, onRetryWidget } = props
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end)
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
 
@@ -522,6 +523,50 @@ function AdminDashboard(props: CommonProps) {
     health: 'unknown' as const,
   }))
 
+  const latestDashboardItems = selectLatestDashboardItems([
+    ...filteredShifts.filter(shift => !shift.deleted_at).map(shift => ({
+      id: shift.id,
+      kind: 'shift' as const,
+      title: props.t('recentShiftCreated'),
+      description: `${nameFor(brands, shift.brand_id)} · ${nameFor(platforms, shift.platform_id)} · ${shift.date} ${shift.start_time}`,
+      createdAt: shift.created_at,
+      href: '/calendar',
+    })),
+    ...scopedReports.filter(report => !report.deleted_at && !report.archived_at).map(report => {
+      const shift = filteredShifts.find(item => item.id === report.shift_id)
+      return {
+        id: report.id,
+        kind: 'report' as const,
+        title: props.t('recentReportCreated'),
+        description: shift ? `${nameFor(brands, shift.brand_id)} · ${shift.date}` : props.t('recentReportInSelectedScope'),
+        createdAt: report.created_at,
+        href: '/reports',
+      }
+    }),
+    ...scopedRegistrations.map(registration => {
+      const shift = filteredShifts.find(item => item.id === registration.shift_id)
+      return {
+        id: registration.id,
+        kind: 'registration' as const,
+        title: props.t('recentRegistrationCreated'),
+        description: shift ? `${nameFor(brands, shift.brand_id)} · ${shift.date}` : props.t('recentRegistrationInSelectedScope'),
+        createdAt: registration.created_at,
+        href: '/registration',
+      }
+    }),
+    ...(swapRequests ?? []).map(request => {
+      const shift = filteredShifts.find(item => item.id === (request.source_shift_id ?? request.shift_id))
+      return {
+        id: request.id,
+        kind: 'swap' as const,
+        title: props.t('recentSwapCreated'),
+        description: shift ? `${nameFor(brands, shift.brand_id)} · ${shift.date}` : props.t('recentSwapInSelectedScope'),
+        createdAt: request.created_at,
+        href: '/swaps',
+      }
+    }),
+  ])
+
   return (
     <div className="relative">
       {widgetErrors && (widgetErrors.reports || widgetErrors.registrations || widgetErrors.swaps) && (
@@ -552,6 +597,7 @@ function AdminDashboard(props: CommonProps) {
         todaysOperations={todaysOperations}
         performance={null}
         activityLog={null}
+        recentItems={latestDashboardItems}
         t={props.t}
         applicationOverview={applicationOverview}
       />
