@@ -36,6 +36,9 @@ test('manual Preview auth UAT is bounded, deployment-specific, and read-only', a
   // one verified path and must not open a general POST allowlist.
   assert.match(workflow, /url\.hostname === 'amagnzebmmuqiptmrjmc\.supabase\.co'/)
   assert.match(workflow, /url\.hostname\.endsWith\('\.supabase\.co'\) && !stagingHost/)
+  assert.match(workflow, /classifyRc19PreviewHost\(url, previewOrigin\)/)
+  assert.match(workflow, /blockedExternalAppRequests \+= 1/)
+  assert.match(workflow, /PREVIEW_UAT_FORBIDDEN_APP_HOST_REQUESTS/)
   assert.match(workflow, /readOnlyReportRevisionRpc/)
   assert.match(workflow, /url\.pathname === '\/rest\/v1\/rpc\/get_report_revisions'/)
   assert.match(workflow, /\|\| authPath \|\| readOnlyReportRevisionRpc/)
