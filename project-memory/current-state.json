@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "0fd9bdb85b298df4aa303a425f5c94c46b3ceddc",
+    "head": "496bfe33d0cd7cd299f5716ba084101f63965d00",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -98,21 +98,25 @@
       "app/auth/auth-code-error/page.tsx",
       "app/auth/confirm/route.ts",
       "app/forgot-password/page.tsx",
+      "app/icon1/route.ts",
+      "app/icon2/route.ts",
+      "app/icon3/route.ts",
       "app/login/page.tsx",
+      "app/pwa-splash/route.tsx",
       "app/register/page.tsx",
       "app/reset-password/page.tsx",
       "app/visual-qa/page.tsx"
     ],
     "source_files": {
       "roots": {
-        "app": 77,
-        "components": 178,
-        "lib": 265,
-        "scripts": 29,
+        "app": 84,
+        "components": 181,
+        "lib": 267,
+        "scripts": 34,
         "supabase": 119,
-        "tests": 303
+        "tests": 304
       },
-      "total": 971
+      "total": 989
     },
     "tests": {
       "files": [
@@ -469,5 +473,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-31T19:45:50+07:00"
+  "synced_at": "2026-11-01T00:51:56+07:00"
 }
