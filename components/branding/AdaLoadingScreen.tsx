@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { AdaBrand } from '@/components/branding/AdaBrand'
+import { ContentSkeleton } from '@/components/ui/content-skeleton'
 
 /** Lightweight branded fallback for App Router loading boundaries. */
 export function AdaLoadingScreen({
@@ -33,6 +34,7 @@ export function AdaLoadingScreen({
         </span>
         <span className="sr-only">Đang tải ADA OPS Livestream</span>
       </div>
+      {embedded && <ContentSkeleton />}
     </div>
   )
 }
