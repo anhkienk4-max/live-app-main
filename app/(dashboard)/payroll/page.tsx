@@ -134,7 +134,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
   }
 
   return (
-    <PageShell archetype="command" className="space-y-6 p-4 md:p-6">
+    <PageShell archetype="command" className="ada-payroll-page min-w-0 space-y-4 p-4 md:space-y-6 md:p-6">
       {/* Page Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4">
         <div>
@@ -151,7 +151,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {selectedPeriod && (
             <Button
               size="sm"

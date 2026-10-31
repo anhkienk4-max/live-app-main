@@ -2,7 +2,30 @@
 import { authProxy } from '@/lib/auth/proxy'
 import { isVisualFixtureMode } from '@/lib/visual-fixtures'
 
+const PUBLIC_PWA_ASSETS = new Set([
+  '/manifest.webmanifest',
+  '/icon',
+  '/icon1',
+  '/icon2',
+  '/icon3',
+  '/apple-icon',
+  '/pwa-splash',
+])
+
+/**
+ * The browser fetches manifest/icons before the user can authenticate.
+ * Keep this list exact. Never add app pages or /api endpoints.
+ */
+export function isPublicPwaAssetRequest(pathname: string, method: string) {
+  return (method === 'GET' || method === 'HEAD') && PUBLIC_PWA_ASSETS.has(pathname)
+}
+
 export function proxy(request: NextRequest) {
+  if (isPublicPwaAssetRequest(request.nextUrl.pathname, request.method)) {
+    // Public static metadata/brand assets, not business data or an authenticated session.
+    return NextResponse.next()
+  }
+
   const isVisualQa = request.nextUrl.pathname.startsWith('/visual-qa')
   const isFixtureMode = process.env.NODE_ENV === 'development' && isVisualFixtureMode()
 

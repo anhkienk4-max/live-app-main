@@ -83,6 +83,8 @@ const navCatalogue: Record<string, NavItem> = {
 const adminNav: NavItem[] = [
   { ...navCatalogue.dashboard },
   { ...navCatalogue.adminWorkspace },
+  { ...navCatalogue.profile },
+  { ...navCatalogue.notifications },
   { ...navCatalogue.calendar },
   { ...navCatalogue.live },
   { ...navCatalogue.shifts },
@@ -106,6 +108,8 @@ const adminNav: NavItem[] = [
 // LEADER priority
 const leaderNav: NavItem[] = [
   { ...navCatalogue.dashboard, name: 'Team Operations', labelKey: 'teamOperations', shortLabelKey: 'teamOperationsShort' },
+  { ...navCatalogue.profile },
+  { ...navCatalogue.notifications },
   { ...navCatalogue.calendar },
   { ...navCatalogue.live },
   { ...navCatalogue.shifts },
@@ -116,12 +120,13 @@ const leaderNav: NavItem[] = [
   { ...navCatalogue.brandCatalog },
   { ...navCatalogue.workforce },
   { ...navCatalogue.staffDirectory },
-  { ...navCatalogue.notifications },
 ]
 
 // MEMBER priority
 const memberNav: NavItem[] = [
   { ...navCatalogue.myWorkspace },
+  { ...navCatalogue.profile },
+  { ...navCatalogue.notifications },
   { ...navCatalogue.mySchedule },
   { ...navCatalogue.openShifts },
   { ...navCatalogue.shifts },
@@ -130,7 +135,6 @@ const memberNav: NavItem[] = [
   { ...navCatalogue.reports },
   { ...navCatalogue.brandCatalog },
   { ...navCatalogue.workforce, name: 'Hiệu suất cá nhân', labelKey: 'myWorkforce' },
-  { ...navCatalogue.notifications },
 ]
 
 /**

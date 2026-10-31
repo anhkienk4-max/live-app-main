@@ -1,4 +1,5 @@
 ﻿import React from 'react'
+import { OpsMobileHome } from '../OpsMobileHome'
 import {
   Radio, Users, Calendar, FileText, ShieldAlert, AlertTriangle,
   Clock, CheckCircle, Eye, TrendingUp, TrendingDown,
@@ -67,6 +68,7 @@ export interface AdminDashboardViewModel {
   todaysOperations: OperationRowItem[]
   performance: PerformanceData | null
   activityLog: ActivityLogEntry[] | null
+  userName?: string
 }
 
 // Sub-components
@@ -214,10 +216,29 @@ function ActLogRow({ iconName, iconBg, title, user, time }: ActLogRowProps) {
 
 export function AdminDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
-  dqAttention, liveShifts, todaysOperations, performance, activityLog,
+  dqAttention, liveShifts, todaysOperations, performance, activityLog, userName,
 }: AdminDashboardViewModel) {
+  const currentShift = todaysOperations[0]
+  const mobileAttention = [
+    ...(pendingCount !== null && pendingCount > 0 ? [{
+      key: 'pending-registration', title: pendingCount + ' đăng ký ca chờ xử lý', description: 'Mở danh sách đăng ký để xem xét', href: '/staffing?tab=registration', level: 'warning' as const,
+    }] : []),
+    ...dqAttention.map(item => ({
+      key: item.key,
+      title: item.title === 'dataQualityNotices' ? 'Thông báo chất lượng dữ liệu' : item.title === 'dataQualityWarnings' ? 'Cảnh báo chất lượng dữ liệu' : item.title,
+      description: item.context === 'dqNoticesDesc' ? 'Có thông báo dữ liệu cần kiểm tra' : item.context,
+      href: item.href ?? '/data-quality',
+      level: item.severity === 'critical' ? 'critical' as const : 'warning' as const,
+    })),
+  ]
   return (
-    <main className="p-4 sm:p-8 min-w-0 flex flex-col gap-6 overflow-y-auto">
+    <>
+    <OpsMobileHome
+      role="admin" userName={userName} shiftCount={todaysShiftsCount}
+      liveCount={liveShifts.length} pendingCount={pendingCount} attention={mobileAttention}
+      shift={currentShift ? { key: currentShift.brand + currentShift.shiftTime, brand: currentShift.brand, platform: currentShift.platform, time: currentShift.shiftTime, status: currentShift.status } : null}
+    />
+    <main className="hidden min-w-0 flex-col gap-6 overflow-y-auto p-4 md:flex sm:p-8">
       <div className="flex flex-col gap-1 mb-1">
         <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">Operations Dashboard</h1>
         <p className="text-[14px] text-slate-500 font-medium">Real-time operations overview and team performance</p>
@@ -314,5 +335,6 @@ export function AdminDashboardView({
       </div>
     <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
     </main>
+    </>
   )
 }
