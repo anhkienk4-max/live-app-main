@@ -16,6 +16,14 @@ import {
   isFileStorageEnabled,
 } from '@/lib/server/fileProviderResolver'
 import { resolveGoogleDriveAuthMode } from '@/lib/server/googleDriveAuth'
+import {
+  PRODUCTION_SUPABASE_REF,
+  STAGING_SUPABASE_REF,
+  SupabaseEnvironmentError,
+  resolveSupabaseTarget,
+  validateSupabaseEnvironment,
+  type SupabaseEnvironment,
+} from '@/lib/supabase/environmentIdentity'
 
 type Environment = Record<string, string | undefined>
 
@@ -39,6 +47,38 @@ function authDiagnostics(
     auth_cookie_present: Boolean(request.headers.get('cookie')?.trim()),
     authenticated_user_resolved: resolution.authenticatedUserResolved,
     business_user_mapped: resolution.businessUserMapped,
+  }
+}
+
+function supabaseDiagnostics(env: Environment) {
+  const publicUrl = env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+  const serverUrl = env.SUPABASE_URL || publicUrl
+  let publicProjectRef: string | null = null
+  let serverProjectRef: string | null = null
+  let validationError: string | null = null
+
+  try {
+    if (publicUrl) publicProjectRef = resolveSupabaseTarget(publicUrl).projectRef
+    if (serverUrl) serverProjectRef = resolveSupabaseTarget(serverUrl).projectRef
+    validateSupabaseEnvironment(env as SupabaseEnvironment, 'runtime')
+  } catch (error) {
+    validationError = error instanceof SupabaseEnvironmentError ? error.code : 'ENV_SUPABASE_CONFIG_INVALID'
+  }
+
+  const targetsMatch = Boolean(publicProjectRef && serverProjectRef && publicProjectRef === serverProjectRef)
+  return {
+    public_project_ref: publicProjectRef,
+    server_project_ref: serverProjectRef,
+    targets_match: targetsMatch,
+    staging_preview_ready: env.VERCEL_ENV === 'preview'
+      && publicProjectRef === STAGING_SUPABASE_REF
+      && serverProjectRef === STAGING_SUPABASE_REF
+      && !validationError,
+    production_target_detected: publicProjectRef === PRODUCTION_SUPABASE_REF
+      || serverProjectRef === PRODUCTION_SUPABASE_REF,
+    anon_key_present: present(env, 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+    server_secret_present: present(env, 'SUPABASE_SECRET_KEY'),
+    validation_error: validationError,
   }
 }
 
@@ -92,6 +132,7 @@ async function providerDiagnostics(
       }
     }
     return {
+      supabase: supabaseDiagnostics(env),
       file_storage_enabled: isFileStorageEnabled(env),
       file_provider: registry.defaultProviderName,
       google_drive: googleDrive,
@@ -105,6 +146,7 @@ async function providerDiagnostics(
   } catch (error) {
     const providerError = safeErrorCode(error, 'FILE_PROVIDER_CONFIGURATION_ERROR')
     return {
+      supabase: supabaseDiagnostics(env),
       file_storage_enabled: isFileStorageEnabled(env),
       file_provider: providerError,
       google_drive: googleDrive,
@@ -118,7 +160,6 @@ async function providerDiagnostics(
   }
 }
 
-// TEMPORARY DEBUG CODE: remove after RC1.2 provider runtime diagnosis.
 export function createFileProviderDiagnosticsGetHandler(options: {
   env?: Environment
   resolveUser?: ServerUserResolver

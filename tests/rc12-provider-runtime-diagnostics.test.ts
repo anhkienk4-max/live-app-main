@@ -21,6 +21,7 @@ const configuredEnv = {
 
 const admin = { id: 'admin-auth', systemPermission: 'admin' as const }
 const leader = { id: 'leader-auth', systemPermission: 'leader' as const, businessUserId: 'business-2' }
+const member = { id: 'member-auth', systemPermission: 'member' as const, businessUserId: 'business-3' }
 
 function request() {
   return new Request('https://preview.example.test/api/internal/file-provider-diagnostics')
@@ -45,15 +46,17 @@ test('diagnostics require authentication and admin permission', async () => {
     business_user_mapped: false,
   })
 
-  const unauthorized = await handlerFor(configuredEnv, async () => leader)(request())
-  assert.equal(unauthorized.status, 403)
-  assert.deepEqual(await unauthorized.json(), {
-    supabase_url_present: false,
-    supabase_anon_key_present: false,
-    auth_cookie_present: false,
-    authenticated_user_resolved: true,
-    business_user_mapped: true,
-  })
+  for (const actor of [leader, member]) {
+    const unauthorized = await handlerFor(configuredEnv, async () => actor)(request())
+    assert.equal(unauthorized.status, 403)
+    assert.deepEqual(await unauthorized.json(), {
+      supabase_url_present: false,
+      supabase_anon_key_present: false,
+      auth_cookie_present: false,
+      authenticated_user_resolved: true,
+      business_user_mapped: true,
+    })
+  }
   assert.equal((await handlerFor()(request())).status, 200)
 })
 
@@ -94,6 +97,86 @@ test('diagnostics expose only safe provider presence booleans and no-store respo
     tenant_id_present: true,
     configured: true,
   })
+  assert.deepEqual(body.supabase, {
+    public_project_ref: null,
+    server_project_ref: null,
+    targets_match: false,
+    staging_preview_ready: false,
+    production_target_detected: false,
+    anon_key_present: false,
+    server_secret_present: false,
+    validation_error: 'ENV_SUPABASE_CONFIG_REQUIRED',
+  })
+})
+
+test('admin diagnostics prove a staging Preview target without exposing URLs or credentials', async () => {
+  const env = {
+    ...configuredEnv,
+    NODE_ENV: 'production',
+    VERCEL: '1',
+    VERCEL_ENV: 'preview',
+    VERCEL_TARGET_ENV: 'preview',
+    NEXT_PUBLIC_SUPABASE_URL: 'https://amagnzebmmuqiptmrjmc.supabase.co',
+    SUPABASE_URL: 'https://amagnzebmmuqiptmrjmc.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'staging-anon-secret',
+    SUPABASE_SECRET_KEY: 'staging-service-secret',
+  }
+  const body = await (await handlerFor(env)(request())).json() as { supabase: Record<string, unknown> }
+  const serialized = JSON.stringify(body)
+
+  assert.deepEqual(body.supabase, {
+    public_project_ref: 'amagnzebmmuqiptmrjmc',
+    server_project_ref: 'amagnzebmmuqiptmrjmc',
+    targets_match: true,
+    staging_preview_ready: true,
+    production_target_detected: false,
+    anon_key_present: true,
+    server_secret_present: true,
+    validation_error: null,
+  })
+  for (const secret of [env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, env.SUPABASE_SECRET_KEY]) {
+    assert.equal(serialized.includes(secret), false)
+  }
+})
+
+test('admin diagnostics fail closed when Preview server target is Production', async () => {
+  const env = {
+    ...configuredEnv,
+    NODE_ENV: 'production',
+    VERCEL: '1',
+    VERCEL_ENV: 'preview',
+    VERCEL_TARGET_ENV: 'preview',
+    NEXT_PUBLIC_SUPABASE_URL: 'https://amagnzebmmuqiptmrjmc.supabase.co',
+    SUPABASE_URL: 'https://egdjnpmoasarrttvhgds.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'staging-anon-secret',
+    SUPABASE_SECRET_KEY: 'production-secret',
+  }
+  const body = await (await handlerFor(env)(request())).json() as { supabase: Record<string, unknown> }
+
+  assert.equal(body.supabase.targets_match, false)
+  assert.equal(body.supabase.staging_preview_ready, false)
+  assert.equal(body.supabase.production_target_detected, true)
+  assert.equal(body.supabase.validation_error, 'ENV_PRODUCTION_TARGET_FORBIDDEN')
+})
+
+test('admin diagnostics preserve invalid whitespace server overrides instead of reporting a matching target', async () => {
+  const env = {
+    ...configuredEnv,
+    NODE_ENV: 'production',
+    VERCEL: '1',
+    VERCEL_ENV: 'preview',
+    VERCEL_TARGET_ENV: 'preview',
+    NEXT_PUBLIC_SUPABASE_URL: 'https://amagnzebmmuqiptmrjmc.supabase.co',
+    SUPABASE_URL: '   ',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'staging-anon-secret',
+    SUPABASE_SECRET_KEY: 'staging-service-secret',
+  }
+  const body = await (await handlerFor(env)(request())).json() as { supabase: Record<string, unknown> }
+
+  assert.equal(body.supabase.server_project_ref, null)
+  assert.equal(body.supabase.targets_match, false)
+  assert.equal(body.supabase.staging_preview_ready, false)
+  assert.equal(body.supabase.validation_error, 'ENV_SUPABASE_URL_INVALID')
 })
 
 test('auth diagnostics expose only booleans and never cookie or Supabase values', async () => {

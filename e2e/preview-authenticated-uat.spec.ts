@@ -112,6 +112,37 @@ async function verifyReportsReadOnly(page: Page, role: Role, trace: Array<{ at: 
   await verifyReportsExportAndDetail(page, role, trace)
 }
 
+async function verifyPreviewDiagnosticsAuthorization(page: Page, role: Role, trace: Array<{ at: string; action: string; role?: Role; detail?: string }>) {
+  const result = await page.evaluate(async () => {
+    const response = await fetch('/api/internal/file-provider-diagnostics', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+    if (response.status !== 200 && response.status !== 403) {
+      return { status: response.status, stagingPreviewReady: false, noStore: response.headers.get('cache-control') === 'no-store' }
+    }
+    const body = await response.json() as {
+      supabase?: { public_project_ref?: string; server_project_ref?: string; staging_preview_ready?: boolean }
+    }
+    return {
+      status: response.status,
+      stagingPreviewReady: body.supabase?.staging_preview_ready === true
+        && body.supabase.public_project_ref === 'amagnzebmmuqiptmrjmc'
+        && body.supabase.server_project_ref === 'amagnzebmmuqiptmrjmc',
+      noStore: response.headers.get('cache-control') === 'no-store',
+    }
+  })
+
+  if (!result.noStore) throw new Error('PREVIEW_DIAGNOSTICS_CACHE_POLICY_INVALID')
+  if (role === 'admin') {
+    if (result.status !== 200 || !result.stagingPreviewReady) throw new Error('PREVIEW_ADMIN_STAGING_TARGET_NOT_VERIFIED')
+    trace.push({ at: new Date().toISOString(), action: 'admin_preview_target_and_provider_diagnostics_verified', role })
+  } else {
+    if (result.status !== 403) throw new Error('PREVIEW_DIAGNOSTICS_ADMIN_AUTHORIZATION_FAILED')
+    trace.push({ at: new Date().toISOString(), action: 'non_admin_provider_diagnostics_denied', role })
+  }
+}
+
 
 async function verifyReportsExportAndDetail(page: Page, role: Role, trace: Array<{ at: string; action: string; role?: Role; detail?: string }>) {
   const source = await page.evaluate(async () => {
@@ -344,6 +375,7 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
       } else {
         trace.push({ at: new Date().toISOString(), action: 'role_verified', role })
         try {
+          await verifyPreviewDiagnosticsAuthorization(page, role, trace)
           await verifyReportsReadOnly(page, role, trace)
           results.push({ role, status: 'PASS' })
         } catch (error) {
