@@ -364,90 +364,42 @@
 .ada-brand--compact .ada-brand__descriptor { font-size: 6px; }
 
 .ada-loading-screen {
-  position: relative;
+  position: fixed;
+  inset: 0;
   display: grid;
-  min-height: 100svh;
   place-items: center;
   overflow: hidden;
-  isolation: isolate;
-  background: radial-gradient(ellipse at 50% 42%, #fff 0%, #f7f9ff 52%, #edf3ff 100%);
+  background: #fff;
   color: var(--ada-navy);
 }
-.ada-loading-screen--embedded { min-height: min(68svh, 680px); }
 .ada-loading-screen--overlay { min-height: 100%; height: 100%; }
 .ada-navigation-transition {
   position: fixed;
   z-index: 10000;
   inset: 0;
-  animation: ada-transition-enter 180ms ease-out both;
+  background: #fff;
 }
 .ada-navigation-transition--exiting {
   pointer-events: none;
   animation: ada-transition-exit 260ms ease-in both;
 }
-.ada-loading-screen__glow {
-  position: absolute;
-  z-index: -1;
-  width: clamp(230px, 45vw, 460px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgb(37 99 235 / 9%) 0%, rgb(124 58 237 / 5%) 42%, transparent 72%);
-  animation: ada-loading-glow 2.4s ease-in-out infinite alternate;
-}
-.ada-loading-screen__content {
+.ada-loading-screen__logo {
   position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 19px;
-  padding: 36px;
-  animation: ada-loading-enter 520ms cubic-bezier(.2,.8,.2,1) both;
+  justify-content: center;
+  animation: ada-loading-float 1.8s ease-in-out infinite;
 }
-.ada-loading-screen__halo {
-  position: absolute;
-  top: 18px;
-  width: 116px;
-  height: 116px;
-  border: 1px solid rgb(37 99 235 / 13%);
-  border-radius: 50%;
-  box-shadow: 0 0 0 12px rgb(37 99 235 / 3%), inset 0 0 24px rgb(37 99 235 / 5%);
-  animation: ada-loading-orbit 4s linear infinite;
-}
-.ada-loading-screen__halo::before,
-.ada-loading-screen__halo::after {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #2563eb;
-  box-shadow: 0 0 12px rgb(37 99 235 / 55%);
-  content: '';
-}
-.ada-loading-screen__halo::before { top: 13px; left: 21px; }
-.ada-loading-screen__halo::after { right: 13px; bottom: 26px; width: 5px; height: 5px; background: #8b5cf6; }
-.ada-loading-screen__logo { position: relative; animation: ada-loading-float 1.8s ease-in-out infinite; }
-.ada-loading-screen__logo .ada-brand__symbol { width: 46px; height: 46px; border-radius: 14px; }
-.ada-loading-screen__logo .ada-brand__symbol-svg { width: 33px; height: 33px; }
-.ada-loading-screen__logo .ada-brand__name { font-size: 30px; }
-.ada-loading-screen__logo .ada-brand__descriptor { font-size: 9px; }
-.ada-loading-screen__caption { color: #64748b; font-size: 10px; font-weight: 750; letter-spacing: .16em; }
-.ada-loading-screen__progress { display: flex; gap: 6px; align-items: center; height: 8px; }
-.ada-loading-screen__progress span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #2563eb;
-  animation: ada-loading-dot 900ms ease-in-out infinite alternate;
-}
-.ada-loading-screen__progress span:nth-child(2) { animation-delay: 180ms; background: #4f46e5; }
-.ada-loading-screen__progress span:nth-child(3) { animation-delay: 360ms; background: #8b5cf6; }
-@keyframes ada-loading-enter {
-  from { opacity: 0; transform: translateY(9px) scale(.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
+.ada-loading-screen__logo .ada-brand__symbol { width: 82px; height: 82px; border-radius: 24px; }
+.ada-loading-screen__logo .ada-brand__symbol-svg { width: 59px; height: 59px; }
+.ada-loading-screen__logo .ada-brand__name { font-size: 44px; }
+.ada-loading-screen__logo .ada-brand__descriptor { font-size: 12px; }
 @keyframes ada-loading-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-5px) scale(1.035); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ada-loading-screen__logo { animation: none; }
 }
 @keyframes ada-loading-orbit { to { transform: rotate(360deg); } }
 @keyframes ada-loading-glow { from { transform: scale(.92); opacity: .65; } to { transform: scale(1.06); opacity: 1; } }

@@ -745,15 +745,16 @@ export function OperationalFileWorkspace() {
               </label>
             )}
 
-            {/* Directory Tree View (Client Group → Brand → Year → Month/Period → Platform) */}
-            <div className="space-y-1 rounded-lg border bg-muted/20 p-2.5 text-xs font-mono max-h-80 overflow-y-auto" role="tree" aria-label="Directory Tree">
+            {/* Only render a folder hierarchy after the backend reports an active route. */}
+            {catalog?.active_route_count != null && catalog.active_route_count > 0 ? (
+            <div className="space-y-1 rounded-lg border bg-muted/20 p-2.5 text-xs font-mono max-h-80 overflow-y-auto" role="tree" aria-label={t('storageLogicalTreeTitle')}>
               {/* Root Node: Client Group */}
               <div className="flex items-center justify-between font-semibold text-foreground py-1 px-1.5 rounded hover:bg-muted/50">
                 <div className="flex items-center gap-1.5 truncate">
                   <Building className="h-3.5 w-3.5 text-primary shrink-0" />
                   <span className="truncate">ADA Client Group</span>
                 </div>
-                <span className="text-[10px] text-muted-foreground font-sans">Logic Scope</span>
+                <span className="text-[10px] text-muted-foreground font-sans">{t('logicalScope')}</span>
               </div>
 
               {/* Brands Hierarchy */}
@@ -832,6 +833,12 @@ export function OperationalFileWorkspace() {
                 })}
               </div>
             </div>
+            ) : (
+              <div data-testid="storage-physical-tree-unavailable" role="status" className="rounded-lg border border-dashed bg-muted/15 p-3 text-xs leading-relaxed">
+                <p className="font-semibold text-foreground">{t('storagePhysicalTreePendingTitle')}</p>
+                <p className="mt-1 text-muted-foreground">{t('storagePhysicalTreePendingBody')}</p>
+              </div>
+            )}
 
             {/* Scope Folder Verification Indicator */}
             <div className="rounded-lg border bg-muted/15 p-2.5 text-[11px] space-y-1">
@@ -846,7 +853,7 @@ export function OperationalFileWorkspace() {
                 </div>
               ) : (
                 <p className="text-muted-foreground">
-                  Cấu trúc logic theo Brand/Platform. Chưa xác nhận folder vật lý trên Drive/OneDrive cho đến khi chuẩn bị folder hoặc tải file.
+                  {t('storageLogicalTreeBody')}
                 </p>
               )}
             </div>

@@ -33,6 +33,13 @@ test('Catalog exposes only active Storage Route count, not provider parent-folde
  assert.match(view,/Không tự tạo folder thay thế/)
 })
 
+test('physical Storage tree is withheld when no verified active route exists',()=>{
+ assert.match(view,/catalog\?\.active_route_count != null && catalog\.active_route_count > 0 \? \(/)
+ assert.match(view,/data-testid="storage-physical-tree-unavailable"/)
+ assert.match(view,/storagePhysicalTreePendingBody/)
+ assert.match(view,/storageLogicalTreeBody/)
+})
+
 test('UX feedback distinguishes incomplete scope, actual fetch error and empty page',()=>{
   const feedback=readFileSync(new URL('../components/ui/list-feedback.tsx',import.meta.url),'utf8')
   assert.match(view,/const \[listError,setListError\]/)

@@ -1,5 +1,5 @@
-import { AdaLoadingScreen } from '@/components/branding/AdaLoadingScreen'
-
 export default function DashboardLoading() {
-  return <AdaLoadingScreen embedded />
+  // The global navigation transition owns the single full-screen loading mark.
+  // Rendering another logo or page skeleton here produces a stacked fallback.
+  return null
 }

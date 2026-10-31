@@ -1,5 +1,4 @@
-import { AdaLoadingScreen } from '@/components/branding/AdaLoadingScreen'
-
 export default function RootLoading() {
-  return <AdaLoadingScreen />
+  // AdaNavigationTransition in the root layout owns the single loading view.
+  return null
 }
