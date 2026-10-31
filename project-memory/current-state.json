@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "1ce323633dc7742af391b4fe16dabec24578882a",
+    "head": "0fd9bdb85b298df4aa303a425f5c94c46b3ceddc",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -220,8 +220,8 @@
         "tests/phase2-shared-reference-cache.test.ts",
         "tests/phase2b-live-stream-link.test.ts",
         "tests/platform-metric-dom-binding.test.tsx",
-        "tests/preview-auth-uat-contract.test.ts",
         "tests/preview-loading-performance.test.tsx",
+        "tests/production-auth-uat-contract.test.ts",
         "tests/production-shell-convergence.test.ts",
         "tests/profile-avatar-storage.test.ts",
         "tests/rbac02-account-overrides.test.ts",
@@ -272,7 +272,7 @@
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-filter01a-shifts.test.ts",
         "tests/rc19-my-payslip.test.ts",
-        "tests/rc19-preview-host-policy.test.ts",
+        "tests/rc19-production-uat-host-policy.test.ts",
         "tests/rc19-rbac01-security.test.ts",
         "tests/rc19-rbac01b-audit-slice.test.ts",
         "tests/rc19-report-apply-filters.test.ts",
@@ -469,5 +469,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-31T11:52:30Z"
+  "synced_at": "2026-10-31T19:45:50+07:00"
 }
