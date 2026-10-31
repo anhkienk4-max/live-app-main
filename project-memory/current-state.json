@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "d84a567a1a5f6d06ad65e09c144afd2c37d86cce",
+    "head": "097c40d970658eefbe604eba748d468c128f02a5",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -107,12 +107,12 @@
       "roots": {
         "app": 77,
         "components": 178,
-        "lib": 264,
+        "lib": 265,
         "scripts": 29,
         "supabase": 119,
-        "tests": 302
+        "tests": 303
       },
-      "total": 969
+      "total": 971
     },
     "tests": {
       "files": [
@@ -272,6 +272,7 @@
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-filter01a-shifts.test.ts",
         "tests/rc19-my-payslip.test.ts",
+        "tests/rc19-preview-host-policy.test.ts",
         "tests/rc19-rbac01-security.test.ts",
         "tests/rc19-rbac01b-audit-slice.test.ts",
         "tests/rc19-report-apply-filters.test.ts",
@@ -357,7 +358,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 240
+      "count": 241
     },
     "migrations": {
       "files": [
@@ -468,5 +469,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-30T23:26:14+07:00"
+  "synced_at": "2026-10-31T11:45:05Z"
 }
