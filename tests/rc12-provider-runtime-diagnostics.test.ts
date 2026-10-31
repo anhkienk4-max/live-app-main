@@ -101,11 +101,13 @@ test('diagnostics expose only safe provider presence booleans and no-store respo
     public_project_ref: null,
     server_project_ref: null,
     targets_match: false,
+    production_uat_ready: false,
     staging_preview_ready: false,
     production_target_detected: false,
     anon_key_present: false,
     server_secret_present: false,
     validation_error: 'ENV_SUPABASE_CONFIG_REQUIRED',
+    deployment_commit_sha: null,
   })
 })
 
@@ -128,15 +130,50 @@ test('admin diagnostics prove a staging Preview target without exposing URLs or 
     public_project_ref: 'amagnzebmmuqiptmrjmc',
     server_project_ref: 'amagnzebmmuqiptmrjmc',
     targets_match: true,
+    production_uat_ready: false,
     staging_preview_ready: true,
     production_target_detected: false,
     anon_key_present: true,
     server_secret_present: true,
     validation_error: null,
+    deployment_commit_sha: null,
   })
   for (const secret of [env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, env.SUPABASE_SECRET_KEY]) {
     assert.equal(serialized.includes(secret), false)
   }
+})
+
+test('admin diagnostics attest only the matching Production target and sanitized deployed SHA', async () => {
+  const env = {
+    ...configuredEnv,
+    NODE_ENV: 'production',
+    VERCEL: '1',
+    VERCEL_ENV: 'production',
+    VERCEL_TARGET_ENV: 'production',
+    VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40),
+    NEXT_PUBLIC_SUPABASE_URL: 'https://egdjnpmoasarrttvhgds.supabase.co',
+    SUPABASE_URL: 'https://egdjnpmoasarrttvhgds.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'production-anon-secret',
+    SUPABASE_SECRET_KEY: 'production-server-secret',
+  }
+  const body = await (await handlerFor(env)(request())).json() as { supabase: Record<string, unknown> }
+  const serialized = JSON.stringify(body)
+
+  assert.deepEqual(body.supabase, {
+    public_project_ref: 'egdjnpmoasarrttvhgds',
+    server_project_ref: 'egdjnpmoasarrttvhgds',
+    targets_match: true,
+    production_uat_ready: true,
+    staging_preview_ready: false,
+    production_target_detected: true,
+    anon_key_present: true,
+    server_secret_present: true,
+    validation_error: null,
+    deployment_commit_sha: 'a'.repeat(40),
+  })
+  assert.equal(serialized.includes(env.NEXT_PUBLIC_SUPABASE_URL), false)
+  assert.equal(serialized.includes(env.NEXT_PUBLIC_SUPABASE_ANON_KEY), false)
+  assert.equal(serialized.includes(env.SUPABASE_SECRET_KEY), false)
 })
 
 test('admin diagnostics fail closed when Preview server target is Production', async () => {

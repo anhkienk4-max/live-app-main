@@ -70,6 +70,10 @@ function supabaseDiagnostics(env: Environment) {
     public_project_ref: publicProjectRef,
     server_project_ref: serverProjectRef,
     targets_match: targetsMatch,
+    production_uat_ready: env.VERCEL_ENV === 'production'
+      && publicProjectRef === PRODUCTION_SUPABASE_REF
+      && serverProjectRef === PRODUCTION_SUPABASE_REF
+      && !validationError,
     staging_preview_ready: env.VERCEL_ENV === 'preview'
       && publicProjectRef === STAGING_SUPABASE_REF
       && serverProjectRef === STAGING_SUPABASE_REF
@@ -79,6 +83,9 @@ function supabaseDiagnostics(env: Environment) {
     anon_key_present: present(env, 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
     server_secret_present: present(env, 'SUPABASE_SECRET_KEY'),
     validation_error: validationError,
+    deployment_commit_sha: /^[a-f0-9]{40}$/i.test(env.VERCEL_GIT_COMMIT_SHA?.trim() ?? '')
+      ? env.VERCEL_GIT_COMMIT_SHA!.trim().toLowerCase()
+      : null,
   }
 }
 
