@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import * as XLSX from 'xlsx'
 import { resolve } from 'node:path'
+import { classifyRc19PreviewHost } from '@/lib/uat/rc19PreviewHostPolicy'
 
 const roles = ['admin', 'leader', 'member'] as const
 const manualLoginTimeoutMs = 90_000
@@ -193,6 +194,7 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
   const events: EventRow[] = []
   const trace: Array<{ at: string; action: string; role?: Role; detail?: string }> = []
   let blockedWrites = 0
+  let blockedExternalAppRequests = 0
 
   await page.addInitScript(() => {
     const browserWindow = window as Window & { __previewAuthSubmitCount?: number }
@@ -223,6 +225,14 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
     const request = route.request()
     const url = new URL(request.url())
     const method = request.method().toUpperCase()
+    // No request, including GET, may reach Production or a different Vercel deployment.
+    const forbiddenHost = classifyRc19PreviewHost(url, previewOrigin)
+    if (forbiddenHost) {
+      blockedExternalAppRequests += 1
+      events.push({ kind: 'blocked_external_app_host', route: url.pathname, detail: forbiddenHost })
+      await route.abort('blockedbyclient')
+      return
+    }
     // Never allow a supposedly Staging-only UAT to contact another Supabase project.
     const stagingHost = url.hostname === 'amagnzebmmuqiptmrjmc.supabase.co'
     if (url.hostname.endsWith('.supabase.co') && !stagingHost) {
@@ -358,13 +368,14 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
   } finally {
     const passCount = results.filter(row => row.status === 'PASS').length
     const failCount = results.filter(row => row.status === 'FAIL').length
-    const overall: Status = failCount ? 'FAIL' : passCount === roles.length ? 'PASS' : 'BLOCKED'
+    const overall: Status = blockedExternalAppRequests || failCount ? 'FAIL' : passCount === roles.length ? 'PASS' : 'BLOCKED'
     const redactedTrace = {
       preview: safeLocation(page).origin,
       generatedAt: new Date().toISOString(),
       events: trace,
       browserEvents: events,
       blockedBusinessWrites: blockedWrites,
+      blockedExternalAppRequests,
       credentialsPersisted: false,
       cookiesOrStorageStateWritten: false,
       rawPlaywrightTraceEnabled: false,
@@ -374,6 +385,7 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
     testInfo.annotations.push({ type: 'authenticated-uat', description: overall })
   }
 
+  if (blockedExternalAppRequests > 0) throw new Error('PREVIEW_UAT_FORBIDDEN_APP_HOST_REQUESTS')
   const failed = results.find(row => row.status === 'FAIL')
   if (failed) throw new Error(`Authenticated Preview UAT failed for ${failed.role}: ${failed.reason}`)
   if (results.filter(row => row.status === 'PASS').length !== roles.length) {
