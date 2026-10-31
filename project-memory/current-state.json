@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "cb75eef94e0247890cfbc2acdbe398467311fecd",
+    "head": "0fd9bdb85b298df4aa303a425f5c94c46b3ceddc",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -29,8 +29,10 @@
   ],
   "inventory": {
     "routes": [
+      "app/(dashboard)/admin/page.tsx",
       "app/(dashboard)/analytics/page.tsx",
       "app/(dashboard)/audit/page.tsx",
+      "app/(dashboard)/brand-catalog/page.tsx",
       "app/(dashboard)/brands/page.tsx",
       "app/(dashboard)/calendar/page.tsx",
       "app/(dashboard)/campaigns/page.tsx",
@@ -59,10 +61,12 @@
       "app/api/account-requests/[id]/provision/route.ts",
       "app/api/account-requests/[id]/reject/route.ts",
       "app/api/account-requests/route.ts",
+      "app/api/admin/workspace/route.ts",
       "app/api/ai/chat/route.ts",
       "app/api/audit/team-capability/route.ts",
       "app/api/auth/callback/route.ts",
       "app/api/auth/providers/route.ts",
+      "app/api/brand-catalog/route.ts",
       "app/api/file-sources/ingest/route.ts",
       "app/api/internal/file-provider-diagnostics/route.ts",
       "app/api/media/jwks/route.ts",
@@ -75,6 +79,7 @@
       "app/api/operations/calendar-export/route.ts",
       "app/api/operations/collection/route.ts",
       "app/api/operations/registration-context/route.ts",
+      "app/api/rbac/account-overrides/route.ts",
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
       "app/api/role-defaults/route.ts",
@@ -100,14 +105,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 72,
-        "components": 175,
-        "lib": 261,
+        "app": 77,
+        "components": 178,
+        "lib": 265,
         "scripts": 29,
-        "supabase": 116,
-        "tests": 290
+        "supabase": 119,
+        "tests": 303
       },
-      "total": 943
+      "total": 971
     },
     "tests": {
       "files": [
@@ -124,11 +129,14 @@
         "tests/account-request-provisioning-composite.test.ts",
         "tests/ada-hls-player.test.ts",
         "tests/ada-hls-security.test.ts",
+        "tests/admin02/api-security.test.ts",
         "tests/analytics-actor-key.test.ts",
         "tests/auth-confirm-route.test.ts",
         "tests/auth-identity-bridge.test.tsx",
         "tests/auth-session-foundation.test.ts",
         "tests/bi01-catalog.test.ts",
+        "tests/brand01/api-security.test.ts",
+        "tests/brand01/postgres17.test.ts",
         "tests/bulk-staffing-approval.test.ts",
         "tests/calendar-all-time-completeness.test.ts",
         "tests/calendar-bulk-delete.test.ts",
@@ -212,10 +220,11 @@
         "tests/phase2-shared-reference-cache.test.ts",
         "tests/phase2b-live-stream-link.test.ts",
         "tests/platform-metric-dom-binding.test.tsx",
-        "tests/preview-auth-uat-contract.test.ts",
         "tests/preview-loading-performance.test.tsx",
+        "tests/production-auth-uat-contract.test.ts",
         "tests/production-shell-convergence.test.ts",
         "tests/profile-avatar-storage.test.ts",
+        "tests/rbac02-account-overrides.test.ts",
         "tests/rc12-provider-runtime-diagnostics.test.ts",
         "tests/rc12-report-file-provider.test.ts",
         "tests/rc13a-execution-source-routes.test.ts",
@@ -261,7 +270,9 @@
         "tests/rc19-attendance-photo-review.test.ts",
         "tests/rc19-auth-responsive-layout.test.tsx",
         "tests/rc19-command-toolbar.test.tsx",
+        "tests/rc19-filter01a-shifts.test.ts",
         "tests/rc19-my-payslip.test.ts",
+        "tests/rc19-production-uat-host-policy.test.ts",
         "tests/rc19-rbac01-security.test.ts",
         "tests/rc19-rbac01b-audit-slice.test.ts",
         "tests/rc19-report-apply-filters.test.ts",
@@ -282,8 +293,10 @@
         "tests/rc19-sto02-resource-validation.test.ts",
         "tests/rc19-storage-scoped-search.test.ts",
         "tests/rc19-storage-security-patch.test.ts",
+        "tests/rc19-swap-conflict-preflight.test.ts",
         "tests/rc19-swap-exchange-page.test.ts",
         "tests/rc19-swap-source-picker.test.ts",
+        "tests/rc19-swap01-workflow.test.ts",
         "tests/rc19-u12-settings-contract.test.ts",
         "tests/rc19-u13-navigation-account-menu.test.ts",
         "tests/rc19-u15-ux-quality.test.ts",
@@ -345,7 +358,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 233
+      "count": 241
     },
     "migrations": {
       "files": [
@@ -456,5 +469,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-10-30T00:15:43+07:00"
+  "synced_at": "2026-10-31T19:45:50+07:00"
 }

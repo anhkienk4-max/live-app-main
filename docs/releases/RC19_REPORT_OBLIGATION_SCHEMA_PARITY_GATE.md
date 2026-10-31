@@ -1,5 +1,7 @@
 # RC19 | Report Obligation RPC schema parity gate | 2026-10-23
 
+**Release-process update (2026-10-31):** The historical Preview proposal below is superseded by the Owner's Production-first decision. Final UAT is on `https://ops5729.top` after recovery and the single consolidated release; use `e2e/production-authenticated-uat.spec.ts` for its explicitly gated, read-only Reports/identity smoke. It is not full-module UAT.
+
 **Release verdict: HOLD for one consolidated Preview / Production.** This document does not mutate any database or provider folder.
 
 ## Post-migration addendum: 2026-10-23, verified after staging apply
@@ -23,7 +25,7 @@
 - Staging RPC presence, function/grants comparison, and transaction-scoped SQL Member/Leader/Admin tests: **PASS**.
 - Full signed-token, authenticated browser Reports workflow, Excel export fidelity, report detail, role isolation in the UI: **NOT RUN**.
 - Storage provider principal ACL and controlled Production route configuration: **HOLD**.
-- Only a single, explicitly approved consolidated Preview is permitted. The new authenticated read-only workflow source in `e2e/preview-authenticated-uat.spec.ts` prepares those checks but does not substitute for execution.
+- The authenticated read-only workflow source in `e2e/production-authenticated-uat.spec.ts` prepares a limited Production smoke but does not substitute for full-module execution.
 
 ---
 

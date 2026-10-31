@@ -41,6 +41,7 @@ on:
       - feat/rc19-sto02-resource-registry
       - integration/rc19-final-storage-prep
       - integration/rc19-final-rbac
+      - integration/rc19-master-calendar-20261030
   workflow_dispatch:
 
 permissions:

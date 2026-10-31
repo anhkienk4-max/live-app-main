@@ -801,6 +801,15 @@ export interface OcrImageRecognition {
   runtime_diagnostics?: OcrRuntimeDiagnostics
 }
 
+export type SwapConflictCheckStatus = 'VERIFIED_CLEAR' | 'CONFLICT' | 'UNKNOWN'
+export type SwapConflictCheckInput = {
+  sourceRegistrationId: string
+  mode: 'replacement' | 'exchange'
+  replacementStaffId?: string | null
+  targetShiftId?: string | null
+  counterpartRegistrationId?: string | null
+}
+
 export interface SwapRequest extends LifecycleMetadata {
   id: string
   // Legacy single-shift field kept for compatibility; mirrors source_shift_id for replacement/move

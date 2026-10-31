@@ -1,12 +1,17 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import * as XLSX from 'xlsx'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import {
+  classifyRc19ProductionUatHost,
+  RC19_PRODUCTION_ORIGIN,
+  RC19_PRODUCTION_SUPABASE_REF,
+} from '@/lib/uat/rc19ProductionUatHostPolicy'
 
 const roles = ['admin', 'leader', 'member'] as const
 const manualLoginTimeoutMs = 90_000
-const outputDir = resolve(process.cwd(), 'test-results/preview-auth-uat')
-const previewOrigin = new URL(process.env.PREVIEW_UAT_BASE_URL!).origin
+const outputDir = resolve(process.cwd(), 'test-results/production-auth-uat')
+const productionOrigin = RC19_PRODUCTION_ORIGIN
+const expectedDeploymentSha = process.env.PRODUCTION_UAT_EXPECTED_SHA!.toLowerCase()
 const safeAuthCodes = new Set([
   'invalid_credentials', 'email_not_confirmed', 'email_provider_disabled',
   'provider_disabled', 'over_request_rate_limit', 'user_banned',
@@ -32,7 +37,7 @@ function safeLocation(page: Page) {
     const reason = url.searchParams.get('reason')
     return { origin: url.origin, pathname: url.pathname, reason: reason && /^[a-z_]{1,48}$/.test(reason) ? reason : undefined }
   } catch {
-    return { origin: previewOrigin, pathname: '[unavailable]' }
+    return { origin: productionOrigin, pathname: '[unavailable]' }
   }
 }
 
@@ -95,10 +100,7 @@ async function verifyReportsReadOnly(page: Page, role: Role, trace: Array<{ at: 
   const chips = page.getByTestId('reports-applied-filter-chips')
   await expect(chips).toBeVisible({ timeout: 30_000 })
   await expect(chips).toContainText('Tìm kiếm')
-  await chips.getByRole('button', { name: /Bỏ lọc/ }).first().click()
-  await expect(chips).toHaveCount(0)
-  await expect(toolbar).toBeVisible()
-  trace.push({ at: new Date().toISOString(), action: 'reports_authenticated_filter_api_and_chips_pass', role })
+  trace.push({ at: new Date().toISOString(), action: 'reports_authenticated_zero_result_filter_pass', role })
 
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 })
@@ -108,84 +110,49 @@ async function verifyReportsReadOnly(page: Page, role: Role, trace: Array<{ at: 
   }
   trace.push({ at: new Date().toISOString(), action: 'reports_authenticated_responsive_pass', role })
   await page.setViewportSize({ width: 1440, height: 1024 })
-  await verifyReportsExportAndDetail(page, role, trace)
+
 }
 
-
-async function verifyReportsExportAndDetail(page: Page, role: Role, trace: Array<{ at: string; action: string; role?: Role; detail?: string }>) {
-  const source = await page.evaluate(async () => {
-    const ids: string[] = []
-    let expectedTotal: number | null = null
-    let ownerKey: string | null = null
-    let firstPage: Array<{ status?: string; metrics_confirmed?: boolean }> = []
-    for (let pageNumber = 1; pageNumber <= 5; pageNumber++) {
-      const query = new URLSearchParams({ entity: 'reports', page: String(pageNumber), pageSize: '50', filters: '{}', pendingPage: '1' })
-      const response = await fetch('/api/operations/collection?' + query, { credentials: 'same-origin', cache: 'no-store' })
-      if (!response.ok()) throw new Error('REPORTS_UAT_COLLECTION_HTTP_' + response.status)
-      const result = await response.json() as { items?: Array<{ id: string; status?: string; metrics_confirmed?: boolean }>; total?: number; page?: number; ownerKey?: string }
-      if (!Array.isArray(result.items) || typeof result.total !== 'number' || typeof result.ownerKey !== 'string' || result.page !== pageNumber) {
-        throw new Error('REPORTS_UAT_COLLECTION_ENVELOPE_INVALID')
-      }
-      if (expectedTotal === null) { expectedTotal = result.total; ownerKey = result.ownerKey; firstPage = result.items.slice(0, 10) }
-      if (expectedTotal !== result.total || ownerKey !== result.ownerKey) throw new Error('REPORTS_UAT_COLLECTION_CHANGED')
-      for (const item of result.items) {
-        if (!item.id || ids.includes(item.id)) throw new Error('REPORTS_UAT_COLLECTION_DUPLICATE')
-        ids.push(item.id)
-      }
-      if (ids.length >= result.total) break
+async function verifyProductionDiagnosticsAuthorization(page: Page, role: Role, trace: Array<{ at: string; action: string; role?: Role; detail?: string }>) {
+  const result = await page.evaluate(async (expectedSha) => {
+    const response = await fetch('/api/internal/file-provider-diagnostics', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+    if (response.status !== 200 && response.status !== 403) {
+      return { status: response.status, productionReady: false, deployedShaMatches: false, noStore: response.headers.get('cache-control') === 'no-store' }
     }
-    if (expectedTotal === null) throw new Error('REPORTS_UAT_COLLECTION_MISSING')
-    return { total: expectedTotal, ids, firstPage, truncated: ids.length !== expectedTotal }
-  })
-  const section = page.locator('section[aria-labelledby="created-reports-heading"]')
-  const cards = section.getByTestId('action-bar')
-  await expect(cards).toHaveCount(source.firstPage.length, { timeout: 30_000 })
-  trace.push({ at: new Date().toISOString(), action: 'reports_visible_card_count_verified', role })
+    const body = await response.json() as {
+      supabase?: {
+        public_project_ref?: string
+        server_project_ref?: string
+        production_uat_ready?: boolean
+        deployment_commit_sha?: string | null
+      }
+    }
+    return {
+      status: response.status,
+      productionReady: body.supabase?.production_uat_ready === true
+        && body.supabase.public_project_ref === 'egdjnpmoasarrttvhgds'
+        && body.supabase.server_project_ref === 'egdjnpmoasarrttvhgds',
+      deployedShaMatches: body.supabase?.deployment_commit_sha === expectedSha,
+      noStore: response.headers.get('cache-control') === 'no-store',
+    }
+  }, expectedDeploymentSha)
 
-  const exportMenu = page.getByTestId('command-toolbar').getByRole('button', { name: /Xuất báo cáo đã lọc|Export filtered reports/i })
-  if (role === 'member') {
-    await expect(exportMenu).toHaveCount(0)
-    await expect(section.getByTestId('action-export-report')).toHaveCount(0)
-    trace.push({ at: new Date().toISOString(), action: 'reports_member_bulk_export_hidden', role })
-  } else if (source.total === 0 || source.truncated) {
-    trace.push({ at: new Date().toISOString(), action: 'reports_export_coverage_incomplete', role, detail: source.truncated ? 'Dataset exceeds 250 rows' : 'No report rows' })
+  if (!result.noStore) throw new Error('PRODUCTION_DIAGNOSTICS_CACHE_POLICY_INVALID')
+  if (role === 'admin') {
+    if (result.status !== 200 || !result.productionReady) throw new Error('PRODUCTION_ADMIN_SUPABASE_TARGET_NOT_VERIFIED')
+    if (!result.deployedShaMatches) throw new Error('PRODUCTION_DEPLOYED_SHA_MISMATCH')
+    trace.push({ at: new Date().toISOString(), action: 'admin_production_target_and_deployed_sha_verified', role, detail: expectedDeploymentSha })
   } else {
-    await exportMenu.click()
-    const downloadPromise = page.waitForEvent('download', { timeout: 30_000 })
-    await page.getByRole('menuitem', { name: /Xuất báo cáo đã lọc|Export filtered reports/i }).click()
-    const download = await downloadPromise
-    if (!/^reports_filtered_\d{4}-\d{2}-\d{2}\.xlsx$/.test(download.suggestedFilename())) {
-      throw new Error('REPORTS_UAT_EXPORT_FILENAME_INVALID')
-    }
-    const bytes = await readFile(await download.path())
-    const workbook = XLSX.read(bytes, { type: 'buffer' })
-    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-    if (!worksheet) throw new Error('REPORTS_UAT_EXPORT_MISSING_SHEET')
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' })
-    const ids = rows.map(row => String(row['Report ID'] ?? ''))
-    if (ids.length !== source.total || new Set(ids).size !== source.total || ids.some(id => !source.ids.includes(id))) {
-      throw new Error('REPORTS_UAT_EXPORT_ROWS_MISMATCH')
-    }
-    trace.push({ at: new Date().toISOString(), action: 'reports_xlsx_export_verified', role })
+    if (result.status !== 403) throw new Error('PRODUCTION_DIAGNOSTICS_ADMIN_AUTHORIZATION_FAILED')
+    trace.push({ at: new Date().toISOString(), action: 'non_admin_provider_diagnostics_denied', role })
   }
-
-  const index = source.firstPage.findIndex(row => {
-    const status = row.status ?? (row.metrics_confirmed ? 'confirmed' : 'draft')
-    return status !== 'draft' && status !== 'reopened'
-  })
-  if (index < 0) {
-    trace.push({ at: new Date().toISOString(), action: 'reports_detail_candidate_unavailable', role })
-    return
-  }
-  await cards.nth(index).getByTestId('action-view-report').click()
-  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 })
-  if (role !== 'member') await expect(page.getByTestId('export-report-detail')).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-  trace.push({ at: new Date().toISOString(), action: 'reports_readonly_detail_verified', role })
 }
 
-test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ page }, testInfo) => {
+
+test('manual authenticated Production smoke for Admin, Leader, and Member', async ({ page }, testInfo) => {
   test.setTimeout(8 * 60_000)
   await mkdir(outputDir, { recursive: true })
 
@@ -193,11 +160,12 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
   const events: EventRow[] = []
   const trace: Array<{ at: string; action: string; role?: Role; detail?: string }> = []
   let blockedWrites = 0
+  let blockedExternalRequests = 0
 
   await page.addInitScript(() => {
-    const browserWindow = window as Window & { __previewAuthSubmitCount?: number }
-    browserWindow.__previewAuthSubmitCount = browserWindow.__previewAuthSubmitCount ?? 0
-    document.addEventListener('submit', () => { browserWindow.__previewAuthSubmitCount! += 1 }, true)
+    const browserWindow = window as Window & { __productionUatSubmitCount?: number }
+    browserWindow.__productionUatSubmitCount = browserWindow.__productionUatSubmitCount ?? 0
+    document.addEventListener('submit', () => { browserWindow.__productionUatSubmitCount! += 1 }, true)
   })
 
   page.on('console', message => {
@@ -223,22 +191,22 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
     const request = route.request()
     const url = new URL(request.url())
     const method = request.method().toUpperCase()
-    // Never allow a supposedly Staging-only UAT to contact another Supabase project.
-    const stagingHost = url.hostname === 'amagnzebmmuqiptmrjmc.supabase.co'
-    if (url.hostname.endsWith('.supabase.co') && !stagingHost) {
-      blockedWrites += 1
-      events.push({ kind: 'blocked_nonstaging_supabase', route: url.pathname, detail: 'Supabase host not authorized for this UAT' })
+    const forbiddenHost = classifyRc19ProductionUatHost(url)
+    if (forbiddenHost) {
+      blockedExternalRequests += 1
+      events.push({ kind: 'blocked_external_host', route: url.pathname, detail: forbiddenHost })
       await route.abort('blockedbyclient')
       return
     }
+    const productionSupabaseHost = url.hostname === `${RC19_PRODUCTION_SUPABASE_REF}.supabase.co`
     const grantType = url.searchParams.get('grant_type')
-    const authPath = stagingHost && (
+    const authPath = productionSupabaseHost && method === 'POST' && (
       (url.pathname === '/auth/v1/token' && (grantType === 'password' || grantType === 'refresh_token'))
       || url.pathname === '/auth/v1/logout'
     )
-    // Verified directly on Staging: get_report_revisions performs actor check and
+    // Read-only RPC contract: get_report_revisions performs actor check and
     // SELECT only. Its Supabase JS invocation is POST despite having no mutations.
-    const readOnlyReportRevisionRpc = stagingHost && method === 'POST'
+    const readOnlyReportRevisionRpc = productionSupabaseHost && method === 'POST'
       && url.pathname === '/rest/v1/rpc/get_report_revisions'
     if (['GET', 'HEAD', 'OPTIONS'].includes(method) || authPath || readOnlyReportRevisionRpc) {
       await route.continue()
@@ -258,29 +226,29 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
 
       await page.setViewportSize({ width: 1440, height: 1024 })
       await page.goto('/login', { waitUntil: 'domcontentloaded' })
-      let attempts = await page.evaluate(() => (window as Window & { __previewAuthSubmitCount?: number }).__previewAuthSubmitCount ?? 0)
+      let attempts = await page.evaluate(() => (window as Window & { __productionUatSubmitCount?: number }).__productionUatSubmitCount ?? 0)
       const deadline = Date.now() + manualLoginTimeoutMs
       let lastErrorCode: string | undefined
       let authenticated = false
       let identityRejected = false
-      console.log(`PREVIEW UAT: sign in as the authorized ${role.toUpperCase()} Staging account with Email/Password. Do not use Production credentials. Manual wait limit: 90 seconds.`)
+      console.log(`PRODUCTION UAT: sign in as the authorized ${role.toUpperCase()} account using the visible browser. Do not enter credentials in logs or chat. Manual wait limit: 90 seconds.`)
       trace.push({ at: new Date().toISOString(), action: 'manual_login_started', role })
 
       while (Date.now() < deadline && !page.isClosed()) {
         const remaining = deadline - Date.now()
         try {
           await page.waitForFunction(({ previousAttempts, expectedOrigin }) => {
-            const browserWindow = window as Window & { __previewAuthSubmitCount?: number }
-            return location.origin !== expectedOrigin || location.pathname !== '/login' || (browserWindow.__previewAuthSubmitCount ?? 0) > previousAttempts
-          }, { previousAttempts: attempts, expectedOrigin: previewOrigin }, { timeout: Math.min(20_000, remaining) })
+            const browserWindow = window as Window & { __productionUatSubmitCount?: number }
+            return location.origin !== expectedOrigin || location.pathname !== '/login' || (browserWindow.__productionUatSubmitCount ?? 0) > previousAttempts
+          }, { previousAttempts: attempts, expectedOrigin: productionOrigin }, { timeout: Math.min(20_000, remaining) })
         } catch {
           continue
         }
 
         if (page.isClosed()) break
         const currentURL = new URL(page.url())
-        if (currentURL.origin !== previewOrigin) {
-          results.push({ role, status: 'BLOCKED', reason: 'Authentication left the Preview origin; this workflow only permits Email/Password on the configured Preview.' })
+        if (currentURL.origin !== productionOrigin) {
+          results.push({ role, status: 'BLOCKED', reason: 'Authentication left the verified Production origin.' })
           await page.goto('/login', { waitUntil: 'domcontentloaded' })
           continue
         }
@@ -296,7 +264,7 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
           break
         }
 
-        attempts = await page.evaluate(() => (window as Window & { __previewAuthSubmitCount?: number }).__previewAuthSubmitCount ?? 0)
+        attempts = await page.evaluate(() => (window as Window & { __productionUatSubmitCount?: number }).__productionUatSubmitCount ?? 0)
         const error = page.getByTestId('login-error')
         await error.waitFor({ state: 'visible', timeout: Math.min(15_000, Math.max(1_000, deadline - Date.now())) }).catch(() => undefined)
         if (await error.isVisible().catch(() => false)) {
@@ -307,7 +275,7 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
           trace.push({ at: new Date().toISOString(), action: 'login_error_shown', role, detail: errorText })
           events.push({ kind: 'login_error', route: '/login', detail: errorText })
           trace.push({ at: new Date().toISOString(), action: 'login_error_screenshot', role, detail: screenshot ?? 'screenshot unavailable' })
-          console.log(`PREVIEW UAT: ${role.toUpperCase()} login attempt did not establish a session; the error is recorded in the redacted report. You may correct the form and retry before timeout.`)
+          console.log(`PRODUCTION UAT: ${role.toUpperCase()} login attempt did not establish a session; the error is recorded in the redacted report. You may correct the form and retry before timeout.`)
         }
       }
 
@@ -334,6 +302,7 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
       } else {
         trace.push({ at: new Date().toISOString(), action: 'role_verified', role })
         try {
+          await verifyProductionDiagnosticsAuthorization(page, role, trace)
           await verifyReportsReadOnly(page, role, trace)
           results.push({ role, status: 'PASS' })
         } catch (error) {
@@ -358,25 +327,37 @@ test('manual authenticated Preview UAT for Admin, Leader, and Member', async ({ 
   } finally {
     const passCount = results.filter(row => row.status === 'PASS').length
     const failCount = results.filter(row => row.status === 'FAIL').length
-    const overall: Status = failCount ? 'FAIL' : passCount === roles.length ? 'PASS' : 'BLOCKED'
+    const overall: Status = blockedExternalRequests || blockedWrites || failCount ? 'FAIL' : passCount === roles.length ? 'PASS' : 'BLOCKED'
     const redactedTrace = {
-      preview: safeLocation(page).origin,
+      target: 'production',
+      origin: safeLocation(page).origin,
+      expectedSha: expectedDeploymentSha,
+      coverage: 'AUTH_SESSION_ROLE_DIAGNOSTICS_AND_READ_ONLY_REPORT_FILTER_ONLY',
       generatedAt: new Date().toISOString(),
       events: trace,
       browserEvents: events,
       blockedBusinessWrites: blockedWrites,
+      blockedExternalRequests,
       credentialsPersisted: false,
       cookiesOrStorageStateWritten: false,
       rawPlaywrightTraceEnabled: false,
     }
     await writeFile(resolve(outputDir, 'redacted-trace.json'), JSON.stringify(redactedTrace, null, 2), 'utf8')
-    await writeFile(resolve(outputDir, 'report.json'), JSON.stringify({ overall, results, generatedAt: new Date().toISOString() }, null, 2), 'utf8')
+    await writeFile(resolve(outputDir, 'report.json'), JSON.stringify({
+      overall,
+      coverage: 'AUTH_SESSION_ROLE_DIAGNOSTICS_AND_READ_ONLY_REPORT_FILTER_ONLY',
+      results,
+      expectedSha: expectedDeploymentSha,
+      generatedAt: new Date().toISOString(),
+    }, null, 2), 'utf8')
     testInfo.annotations.push({ type: 'authenticated-uat', description: overall })
   }
 
+  if (blockedExternalRequests > 0) throw new Error('PRODUCTION_UAT_FORBIDDEN_EXTERNAL_HOST_REQUESTS')
+  if (blockedWrites > 0) throw new Error('PRODUCTION_UAT_BLOCKED_BUSINESS_WRITE_ATTEMPTS')
   const failed = results.find(row => row.status === 'FAIL')
-  if (failed) throw new Error(`Authenticated Preview UAT failed for ${failed.role}: ${failed.reason}`)
+  if (failed) throw new Error(`Authenticated Production UAT failed for ${failed.role}: ${failed.reason}`)
   if (results.filter(row => row.status === 'PASS').length !== roles.length) {
-    test.skip(true, 'UAT_BLOCKED: all three authorized role accounts did not complete manual Preview sign-in.')
+    test.skip(true, 'UAT_BLOCKED: all three authorized role accounts did not complete manual Production sign-in.')
   }
 })

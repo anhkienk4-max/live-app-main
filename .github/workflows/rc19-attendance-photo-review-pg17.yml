@@ -2,7 +2,7 @@ name: RC19 attendance photo review PostgreSQL 17 proposal gate
 
 on:
   push:
-    branches: [fix/rc19-p2-04-attendance-photo-review, integration/rc19-final-storage-prep, integration/rc19-final-rbac]
+    branches: [fix/rc19-p2-04-attendance-photo-review, integration/rc19-final-storage-prep, integration/rc19-final-rbac, integration/rc19-master-calendar-20261030]
     paths:
       - 'supabase/proposals/rc19-attendance-photo-review/20261029140000_rc19_p2_04_attendance_photo_review.sql'
       - 'supabase/proposals/rc19-attendance-photo-review/manifest.json'
@@ -11,6 +11,7 @@ on:
       - '.github/workflows/rc19-attendance-photo-review-pg17.yml'
       - 'vercel.json'
       - 'tests/rc16-environment-security.test.ts'
+      - '.github/workflows/rc19-rbac02-account-overrides-gate.yml'
   pull_request:
     branches: [integration/rc19-wave2-core]
     paths:
@@ -21,6 +22,7 @@ on:
       - '.github/workflows/rc19-attendance-photo-review-pg17.yml'
       - 'vercel.json'
       - 'tests/rc16-environment-security.test.ts'
+      - '.github/workflows/rc19-rbac02-account-overrides-gate.yml'
   workflow_dispatch:
 
 permissions:

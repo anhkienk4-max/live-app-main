@@ -1,0 +1,91 @@
+name: RC19 ADMIN-02 Unified Workspace Source Gate
+
+on:
+  pull_request:
+    branches:
+      - feat/rc19-brand-campaign-sku-hub
+      - integration/rc19-master-calendar-20261030
+  push:
+    branches:
+      - feat/rc19-admin02-unified-workspace
+      - integration/rc19-master-calendar-20261030
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin02-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres17:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: rc19_brand01_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - name: Checkout exact source with complete ancestry for Memory validation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify exact event SHA and required source refs
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$GITHUB_SHA"
+          git show-ref --verify refs/remotes/origin/main
+          git show-ref --verify refs/remotes/origin/feat/rc19-brand-campaign-sku-hub
+          printf 'Checked out exact source SHA: %s\n' "$actual" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate project memory
+        run: pnpm run memory:validate
+      - name: TypeScript
+        run: pnpm run type-check
+      - name: ESLint
+        run: pnpm run lint
+      - name: ADMIN-02 API authorization tests
+        run: node --conditions=react-server --import ./tests/typescript-alias-loader.mjs --test tests/admin02/api-security.test.ts
+      - name: PostgreSQL 17 Brand and STO-02 relationship/RLS regression
+        env:
+          DATABASE_URL: postgresql://postgres@localhost:5432/rc19_brand01_disposable
+          RC19_BRAND01_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/brand01/postgres17.test.ts
+      - name: Full repository Node regression (PG17 delegated to disposable service)
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: ADMIN-02 responsive and authorization UI regression
+        run: pnpm exec playwright test --config playwright.rc19-admin02.config.ts --reporter=line
+      - name: Upload before/after screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rc19-admin02-responsive-before-after
+          path: artifacts/admin02
+          if-no-files-found: warn
+      - name: Guarded build without Production credentials
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+          FEATURE_ATTENDANCE_IMPORT: 'false'
+          FEATURE_AGENCY: 'false'
+        run: pnpm run build

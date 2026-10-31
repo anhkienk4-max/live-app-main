@@ -171,6 +171,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     : { all: 'All time', week: 'Current week', month: 'Current month', studios: 'All studios', unassigned: 'Unassigned' }
   const listPagination = useListPagination('calendar_list', 10)
   const { params, navigate: listNavigate } = listPagination
+  const mobileFullCalendar = params.get('calendar_mobile_mode') === 'full'
   const rawView = params.get('calendar_view')
   const view = rawView === 'month' || rawView === 'week' || rawView === 'day' || rawView === 'list' ? rawView
     : hasPermission(currentUser, 'shifts.approve_registration') ? 'week' : 'month'
@@ -658,7 +659,16 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 {t('list')}
               </Button>
             </div>
-
+            {(view === 'month' || view === 'week') && (
+              <div className="grid w-full grid-cols-2 rounded-md border bg-muted/20 p-1 sm:hidden" role="group" aria-label={language === 'vi' ? 'Kiểu hiển thị lịch trên điện thoại' : 'Mobile calendar layout'} data-testid="calendar-mobile-layout-toggle">
+                <Button type="button" size="sm" variant={!mobileFullCalendar ? 'secondary' : 'ghost'} aria-pressed={!mobileFullCalendar} data-testid="calendar-mobile-compact" onClick={() => listNavigate({ calendar_mobile_mode: null })} className="min-w-0 text-xs">
+                  {language === 'vi' ? 'Lịch gọn' : 'Compact'}
+                </Button>
+                <Button type="button" size="sm" variant={mobileFullCalendar ? 'secondary' : 'ghost'} aria-pressed={mobileFullCalendar} data-testid="calendar-mobile-full" onClick={() => listNavigate({ calendar_mobile_mode: 'full' })} className="min-w-0 text-xs">
+                  {language === 'vi' ? 'Lịch đầy đủ' : 'Full calendar'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -764,12 +774,12 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
          {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">{language === 'vi' ? `Đang tải ca trong kỳ: ${shifts.length}/${listTotal}. Dữ liệu chưa đầy đủ.` : `Loading shifts in range: ${shifts.length}/${listTotal}. Data is incomplete.`}</div>}
         {loadedKey === requestKey && <>
         {view === 'month' && <>
-          <div className="hidden max-w-full overflow-x-auto lg:block" role="region" aria-label={t('month')} tabIndex={0}><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
-          <section className="min-w-0 lg:hidden" data-testid="calendar-compact-month-view">
+          <div className={mobileFullCalendar ? "max-w-full overflow-x-auto sm:hidden lg:block" : "hidden max-w-full overflow-x-auto lg:block"} role="region" aria-label={t('month')} tabIndex={0} data-testid="calendar-full-month-view"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
+          <section className={mobileFullCalendar ? "hidden min-w-0 sm:block lg:hidden" : "min-w-0 lg:hidden"} data-testid="calendar-compact-month-view">
             <MonthView compact complete={windowComplete} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onDayClick={setSelectedDay} />
           </section>
         </>}
-        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
+        {view === 'week' && <div className="w-full"><WeekView fullOnMobile={mobileFullCalendar} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
         {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} onRegister={registerForShift} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />}
         {view === 'list' && (
           <ListView

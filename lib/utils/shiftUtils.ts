@@ -139,6 +139,19 @@ export function resolveShiftDateTime(
   }
 }
 
+export function hasShiftTimeConflict(
+  shifts: readonly Pick<Shift, 'id' | 'status' | 'date' | 'start_time' | 'end_time' | 'timezone' | 'deleted_at' | 'archived_at'>[],
+  startAt: Date,
+  endAt: Date,
+  excludedShiftIds: readonly string[] = [],
+): boolean {
+  return shifts.some(shift => {
+    if (excludedShiftIds.includes(shift.id) || shift.status === 'cancelled' || shift.deleted_at || shift.archived_at) return false
+    const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+    return Boolean(other?.valid && other.startAt < endAt && other.endAt > startAt)
+  })
+}
+
 export function shiftDateTimeFields(date: string, startTime: string, endTime: string, timezone = DEFAULT_BUSINESS_TIMEZONE) {
   const resolved = resolveShiftDateTime(date, startTime, endTime, timezone)
   if (!resolved?.valid) return null
