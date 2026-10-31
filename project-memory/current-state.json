@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "4935f8118c111f76e8a8c6d554dda27558a2f3c2",
+    "head": "60891a5a360c83293856e7d11fc512453387f7c4",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -110,13 +110,13 @@
     "source_files": {
       "roots": {
         "app": 85,
-        "components": 183,
+        "components": 184,
         "lib": 267,
         "scripts": 34,
         "supabase": 119,
-        "tests": 304
+        "tests": 307
       },
-      "total": 992
+      "total": 996
     },
     "tests": {
       "files": [
@@ -139,6 +139,9 @@
         "tests/auth-identity-bridge.test.tsx",
         "tests/auth-session-foundation.test.ts",
         "tests/bi01-catalog.test.ts",
+        "tests/brand-catalog-schema-pending-ui.test.ts",
+        "tests/brand-profile-import.test.ts",
+        "tests/brand-profile-page.test.ts",
         "tests/brand01/api-security.test.ts",
         "tests/brand01/postgres17.test.ts",
         "tests/bulk-staffing-approval.test.ts",
@@ -362,7 +365,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 241
+      "count": 244
     },
     "migrations": {
       "files": [
@@ -473,5 +476,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-01T01:25:58+07:00"
+  "synced_at": "2026-11-01T03:13:54+07:00"
 }
