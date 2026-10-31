@@ -1,6 +1,5 @@
-import React from 'react'
-import { ContentSkeleton } from '@/components/ui/content-skeleton'
+import { AdaLoadingScreen } from '@/components/branding/AdaLoadingScreen'
 
 export default function DashboardLoading() {
-  return <ContentSkeleton />
+  return <AdaLoadingScreen embedded />
 }

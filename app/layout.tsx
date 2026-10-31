@@ -1,6 +1,7 @@
 ﻿import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
+import { AdaNavigationTransition } from "@/components/branding/AdaNavigationTransition";
 import { LanguageProvider } from "@/lib/i18n";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 
@@ -29,7 +30,9 @@ export default function RootLayout({
       <body className="min-h-full bg-background font-sans antialiased">
         <QueryProvider>
         <LanguageProvider defaultLanguage="vi">
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            <AdaNavigationTransition>{children}</AdaNavigationTransition>
+          </ToastProvider>
         </LanguageProvider>
       </QueryProvider>
       </body>
