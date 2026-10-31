@@ -19,6 +19,7 @@ import {
 } from '@/lib/auth/session'
 import { startGoogleOAuth } from '@/lib/auth/googleOAuth'
 import { createClient } from '@/lib/supabase/client'
+import { PwaInstallControl } from '@/components/pwa/PwaInstallControl'
 
 const passwordFailureMessages: Record<PasswordSessionFailure, TranslationKey> = {
   INVALID_CREDENTIALS: 'invalidEmailOrPassword',
@@ -152,8 +153,8 @@ function LoginPageContent() {
   }
 
   return (
-    <AuthLayout title={t('signIn')} subtitle={t('loginSubtitle')}>
-      <div className="min-w-0 space-y-6">
+    <AuthLayout variant="login" title={language === 'vi' ? 'Chào mừng trở lại!' : 'Welcome back!'} subtitle={t('loginSubtitle')}>
+      <div className="min-w-0 space-y-3.5">
         {mockMode && (
           <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-800">
             {t('demoModeHelp')}
@@ -170,7 +171,7 @@ function LoginPageContent() {
           </div>
         )}
 
-        <form onSubmit={handleEmailLogin} className="space-y-5" aria-busy={loading}>
+        <form onSubmit={handleEmailLogin} className="space-y-3.5" aria-busy={loading}>
           <div className="space-y-2">
             <label htmlFor="email" className="block text-sm font-semibold text-slate-800">{t('email')}</label>
             <Input
@@ -225,7 +226,7 @@ function LoginPageContent() {
         {(mockMode || googleEnabled) && (
           <div className="space-y-4">
             <Separator className="w-full" />
-            <Button type="button" onClick={handleGoogleLogin} disabled={loading} variant="outline" className="h-12 w-full rounded-lg border-slate-300 text-sm font-semibold hover:bg-slate-50" data-testid="google-login-btn">
+            <Button type="button" onClick={handleGoogleLogin} disabled={loading} variant="outline" className="ada-google-login h-12 w-full rounded-lg border-slate-300 text-sm font-semibold hover:bg-slate-50" data-testid="google-login-btn">
               <Globe className="mr-2 h-5 w-5" aria-hidden="true" />
               {t('continueWithGoogle')}
             </Button>
@@ -245,6 +246,7 @@ function LoginPageContent() {
             </p>
           )}
         </div>
+        <PwaInstallControl compact />
         <div className="flex justify-center">
           <Button
             type="button"

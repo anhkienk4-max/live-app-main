@@ -151,7 +151,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   if (!isSupervisor) {
     const myStaffId = currentUser!.id
     return (
-      <PageShell archetype="command" className="space-y-6 p-4 md:p-6">
+      <PageShell archetype="command" className="ada-workforce-page min-w-0 space-y-4 p-4 md:space-y-6 md:p-6">
         <div className="flex flex-col gap-2 border-b border-slate-200 pb-4">
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white">
@@ -181,7 +181,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
 
   // Admin & Leader workspace with tabs
   return (
-    <PageShell archetype="command" className="space-y-6 p-4 md:p-6">
+    <PageShell archetype="command" className="ada-workforce-page min-w-0 space-y-4 p-4 md:space-y-6 md:p-6">
       {/* Page Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4">
         <div>
@@ -200,8 +200,8 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
 
         {/* Global period and role controls for Team/Leaderboard */}
         {activeTab !== 'individual' && (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="w-36">
+          <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap md:items-center">
+            <div className="min-w-0 md:w-36">
               <Select value={role} onValueChange={(val: WorkforceRole) => updateRole(val)}>
                 <SelectTrigger aria-label={en ? 'Operational role' : 'Vai trò vận hành'} className="h-8 text-xs bg-white">
                   <SelectValue />
@@ -214,7 +214,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
               </Select>
             </div>
 
-            <div className="w-36">
+            <div className="min-w-0 md:w-36">
               <Select value={period.length === 4 ? 'year' : 'month'} onValueChange={(mode) =>
                 updatePeriod(mode === 'year' ? period.slice(0, 4) : `${period.slice(0, 4)}-01`)
               }>
@@ -228,7 +228,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
               </Select>
             </div>
 
-            <div className="w-36">
+            <div className="min-w-0 md:w-36">
               <Input
                 type={period.length === 4 ? 'number' : 'month'}
                 aria-label={en ? 'Performance period' : 'Kỳ hiệu suất'}
@@ -271,24 +271,24 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg sm:grid-cols-5">
-          <TabsTrigger value="team" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+        <TabsList className="flex group-data-[orientation=horizontal]/tabs:h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 [scrollbar-width:thin] md:grid md:grid-cols-5">
+          <TabsTrigger value="team" className="min-h-11 min-w-[98px] shrink-0 whitespace-normal px-2 py-1.5 text-xs font-medium md:min-w-0 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Users className="h-3.5 w-3.5 mr-1.5" />
             {en ? 'Overview' : 'Tổng quan'}
           </TabsTrigger>
-          <TabsTrigger value="table" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="table" className="min-h-11 min-w-[98px] shrink-0 whitespace-normal px-2 py-1.5 text-xs font-medium md:min-w-0 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Table2 className="h-3.5 w-3.5 mr-1.5" />
             {en ? 'Table' : 'Bảng'}
           </TabsTrigger>
-          <TabsTrigger value="cards" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="cards" className="min-h-11 min-w-[98px] shrink-0 whitespace-normal px-2 py-1.5 text-xs font-medium md:min-w-0 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
             {en ? 'Cards' : 'Thẻ'}
           </TabsTrigger>
-          <TabsTrigger value="individual" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="individual" className="min-h-11 min-w-[98px] shrink-0 whitespace-normal px-2 py-1.5 text-xs font-medium md:min-w-0 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <User className="h-3.5 w-3.5 mr-1.5" />
             {en ? 'Individual' : 'Cá nhân'}
           </TabsTrigger>
-          <TabsTrigger value="leaderboard" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="leaderboard" className="min-h-11 min-w-[98px] shrink-0 whitespace-normal px-2 py-1.5 text-xs font-medium md:min-w-0 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Trophy className="h-3.5 w-3.5 mr-1.5" />
             {en ? 'Ranking' : 'Xếp hạng'}
           </TabsTrigger>

@@ -44,7 +44,7 @@ test('U01 responsive layout makes auth form readable at phone, tablet and deskto
 
 test('U01 login keeps actual credentials, session recovery and an accessible form-sized suspense fallback', () => {
   const login = readFileSync(new URL('../app/login/page.tsx', import.meta.url), 'utf8')
-  assert.match(login, /<form onSubmit={handleEmailLogin} className="space-y-5" aria-busy={loading}>/)
+  assert.match(login, /<form onSubmit={handleEmailLogin} className="space-y-3\.5" aria-busy={loading}>/)
   assert.match(login, /data-testid="email-input"/)
   assert.match(login, /data-testid="password-input"/)
   assert.match(login, /data-testid="email-login-btn"/)

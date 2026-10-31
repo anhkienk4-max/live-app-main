@@ -5,7 +5,7 @@ import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
 import { reportService, shiftRegistrationService, shiftService, swapRequestService, currentUserService } from '@/lib/services/dataService'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { Brand, Campaign, Platform, Report, Shift, ShiftRegistration, SwapRequest, User } from '@/lib/types/database.types'
-import { useTranslation } from '@/lib/i18n'
+import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/services/operationalReferences'
 import { readTransientData } from '@/lib/services/transientDataCache'
@@ -411,7 +411,9 @@ export function DashboardWorkspace({
     showFilters,
     setShowFilters,
     currentUser,
-    t,
+    // Dynamic labels in operational-attention are typed as strings, but are
+    // canonical translation keys. Keep that boundary explicit here.
+    t: (key, variables) => t(key as TranslationKey, variables),
     setPreset,
     setSelectedShift,
     widgetErrors: data.widgetErrors,
@@ -439,7 +441,7 @@ type CommonProps = {
   showFilters: boolean
   setShowFilters: React.Dispatch<React.SetStateAction<boolean>>
   currentUser: User
-  t: (key: string) => string
+  t: (key: string, variables?: Record<string, string | number>) => string
   setPreset: (preset: Preset) => void
   setSelectedShift: (shift: Shift | null) => void
   widgetErrors?: WidgetErrors
@@ -464,7 +466,7 @@ const shiftStatusLabel = (status: string): string => {
 }
 
 function AdminDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, users, registrations, filters, widgetErrors, onRetryWidget } = props
+  const { shifts, reports, brands, platforms, campaigns, users, registrations, filters, widgetErrors, onRetryWidget } = props
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end)
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
 
@@ -486,12 +488,21 @@ function AdminDashboard(props: CommonProps) {
   const dqAttentionForView = rawAttention.map(a => ({
     key: a.key,
     severity: (a.severity === 'critical' ? 'critical' : a.severity === 'warning' ? 'high' : a.severity === 'attention' ? 'medium' : 'low') as 'critical' | 'high' | 'medium' | 'low',
-    title: a.label,
-    context: a.description ?? a.label,
-    time: a.count != null ? `${a.count} mục` : '',
-    action: 'Xem chi tiết',
+    title: props.t(a.label),
+    context: props.t(a.description ?? a.label, a.count == null ? undefined : { count: a.count }),
+    time: a.count != null ? props.t('dqItemCount', { count: a.count }) : '',
+    action: props.t('viewDetails'),
     href: a.href,
   }))
+
+  const applicationOverview = [
+    { key: 'shifts', label: props.t('shiftsInRange'), value: filteredShifts.length, href: '/calendar' },
+    { key: 'confirmed-reports', label: props.t('confirmedReportsInRange'), value: reports === null ? null : scopedReports.filter(report => report.status === 'confirmed').length, href: '/reports' },
+    { key: 'brands', label: props.t('activeBrands'), value: brands.filter(brand => brand.status === 'active').length, href: '/brands' },
+    { key: 'campaigns', label: props.t('activeCampaigns'), value: campaigns.filter(campaign => campaign.status === 'active').length, href: '/campaigns' },
+    { key: 'platforms', label: props.t('activePlatforms'), value: platforms.filter(platform => platform.status === 'active').length, href: '/platforms' },
+    { key: 'staff', label: props.t('activeStaffAccounts'), value: users.filter(user => user.status === 'active').length, href: '/staff' },
+  ]
 
   const todaysOperations = todaysShifts.map(s => ({
     brand: nameFor(brands, s.brand_id),
@@ -531,6 +542,7 @@ function AdminDashboard(props: CommonProps) {
         </div>
       )}
       <AdminDashboardView
+        userName={props.currentUser.full_name}
         liveCount={liveCount}
         todaysShiftsCount={todaysShifts.length}
         missingStaffCount={null}
@@ -540,6 +552,8 @@ function AdminDashboard(props: CommonProps) {
         todaysOperations={todaysOperations}
         performance={null}
         activityLog={null}
+        t={props.t}
+        applicationOverview={applicationOverview}
       />
     </div>
   )
@@ -677,6 +691,7 @@ function LeaderDashboard(props: CommonProps) {
         </div>
       )}
       <LeaderDashboardView
+        userName={props.currentUser.full_name}
         liveCount={liveCount}
         todaysShiftsCount={todaysShifts.length}
         missingStaffCount={null}
@@ -770,6 +785,7 @@ function MemberDashboard(props: CommonProps) {
         </div>
       )}
       <MemberDashboardView
+        userName={currentUser.full_name}
         onOpenNextShift={nextUp ? () => props.setSelectedShift(nextUp) : undefined}
         nextShift={nextShift}
         mySchedule={mySchedule}

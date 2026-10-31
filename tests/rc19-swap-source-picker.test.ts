@@ -59,6 +59,14 @@ test('source picker pages only staffed registrations for current actor and filte
   assert.match(modal, /If a shift only has a legacy name assignment without an official registration/)
 })
 
+test('empty source state explains why recipient selection is conditional and preserves assignment rules', () => {
+  const modal = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
+  assert.match(modal, /This step appears after you select a shift in step 1/)
+  assert.match(modal, /Approved registration or an Admin\/Leader assignment are eligible/)
+  assert.match(modal, /sourceRegistration && selectedSource/)
+  assert.match(modal, /disabled=\{busy \|\| !sourceRegistration \|\| !validCandidate/)
+})
+
 test('PASS recipient is blocked when its conflict check is incomplete or fails', () => {
   const modal = readFileSync(fileURLToPath(new URL('../components/features/swaps/SwapRequestFormModal.tsx', import.meta.url)), 'utf8')
   assert.match(modal, /replacementCheckStatus === 'VERIFIED_CLEAR'/)

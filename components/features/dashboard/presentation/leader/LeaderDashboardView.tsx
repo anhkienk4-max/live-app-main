@@ -1,4 +1,6 @@
 ﻿import React from 'react'
+import { OpsMobileHome } from '../OpsMobileHome'
+import { useTranslation } from '@/lib/i18n'
 import {
   Radio, Users, Calendar, FileText, ArrowRight, CheckCircle,
   AlertTriangle, Clock, ArrowLeftRight, FolderCheck, ArrowUp,
@@ -62,6 +64,7 @@ export interface LeaderDashboardViewModel {
   upcomingLive: UpcomingLiveItem | null
   /** null = source unavailable; [] = loaded, verified empty */
   activityLog: ActivityEntry[] | null
+  userName?: string
 }
 
 export interface ActivityEntry {
@@ -145,68 +148,82 @@ function DecisionRow({ type, title, subtitle, time, action, iconBg }: DecisionRo
 
 export function LeaderDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
-  decisions, todaysSchedule, staffingHealth, upcomingLive, activityLog,
+  decisions, todaysSchedule, staffingHealth, upcomingLive, activityLog, userName,
 }: LeaderDashboardViewModel) {
+  const { t, translate } = useTranslation()
+  const mobileAttention = decisions?.map(item => ({
+    key: item.key, title: item.title, description: item.subtitle,
+    href: item.type === 'registration' ? '/staffing?tab=registration' : item.type === 'swap' ? '/swaps' : item.type === 'report' ? '/reports' : '/data-quality',
+    level: item.type === 'dq' ? 'critical' as const : 'warning' as const,
+  })) ?? null
+  const nextMobileShift = todaysSchedule[0]
   return (
-    <main className="p-4 sm:p-8 min-w-0 flex flex-col gap-6 overflow-y-auto">
+    <>
+    <OpsMobileHome
+      role="leader" userName={userName} shiftCount={todaysShiftsCount}
+      liveCount={todaysSchedule.filter(item => item.statusColor === 'red').length}
+      pendingCount={pendingCount} attention={mobileAttention}
+      shift={nextMobileShift ? { key: nextMobileShift.brand + nextMobileShift.time, brand: nextMobileShift.brand, platform: nextMobileShift.platform, time: nextMobileShift.time, status: nextMobileShift.status, onView: nextMobileShift.onView } : null}
+    />
+    <main className="hidden min-w-0 flex-col gap-6 overflow-y-auto p-4 md:flex sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
         <div className="flex flex-col gap-1">
-          <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">Leader Dashboard</h1>
-          <p className="text-[14px] text-slate-500 font-medium">Team schedule, staffing and action queue</p>
+          <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">{t('leaderDashboard')}</h1>
+          <p className="text-[14px] text-slate-500 font-medium">{t('leaderDashboardSubtitle')}</p>
         </div>
         <a href="#leader-decisions" className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-[13px] font-bold text-slate-700 rounded-lg shadow-sm transition-colors">
           <FolderCheck className="w-4 h-4" />
-          Review Attention
+          {t('reviewAttention')}
         </a>
       </div>
 
       {/* ROW 1: KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
-        <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title="TEAM SHIFTS" value={todaysShiftsCount.toString()} subtitle="Today" />
-        <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title="LIVE" value={liveCount.toString()} subtitle="Active now" />
-        <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title="MISSING STAFF" value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle="Resolve today" />
-        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title="PENDING" value={pendingCount !== null ? pendingCount.toString() : '—'} subtitle="Need review" />
+        <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title={t('teamShifts')} value={todaysShiftsCount.toString()} subtitle={t('todayLabel')} />
+        <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title={t('liveNow')} value={liveCount.toString()} subtitle={t('activeNow')} />
+        <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title={t('missingStaff')} value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle={t('resolveToday')} />
+        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title={t('pending')} value={pendingCount !== null ? pendingCount.toString() : '—'} subtitle={t('needsReview')} />
       </div>
 
       {/* ROW 2: SCHEDULE (7/12) + DECISIONS (5/12) */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
         <div className="min-w-0 xl:col-span-7 flex flex-col">
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-[16px] font-bold text-slate-900">{"Today's Team Schedule"}</h2>
+            <h2 className="text-[16px] font-bold text-slate-900">{t('todaysTeamSchedule')}</h2>
             <a href="/calendar" className="text-[13px] font-semibold text-blue-600 hover:underline flex min-h-11 items-center gap-1">
-              Xem tất cả <ArrowRight className="w-3.5 h-3.5" />
+              {t('viewAll')} <ArrowRight className="w-3.5 h-3.5" />
             </a>
           </div>
-          <div role="region" aria-label="Lịch đội ngũ, cuộn ngang / Scroll horizontally" tabIndex={0} className="bg-white rounded-[12px] border border-slate-200 shadow-sm min-w-0 flex flex-col flex-1 overflow-x-auto">
+          <div role="region" aria-label={t('teamScheduleLabel')} tabIndex={0} className="bg-white rounded-[12px] border border-slate-200 shadow-sm min-w-0 flex flex-col flex-1 overflow-x-auto">
             {todaysSchedule.length > 0 ? (
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/80">
-                    <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Giờ</th>
-                    <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Brand</th>
-                    <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Platform</th>
-              <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
-                    <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Nhân sự</th>
+                    <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">{t('time')}</th>
+                    <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">{t('brand')}</th>
+                    <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">{t('platform')}</th>
+                    <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">{t('status')}</th>
+                    <th className="px-5 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">{t('team')}</th>
                     <th className="px-5 py-2.5"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {todaysSchedule.slice(0, 6).map((s, i) => (
-                    <ScheduleRow key={i} time={s.time} brand={s.brand} platform={s.platform} status={s.status} statusColor={s.statusColor} staffing={s.staffing} onView={s.onView} />
+                    <ScheduleRow key={i} time={s.time} brand={s.brand} platform={s.platform} status={translate(s.status)} statusColor={s.statusColor} staffing={s.staffing ? translate(s.staffing) : null} onView={s.onView} />
                   ))}
                 </tbody>
               </table>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-sm text-slate-500">Không có ca nào hôm nay</div>
+              <div className="flex-1 flex items-center justify-center text-sm text-slate-500">{t('noTodayOperations')}</div>
             )}
           </div>
         </div>
 
         <div id="leader-decisions" tabIndex={-1} className="min-w-0 xl:col-span-5 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Decision Queue</h2>
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('decisionQueue')}</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 p-2">
             {decisions === null ? (
-              <div className="flex-1 flex items-center justify-center text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
+              <div className="flex-1 flex items-center justify-center text-sm text-slate-500">{t('noData')}</div>
             ) : decisions.length > 0 ? (
               <div className="flex flex-col divide-y divide-slate-50 flex-1">
                 {decisions.slice(0, 6).map((d) => (
@@ -214,7 +231,7 @@ export function LeaderDashboardView({
                 ))}
               </div>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-sm text-slate-500">Không có quyết định chờ xử lý</div>
+              <div className="flex-1 flex items-center justify-center text-sm text-slate-500">{t('noPendingDecisions')}</div>
             )}
           </div>
         </div>
@@ -223,13 +240,13 @@ export function LeaderDashboardView({
       {/* ROW 3: UPCOMING LIVE + STAFFING HEALTH */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
         <div className="min-w-0 xl:col-span-7 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Upcoming Live</h2>
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('upcomingLiveTitle')}</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex-1">
             {upcomingLive ? (
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-3">
                   <span className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 rounded border border-indigo-100">
-                    {upcomingLive.campaign ?? 'Livestream'}
+                    {upcomingLive.campaign ?? t('livestream')}
                   </span>
                 </div>
                 <div>
@@ -240,7 +257,7 @@ export function LeaderDashboardView({
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-3 mt-2">
-                  {[{ role: 'Host', name: upcomingLive.host }, { role: 'Support', name: upcomingLive.support }, { role: 'Technical', name: upcomingLive.technical }].map(({ role, name }) => (
+                  {[{ role: t('host'), name: upcomingLive.host }, { role: t('support'), name: upcomingLive.support }, { role: t('technical'), name: upcomingLive.technical }].map(({ role, name }) => (
                     <div key={role} className="flex flex-col p-3 bg-slate-50 rounded-lg border border-slate-100">
                       <span className="text-[11px] font-bold text-slate-500 uppercase">{role}</span>
                       <span className="text-[14px] font-bold text-slate-900 mt-0.5">{name || '—'}</span>
@@ -249,13 +266,13 @@ export function LeaderDashboardView({
                 </div>
               </div>
             ) : (
-              <div className="h-full flex items-center justify-center text-sm text-slate-500">Không có ca sắp tới</div>
+              <div className="h-full flex items-center justify-center text-sm text-slate-500">{t('noUpcomingShifts')}</div>
             )}
           </div>
         </div>
 
         <div className="min-w-0 xl:col-span-5 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Staffing Health</h2>
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('staffingHealthTitle')}</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex-1">
             {staffingHealth ? (
               <div className="flex flex-col gap-3 h-full justify-center">
@@ -269,11 +286,11 @@ export function LeaderDashboardView({
                 <div className="flex items-center gap-2">
                   <ArrowUp className="w-4 h-4 text-slate-500" />
                   <span className="text-[13px] font-bold text-slate-900">{staffingHealth.pct}%</span>
-                  <span className="text-[13px] text-slate-500">đã được phân công</span>
+                  <span className="text-[13px] text-slate-500">{t('staffingAssigned')}</span>
                 </div>
               </div>
             ) : (
-              <div className="h-full flex items-center justify-center text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
+              <div className="h-full flex items-center justify-center text-sm text-slate-500">{t('noData')}</div>
             )}
           </div>
         </div>
@@ -281,10 +298,10 @@ export function LeaderDashboardView({
 
       {/* ROW 4: ACTIVITY LOG */}
       <div className="flex flex-col pb-6">
-        <h2 className="text-[16px] font-bold text-slate-900 mb-3">Activity Log</h2>
+        <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('activityLogTitle')}</h2>
         <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-2">
           {activityLog === null ? (
-            <div className="text-center py-8 text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
+            <div className="text-center py-8 text-sm text-slate-500">{t('noData')}</div>
           ) : activityLog.length > 0 ? (
             <div className="flex flex-col divide-y divide-slate-50">
               {activityLog.slice(0, 6).map((entry, i) => (
@@ -303,11 +320,12 @@ export function LeaderDashboardView({
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-sm text-slate-500">Không có hoạt động gần đây</div>
+            <div className="text-center py-8 text-sm text-slate-500">{t('noRecentActivity')}</div>
           )}
         </div>
       </div>
-    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
+    <nav aria-label={t('viewAll')} className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">{t('dashboardAllShifts')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">{t('allReports')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">{t('allNotifications')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">{t('allDataQuality')}</a></nav>
     </main>
+    </>
   )
 }

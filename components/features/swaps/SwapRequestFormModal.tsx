@@ -525,6 +525,19 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
           </fieldset>
 
           {/* STEP 2: CHỌN NGƯỜI NHẬN HOẶC CA ĐỔI CHÉO */}
+          {!(sourceRegistration && selectedSource) && (
+            <fieldset disabled className="space-y-2 rounded-lg border border-dashed p-3.5 text-muted-foreground">
+              <legend className="px-1 text-sm font-semibold text-muted-foreground">
+                2. {mode === 'replacement' ? copy('Chọn người nhận PASS', 'Choose a pass recipient') : copy('Chọn ca và người đổi chéo', 'Choose an exchange shift and counterpart')}
+              </legend>
+              <p className="text-xs leading-relaxed">
+                {copy(
+                  'Bước này sẽ hiện sau khi bạn chọn một ca ở bước 1. Danh sách chỉ gồm ca sắp tới của bạn có đăng ký Đã duyệt hoặc được Admin/Leader phân công; nếu chưa có ca phù hợp, hãy kiểm tra bộ lọc hoặc nhờ quản lý hoàn tất phân công.',
+                  'This step appears after you select a shift in step 1. Only your upcoming shifts with an Approved registration or an Admin/Leader assignment are eligible. If none appear, check the filters or ask a manager to complete the assignment.',
+                )}
+              </p>
+            </fieldset>
+          )}
           {sourceRegistration && selectedSource && (
             <fieldset disabled={busy} className="space-y-3 rounded-lg border p-3.5 bg-card">
               <legend className="px-1 text-sm font-semibold flex items-center gap-1.5 text-primary">

@@ -1,8 +1,10 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useTranslation } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -37,6 +39,7 @@ function productHasResourceType(catalog: Catalog | null, productId: string, kind
 export function BrandCatalogWorkspace() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
   const isAdmin = currentUser?.system_permission === 'admin' || currentUser?.role === 'admin'
   const [catalog, setCatalog] = React.useState<Catalog | null>(null)
@@ -90,7 +93,24 @@ export function BrandCatalogWorkspace() {
     finally { setBusy(false) }
   }
 
-  if (error && !catalog) return <PageLoadError error={error} onRetry={() => void load()} />
+  if (error && !catalog) {
+    if (error === 'BRAND01_SCHEMA_NOT_INSTALLED') {
+      return <main data-testid="brand-catalog-schema-pending" role="status" className="mx-auto max-w-3xl p-4 md:p-8">
+        <section className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-5 md:p-7">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Brand / Campaign</p>
+            <h1 className="mt-2 text-xl font-semibold text-slate-950">{t('brandCatalogSchemaPendingTitle')}</h1>
+            <p className="mt-2 text-sm leading-relaxed text-slate-700">{t('brandCatalogSchemaPendingBody')}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button nativeButton={false} render={<Link href="/brands" />} variant="default">{t('brandCatalogBackToBrands')}</Button>
+            <Button nativeButton={false} render={<Link href="/admin" />} variant="outline">{t('brandCatalogOpenAdmin')}</Button>
+          </div>
+        </section>
+      </main>
+    }
+    return <PageLoadError error={error} onRetry={() => void load()} />
+  }
   const brands = catalog?.brands ?? []
   const campaigns = catalog?.campaigns ?? []
   const products = catalog?.products ?? []

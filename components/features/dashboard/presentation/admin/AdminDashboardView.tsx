@@ -1,4 +1,5 @@
 ﻿import React from 'react'
+import { OpsMobileHome } from '../OpsMobileHome'
 import {
   Radio, Users, Calendar, FileText, ShieldAlert, AlertTriangle,
   Clock, CheckCircle, Eye, TrendingUp, TrendingDown,
@@ -37,6 +38,13 @@ export interface AttentionItem {
   href?: string
 }
 
+export interface ApplicationOverviewMetric {
+  key: string
+  label: string
+  value: number | null
+  href: string
+}
+
 export interface PerformanceData {
   viewers: string
   viewersChange: string
@@ -67,6 +75,9 @@ export interface AdminDashboardViewModel {
   todaysOperations: OperationRowItem[]
   performance: PerformanceData | null
   activityLog: ActivityLogEntry[] | null
+  t: (key: string) => string
+  applicationOverview: ApplicationOverviewMetric[]
+  userName?: string
 }
 
 // Sub-components
@@ -85,6 +96,13 @@ function KpiCard({ icon, iconBg, title, value, subtitle }: KpiCardProps) {
       <span className="text-[13px] text-slate-500 font-medium">{subtitle}</span>
     </div>
   )
+}
+
+function OverviewMetricCard({ metric }: { metric: ApplicationOverviewMetric }) {
+  return <a href={metric.href} className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+    <span className="block text-xs font-medium text-slate-500">{metric.label}</span>
+    <span className="mt-2 block text-2xl font-semibold text-slate-900">{metric.value === null ? '—' : metric.value.toLocaleString()}</span>
+  </a>
 }
 
 interface AttentionRowProps { severity: AttentionItem['severity']; title: string; context: string; time: string; action: string; href?: string }
@@ -214,25 +232,55 @@ function ActLogRow({ iconName, iconBg, title, user, time }: ActLogRowProps) {
 
 export function AdminDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
-  dqAttention, liveShifts, todaysOperations, performance, activityLog,
+  dqAttention, liveShifts, todaysOperations, performance, activityLog, userName, t, applicationOverview,
 }: AdminDashboardViewModel) {
+  const currentShift = todaysOperations[0]
+  const mobileAttention = [
+    ...(pendingCount !== null && pendingCount > 0 ? [{
+      key: 'pending-registration', title: pendingCount + ' đăng ký ca chờ xử lý', description: 'Mở danh sách đăng ký để xem xét', href: '/staffing?tab=registration', level: 'warning' as const,
+    }] : []),
+    ...dqAttention.map(item => ({
+      key: item.key,
+      title: item.title,
+      description: item.context,
+      href: item.href ?? '/data-quality',
+      level: item.severity === 'critical' ? 'critical' as const : 'warning' as const,
+    })),
+  ]
   return (
-    <main className="p-4 sm:p-8 min-w-0 flex flex-col gap-6 overflow-y-auto">
+    <>
+    <OpsMobileHome
+      role="admin" userName={userName} shiftCount={todaysShiftsCount}
+      liveCount={liveShifts.length} pendingCount={pendingCount} attention={mobileAttention}
+      overview={{ title: t('appWideOverview'), subtitle: t('appWideOverviewSubtitle'), metrics: applicationOverview }}
+      shift={currentShift ? { key: currentShift.brand + currentShift.shiftTime, brand: currentShift.brand, platform: currentShift.platform, time: currentShift.shiftTime, status: currentShift.status } : null}
+    />
+    <main className="hidden min-w-0 flex-col gap-6 overflow-y-auto p-4 md:flex sm:p-8">
       <div className="flex flex-col gap-1 mb-1">
-        <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">Operations Dashboard</h1>
-        <p className="text-[14px] text-slate-500 font-medium">Real-time operations overview and team performance</p>
+        <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">{t('dashboardTitle')}</h1>
+        <p className="text-[14px] text-slate-500 font-medium">{t('applicationDashboardSubtitle')}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
-        <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title="LIVE NOW" value={liveCount.toString()} subtitle="Active sessions" />
-        <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title="TODAY'S SHIFTS" value={todaysShiftsCount.toString()} subtitle="Scheduled today" />
-        <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title="MISSING STAFF" value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle="Needs resolution" />
-        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title="PENDING" value={pendingCount !== null ? pendingCount.toString() : '—'} subtitle="Need review" />
+        <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title={t('liveNow')} value={liveCount.toString()} subtitle={t('activeSessions')} />
+        <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title={t('shiftsToday')} value={todaysShiftsCount.toString()} subtitle={t('scheduledToday')} />
+        <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title={t('staffingGap')} value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle={t('needsResolution')} />
+        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title={t('pendingRegistrations')} value={pendingCount !== null ? pendingCount.toString() : '—'} subtitle={t('needsReview')} />
       </div>
+
+      <section aria-labelledby="app-wide-overview-title" className="space-y-3">
+        <div>
+          <h2 id="app-wide-overview-title" className="text-base font-bold text-slate-900">{t('appWideOverview')}</h2>
+          <p className="mt-1 text-sm text-slate-500">{t('appWideOverviewSubtitle')}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          {applicationOverview.map(metric => <OverviewMetricCard key={metric.key} metric={metric} />)}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
         <div className="min-w-0 xl:col-span-8 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Operational Attention</h2>
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('attentionRequired')}</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 p-2">
             <div className="flex flex-col divide-y divide-slate-50 flex-1 justify-center">
               {dqAttention.length > 0 ? dqAttention.slice(0, 6).map((item) => (
@@ -244,7 +292,7 @@ export function AdminDashboardView({
           </div>
         </div>
         <div className="min-w-0 xl:col-span-4 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Live Now</h2>
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('liveNow')}</h2>
           <div className="flex flex-col gap-3 flex-1">
             {liveShifts.length > 0 ? liveShifts.slice(0, 6).map((item, i) => (
               <LiveItem key={i} brand={item.brand} platform={item.platform} duration={item.duration} viewers={item.viewers} health={item.health} />
@@ -256,8 +304,8 @@ export function AdminDashboardView({
       </div>
 
       <div className="flex flex-col">
-        <h2 className="text-[16px] font-bold text-slate-900 mb-3">{"Today's Operations"}</h2>
-        <div role="region" aria-label="Hoạt động trong ngày, cuộn ngang / Scroll horizontally" tabIndex={0} className="bg-white rounded-[12px] border border-slate-200 shadow-sm min-w-0 overflow-x-auto">
+        <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('todaysOperationsTitle')}</h2>
+        <div role="region" aria-label={t('todaysOperationsTitle')} tabIndex={0} className="bg-white rounded-[12px] border border-slate-200 shadow-sm min-w-0 overflow-x-auto">
           {todaysOperations.length > 0 ? (
             <table className="w-full">
               <thead>
@@ -277,42 +325,37 @@ export function AdminDashboardView({
               </tbody>
             </table>
           ) : (
-            <div className="p-8 text-center text-sm text-slate-500">Không có ca làm việc hôm nay</div>
+            <div className="p-8 text-center text-sm text-slate-500">{t('noTodayOperations')}</div>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6 pb-6">
-        <div className="min-w-0 xl:col-span-5 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Performance</h2>
+      {(performance !== null || activityLog !== null) && <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6 pb-6">
+        {performance !== null && <div className={`min-w-0 flex flex-col ${activityLog !== null ? 'xl:col-span-5' : 'xl:col-span-12'}`}>
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('performanceTitle')}</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex-1">
-            {performance !== null ? (
-              <div className="grid grid-cols-3 gap-4 h-full">
-                <PerfMetric title="Lượt xem" value={performance.viewers} change={performance.viewersChange} positive={performance.viewersChangePositive} icon={performance.viewersChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
-                <PerfMetric title="Doanh thu" value={performance.revenue} change={performance.revenueChange} positive={performance.revenueChangePositive} icon={performance.revenueChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
-                <PerfMetric title="Tỷ lệ chuyển đổi" value={performance.conversionRate} change={performance.conversionChange} positive={performance.conversionChangePositive} icon={performance.conversionChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
-            )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <PerfMetric title={t('viewers')} value={performance.viewers} change={performance.viewersChange} positive={performance.viewersChangePositive} icon={performance.viewersChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
+              <PerfMetric title={t('revenue')} value={performance.revenue} change={performance.revenueChange} positive={performance.revenueChangePositive} icon={performance.revenueChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
+              <PerfMetric title={t('conversion')} value={performance.conversionRate} change={performance.conversionChange} positive={performance.conversionChangePositive} icon={performance.conversionChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
+            </div>
           </div>
-        </div>
-        <div className="min-w-0 xl:col-span-7 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Activity Log</h2>
+        </div>}
+        {activityLog !== null && <div className={`min-w-0 flex flex-col ${performance !== null ? 'xl:col-span-7' : 'xl:col-span-12'}`}>
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('activityLogTitle')}</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 p-2">
             <div className="flex flex-col divide-y divide-slate-50 flex-1 justify-center">
-              {activityLog === null ? (
-                <div className="text-center py-8 text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
-              ) : activityLog.length > 0 ? activityLog.slice(0, 6).map((log, i) => (
+              {activityLog.length > 0 ? activityLog.slice(0, 6).map((log, i) => (
                 <ActLogRow key={i} iconName={log.iconName} iconBg={log.iconBg} title={log.title} user={log.user} time={log.time} />
               )) : (
-                <div className="text-center py-8 text-sm text-slate-500">Không có hoạt động gần đây</div>
+                <div className="text-center py-8 text-sm text-slate-500">{t('noRecentActivity')}</div>
               )}
             </div>
           </div>
-        </div>
-      </div>
-    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
+        </div>}
+      </div>}
+    <nav aria-label={t('viewAll')} className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">{t('dashboardAllShifts')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">{t('allReports')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">{t('allNotifications')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">{t('allDataQuality')}</a></nav>
     </main>
+    </>
   )
 }
