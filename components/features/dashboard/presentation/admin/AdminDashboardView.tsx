@@ -89,6 +89,7 @@ export interface AdminDashboardViewModel {
   showLatestBrands: boolean
   latestReportsUnavailable: boolean
   latestBrandsUnavailable: boolean
+  dashboardFeatureLinks?: React.ReactNode
   userName?: string
 }
 
@@ -246,7 +247,7 @@ export function AdminDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
   dqAttention, liveShifts, todaysOperations, performance, activityLog, userName, t, applicationOverview, recentItems,
   upcomingShifts, latestReports, latestBrands, showUpcomingShifts, showLatestReports, showLatestBrands,
-  latestReportsUnavailable, latestBrandsUnavailable,
+  latestReportsUnavailable, latestBrandsUnavailable, dashboardFeatureLinks,
 }: AdminDashboardViewModel) {
   const currentShift = todaysOperations[0]
   const mobileAttention = [
@@ -274,11 +275,12 @@ export function AdminDashboardView({
       ]}
       shift={currentShift ? { key: currentShift.brand + currentShift.shiftTime, brand: currentShift.brand, platform: currentShift.platform, time: currentShift.shiftTime, status: currentShift.status } : null}
     />
-    <main className="hidden min-w-0 flex-col gap-6 overflow-y-auto p-4 md:flex sm:p-8">
+    <div className="hidden min-w-0 flex-col gap-6 p-4 md:flex sm:p-8">
       <div className="flex flex-col gap-1 mb-1">
         <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">{t('dashboardTitle')}</h1>
         <p className="text-[14px] text-slate-500 font-medium">{t('applicationDashboardSubtitle')}</p>
       </div>
+      {dashboardFeatureLinks}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
         <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title={t('liveNow')} value={liveCount.toString()} subtitle={t('activeSessions')} />
@@ -414,7 +416,7 @@ export function AdminDashboardView({
         </div>}
       </div>}
     <nav aria-label={t('viewAll')} className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">{t('dashboardAllShifts')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">{t('allReports')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">{t('allNotifications')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">{t('allDataQuality')}</a></nav>
-    </main>
+    </div>
     </>
   )
 }
@@ -429,7 +431,7 @@ function DashboardLinkedList({ title, href, items, empty, unavailable, t }: {
         {t('viewAll')} <ArrowUpRight className="size-3.5" aria-hidden="true" />
       </a>
     </header>
-    <div className="max-h-72 overflow-y-auto overscroll-contain">
+    <div>
       {unavailable ? <p className="p-4 text-sm text-amber-700">{unavailable}</p> : items.length ? <ul className="divide-y divide-slate-100">
         {items.slice(0, 5).map(item => <li key={item.id}>
           <a href={item.href} className="block min-h-14 px-4 py-3 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600">

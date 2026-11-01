@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import * as React from 'react'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
 import { reportService, shiftRegistrationService, shiftService, swapRequestService, currentUserService } from '@/lib/services/dataService'
@@ -22,6 +23,7 @@ import { getMemberAssignedShifts, getLeaderPendingRegistrations, getLeaderPendin
 import { deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { selectLatestDashboardItems } from '@/lib/ui/dashboard-recent-items'
 import { getAllIssues } from '@/lib/utils/dataQuality'
+import { filterNav, getNavigationForRole } from '@/lib/ui/role-ux'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { AdminDashboardView } from './presentation/admin/AdminDashboardView'
 import { LeaderDashboardView } from './presentation/leader/LeaderDashboardView'
@@ -402,6 +404,7 @@ export function DashboardWorkspace({
   filterState?: Filters | null
   onFilterChange?: React.Dispatch<React.SetStateAction<Filters | null>>
   onRetryWidget?: (widget: 'reports' | 'swaps' | 'registrations') => void
+  dashboardFeatureLinks?: React.ReactNode
 }) {
   const router = useRouter()
   const {t} = useTranslation()
@@ -413,6 +416,8 @@ export function DashboardWorkspace({
   React.useEffect(()=>{const frame=requestAnimationFrame(()=>setLocalFilters(initialFilters()));return ()=>cancelAnimationFrame(frame)},[])
   if (!filters) return <ContentSkeleton />
   const role = resolveSystemPermission(currentUser)
+  const visibleFeatures = filterNav(getNavigationForRole(role), currentUser).filter(item => item.href.split('?')[0] !== '/')
+  const dashboardFeatureLinks = <DashboardFeatureLinks items={visibleFeatures} t={(key, variables) => t(key as TranslationKey, variables)} />
   const setPreset = (preset:Preset)=>setFilters(current=>current ? {...current,preset,...(preset==='custom'?{}:rangeFor(preset))} : current)
   const props: CommonProps = {
     ...data,
@@ -430,6 +435,7 @@ export function DashboardWorkspace({
     setSelectedShift,
     widgetErrors: data.widgetErrors,
     onRetryWidget,
+    dashboardFeatureLinks,
   }
   return <div>
     {role==='admin' && <AdminDashboard {...props} />}
@@ -437,6 +443,23 @@ export function DashboardWorkspace({
     {role==='member' && <MemberDashboard {...props} />}
     {selectedShift && <ShiftDetailModal open shift={selectedShift} brands={data.brands} platforms={data.platforms} campaigns={data.campaigns} users={data.users} allRegistrations={data.registrations ?? []} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={onUpdate} onEdit={()=>{const shiftId=selectedShift.id;setSelectedShift(null);router.push(`/shifts?edit_shift_id=${encodeURIComponent(shiftId)}`)}} onDelete={()=>{setSelectedShift(null);void onUpdate()}} />}
   </div>
+}
+
+function DashboardFeatureLinks({ items, t }: { items: ReturnType<typeof filterNav>; t: (key: string, variables?: Record<string, string | number>) => string }) {
+  return <section aria-labelledby="dashboard-available-features" className="mx-4 mb-6 mt-6 space-y-3 sm:mx-8">
+    <h2 id="dashboard-available-features" className="text-base font-semibold text-slate-900">{t('dashboardAvailableFeatures')}</h2>
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+      {items.map(item => {
+        const Icon = item.icon
+        const label = t((item.labelKey ?? item.name.toLowerCase()) as TranslationKey)
+        return <Link key={`${item.href}:${item.name}`} href={item.href} className="flex min-h-14 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-300 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+          <Icon className="size-4 shrink-0 text-blue-600" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          <span className="sr-only">{t('dashboardOpenFeature')}</span>
+        </Link>
+      })}
+    </div>
+  </section>
 }
 
 type CommonProps = {
@@ -460,6 +483,7 @@ type CommonProps = {
   setSelectedShift: (shift: Shift | null) => void
   widgetErrors?: WidgetErrors
   onRetryWidget?: (widget: 'reports' | 'swaps' | 'registrations') => void
+  dashboardFeatureLinks?: React.ReactNode
 }
 
 const nameFor = (items: { id: string; name?: string; full_name?: string }[], id: string): string =>
@@ -641,6 +665,7 @@ function AdminDashboard(props: CommonProps) {
         latestReportsUnavailable={canReviewReports && latestReports === null}
         latestBrandsUnavailable={canManageBrands && latestBrands === null}
         t={props.t}
+        dashboardFeatureLinks={props.dashboardFeatureLinks}
         applicationOverview={applicationOverview}
       />
     </div>
@@ -789,6 +814,7 @@ function LeaderDashboard(props: CommonProps) {
         staffingHealth={null}
         upcomingLive={upcomingLive}
         activityLog={null}
+        dashboardFeatureLinks={props.dashboardFeatureLinks}
       />
     </div>
   )
@@ -881,6 +907,7 @@ function MemberDashboard(props: CommonProps) {
         openShifts={null}
         myRequests={myRequests}
         notifications={null}
+        dashboardFeatureLinks={props.dashboardFeatureLinks}
       />
     </div>
   )

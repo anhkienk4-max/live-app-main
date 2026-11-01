@@ -76,8 +76,26 @@ function notificationCopy(item: AppNotification, language: 'en' | 'vi') {
     'Your report was approved.': 'Báo cáo của bạn đã được duyệt.',
     'Your report needs updates.': 'Báo cáo của bạn cần được bổ sung.',
     'Your schedule import completed.': 'Import lịch của bạn đã hoàn tất.',
+    'Your shift registration was rejected.': 'Đăng ký ca của bạn đã bị từ chối.',
+    'Your shift registration was submitted.': 'Đăng ký ca của bạn đã được gửi.',
+    'A shift registration needs your review.': 'Có đăng ký ca đang chờ bạn xem xét.',
+    'A staffing request was rejected.': 'Yêu cầu nhân sự đã bị từ chối.',
+    'A staffing request was approved.': 'Yêu cầu nhân sự đã được duyệt.',
+    'Your account request was received.': 'Yêu cầu tài khoản của bạn đã được tiếp nhận.',
+    'Your account request was rejected.': 'Yêu cầu tài khoản của bạn đã bị từ chối.',
+    'Your report was rejected.': 'Báo cáo của bạn đã bị từ chối.',
+    'A report needs your review.': 'Có báo cáo đang chờ bạn xem xét.',
+    'Your shift was cancelled.': 'Ca trực của bạn đã bị hủy.',
   }
-  return { title: titleByType[item.type] ?? item.title, message: knownMessages[item.message] ?? item.message }
+  const knownTitles: Record<string, string> = {
+    'registration approved': 'Đăng ký ca được duyệt',
+    'registration rejected': 'Đăng ký ca bị từ chối',
+    'registration submitted': 'Đăng ký ca mới',
+    'shift assigned': 'Đã phân công ca',
+    'report submitted': 'Báo cáo đã gửi',
+    'report rejected': 'Báo cáo bị từ chối',
+  }
+  return { title: titleByType[item.type] ?? knownTitles[item.title.trim().toLocaleLowerCase('en-US')] ?? item.title, message: knownMessages[item.message] ?? item.message }
 }
 
 export default function NotificationsPage() {
@@ -172,12 +190,12 @@ export default function NotificationsPage() {
   return <div className="ada-workspace-page min-w-0 space-y-3 p-4 md:p-6">
     <header className="flex flex-wrap items-center justify-between gap-2"><div><h1 className="text-lg font-semibold">{t('notificationsPageTitle')}</h1><p className="mt-1 text-xs text-muted-foreground">{counts.all} {t('all')} · {unread} {t('unread')}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" className="max-md:!h-11" onClick={() => void load()}><RefreshCw className="mr-2 h-4 w-4" />{t('refresh')}</Button><Button variant="outline" size="sm" className="max-md:!h-11" disabled={!unread || busy} onClick={() => void markRead()}>{t('markAllRead')}</Button><Button variant="outline" size="sm" className="max-md:!h-11" onClick={() => router.push('/settings')}>{t('settings')}</Button></div></header>
     {error != null && <PageLoadError error={error} onRetry={() => void load()} />}
-    <div className="grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(360px,.85fr)] xl:grid-cols-[minmax(0,1.4fr)_minmax(380px,.75fr)]">
+    <div className="grid min-w-0 items-start gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,.9fr)]">
       <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-none"><div className="flex gap-3 border-b px-3">{(['all','unread','read'] as const).map(value => <button key={value} type="button" aria-pressed={tab===value} className={`py-2.5 text-xs ${tab===value?'border-b-2 border-primary font-semibold text-primary':'text-muted-foreground'}`} onClick={() => {setTab(value);setPage(1)}}>{value==='read' ? t('notificationReadStatus') : t(value)} ({counts[value]})</button>)}</div><div className="flex flex-wrap items-center gap-1.5 border-b px-2 py-2"><button type="button" onClick={() => {setTypeFilter(null);setPage(1)}} className={`rounded-full border px-2 py-1 text-[10px] ${!typeFilter?'border-primary bg-primary/5 text-primary':'border-slate-200 text-slate-500'}`}>{t('notificationAllTypes')}</button>{typeOptions.map(type => <button type="button" key={type} onClick={() => {setTypeFilter(type);setPage(1)}} className={`rounded-full border px-2 py-1 text-[10px] ${typeFilter===type?'border-primary bg-primary/5 text-primary':'border-slate-200 text-slate-500'}`}>{notificationTypeLabel(type, language)}</button>)}</div><div className="border-b p-2"><Input aria-label={t('search')} placeholder={t('search')} value={query} onChange={event=>{setQuery(event.target.value);setPage(1)}} /></div>
-        <div className="max-h-[min(72vh,820px)] overflow-y-auto overscroll-contain divide-y">{!filtered.length ? <p className="p-8 text-center text-sm text-muted-foreground">{items.length ? t('noMatchingNotifications') : t('noNotifications')}</p> : Array.from(notificationGroups,([day,group])=><div key={day}><h3 className="sticky top-0 z-[1] bg-slate-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{new Date(day+'T00:00:00').toLocaleDateString(locale,{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</h3>{group.map(item=>{const copy=notificationCopy(item,language);return <button type="button" key={item.id} className={'flex w-full gap-2 border-l-4 p-2.5 text-left hover:bg-muted/30 '+(selectedId===item.id?'border-l-primary bg-primary/5':'border-l-transparent')} onClick={()=>setSelectedId(item.id)} aria-pressed={selectedId===item.id}><NotificationIcon item={item} className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h2 className={'text-sm '+(!item.read_at?'font-semibold':'')}>{copy.title}</h2>{!item.read_at && <span aria-label={t('unread')} className="h-2 w-2 shrink-0 rounded-full bg-primary" />}</div><p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{copy.message}</p><div className="mt-1.5 flex flex-wrap items-center gap-1.5"><span className={`rounded border px-1.5 py-0.5 text-[10px] ${notificationSeverityClass(item.severity)}`}>{notificationSeverityLabel(item.severity,language)}</span><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{notificationTypeLabel(item.type,language)}</span>{item.related_entity_id && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">{item.related_entity_id}</span>}<span className="ml-auto text-[11px] text-muted-foreground">{new Date(item.created_at).toLocaleString(locale)}</span></div></div></button>})}</div>)}</div>
+        <div className="divide-y">{!filtered.length ? <p className="p-8 text-center text-sm text-muted-foreground">{items.length ? t('noMatchingNotifications') : t('noNotifications')}</p> : Array.from(notificationGroups,([day,group])=><div key={day}><h3 className="bg-slate-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{new Date(day+'T00:00:00').toLocaleDateString(locale,{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</h3>{group.map(item=>{const copy=notificationCopy(item,language);return <button type="button" key={item.id} className={'flex w-full gap-2 border-l-4 p-2.5 text-left hover:bg-muted/30 '+(selectedId===item.id?'border-l-primary bg-primary/5':'border-l-transparent')} onClick={()=>setSelectedId(item.id)} aria-pressed={selectedId===item.id}><NotificationIcon item={item} className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h2 className={'text-sm '+(!item.read_at?'font-semibold':'')}>{copy.title}</h2>{!item.read_at && <span aria-label={t('unread')} className="h-2 w-2 shrink-0 rounded-full bg-primary" />}</div><p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{copy.message}</p><div className="mt-1.5 flex flex-wrap items-center gap-1.5"><span className={`rounded border px-1.5 py-0.5 text-[10px] ${notificationSeverityClass(item.severity)}`}>{notificationSeverityLabel(item.severity,language)}</span><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{notificationTypeLabel(item.type,language)}</span>{item.related_entity_id && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">{item.related_entity_id}</span>}<span className="ml-auto text-[11px] text-muted-foreground">{new Date(item.created_at).toLocaleString(locale)}</span></div></div></button>})}</div>)}</div>
         <HistoryPagination page={safePage} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />
       </section>
-      <section className="min-w-0 rounded-lg border bg-white p-3 lg:sticky lg:top-4 lg:max-h-[min(72vh,820px)] lg:overflow-y-auto">
+      <section className="min-w-0 rounded-lg border bg-white p-4">
         {selected && selectedCopy ? <>
           <div className="flex items-start gap-2">
             <NotificationIcon item={selected} className="h-4 w-4 shrink-0 text-primary" />

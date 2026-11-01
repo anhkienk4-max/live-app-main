@@ -7,7 +7,9 @@ import {
   Download,
   Eye,
   Filter,
+  Plus,
   RotateCcw,
+  Trash2,
   TrendingUp,
 } from 'lucide-react'
 import {
@@ -93,6 +95,11 @@ export function DashboardAnalytics() {
   const [selectedMetric, setSelectedMetric] = React.useState<MetricKey>('revenue')
   const [selectedDimension, setSelectedDimension] = React.useState<AnalyticsDimension>('time')
   const [selectedChartType, setSelectedChartType] = React.useState<AnalyticsChartType>('area')
+  const [trendCharts, setTrendCharts] = React.useState([
+    { id: 'orders', metric: 'orders' },
+    { id: 'viewers', metric: 'viewers' },
+    { id: 'conversion', metric: 'ctr' },
+  ])
   const personalViewKey = currentUser ? biPersonalViewStorageKey(currentUser.id) : ''
   const [hasPersonalView, setHasPersonalView] = React.useState(false)
 
@@ -797,10 +804,8 @@ export function DashboardAnalytics() {
       </section>
 
       {/* 4. Staff Workload & Host Performance Breakdown */}
-      <details className="rounded-lg border bg-white p-3">
-        <summary className="cursor-pointer text-sm font-semibold">
-          {t('staffWorkload')} · {t('hostPerformance')}
-        </summary>
+      <section className="rounded-lg border bg-white p-3">
+        <h2 className="text-sm font-semibold">{t('staffWorkload')} · {t('hostPerformance')}</h2>
         <div className="mt-3 grid gap-3 xl:grid-cols-2">
           <BarChartCard
             title={t('staffWorkload')}
@@ -817,19 +822,22 @@ export function DashboardAnalytics() {
             fields={[{ key: 'revenue', name: t('revenue'), color: '#4f46e5', currency: true }]}
           />
         </div>
-      </details>
+      </section>
 
-      {/* 5. Additional Operational Trends Breakdown */}
-      <details className="rounded-lg border bg-white p-3">
-        <summary className="cursor-pointer text-sm font-semibold">
-          {t('ordersTrend')} · {t('viewersTrend')} · {t('conversionTrend')}
-        </summary>
-        <div className="mt-3 grid gap-3 xl:grid-cols-3">
-          <LineChartCard title={t('ordersTrend')} data={currentCount > 0 ? trend : []} fields={chartMetricFields} defaultMetric="orders" />
-          <LineChartCard title={t('viewersTrend')} data={currentCount > 0 ? trend : []} fields={chartMetricFields} defaultMetric="viewers" />
-          <LineChartCard title={t('conversionTrend')} data={currentCount > 0 ? trend : []} fields={chartMetricFields} defaultMetric="ctr" />
+      <section className="space-y-3 rounded-lg border bg-white p-3" data-testid="analytics-trend-charts">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">{t('ordersTrend')} · {t('viewersTrend')} · {t('conversionTrend')}</h2>
+          <Button type="button" size="sm" variant="outline" data-testid="analytics-add-chart" onClick={() => setTrendCharts(charts => [...charts, { id: `custom-${Date.now()}-${charts.length}`, metric: 'revenue' }])}>
+            <Plus className="mr-1.5 size-4" aria-hidden="true" />{t('addAnalyticsChart')}
+          </Button>
         </div>
-      </details>
+        <div className="grid gap-3 xl:grid-cols-3">
+          {trendCharts.map((chart, index) => {
+            const title = chart.id === 'orders' ? t('ordersTrend') : chart.id === 'viewers' ? t('viewersTrend') : chart.id === 'conversion' ? t('conversionTrend') : t('customAnalyticsChart', { count: index - 2 })
+            return <ConfigurableChartCard key={chart.id} title={title} data={currentCount > 0 ? trend : []} fields={chartMetricFields} defaultMetric={chart.metric} onRemove={index >= 3 ? () => setTrendCharts(charts => charts.filter(item => item.id !== chart.id)) : undefined} />
+          })}
+        </div>
+      </section>
 
       {selectedReport && selectedShift && (
         <ReportDetailModal
@@ -868,7 +876,7 @@ const chartValue = (value: number | string, key: string, fields: ChartField[]) =
   fields.find(field => field.key === key)?.currency ? formatCurrency(Number(value)) : fields.find(field => field.key === key)?.percent ? `${Number(value).toFixed(2)}%` : value
 
 type ConfigurableChartType = 'line' | 'area' | 'bar' | 'pie' | 'donut'
-type ConfigurableChartProps = { title: string; data: Array<Record<string, string | number | null>>; fields: ChartField[]; defaultChart?: ConfigurableChartType; defaultMetric?: string }
+type ConfigurableChartProps = { title: string; data: Array<Record<string, string | number | null>>; fields: ChartField[]; defaultChart?: ConfigurableChartType; defaultMetric?: string; onRemove?: () => void }
 
 function LineChartCard(props: Omit<ConfigurableChartProps, 'defaultChart'>) {
   return <ConfigurableChartCard {...props} defaultChart="line" />
@@ -878,7 +886,7 @@ function BarChartCard({ defaultChart = 'bar', ...props }: ConfigurableChartProps
   return <ConfigurableChartCard {...props} defaultChart={defaultChart} />
 }
 
-function ConfigurableChartCard({ title, data, fields, defaultChart, defaultMetric }: ConfigurableChartProps) {
+function ConfigurableChartCard({ title, data, fields, defaultChart, defaultMetric, onRemove }: ConfigurableChartProps) {
   const { language } = useTranslation()
   const [selectedMetric, setSelectedMetric] = React.useState(defaultMetric ?? fields[0]?.key ?? '')
   const [chartType, setChartType] = React.useState<ConfigurableChartType>(defaultChart ?? 'line')
@@ -904,9 +912,10 @@ function ConfigurableChartCard({ title, data, fields, defaultChart, defaultMetri
             <option value="line">{localized('Đường', 'Line')}</option>
             <option value="area">{localized('Vùng', 'Area')}</option>
             <option value="bar">{localized('Cột', 'Bar')}</option>
-            <option value="pie" disabled={!pieIsValid}>{localized('Tròn', 'Pie')}</option>
-            <option value="donut" disabled={!pieIsValid}>{localized('Vành khuyên', 'Donut')}</option>
+            <option value="pie">{localized('Tròn', 'Pie')}</option>
+            <option value="donut">{localized('Vành khuyên', 'Donut')}</option>
           </select>
+          {onRemove && <Button type="button" size="icon-sm" variant="ghost" aria-label={language === 'vi' ? 'Xóa biểu đồ' : 'Remove chart'} title={language === 'vi' ? 'Xóa biểu đồ' : 'Remove chart'} onClick={onRemove}><Trash2 className="size-4" aria-hidden="true" /></Button>}
         </div>
       </CardHeader>
       <CardContent className="h-56 px-2 pb-2">

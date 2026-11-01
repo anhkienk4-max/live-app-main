@@ -380,6 +380,7 @@
   isolation: isolate;
   overflow: hidden;
   background: #fff;
+  animation: ada-transition-enter 160ms ease-out both;
 }
 .ada-navigation-content { display: block; position: relative; min-height: 100dvh; }
 .ada-navigation-content[aria-hidden="true"] { visibility: hidden !important; pointer-events: none; user-select: none; }
@@ -395,10 +396,10 @@
   justify-content: center;
   animation: ada-loading-float 1.8s ease-in-out infinite;
 }
-.ada-loading-screen__logo .ada-brand__symbol { width: 144px; height: 144px; border-radius: 38px; }
-.ada-loading-screen__logo .ada-brand__symbol-svg { width: 102px; height: 102px; }
-.ada-loading-screen__logo .ada-brand__name { font-size: 66px; }
-.ada-loading-screen__logo .ada-brand__descriptor { font-size: 16px; }
+.ada-loading-screen__logo .ada-brand__symbol { width: 82px; height: 82px; border-radius: 24px; }
+.ada-loading-screen__logo .ada-brand__symbol-svg { width: 59px; height: 59px; }
+.ada-loading-screen__logo .ada-brand__name { font-size: 44px; }
+.ada-loading-screen__logo .ada-brand__descriptor { font-size: 12px; }
 @keyframes ada-loading-float {
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-5px) scale(1.035); }
@@ -406,9 +407,6 @@
 @media (prefers-reduced-motion: reduce) {
   .ada-loading-screen__logo { animation: none; }
 }
-@keyframes ada-loading-orbit { to { transform: rotate(360deg); } }
-@keyframes ada-loading-glow { from { transform: scale(.92); opacity: .65; } to { transform: scale(1.06); opacity: 1; } }
-@keyframes ada-loading-dot { from { transform: scale(.72); opacity: .48; } to { transform: scale(1.18); opacity: 1; } }
 @keyframes ada-transition-enter { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ada-transition-exit { from { opacity: 1; } to { opacity: 0; } }
 

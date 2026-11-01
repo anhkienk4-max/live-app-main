@@ -86,4 +86,7 @@ test('Analytics UI continues using the existing scoped snapshot and permission-g
   assert.match(ui, /reportStatuses: \['confirmed'\], metricsStatuses: \['confirmed'\]/)
   assert.match(ui, /hasPermission\(currentUser, 'reports\.export'\)/)
   assert.match(ui, /biPersonalViewStorageKey\(currentUser\.id\)/)
+  assert.match(ui, /data-testid="analytics-add-chart"/)
+  assert.match(ui, /<option value="pie">/)
+  assert.match(ui, /<option value="donut">/)
 })

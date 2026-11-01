@@ -1,4 +1,4 @@
-﻿import test from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
@@ -34,4 +34,13 @@ test('U15 loading UX: Notifications and Profile pages render structured skeleton
   const profile = readFileSync(new URL('../app/(dashboard)/profile/page.tsx', import.meta.url), 'utf8')
   assert.ok(profile.includes('data-testid="profile-loading-shell"'), 'Profile must render structured loading shell')
   assert.ok(!profile.includes("if (loading || !currentUser) return <div className=\"py-12 text-center\">{t('loading')}</div>"))
+})
+
+test('Member dashboard uses shared navigation links, localized copy and the app-shell scroll container', () => {
+  const dashboard = readFileSync(new URL('../components/features/dashboard/presentation/member/MemberDashboardView.tsx', import.meta.url), 'utf8')
+  const overview = readFileSync(new URL('../components/features/dashboard/DashboardOverview.tsx', import.meta.url), 'utf8')
+  assert.match(dashboard, /dashboardFeatureLinks/)
+  assert.match(dashboard, /t\('myWorkspace'\)/)
+  assert.doesNotMatch(dashboard, /<main[^>]*overflow-y-auto/)
+  assert.match(overview, /filterNav\(getNavigationForRole\(role\), currentUser\)/)
 })

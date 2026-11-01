@@ -65,6 +65,7 @@ export interface LeaderDashboardViewModel {
   /** null = source unavailable; [] = loaded, verified empty */
   activityLog: ActivityEntry[] | null
   userName?: string
+  dashboardFeatureLinks?: React.ReactNode
 }
 
 export interface ActivityEntry {
@@ -148,7 +149,7 @@ function DecisionRow({ type, title, subtitle, time, action, iconBg }: DecisionRo
 
 export function LeaderDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
-  decisions, todaysSchedule, staffingHealth, upcomingLive, activityLog, userName,
+  decisions, todaysSchedule, staffingHealth, upcomingLive, activityLog, userName, dashboardFeatureLinks,
 }: LeaderDashboardViewModel) {
   const { t, translate } = useTranslation()
   const mobileAttention = decisions?.map(item => ({
@@ -165,7 +166,7 @@ export function LeaderDashboardView({
       pendingCount={pendingCount} attention={mobileAttention}
       shift={nextMobileShift ? { key: nextMobileShift.brand + nextMobileShift.time, brand: nextMobileShift.brand, platform: nextMobileShift.platform, time: nextMobileShift.time, status: nextMobileShift.status, onView: nextMobileShift.onView } : null}
     />
-    <main className="hidden min-w-0 flex-col gap-6 overflow-y-auto p-4 md:flex sm:p-8">
+    <div className="hidden min-w-0 flex-col gap-6 p-4 md:flex sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
         <div className="flex flex-col gap-1">
           <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">{t('leaderDashboard')}</h1>
@@ -176,6 +177,7 @@ export function LeaderDashboardView({
           {t('reviewAttention')}
         </a>
       </div>
+      {dashboardFeatureLinks}
 
       {/* ROW 1: KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
@@ -325,7 +327,7 @@ export function LeaderDashboardView({
         </div>
       </div>
     <nav aria-label={t('viewAll')} className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">{t('dashboardAllShifts')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">{t('allReports')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">{t('allNotifications')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">{t('allDataQuality')}</a></nav>
-    </main>
+    </div>
     </>
   )
 }
