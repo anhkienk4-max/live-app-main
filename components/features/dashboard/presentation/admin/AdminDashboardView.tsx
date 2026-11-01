@@ -46,6 +46,8 @@ export interface ApplicationOverviewMetric {
   href: string
 }
 
+export interface DashboardLinkedItem { id: string; title: string; description: string; href: string }
+
 export interface PerformanceData {
   viewers: string
   viewersChange: string
@@ -79,6 +81,14 @@ export interface AdminDashboardViewModel {
   t: (key: string) => string
   applicationOverview: ApplicationOverviewMetric[]
   recentItems: DashboardRecentItem[]
+  upcomingShifts: DashboardLinkedItem[]
+  latestReports: DashboardLinkedItem[]
+  latestBrands: DashboardLinkedItem[]
+  showUpcomingShifts: boolean
+  showLatestReports: boolean
+  showLatestBrands: boolean
+  latestReportsUnavailable: boolean
+  latestBrandsUnavailable: boolean
   userName?: string
 }
 
@@ -235,6 +245,8 @@ function ActLogRow({ iconName, iconBg, title, user, time }: ActLogRowProps) {
 export function AdminDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
   dqAttention, liveShifts, todaysOperations, performance, activityLog, userName, t, applicationOverview, recentItems,
+  upcomingShifts, latestReports, latestBrands, showUpcomingShifts, showLatestReports, showLatestBrands,
+  latestReportsUnavailable, latestBrandsUnavailable,
 }: AdminDashboardViewModel) {
   const currentShift = todaysOperations[0]
   const mobileAttention = [
@@ -255,6 +267,11 @@ export function AdminDashboardView({
       role="admin" userName={userName} shiftCount={todaysShiftsCount}
       liveCount={liveShifts.length} pendingCount={pendingCount} attention={mobileAttention}
       overview={{ title: t('appWideOverview'), subtitle: t('appWideOverviewSubtitle'), metrics: applicationOverview }}
+      summaries={[
+        ...(showUpcomingShifts ? [{ key: 'upcoming', title: t('upcomingShifts'), href: '/calendar?calendar_view=list', items: upcomingShifts, empty: t('noUpcomingShifts') }] : []),
+        ...(showLatestReports ? [{ key: 'reports', title: t('latestReports'), href: '/reports', items: latestReports, empty: t('noLatestReports'), unavailable: latestReportsUnavailable ? t('dashboardDataUnavailable') : null }] : []),
+        ...(showLatestBrands ? [{ key: 'brands', title: t('latestBrands'), href: '/brands', items: latestBrands, empty: t('noLatestBrands'), unavailable: latestBrandsUnavailable ? t('dashboardDataUnavailable') : null }] : []),
+      ]}
       shift={currentShift ? { key: currentShift.brand + currentShift.shiftTime, brand: currentShift.brand, platform: currentShift.platform, time: currentShift.shiftTime, status: currentShift.status } : null}
     />
     <main className="hidden min-w-0 flex-col gap-6 overflow-y-auto p-4 md:flex sm:p-8">
@@ -279,6 +296,12 @@ export function AdminDashboardView({
           {applicationOverview.map(metric => <OverviewMetricCard key={metric.key} metric={metric} />)}
         </div>
       </section>
+
+      {(showUpcomingShifts || showLatestReports || showLatestBrands) && <section aria-label={t('dashboardOperationalSummaries')} className="grid min-w-0 gap-3 lg:grid-cols-3">
+        {showUpcomingShifts && <DashboardLinkedList title={t('upcomingShifts')} href="/calendar?calendar_view=list" items={upcomingShifts} empty={t('noUpcomingShifts')} unavailable={null} t={t} />}
+        {showLatestReports && <DashboardLinkedList title={t('latestReports')} href="/reports" items={latestReports} empty={t('noLatestReports')} unavailable={latestReportsUnavailable ? t('dashboardDataUnavailable') : null} t={t} />}
+        {showLatestBrands && <DashboardLinkedList title={t('latestBrands')} href="/brands" items={latestBrands} empty={t('noLatestBrands')} unavailable={latestBrandsUnavailable ? t('dashboardDataUnavailable') : null} t={t} />}
+      </section>}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
         <div className="min-w-0 xl:col-span-8 flex flex-col">
@@ -394,4 +417,27 @@ export function AdminDashboardView({
     </main>
     </>
   )
+}
+
+function DashboardLinkedList({ title, href, items, empty, unavailable, t }: {
+  title: string; href: string; items: DashboardLinkedItem[]; empty: string; unavailable: string | null; t: (key: string) => string
+}) {
+  return <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label={title}>
+    <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
+      <h2 className="truncate text-sm font-semibold text-slate-900">{title}</h2>
+      <a href={href} className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+        {t('viewAll')} <ArrowUpRight className="size-3.5" aria-hidden="true" />
+      </a>
+    </header>
+    <div className="max-h-72 overflow-y-auto overscroll-contain">
+      {unavailable ? <p className="p-4 text-sm text-amber-700">{unavailable}</p> : items.length ? <ul className="divide-y divide-slate-100">
+        {items.slice(0, 5).map(item => <li key={item.id}>
+          <a href={item.href} className="block min-h-14 px-4 py-3 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600">
+            <span className="block truncate text-sm font-medium text-slate-800">{item.title}</span>
+            <span className="mt-1 block truncate text-xs text-slate-500">{item.description}</span>
+          </a>
+        </li>)}
+      </ul> : <p className="p-4 text-sm text-slate-500">{empty}</p>}
+    </div>
+  </section>
 }

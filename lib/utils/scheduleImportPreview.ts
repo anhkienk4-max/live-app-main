@@ -369,6 +369,7 @@ export function buildScheduleImportPreviewSourceRow(row: ScheduleImportRow) {
     required_support_count: row.required_support_count,
     required_technical_count: row.required_technical_count,
     Notes: row.notes || '',
+    custom_fields: row.custom_fields ?? {},
     source_presence: row.source_presence,
   })
 }

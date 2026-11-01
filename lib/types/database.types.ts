@@ -911,6 +911,8 @@ export type ScheduleImportRowOutcome =
 export interface ScheduleImportRow {
   row_number: number
   execution_source?: ExecutionSource | null
+  /** Custom columns from the import source, retained as batch provenance only. */
+  custom_fields?: Record<string, string>
   date: string
   start_time: string
   end_time: string

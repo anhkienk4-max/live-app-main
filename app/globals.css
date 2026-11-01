@@ -372,13 +372,18 @@
   background: #fff;
   color: var(--ada-navy);
 }
-.ada-loading-screen--overlay { min-height: 100%; height: 100%; }
+.ada-loading-screen--overlay { position: absolute; inset: 0; z-index: 1; min-height: 100dvh; height: 100dvh; background: #fff; opacity: 1; backdrop-filter: none; }
 .ada-navigation-transition {
   position: fixed;
-  z-index: 10000;
+  z-index: 2147483647;
   inset: 0;
+  isolation: isolate;
+  overflow: hidden;
   background: #fff;
 }
+.ada-navigation-content { display: block; position: relative; min-height: 100dvh; }
+.ada-navigation-content[aria-hidden="true"] { visibility: hidden !important; pointer-events: none; user-select: none; }
+.ada-navigation-content[aria-hidden="true"] > * { visibility: hidden !important; }
 .ada-navigation-transition--exiting {
   pointer-events: none;
   animation: ada-transition-exit 260ms ease-in both;
@@ -390,10 +395,10 @@
   justify-content: center;
   animation: ada-loading-float 1.8s ease-in-out infinite;
 }
-.ada-loading-screen__logo .ada-brand__symbol { width: 82px; height: 82px; border-radius: 24px; }
-.ada-loading-screen__logo .ada-brand__symbol-svg { width: 59px; height: 59px; }
-.ada-loading-screen__logo .ada-brand__name { font-size: 44px; }
-.ada-loading-screen__logo .ada-brand__descriptor { font-size: 12px; }
+.ada-loading-screen__logo .ada-brand__symbol { width: 144px; height: 144px; border-radius: 38px; }
+.ada-loading-screen__logo .ada-brand__symbol-svg { width: 102px; height: 102px; }
+.ada-loading-screen__logo .ada-brand__name { font-size: 66px; }
+.ada-loading-screen__logo .ada-brand__descriptor { font-size: 16px; }
 @keyframes ada-loading-float {
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-5px) scale(1.035); }

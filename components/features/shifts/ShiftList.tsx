@@ -3,7 +3,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 
 import * as React from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { usePagedList } from '@/lib/hooks/usePagedList'
 import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/services/operationalReferences'
 import { shiftService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Pencil, Trash2, Copy, Upload, Eye, ArrowDownUp, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, Copy, Upload, Eye, ArrowDownUp, Search, ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { ShiftFormDialog } from './ShiftFormDialog'
@@ -84,7 +84,7 @@ function ShiftDateFilter({ state, onApply, t, mobile = false }: { state: ShiftLi
 }
 
 function ShiftEntityFilter({ label, name, value, options, onChange, all, unavailable, mobile = false }: {
-  label: string; name: 'brand' | 'platform'; value: string; options: Array<{ id: string; name: string }>
+  label: string; name: 'brand' | 'platform' | 'campaign'; value: string; options: Array<{ id: string; name: string }>
   onChange: (value: string) => void; all: string; unavailable: string; mobile?: boolean
 }) {
   return <label className={mobile ? 'min-w-0' : 'flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600'}>
@@ -100,6 +100,7 @@ function ShiftEntityFilter({ label, name, value, options, onChange, all, unavail
 }
 
 export function ShiftList() {
+  const router = useRouter()
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
@@ -135,11 +136,12 @@ export function ShiftList() {
 
   const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
   const searchParams = useSearchParams()
+  const requestedEditShiftId = searchParams.get('edit_shift_id') ?? ''
   const urlState = readShiftListUrlState(searchParams)
   const invalidEntities = invalidShiftListEntityFilters(searchParams)
-  const invalidEntityFilter = invalidEntities.brand || invalidEntities.platform
+  const invalidEntityFilter = invalidEntities.brand || invalidEntities.platform || invalidEntities.campaign
   const { dateWindow, status: statusFilter, search: searchQuery, descending: sortDescending } = urlState
-  const listFilters = { ...shiftDateWindowFilters(dateWindow, new Date(), urlState.month, urlState.from, urlState.to), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], brandIds: urlState.brandId ? [urlState.brandId] : [], platformIds: urlState.platformId ? [urlState.platformId] : [], descending: sortDescending }
+  const listFilters = { ...shiftDateWindowFilters(dateWindow, new Date(), urlState.month, urlState.from, urlState.to), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], brandIds: urlState.brandId ? [urlState.brandId] : [], platformIds: urlState.platformId ? [urlState.platformId] : [], campaignIds: urlState.campaignId ? [urlState.campaignId] : [], descending: sortDescending }
   const dateFilterKey = [dateWindow, urlState.month, urlState.from, urlState.to].join(':')
   const list = usePagedList(invalidEntityFilter ? invalidFilterService : shiftService, 'shifts', listFilters)
   const referenceKey = currentUser ? operationalReferenceIdentity(currentUser) : ''
@@ -217,10 +219,11 @@ export function ShiftList() {
   }
   const handleStatusFilterChange = (status: Shift['status'] | 'all') => updateFilters({ ...urlState, status })
   const handleSearchQueryChange = (search: string) => updateFilters({ ...urlState, search }, true)
-  const resetEntities = () => updateFilters({ ...urlState, brandId: '', platformId: '' })
+  const resetEntities = () => updateFilters({ ...urlState, brandId: '', platformId: '', campaignId: '' })
   const availableBrands = loadedReferenceKey === referenceKey ? brands : []
   const availablePlatforms = loadedReferenceKey === referenceKey ? platforms : []
-  const resetEntityLabel = language === 'vi' ? 'Đặt lại thương hiệu và nền tảng' : 'Reset brand and platform'
+  const availableCampaigns = loadedReferenceKey === referenceKey ? campaigns : []
+  const resetEntityLabel = language === 'vi' ? 'Đặt lại thương hiệu, nền tảng và chiến dịch' : 'Reset brand, platform and campaign'
 
   const requestDelete = async (ids: string[]) => {
     if (!canDelete || ids.length === 0 || ids.some(id => !shifts.some(shift => shift.id === id))) return
@@ -256,13 +259,13 @@ export function ShiftList() {
     }
   }
 
-  const handleEdit = (shift: Shift) => {
+  const handleEdit = React.useCallback((shift: Shift) => {
     if (!canEdit) return
     setEditingShift(shift)
     setDuplicateShift(null)
     setReopenDetailAfterEdit(false)
     setIsFormOpen(true)
-  }
+  }, [canEdit])
 
   const handleDuplicate = (shift: Shift) => {
     if (!canCreate) return
@@ -288,6 +291,37 @@ export function ShiftList() {
     setDetailShift(null)
     setIsFormOpen(true)
   }
+
+  const processedEditRequest = React.useRef('')
+  const editRequestKey = `${currentUser?.id ?? 'anonymous'}:${requestedEditShiftId}`
+  React.useEffect(() => {
+    if (!requestedEditShiftId || processedEditRequest.current === editRequestKey) return
+    processedEditRequest.current = editRequestKey
+    const clearEditRequest = () => {
+      const nextParams = new URLSearchParams(searchParams.toString())
+      nextParams.delete('edit_shift_id')
+      const query = nextParams.toString()
+      processedEditRequest.current = ''
+      router.replace(query ? `/shifts?${query}` : '/shifts', { scroll: false })
+    }
+    if (!canEdit) {
+      clearEditRequest()
+      return
+    }
+
+    let active = true
+    void shiftService.getById(requestedEditShiftId).then(shift => {
+      if (!active) return
+      if (shift) handleEdit(shift)
+      else toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
+      clearEditRequest()
+    }).catch(error => {
+      if (!active) return
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      clearEditRequest()
+    })
+    return () => { active = false }
+  }, [requestedEditShiftId, editRequestKey, canEdit, router, searchParams, handleEdit, toast, t])
 
   const toggleSelect = (id: string) => {
     if (!sortedShifts.some(shift => shift.id === id)) return
@@ -409,8 +443,8 @@ export function ShiftList() {
   ]
 
   if (invalidEntityFilter) return <div role="alert" className="space-y-3 rounded-lg border p-4" data-testid="shifts-invalid-entity-filter">
-    <p>{language === 'vi' ? 'Bộ lọc thương hiệu hoặc nền tảng trong URL không hợp lệ. Không hiển thị ca cho đến khi sửa bộ lọc.' : 'The brand or platform filter in the URL is invalid. No shifts are shown until it is corrected.'}</p>
-    <Button type="button" variant="outline" onClick={() => updateFilters({ ...urlState, brandId: invalidEntities.brand ? '' : urlState.brandId, platformId: invalidEntities.platform ? '' : urlState.platformId })}>
+    <p>{language === 'vi' ? 'Bộ lọc thương hiệu, nền tảng hoặc chiến dịch trong URL không hợp lệ. Không hiển thị ca cho đến khi sửa bộ lọc.' : 'The brand, platform or campaign filter in the URL is invalid. No shifts are shown until it is corrected.'}</p>
+    <Button type="button" variant="outline" onClick={() => updateFilters({ ...urlState, brandId: invalidEntities.brand ? '' : urlState.brandId, platformId: invalidEntities.platform ? '' : urlState.platformId, campaignId: invalidEntities.campaign ? '' : urlState.campaignId })}>
       {language === 'vi' ? 'Xóa bộ lọc không hợp lệ' : 'Clear invalid filters'}
     </Button>
   </div>
@@ -459,8 +493,26 @@ export function ShiftList() {
         />
       )}
 
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label={language === 'vi' ? 'Kiểu hiển thị ca trực' : 'Shift display mode'} className="inline-flex rounded-md border bg-white p-0.5">
+            <Button type="button" size="sm" variant={urlState.viewMode === 'table' ? 'default' : 'ghost'} aria-pressed={urlState.viewMode === 'table'} onClick={() => updateFilters({ ...urlState, viewMode: 'table' })}>
+              <List className="mr-1.5 h-4 w-4" />{language === 'vi' ? 'Bảng' : 'Table'}
+            </Button>
+            <Button type="button" size="sm" variant={urlState.viewMode === 'cards' ? 'default' : 'ghost'} aria-pressed={urlState.viewMode === 'cards'} onClick={() => updateFilters({ ...urlState, viewMode: 'cards' })}>
+              <LayoutGrid className="mr-1.5 h-4 w-4" />{language === 'vi' ? 'Thẻ' : 'Cards'}
+            </Button>
+          </div>
+          <span className="hidden text-xs text-muted-foreground lg:inline">{language === 'vi' ? 'Xem lịch:' : 'Calendar:'}</span>
+          {(['month', 'week', 'day', 'list'] as const).map(view => <Button key={view} type="button" size="sm" variant="outline" onClick={() => router.push(`/calendar?calendar_view=${view}`)}>
+            {t(view)}
+          </Button>)}
+        </div>
+        {urlState.viewMode === 'cards' && <span className="text-xs text-muted-foreground">{language === 'vi' ? 'Dùng chung bộ lọc và phân trang với bảng.' : 'Cards use the same filters and pagination as the table.'}</span>}
+      </div>
+
       {/* DESKTOP VIEW: Data Table (UX-P1-02: Hidden on mobile < md) */}
-      <div className="hidden md:block [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]">
+      <div className={`${urlState.viewMode === 'table' ? 'hidden md:block' : 'hidden'} [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]`}>
         <DataTable
           data={sortedShifts}
           columns={columns}
@@ -475,7 +527,8 @@ export function ShiftList() {
               <ShiftDateFilter key={'desktop:' + dateFilterKey} state={urlState} onApply={updateFilters} t={t} />
               <ShiftEntityFilter label={t('brand')} name="brand" value={urlState.brandId} options={availableBrands} onChange={brandId => updateFilters({ ...urlState, brandId })} all={t('all')} unavailable={t('notUpdated')} />
               <ShiftEntityFilter label={t('platform')} name="platform" value={urlState.platformId} options={availablePlatforms} onChange={platformId => updateFilters({ ...urlState, platformId })} all={t('all')} unavailable={t('notUpdated')} />
-              <Button variant="outline" size="sm" onClick={resetEntities} disabled={!urlState.brandId && !urlState.platformId}>{resetEntityLabel}</Button>
+              <ShiftEntityFilter label={t('campaign')} name="campaign" value={urlState.campaignId} options={availableCampaigns} onChange={campaignId => updateFilters({ ...urlState, campaignId })} all={t('all')} unavailable={t('notUpdated')} />
+              <Button variant="outline" size="sm" onClick={resetEntities} disabled={!urlState.brandId && !urlState.platformId && !urlState.campaignId}>{resetEntityLabel}</Button>
               <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600">
                 <span>{t('status')}</span>
                 <select
@@ -511,9 +564,9 @@ export function ShiftList() {
       </div>
 
       {/* MOBILE VIEW: Compact Shift Cards with 10/20/50 pagination (UX-P1-02: 390px mobile scan) */}
-      <div className="block md:hidden space-y-3" data-testid="shifts-mobile-container">
+      <div className={`${urlState.viewMode === 'cards' ? 'block' : 'block md:hidden'} space-y-3`} data-testid="shifts-mobile-container">
         {/* Mobile Search & Filter Toolbar */}
-        <div className="flex flex-col gap-2 bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs">
+        <div className={`${urlState.viewMode === 'cards' ? '' : 'md:hidden'} flex flex-col gap-2 bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs`}>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
@@ -529,7 +582,8 @@ export function ShiftList() {
             <ShiftDateFilter key={'mobile:' + dateFilterKey} state={urlState} onApply={updateFilters} t={t} mobile />
             <ShiftEntityFilter mobile label={t('brand')} name="brand" value={urlState.brandId} options={availableBrands} onChange={brandId => updateFilters({ ...urlState, brandId })} all={t('all')} unavailable={t('notUpdated')} />
             <ShiftEntityFilter mobile label={t('platform')} name="platform" value={urlState.platformId} options={availablePlatforms} onChange={platformId => updateFilters({ ...urlState, platformId })} all={t('all')} unavailable={t('notUpdated')} />
-            <Button variant="outline" size="sm" className="col-span-2 min-h-11" onClick={resetEntities} disabled={!urlState.brandId && !urlState.platformId}>{resetEntityLabel}</Button>
+            <ShiftEntityFilter mobile label={t('campaign')} name="campaign" value={urlState.campaignId} options={availableCampaigns} onChange={campaignId => updateFilters({ ...urlState, campaignId })} all={t('all')} unavailable={t('notUpdated')} />
+            <Button variant="outline" size="sm" className="col-span-2 min-h-11" onClick={resetEntities} disabled={!urlState.brandId && !urlState.platformId && !urlState.campaignId}>{resetEntityLabel}</Button>
             <select
               aria-label={t('status')}
               value={statusFilter}
@@ -564,7 +618,7 @@ export function ShiftList() {
             {loading ? t('loading') : t('noData')}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className={urlState.viewMode === 'cards' ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-2'}>
             {mobilePaginatedShifts.map(shift => {
               const capacities = getShiftRoleCapacities(shift, registrations)
               const brand = getBrandName(shift.brand_id)

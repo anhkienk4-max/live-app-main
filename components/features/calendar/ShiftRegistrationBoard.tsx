@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { format } from 'date-fns'
 import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
@@ -114,6 +115,7 @@ function useOperationalLoadState() {
 }
 
 export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
+  const router = useRouter()
   const { currentUser, loading: userLoading } = useCurrentUser()
   const { t } = useTranslation()
   const { toast } = useToast()
@@ -629,6 +631,11 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                 if (refreshedShift) setDetailShift({ ...refreshedShift })
               }
             })()
+          }}
+          onEdit={() => {
+            const shiftId = detailShift.id
+            setDetailShift(null)
+            router.push(`/shifts?edit_shift_id=${encodeURIComponent(shiftId)}`)
           }}
           onDelete={() => {
             setDetailShift(null)

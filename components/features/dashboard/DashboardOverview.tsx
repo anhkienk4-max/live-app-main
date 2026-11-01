@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { addDays, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
 import { reportService, shiftRegistrationService, shiftService, swapRequestService, currentUserService } from '@/lib/services/dataService'
@@ -15,7 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
-import { resolveSystemPermission } from '@/lib/permissions'
+import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getSwapUiActions } from '@/lib/utils/swapUi'
 import { getMemberAssignedShifts, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
 import { deriveDataQualityAttention } from '@/lib/ui/operational-attention'
@@ -50,7 +51,9 @@ type WidgetErrors = {
 type DashboardDataset = {
   shifts: Shift[]
   reports: Report[] | null
+  latestReports?: Report[] | null
   brands: Brand[]
+  latestBrands?: Brand[] | null
   platforms: Platform[]
   campaigns: Campaign[]
   users: User[]
@@ -226,11 +229,13 @@ export function DashboardOverview() {
         }).catch(() => { /* The full read handles errors authoritatively. */ })
 
         let reportsError = false
+        let latestReportsError = false
         let swapPageError = false
         let scopeSwapsError = false
+        const canViewLatestReports = hasPermission(currentUser, 'reports.review')
 
         // Fetch independent sources, capturing partial errors cleanly
-        const [rangeShifts,reportsResult,refs,future,swapPageResult,scopeSwapsResult]=await Promise.all([
+        const [rangeShifts,reportsResult,refs,future,latestReportsResult,swapPageResult,scopeSwapsResult]=await Promise.all([
           shiftService.getAllFiltered({from,to}),
           reportService.getAllFiltered({from,to}).catch(err => {
             console.warn('Dashboard reportService error', err)
@@ -239,6 +244,7 @@ export function DashboardOverview() {
           }),
           getOperationalReferences(currentUser),
           upcoming,
+          canViewLatestReports ? reportService.getFilteredPage({ page: 1, pageSize: 10, filters: {} }).catch(() => { latestReportsError = true; return null }) : Promise.resolve(null),
           swapRequestService.getPage({page:1,pageSize:10,filters:{statuses:['pending','accepted']}}).catch(err => {
             console.warn('Dashboard swapPage error', err)
             swapPageError = true
@@ -269,7 +275,9 @@ export function DashboardOverview() {
         return {
           shifts,
           reports: reportsError ? null : reportsResult,
+          latestReports: latestReportsError ? null : (latestReportsResult?.items ?? []),
           ...refs,
+          latestBrands: hasPermission(currentUser, 'brands.manage') ? refs.brands.slice().sort((a, b) => b.updated_at.localeCompare(a.updated_at) || b.id.localeCompare(a.id)).slice(0, 5) : null,
           registrations: registrationsError ? null : registrationsResult,
           swapRequests,
           widgetErrors: {
@@ -395,6 +403,7 @@ export function DashboardWorkspace({
   onFilterChange?: React.Dispatch<React.SetStateAction<Filters | null>>
   onRetryWidget?: (widget: 'reports' | 'swaps' | 'registrations') => void
 }) {
+  const router = useRouter()
   const {t} = useTranslation()
   const [localFilters,setLocalFilters] = React.useState<Filters | null>(null)
   const filters=filterState??localFilters
@@ -407,6 +416,8 @@ export function DashboardWorkspace({
   const setPreset = (preset:Preset)=>setFilters(current=>current ? {...current,preset,...(preset==='custom'?{}:rangeFor(preset))} : current)
   const props: CommonProps = {
     ...data,
+    latestReports: data.latestReports ?? null,
+    latestBrands: data.latestBrands ?? null,
     filters,
     setFilters,
     showFilters,
@@ -424,14 +435,16 @@ export function DashboardWorkspace({
     {role==='admin' && <AdminDashboard {...props} />}
     {role==='leader' && <LeaderDashboard {...props} />}
     {role==='member' && <MemberDashboard {...props} />}
-    {selectedShift && <ShiftDetailModal open shift={selectedShift} brands={data.brands} platforms={data.platforms} campaigns={data.campaigns} users={data.users} allRegistrations={data.registrations ?? []} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={onUpdate} onDelete={()=>{setSelectedShift(null);void onUpdate()}} />}
+    {selectedShift && <ShiftDetailModal open shift={selectedShift} brands={data.brands} platforms={data.platforms} campaigns={data.campaigns} users={data.users} allRegistrations={data.registrations ?? []} onOpenChange={open=>!open&&setSelectedShift(null)} onUpdate={onUpdate} onEdit={()=>{const shiftId=selectedShift.id;setSelectedShift(null);router.push(`/shifts?edit_shift_id=${encodeURIComponent(shiftId)}`)}} onDelete={()=>{setSelectedShift(null);void onUpdate()}} />}
   </div>
 }
 
 type CommonProps = {
   shifts: Shift[]
   reports: Report[] | null
+  latestReports: Report[] | null
   brands: Brand[]
+  latestBrands: Brand[] | null
   platforms: Platform[]
   campaigns: Campaign[]
   users: User[]
@@ -467,7 +480,8 @@ const shiftStatusLabel = (status: string): string => {
 }
 
 function AdminDashboard(props: CommonProps) {
-  const { shifts, reports, brands, platforms, campaigns, users, registrations, swapRequests, filters, widgetErrors, onRetryWidget } = props
+  const { language } = useTranslation()
+  const { shifts, reports, latestReports, brands, latestBrands, platforms, campaigns, users, registrations, swapRequests, filters, widgetErrors, onRetryWidget } = props
   const filteredShifts = shifts.filter(shift => shift.date >= filters.start && shift.date <= filters.end)
   const shiftIds = new Set(filteredShifts.map(shift => shift.id))
 
@@ -496,14 +510,34 @@ function AdminDashboard(props: CommonProps) {
     href: a.href,
   }))
 
+  const canViewShifts = hasPermission(props.currentUser, 'shifts.view_assigned') || hasPermission(props.currentUser, 'shifts.view_open')
+  const canReviewReports = hasPermission(props.currentUser, 'reports.review')
+  const canManageBrands = hasPermission(props.currentUser, 'brands.manage')
+  const canManageCampaigns = hasPermission(props.currentUser, 'campaigns.manage')
+  const canManagePlatforms = hasPermission(props.currentUser, 'platforms.manage')
+  const canManageStaff = hasPermission(props.currentUser, 'staff.manage')
   const applicationOverview = [
-    { key: 'shifts', label: props.t('shiftsInRange'), value: filteredShifts.length, href: '/calendar' },
-    { key: 'confirmed-reports', label: props.t('confirmedReportsInRange'), value: reports === null ? null : scopedReports.filter(report => report.status === 'confirmed').length, href: '/reports' },
-    { key: 'brands', label: props.t('activeBrands'), value: brands.filter(brand => brand.status === 'active').length, href: '/brands' },
-    { key: 'campaigns', label: props.t('activeCampaigns'), value: campaigns.filter(campaign => campaign.status === 'active').length, href: '/campaigns' },
-    { key: 'platforms', label: props.t('activePlatforms'), value: platforms.filter(platform => platform.status === 'active').length, href: '/platforms' },
-    { key: 'staff', label: props.t('activeStaffAccounts'), value: users.filter(user => user.status === 'active').length, href: '/staff' },
+    ...(canViewShifts ? [{ key: 'shifts', label: props.t('shiftsInRange'), value: filteredShifts.length, href: '/calendar' }] : []),
+    ...(canReviewReports ? [{ key: 'confirmed-reports', label: props.t('confirmedReportsInRange'), value: reports === null ? null : scopedReports.filter(report => report.status === 'confirmed').length, href: '/reports' }] : []),
+    ...(canManageBrands ? [{ key: 'brands', label: props.t('activeBrands'), value: brands.filter(brand => brand.status === 'active').length, href: '/brands' }] : []),
+    ...(canManageCampaigns ? [{ key: 'campaigns', label: props.t('activeCampaigns'), value: campaigns.filter(campaign => campaign.status === 'active').length, href: '/campaigns' }] : []),
+    ...(canManagePlatforms ? [{ key: 'platforms', label: props.t('activePlatforms'), value: platforms.filter(platform => platform.status === 'active').length, href: '/platforms' }] : []),
+    ...(canManageStaff ? [{ key: 'staff', label: props.t('activeStaffAccounts'), value: users.filter(user => user.status === 'active').length, href: '/staff' }] : []),
   ]
+
+  const upcomingShifts = canViewShifts ? shifts
+    .filter(shift => shift.date >= today && ['scheduled', 'preparing', 'live', 'paused'].includes(shift.status))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
+    .slice(0, 5)
+    .map(shift => ({ id: shift.id, title: shift.title || `${nameFor(brands, shift.brand_id)} · ${nameFor(platforms, shift.platform_id)}`, description: `${shift.date} · ${shift.start_time}–${shift.end_time}`, href: '/calendar?calendar_view=list' })) : []
+  const latestReportItems = canReviewReports ? (latestReports ?? []).slice(0, 5).map(report => {
+    const shift = shifts.find(item => item.id === report.shift_id)
+    const status = report.status ?? (report.metrics_confirmed ? 'confirmed' : 'draft')
+    const statusKey = status === 'in_review' ? 'inReview' : status
+    const locale = language === 'vi' ? 'vi-VN' : 'en-US'
+    return { id: report.id, title: shift ? `${nameFor(brands, shift.brand_id)} · ${shift.date}` : props.t('report'), description: `${props.t(statusKey)} · ${new Date(report.updated_at).toLocaleDateString(locale)}`, href: '/reports' }
+  }) : []
+  const latestBrandItems = canManageBrands ? (latestBrands ?? []).slice(0, 5).map(brand => ({ id: brand.id, title: brand.name, description: `${brand.category || props.t('brand')} · ${props.t(brand.status || 'active')}`, href: '/brands' })) : []
 
   const todaysOperations = todaysShifts.map(s => ({
     brand: nameFor(brands, s.brand_id),
@@ -598,6 +632,14 @@ function AdminDashboard(props: CommonProps) {
         performance={null}
         activityLog={null}
         recentItems={latestDashboardItems}
+        upcomingShifts={upcomingShifts}
+        latestReports={latestReportItems}
+        latestBrands={latestBrandItems}
+        showUpcomingShifts={canViewShifts}
+        showLatestReports={canReviewReports}
+        showLatestBrands={canManageBrands}
+        latestReportsUnavailable={canReviewReports && latestReports === null}
+        latestBrandsUnavailable={canManageBrands && latestBrands === null}
         t={props.t}
         applicationOverview={applicationOverview}
       />

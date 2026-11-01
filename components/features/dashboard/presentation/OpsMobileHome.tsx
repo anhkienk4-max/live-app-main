@@ -33,13 +33,14 @@ export type OpsMobileHomeProps = {
     subtitle: string
     metrics: { key: string; label: string; value: number | null; href: string }[]
   }
+  summaries?: Array<{ key: string; title: string; href: string; items: Array<{ id: string; title: string; description: string; href: string }>; empty: string; unavailable?: string | null }>
 }
 
 /** Mobile-only presentation for real, role-scoped RC19 dashboard view-models.
  * Never creates example shifts, salary amounts, pending tasks, or role permissions.
  */
 export function OpsMobileHome({
-  role, userName, shiftCount, shiftLabel, liveCount, pendingCount, shift, attention, overview,
+  role, userName, shiftCount, shiftLabel, liveCount, pendingCount, shift, attention, overview, summaries,
 }: OpsMobileHomeProps) {
   const { t } = useTranslation()
   const admin = role === 'admin'
@@ -129,6 +130,20 @@ export function OpsMobileHome({
             </Link>)}
           </div>
         </section>}
+        {summaries?.map(group => <section key={group.key} aria-label={group.title} className="overflow-hidden rounded-[16px] border border-[#E2E9F6] bg-white">
+          <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
+            <h2 className="truncate text-[13px] font-bold text-[#102753]">{group.title}</h2>
+            <Link href={group.href} className="inline-flex min-h-11 shrink-0 items-center gap-1 px-2 text-[11px] font-semibold text-[#155EF2]">{t('viewAll')} <ArrowRight className="size-3.5" aria-hidden="true" /></Link>
+          </header>
+          {group.unavailable ? <p className="p-4 text-[11px] text-amber-700">{group.unavailable}</p> : group.items.length ? <ul className="divide-y divide-[#EEF2FA]">
+            {group.items.slice(0, 5).map(item => <li key={item.id}>
+              <Link href={item.href} className="block min-h-14 px-4 py-3 hover:bg-[#F8FAFF]">
+                <span className="block truncate text-[12px] font-semibold text-[#102753]">{item.title}</span>
+                <span className="mt-1 block truncate text-[11px] text-[#65789C]">{item.description}</span>
+              </Link>
+            </li>)}
+          </ul> : <p className="p-4 text-[11px] text-slate-500">{group.empty}</p>}
+        </section>)}
         <section aria-label={t('actionQueue')} className="space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-[15px] font-extrabold text-[#0C2248]">{t('actionQueue')}</h2>

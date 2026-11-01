@@ -273,6 +273,13 @@ export function DashboardAnalytics() {
   const primaryMetricKeys: MetricKey[] = ['revenue', 'orders', 'averageOrderValue', 'viewers', 'ctr', 'cvr']
   const primaryMetrics = metricDefinitions.filter(metric => primaryMetricKeys.includes(metric.key))
   const secondaryMetrics = metricDefinitions.filter(metric => !primaryMetricKeys.includes(metric.key))
+  const chartMetricFields: ChartField[] = metricDefinitions.map((metric, index) => ({
+    key: metric.key,
+    name: metric.label,
+    color: CHART_COLORS[index % CHART_COLORS.length],
+    currency: metric.unit === 'currency',
+    percent: metric.unit === '%',
+  }))
   const safePage = pageResult?.page ?? list.page
   const visibleReports = pageResult?.items ?? []
   const selectedShift = selectedReport ? shiftById.get(selectedReport.shift_id) : undefined
@@ -690,51 +697,30 @@ export function DashboardAnalytics() {
         <LineChartCard
           title={t('revenueTrend')}
           data={trend}
-          fields={[{ key: 'revenue', name: t('revenue'), color: '#4f46e5', currency: true }]}
+          fields={chartMetricFields}
+          defaultMetric="revenue"
         />
-        <Card>
-          <CardHeader className="px-3 py-2">
-            <CardTitle className="text-sm">{t('platform')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 px-3 pb-3">
-            {platformData.length && currentCount > 0 ? (
-              platformData.map(item => {
-                const share = totals.revenue !== null && totals.revenue > 0 && item.revenue !== null
-                  ? Math.min(100, Math.max(0, (item.revenue / totals.revenue) * 100))
-                  : null
-                return (
-                  <div key={item.name} className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2 text-xs">
-                      <span className="truncate font-medium">{item.name}</span>
-                      <span className="shrink-0 text-right">
-                        {display(item.revenue, 'currency')}
-                        {share !== null ? ' (' + share.toFixed(1) + '%)' : ''}
-                      </span>                    </div>
-                    {share !== null && (
-                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full rounded-full bg-indigo-600" style={{ width: share + '%' }} />                      </div>
-                    )}
-                    <p className="text-[10px] text-slate-500">{item.count} {t('reportCount')}</p>
-                  </div>
-                )
-              })
-            ) : (
-              <p className="py-6 text-center text-sm text-slate-500">{t('noConfirmedData')}</p>
-            )}
-          </CardContent>
-        </Card>
+        <BarChartCard
+          title={t('platform')}
+          data={currentCount > 0 ? platformData.map(item => ({ ...item, count: item.count })) : []}
+          fields={[
+            { key: 'revenue', name: t('revenue'), color: '#4f46e5', currency: true },
+            { key: 'count', name: t('reportCount'), color: '#0ea5e9' },
+          ]}
+          defaultChart="pie"
+        />
       </div>
 
       <div className="grid gap-3 xl:grid-cols-2">
         <BarChartCard
           title={t('revenueByBrand')}
           data={currentCount > 0 ? dimensionData('brand') : []}
-          fields={[{ key: 'revenue', name: t('revenue'), color: '#4f46e5', currency: true }]}
+          fields={[{ key: 'revenue', name: t('revenue'), color: '#4f46e5', currency: true }, { key: 'count', name: t('reportCount'), color: '#0ea5e9' }]}
         />
         <BarChartCard
           title={t('revenueByCampaign')}
           data={currentCount > 0 ? dimensionData('campaign') : []}
-          fields={[{ key: 'revenue', name: t('revenue'), color: '#2563eb', currency: true }]}
+          fields={[{ key: 'revenue', name: t('revenue'), color: '#2563eb', currency: true }, { key: 'count', name: t('reportCount'), color: '#0ea5e9' }]}
         />
       </div>
 
@@ -839,9 +825,9 @@ export function DashboardAnalytics() {
           {t('ordersTrend')} · {t('viewersTrend')} · {t('conversionTrend')}
         </summary>
         <div className="mt-3 grid gap-3 xl:grid-cols-3">
-          <LineChartCard title={t('ordersTrend')} data={currentCount > 0 ? trend : []} fields={[{ key: 'orders', name: t('orders'), color: '#2563eb' }]} />
-          <LineChartCard title={t('viewersTrend')} data={currentCount > 0 ? trend : []} fields={[{ key: 'viewers', name: t('viewers'), color: '#7c3aed' }]} />
-          <LineChartCard title={t('conversionTrend')} data={currentCount > 0 ? trend : []} fields={[{ key: 'ctr', name: t('ctr'), color: '#ea580c' }, { key: 'cvr', name: t('cvr'), color: '#0891b2' }]} />
+          <LineChartCard title={t('ordersTrend')} data={currentCount > 0 ? trend : []} fields={chartMetricFields} defaultMetric="orders" />
+          <LineChartCard title={t('viewersTrend')} data={currentCount > 0 ? trend : []} fields={chartMetricFields} defaultMetric="viewers" />
+          <LineChartCard title={t('conversionTrend')} data={currentCount > 0 ? trend : []} fields={chartMetricFields} defaultMetric="ctr" />
         </div>
       </details>
 
@@ -877,52 +863,83 @@ function Metric({ title, value, note }: { title: string; value: string; note: st
   )
 }
 
-type ChartField = { key: string; name: string; color: string; currency?: boolean }
+type ChartField = { key: string; name: string; color: string; currency?: boolean; percent?: boolean }
 const chartValue = (value: number | string, key: string, fields: ChartField[]) =>
-  fields.find(field => field.key === key)?.currency ? formatCurrency(Number(value)) : value
+  fields.find(field => field.key === key)?.currency ? formatCurrency(Number(value)) : fields.find(field => field.key === key)?.percent ? `${Number(value).toFixed(2)}%` : value
 
-function LineChartCard({ title, data, fields }: { title: string; data: Array<Record<string, string | number | null>>; fields: ChartField[] }) {
-  return (
-    <Card>
-      <CardHeader className="px-3 py-2"><CardTitle className="text-sm">{title}</CardTitle></CardHeader>
-      <CardContent className="h-48 px-2 pb-2">
-        {data.length ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 12, right: 16, bottom: 8, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="period" minTickGap={24} tick={{ fontSize: 11 }} tickMargin={8} interval="preserveStartEnd" />
-              <YAxis width={80} tick={{ fontSize: 11 }} tickMargin={8} tickFormatter={value => formatChartAxis(Number(value), fields.every(field => field.currency))} />
-              <Tooltip formatter={(value, _name, item) => [chartValue(value as number | string, String(item.dataKey), fields), item.name]} />
-              <Legend />
-              {fields.map(field => <Line key={field.key} type="monotone" dataKey={field.key} name={field.name} stroke={field.color} />)}
-            </LineChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">—</div>
-        )}
-      </CardContent>
-    </Card>
-  )
+type ConfigurableChartType = 'line' | 'area' | 'bar' | 'pie' | 'donut'
+type ConfigurableChartProps = { title: string; data: Array<Record<string, string | number | null>>; fields: ChartField[]; defaultChart?: ConfigurableChartType; defaultMetric?: string }
+
+function LineChartCard(props: Omit<ConfigurableChartProps, 'defaultChart'>) {
+  return <ConfigurableChartCard {...props} defaultChart="line" />
 }
 
-function BarChartCard({ title, data, fields }: { title: string; data: Array<Record<string, string | number | null>>; fields: ChartField[] }) {
+function BarChartCard({ defaultChart = 'bar', ...props }: ConfigurableChartProps) {
+  return <ConfigurableChartCard {...props} defaultChart={defaultChart} />
+}
+
+function ConfigurableChartCard({ title, data, fields, defaultChart, defaultMetric }: ConfigurableChartProps) {
+  const { language } = useTranslation()
+  const [selectedMetric, setSelectedMetric] = React.useState(defaultMetric ?? fields[0]?.key ?? '')
+  const [chartType, setChartType] = React.useState<ConfigurableChartType>(defaultChart ?? 'line')
+  const selectedField = fields.find(field => field.key === selectedMetric) ?? fields[0]
+  const chartDataKey = data.some(row => typeof row.period === 'string') ? 'period' : 'name'
+  const values = data.map(row => typeof row[selectedField?.key ?? ''] === 'number' ? Number(row[selectedField?.key ?? '']) : null)
+  const pieHasNegative = values.some(value => value !== null && value < 0)
+  const pieHasPositive = values.some(value => value !== null && value > 0)
+  const pieIsValid = !pieHasNegative && pieHasPositive
+  const localized = (vi: string, en: string) => language === 'vi' ? vi : en
+
   return (
     <Card>
-      <CardHeader className="px-3 py-2"><CardTitle className="text-sm">{title}</CardTitle></CardHeader>
-      <CardContent className="h-48 px-2 pb-2">
-        {data.length ? (
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 px-3 py-2">
+        <CardTitle className="text-sm">{title}</CardTitle>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="sr-only" htmlFor={`chart-metric-${title}`}>{localized('Chỉ số biểu đồ', 'Chart metric')}</label>
+          <select id={`chart-metric-${title}`} aria-label={localized(`Chỉ số: ${title}`, `Metric: ${title}`)} className="max-w-40 rounded-md border bg-background px-2 py-1 text-[11px]" value={selectedField?.key ?? ''} onChange={event => setSelectedMetric(event.target.value)}>
+            {fields.map(field => <option key={field.key} value={field.key}>{field.name}</option>)}
+          </select>
+          <label className="sr-only" htmlFor={`chart-type-${title}`}>{localized('Kiểu biểu đồ', 'Chart type')}</label>
+          <select id={`chart-type-${title}`} aria-label={localized(`Kiểu biểu đồ: ${title}`, `Chart type: ${title}`)} className="rounded-md border bg-background px-2 py-1 text-[11px]" value={chartType} onChange={event => setChartType(event.target.value as typeof chartType)}>
+            <option value="line">{localized('Đường', 'Line')}</option>
+            <option value="area">{localized('Vùng', 'Area')}</option>
+            <option value="bar">{localized('Cột', 'Bar')}</option>
+            <option value="pie" disabled={!pieIsValid}>{localized('Tròn', 'Pie')}</option>
+            <option value="donut" disabled={!pieIsValid}>{localized('Vành khuyên', 'Donut')}</option>
+          </select>
+        </div>
+      </CardHeader>
+      <CardContent className="h-56 px-2 pb-2">
+        {data.length && selectedField ? chartType === 'pie' || chartType === 'donut' ? (
+          pieIsValid ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Tooltip formatter={value => [chartValue(value as number, selectedField.key, fields), selectedField.name]} />
+                <Legend />
+                <Pie data={data.filter(row => typeof row[selectedField.key] === 'number' && Number(row[selectedField.key]) > 0)} dataKey={selectedField.key} nameKey={chartDataKey} innerRadius={chartType === 'donut' ? 36 : 0} outerRadius={70} paddingAngle={2}>
+                  {data.map((_, index) => <Cell key={`${title}-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">{localized('Không thể dùng biểu đồ tròn với giá trị âm hoặc không có giá trị dương.', 'Pie charts require positive values and cannot represent negative values.')}</div>
+        ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 12, right: 16, bottom: 8, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" tickFormatter={formatDimensionTick} tick={{ fontSize: 11 }} tickMargin={8} height={48} angle={-20} textAnchor="end" interval="preserveStartEnd" />
-              <YAxis width={80} tick={{ fontSize: 11 }} tickMargin={8} tickFormatter={value => formatChartAxis(Number(value), fields.every(field => field.currency))} />
-              <Tooltip formatter={(value, _name, item) => [chartValue(value as number | string, String(item.dataKey), fields), item.name]} />
-              <Legend />
-              {fields.map(field => <Bar key={field.key} dataKey={field.key} name={field.name} fill={field.color} />)}
-            </BarChart>
+            {chartType === 'line' ? <LineChart data={data} margin={{ top: 12, right: 16, bottom: 12, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey={chartDataKey} tickFormatter={chartDataKey === 'name' ? formatDimensionTick : undefined} minTickGap={24} tick={{ fontSize: 11 }} tickMargin={8} interval="preserveStartEnd" />
+              <YAxis width={80} tick={{ fontSize: 11 }} tickMargin={8} tickFormatter={value => formatChartAxis(Number(value), Boolean(selectedField.currency))} /><Tooltip formatter={value => [chartValue(value as number | string, selectedField.key, fields), selectedField.name]} /><Legend />
+              <Line type="monotone" dataKey={selectedField.key} name={selectedField.name} stroke={selectedField.color} strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart> : chartType === 'area' ? <AreaChart data={data} margin={{ top: 12, right: 16, bottom: 12, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey={chartDataKey} tickFormatter={chartDataKey === 'name' ? formatDimensionTick : undefined} minTickGap={24} tick={{ fontSize: 11 }} tickMargin={8} interval="preserveStartEnd" />
+              <YAxis width={80} tick={{ fontSize: 11 }} tickMargin={8} tickFormatter={value => formatChartAxis(Number(value), Boolean(selectedField.currency))} /><Tooltip formatter={value => [chartValue(value as number | string, selectedField.key, fields), selectedField.name]} /><Legend />
+              <Area type="monotone" dataKey={selectedField.key} name={selectedField.name} stroke={selectedField.color} fill={selectedField.color} fillOpacity={0.22} />
+            </AreaChart> : <BarChart data={data} margin={{ top: 12, right: 16, bottom: 12, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey={chartDataKey} tickFormatter={chartDataKey === 'name' ? formatDimensionTick : undefined} minTickGap={24} tick={{ fontSize: 11 }} tickMargin={8} interval="preserveStartEnd" />
+              <YAxis width={80} tick={{ fontSize: 11 }} tickMargin={8} tickFormatter={value => formatChartAxis(Number(value), Boolean(selectedField.currency))} /><Tooltip formatter={value => [chartValue(value as number | string, selectedField.key, fields), selectedField.name]} /><Legend />
+              <Bar dataKey={selectedField.key} name={selectedField.name} fill={selectedField.color} radius={[4, 4, 0, 0]} />
+            </BarChart>}
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">—</div>
+          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">{localized('Chưa có dữ liệu xác nhận cho bộ lọc này.', 'No confirmed observations for these filters.')}</div>
         )}
       </CardContent>
     </Card>

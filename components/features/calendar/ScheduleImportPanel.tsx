@@ -149,7 +149,7 @@ export function ScheduleImportStaffingInput({
 
 export function ScheduleImportPanel({ onImported }: { onImported?: () => void }) {
   const { currentUser, loading: userLoading } = useCurrentUser()
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const { toast } = useToast()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const originalImportFileRef = React.useRef<File | null>(null)
@@ -167,6 +167,9 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [masterState, setMasterState] = React.useState<MasterDataState>('loading')
   const [previewFilter, setPreviewFilter] = React.useState<PreviewFilter>('all')
   const [previewSearch, setPreviewSearch] = React.useState('')
+  const [previewMaxHeight, setPreviewMaxHeight] = React.useState(560)
+  const [previewMinWidth, setPreviewMinWidth] = React.useState(1780)
+  const [customHeaderDrafts, setCustomHeaderDrafts] = React.useState<Record<string, string>>({})
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [draftRows, setDraftRows] = React.useState<DraftRows>({})
   const [completedImport, setCompletedImport] = React.useState<CompletedImport | null>(null)
@@ -332,6 +335,47 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         Notes: '',
       }),
     ])
+  }
+
+  const addCustomColumn = () => {
+    const existing = new Set(customColumnNames.map(name => name.toLocaleLowerCase()))
+    let index = 1
+    const base = language === 'vi' ? 'Cột tùy chỉnh' : 'Custom column'
+    while (existing.has(`${base} ${index}`.toLocaleLowerCase())) index += 1
+    const name = `${base} ${index}`
+    applySourceRows(sourceRowsFromPreview().map(sourceRow => ({
+      ...sourceRow,
+      custom_fields: { ...((sourceRow.custom_fields as Record<string, string> | undefined) ?? {}), [name]: '' },
+    })))
+  }
+
+  const renameCustomColumn = (oldName: string, requestedName: string) => {
+    const newName = requestedName.trim()
+    if (!newName || newName === oldName) {
+      setCustomHeaderDrafts(current => ({ ...current, [oldName]: oldName }))
+      return
+    }
+    if (customColumnNames.some(name => name !== oldName && name.toLocaleLowerCase() === newName.toLocaleLowerCase())) {
+      toast({ title: t('error'), description: language === 'vi' ? 'Tên cột đã tồn tại.' : 'That column name already exists.', variant: 'destructive' })
+      setCustomHeaderDrafts(current => ({ ...current, [oldName]: oldName }))
+      return
+    }
+    const sourceRows = sourceRowsFromPreview().map((sourceRow, index) => {
+      const rowNumber = result?.rows[index]?.row.row_number ?? -1
+      const committed = commitRowDraftToSource(sourceRow, draftRows[rowNumber] ?? {})
+      const fields = { ...((committed.custom_fields as Record<string, string> | undefined) ?? {}) }
+      const value = fields[oldName] ?? ''
+      delete fields[oldName]
+      fields[newName] = value
+      return { ...committed, custom_fields: fields }
+    })
+    applySourceRows(sourceRows)
+    setDraftRows({})
+    setCustomHeaderDrafts(current => {
+      const next = { ...current, [newName]: newName }
+      delete next[oldName]
+      return next
+    })
   }
 
   // This archive is deliberately isolated from import-batch state transitions.
@@ -501,6 +545,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   }
 
   const previewCounts = result ? previewPresentationCounts(result) : null
+  const customColumnNames = [...new Set((result?.rows ?? []).flatMap(preview => Object.keys(preview.row.custom_fields ?? {})))]
   const visiblePreviews = result?.rows.filter(preview => {
     const status = previewStatusForRow(preview)
     if (previewFilter !== 'all' && previewFilter !== status) return false
@@ -516,6 +561,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       preview.row.host_names?.join(' ') ?? '',
       preview.row.assistant_names?.join(' ') ?? '',
       preview.row.technical_names?.join(' ') ?? '',
+      ...Object.values(preview.row.custom_fields ?? {}),
       String(preview.row.row_number),
     ].some(value => String(value ?? '').toLocaleLowerCase().includes(query))
   }) ?? []
@@ -602,13 +648,23 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               <div className="flex min-w-0 flex-wrap gap-2">
                 <Input className="w-full sm:w-64" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} aria-label={t('importSearchRows')} placeholder={t('importSearchRows')} />
                 <Button size="sm" variant="outline" onClick={addPreviewRow}><Plus className="mr-2 h-4 w-4" />{t('addImportRow')}</Button>
-                {(result.errors.length > 0 || result.warnings.length > 0) && <Button size="sm" variant="outline" onClick={() => downloadScheduleImportErrors(result)}><Download className="mr-2 h-4 w-4" />Download errors</Button>}
+                <Button size="sm" variant="outline" onClick={addCustomColumn}><Plus className="mr-2 h-4 w-4" />{language === 'vi' ? 'Thêm cột' : 'Add column'}</Button>
+                {(result.errors.length > 0 || result.warnings.length > 0) && <Button size="sm" variant="outline" onClick={() => downloadScheduleImportErrors(result)}><Download className="mr-2 h-4 w-4" />{language === 'vi' ? 'Tải lỗi import' : 'Download errors'}</Button>}
               </div>
             </div>
+            <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              <label htmlFor="schedule-import-preview-height" className="font-medium text-foreground">{language === 'vi' ? 'Chiều cao bảng xem trước' : 'Preview table height'}</label>
+              <input id="schedule-import-preview-height" type="range" min={320} max={920} step={40} value={previewMaxHeight} onChange={event => setPreviewMaxHeight(Number(event.target.value))} className="w-40 accent-primary" />
+              <span>{previewMaxHeight}px</span>
+              <label htmlFor="schedule-import-preview-width" className="ml-2 font-medium text-foreground">{language === 'vi' ? 'Chiều rộng bảng' : 'Preview table width'}</label>
+              <input id="schedule-import-preview-width" type="range" min={1400} max={3000} step={100} value={previewMinWidth} onChange={event => setPreviewMinWidth(Number(event.target.value))} className="w-40 accent-primary" />
+              <span>{previewMinWidth}px</span>
+              <span>{language === 'vi' ? 'Cột tùy chỉnh chỉ được lưu cùng dữ liệu nguồn của lô import.' : 'Custom columns are retained as import batch source metadata.'}</span>
+            </div>
             {visiblePreviews.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" role="status">{result.rows.length === 0 ? t('importNoRows') : t('importNoMatchingRows')}</p>}
-            <div className="hidden max-h-[560px] overflow-auto rounded-lg border md:block">
-              <table className="min-w-[1780px] w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">Execution Source</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('importHostNames')}</th><th className="p-2">{t('importAssistantNames')}</th><th className="p-2">{t('importTechnicalNames')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th><th className="min-w-64 p-2">{t('status')}</th></tr></thead>
+            <div className="hidden overflow-auto rounded-lg border md:block" style={{ maxHeight: `${previewMaxHeight}px` }}>
+              <table className="w-full text-sm" style={{ minWidth: `${previewMinWidth}px` }}>
+                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{language === 'vi' ? 'Agency / Nguồn thực hiện' : 'Agency / Source'}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('importHostNames')}</th><th className="p-2">{t('importAssistantNames')}</th><th className="p-2">{t('importTechnicalNames')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th>{customColumnNames.map(name => <th key={name} className="min-w-48 p-2"><Input aria-label={language === 'vi' ? `Đổi tên cột ${name}` : `Rename ${name} column`} value={customHeaderDrafts[name] ?? name} onChange={event => setCustomHeaderDrafts(current => ({ ...current, [name]: event.target.value }))} onBlur={event => renameCustomColumn(name, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); renameCustomColumn(name, event.currentTarget.value) } }} /></th>)}<th className="min-w-64 p-2">{t('status')}</th></tr></thead>
                 <tbody>
                   {visiblePreviews.map(preview => {
                     const rowNumber = preview.row.row_number
@@ -639,7 +695,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                         <td className="p-2"><div className="flex gap-1"><Input aria-label={`Row ${rowNumber} start time`} className="w-24" value={cellValue('start_time')} onChange={changeField('start_time')} onKeyDown={handleCellKeyDown} /><Input aria-label={`Row ${rowNumber} end time`} className="w-24" value={cellValue('end_time')} onChange={changeField('end_time')} onKeyDown={handleCellKeyDown} /></div>{preview.row.crosses_midnight && <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-xs text-indigo-700"><Moon className="h-3 w-3" />{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} brand`} value={entityValue('brand_name', preview.row.brand_name)} onChange={value => draftChange(rowNumber, 'brand_name', value)} options={brands} /></td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} platform`} value={entityValue('platform_name', preview.row.platform_name)} onChange={value => draftChange(rowNumber, 'platform_name', value)} options={platforms} /></td>
-                        <td className="p-2"><select aria-label={`Row ${rowNumber} execution source`} className="h-9 rounded-md border bg-background px-2" value={cellValue('execution_source')} onChange={event => draftChange(rowNumber, 'execution_source', event.target.value)}><option value="">Unclassified</option><option value="internal">Internal</option><option value="agency">Agency</option></select></td>
+                        <td className="p-2"><select aria-label={`Row ${rowNumber} Agency / execution source`} className="h-9 rounded-md border bg-background px-2" value={cellValue('execution_source')} onChange={event => draftChange(rowNumber, 'execution_source', event.target.value)}><option value="">{language === 'vi' ? 'Chưa phân loại' : 'Unclassified'}</option><option value="internal">{language === 'vi' ? 'Nội bộ' : 'Internal'}</option><option value="agency">Agency</option></select></td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} campaign`} optional value={entityValue('campaign_name', preview.row.campaign_name || '')} onChange={value => draftChange(rowNumber, 'campaign_name', value)} options={campaigns} /></td>
                         <td className="p-2"><Input aria-label={`Row ${rowNumber} shift title`} className="w-48" value={cellValue('title')} onChange={changeField('title')} onKeyDown={handleCellKeyDown} /></td>
                         <td className="p-2"><Input aria-label={`Row ${rowNumber} studio`} className="w-36" value={cellValue('studio')} onChange={changeField('studio')} onKeyDown={handleCellKeyDown} /></td>
@@ -666,15 +722,19 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                             />
                           </td>
                         ))}
+                        {customColumnNames.map(name => {
+                          const field = `custom:${name}` as DraftField
+                          return <td className="p-2" key={name}><Input aria-label={`Row ${rowNumber} ${name}`} className="w-40" value={cellValue(field)} onChange={changeField(field)} onKeyDown={handleCellKeyDown} /></td>
+                        })}
                         <td className="p-2">
                           {editing && (
                             <div className="mb-1 flex flex-wrap items-center gap-1">
                               <Button size="sm" variant="default" onClick={() => commitRow(rowNumber)} aria-label="Confirm edit"><Check className="h-3 w-3" /></Button>
                               <Button size="sm" variant="outline" onClick={() => cancelRow(rowNumber)} aria-label="Cancel edit"><X className="h-3 w-3" /></Button>
-                              <span className="text-xs text-amber-700">Editing draft — Enter to confirm</span>
                             </div>
                           )}
                           {!editing && <Badge variant="outline">{importStatusLabel(rowStatus, t)}</Badge>}
+                          {editing && <span className="text-xs text-amber-700">{language === 'vi' ? 'Đang sửa bản nháp — nhấn Enter để xác nhận' : 'Editing draft — Enter to confirm'}</span>}
                           {rowStatus === 'invalid' && <p className="mt-1 text-xs text-red-700">{t('importValidationDetails')}</p>}
                           {rowStatus === 'duplicate' && <p className="mt-1 text-xs text-slate-700">{t('duplicatePreserved')}</p>}
                           {preview.row.errors.map(message => <p key={message} className="mb-1 text-xs text-red-700">{message}</p>)}
@@ -693,7 +753,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 return <div key={preview.row.row_number} className={`rounded-md border p-3 ${rowStatusClass(status)}`}>
                   <div className="flex items-start justify-between gap-2"><div><p className="text-xs text-muted-foreground">{t('importSourceRow')} {preview.row.row_number}</p><p className="font-medium">{identity || t('importNoRows')}</p></div><Badge variant="outline">{importStatusLabel(status, t)}</Badge></div>
                   <p className="mt-1 text-xs text-muted-foreground">{preview.row.brand_name} · {preview.row.platform_name}{preview.row.campaign_name ? ` · ${preview.row.campaign_name}` : ''}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Execution Source: {preview.row.execution_source || 'Unclassified'}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}: {preview.row.execution_source === 'agency' ? 'Agency' : preview.row.execution_source === 'internal' ? (language === 'vi' ? 'Nội bộ' : 'Internal') : (language === 'vi' ? 'Chưa phân loại' : 'Unclassified')}</p>
+                  {Object.entries(preview.row.custom_fields ?? {}).map(([name, value]) => <p key={name} className="mt-1 break-words text-xs text-muted-foreground"><span className="font-medium text-foreground">{name}:</span> {value || '—'}</p>)}
                   {preview.row.errors.map(message => <p key={message} className="mt-1 text-xs text-red-700">{message}</p>)}
                   {preview.row.warnings.map(message => <p key={message} className="mt-1 text-xs text-amber-700">{message}</p>)}
                 </div>

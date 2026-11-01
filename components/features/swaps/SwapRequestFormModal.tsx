@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { addDays, format, parseISO } from 'date-fns'
-import { Loader2, Calendar, Clock, Moon, CheckCircle2, AlertCircle, RotateCcw, Search } from 'lucide-react'
+import { Loader2, Calendar, CheckCircle2, AlertCircle, RotateCcw, Search } from 'lucide-react'
 import { isStaffedRegistration, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import type { Brand, OperationalRole, Platform, Shift, ShiftRegistration, SwapExchangeCandidate, UserDirectoryEntry } from '@/lib/types/database.types'
 import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
@@ -403,75 +403,41 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
               </div>
             )}
 
-            {/* Rich Shift Card List */}
+            {/* Explicit shift table: the user can choose a source shift directly. */}
             {source && !source.error && sourceRows.length > 0 && (
-              <div role="group" aria-label={copy('Chọn ca được phân công', 'Choose assigned shift')} className="max-h-56 space-y-2 overflow-y-auto pr-1">
-                {sourceRows.map(shift => {
-                  const shiftRegs = source.registrations.filter(reg => reg.shift_id === shift.id && reg.user_id === owner && isStaffedRegistration(reg))
-                  const isSelected = sourceId === shift.id
-                  return (
-                    <button
-                      key={shift.id}
-                      type="button"
-                      aria-pressed={isSelected}
-                      onClick={() => selectSourceShift(shift.id)}
-                      className={`w-full rounded-lg border p-3 text-left text-xs transition-all focus-visible:ring-2 focus-visible:ring-primary ${
-                        isSelected
-                          ? 'border-primary bg-primary/5 shadow-xs ring-1 ring-primary/40'
-                          : 'border-border/60 hover:border-primary/40 hover:bg-muted/40'
-                      }`}
-                    >
-                      <div className="flex flex-col gap-1.5 w-full">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="font-semibold text-foreground text-sm">{shift.title || copy('Ca trực', 'Shift')}</span>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <Badge variant="outline" className="text-[11px] font-medium border-primary/30 text-primary bg-primary/5">
-                              {brands.find(item => item.id === shift.brand_id)?.name ?? '—'}
-                            </Badge>
-                            <Badge variant="outline" className="text-[11px] font-medium border-muted-foreground/30 text-muted-foreground">
-                              {platforms.find(item => item.id === shift.platform_id)?.name ?? '—'}
-                            </Badge>
-                            <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-wider">
-                              {t(shift.status)}
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                          <span className="inline-flex items-center gap-1">
-                            <Calendar className="h-3.5 w-3.5" />
-                            {shift.date}
-                          </span>
-                          <span className="inline-flex items-center gap-1 font-mono font-medium text-foreground">
-                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                            {formatShiftTimeRange(shift)}
-                          </span>
-                          {shift.crosses_midnight && (
-                            <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 gap-1 font-medium">
-                              <Moon className="h-2.5 w-2.5" />
-                              {copy('Qua đêm', 'Overnight')}
-                            </Badge>
-                          )}
-                          {shift.studio && (
-                            <span className="text-[11px] text-muted-foreground">
-                              Studio: {shift.studio}
-                            </span>
-                          )}
-                          <span className="text-[11px] text-muted-foreground/70">
-                            ({shift.timezone || 'ICT / GMT+7'})
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
-                          <span className="text-xs text-muted-foreground">{copy('Vai trò của bạn:', 'Your role:')}</span>
-                          {shiftRegs.map(reg => (
-                            <Badge key={reg.id} variant="default" className="text-[11px] capitalize py-0 px-2 h-5 font-medium">
-                              {t(reg.operational_role)}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
+              <div className="max-h-64 overflow-auto rounded-md border" role="group" aria-label={copy('Chọn ca được phân công', 'Choose assigned shift')}>
+                <table className="w-full min-w-[620px] text-left text-xs">
+                  <thead className="sticky top-0 bg-muted/90 text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">{copy('Ca trực', 'Shift')}</th>
+                      <th className="px-3 py-2 font-medium">Brand / Platform</th>
+                      <th className="px-3 py-2 font-medium">{copy('Ngày · Giờ', 'Date · Time')}</th>
+                      <th className="px-3 py-2 font-medium">{copy('Trạng thái', 'Status')}</th>
+                      <th className="px-3 py-2 font-medium">{copy('Vai trò', 'Role')}</th>
+                      <th className="px-3 py-2 text-right font-medium">{copy('Chọn', 'Select')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {sourceRows.map(shift => {
+                      const shiftRegs = source.registrations.filter(reg => reg.shift_id === shift.id && reg.user_id === owner && isStaffedRegistration(reg))
+                      const isSelected = sourceId === shift.id
+                      return (
+                        <tr key={shift.id} className={isSelected ? 'bg-primary/5' : 'hover:bg-muted/40'}>
+                          <td className="px-3 py-2 font-medium">{shift.title || copy('Ca trực', 'Shift')} {shift.crosses_midnight && <span className="ml-1 text-amber-700">· {copy('Qua đêm', 'Overnight')}</span>}</td>
+                          <td className="px-3 py-2">{brands.find(item => item.id === shift.brand_id)?.name ?? '—'} · {platforms.find(item => item.id === shift.platform_id)?.name ?? '—'}</td>
+                          <td className="whitespace-nowrap px-3 py-2">{shift.date} · {formatShiftTimeRange(shift)} <span className="text-muted-foreground">{shift.timezone || 'ICT / GMT+7'}{shift.studio ? ` · ${shift.studio}` : ''}</span></td>
+                          <td className="px-3 py-2"><Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-wider">{t(shift.status)}</Badge></td>
+                          <td className="px-3 py-2">{shiftRegs.map(reg => t(reg.operational_role)).join(', ') || '—'}</td>
+                          <td className="px-3 py-2 text-right">
+                            <Button type="button" size="sm" variant={isSelected ? 'default' : 'outline'} aria-pressed={isSelected} onClick={() => selectSourceShift(shift.id)}>
+                              {isSelected ? copy('Đã chọn', 'Selected') : copy('Chọn ca', 'Choose shift')}
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
 

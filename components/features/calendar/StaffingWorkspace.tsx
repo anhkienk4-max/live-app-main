@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { useRequestSequence } from '@/lib/hooks/useRequestSequence'
 import { useListPagination } from '@/lib/hooks/useListPagination'
@@ -25,6 +26,7 @@ export function StaffingShiftSummary({ shift, registrations }: { shift: Shift; r
 }
 
 export function StaffingWorkspace() {
+  const router = useRouter()
   const { t, translate } = useTranslation()
   const [data,setData]=useState<{shifts:Shift[]; registrations:ShiftRegistration[]; users:User[]; brands:Brand[]; platforms:Platform[]; campaigns:Campaign[]}>({shifts:[],registrations:[],users:[],brands:[],platforms:[],campaigns:[]})
   const [loading,setLoading]=useState(true)
@@ -176,6 +178,6 @@ return <tr key={shift.id} className={selected?.id===shift.id?'bg-blue-50/60':'ho
 })}</tbody></table></div>{!filtered.length&&<p className="p-8 text-center text-sm text-slate-500">{t('noData')}</p>}<HistoryPagination page={safePage} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} /></section>
     {selected&&<aside className="min-w-0 space-y-4 rounded-lg border bg-white p-4"><div><h2 className="text-base font-semibold">{selected.title||selected.id}</h2><p className="mt-1 text-xs text-slate-500">{selected.date} · {formatShiftTimeRange(selected)} · {selected.studio||'—'}</p></div><StaffingShiftSummary shift={selected} registrations={data.registrations} />{getShiftRoleCapacities(selected,data.registrations).map(capacity=><section key={capacity.role} className="border-t pt-3"><h3 className="flex items-center justify-between text-xs font-semibold"><span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />{t(capacity.role)}</span><span>{capacity.approved}/{capacity.required}</span></h3>{resolveStaffingLabelsForRole(selected,data.registrations.filter(registration=>registration.shift_id===selected.id),data.users,capacity.role,key=>translate(key)).map(person=><div key={person.id} className="mt-2 flex justify-between gap-2 text-xs"><span>{person.name}</span><span className="text-slate-400">{person.isImportedOnly?'Tên nhập từ lịch':person.isUnassigned?translate('unassigned'):t('approved')}</span></div>)}<p className="mt-2 text-xs text-amber-700">{t('pending')}: {capacity.pending}</p></section>)}<div className="border-t pt-3 text-xs text-slate-500"><p>{selected.import_batch_id?'Lô nhập: '+selected.import_batch_id:'—'}</p><p className="mt-1">{t('version')}: {selected.version??'—'}</p><p className="mt-1">{getShiftRoleCapacities(selected,data.registrations).reduce((sum,capacity)=>sum+capacity.approved,0)} {t('approved')}</p></div><Button variant="outline" className="w-full" onClick={()=>setDetailOpen(true)}>{t('viewDetails')} · {t('staffing')}</Button><StaffingActionPanel key={selected.id} shift={selected} users={data.users} onUpdated={load} /></aside>}
     </div>
-    {detailOpen&&selected&&<ShiftDetailModal open shift={selected} brands={data.brands} platforms={data.platforms} campaigns={data.campaigns} users={data.users} allShifts={data.shifts} allRegistrations={data.registrations} onOpenChange={setDetailOpen} onUpdate={()=>void load()} onDelete={()=>{setDetailOpen(false);void load()}} />}
+    {detailOpen&&selected&&<ShiftDetailModal open shift={selected} brands={data.brands} platforms={data.platforms} campaigns={data.campaigns} users={data.users} allShifts={data.shifts} allRegistrations={data.registrations} onOpenChange={setDetailOpen} onUpdate={()=>void load()} onEdit={()=>{setDetailOpen(false);router.push(`/shifts?edit_shift_id=${encodeURIComponent(selected.id)}`)}} onDelete={()=>{setDetailOpen(false);void load()}} />}
   </div>
 }

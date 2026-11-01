@@ -77,7 +77,7 @@ type ScheduleSheetRow = Record<string, unknown>
 type SlashDateOrder = 'day-first' | 'month-first'
 
 const scheduleHeaders = {
-  executionSource: ['execution source', 'execution_source'],
+  executionSource: ['execution source', 'execution_source', 'agency', 'nguồn thực hiện', 'nguon thuc hien'],
   date: ['date', 'ngày', 'ngay', 'ngày live', 'ngay live'],
   timeRange: ['time', 'giờ', 'gio', 'shift time', 'time range', 'khung giờ', 'khung gio', 'thời gian', 'thoi gian'],
   startTime: ['start', 'start time', 'giờ bắt đầu', 'gio bat dau', 'từ giờ', 'tu gio'],
@@ -523,6 +523,9 @@ export function parseScheduleRows(
     previews.push({
       row: toCanonicalScheduleImportPreviewRow({
         execution_source: executionSource,
+        custom_fields: normalizedSource.custom_fields && typeof normalizedSource.custom_fields === 'object'
+          ? Object.fromEntries(Object.entries(normalizedSource.custom_fields as Record<string, unknown>).map(([key, value]) => [key, String(value ?? '')]))
+          : {},
         row_number: rowNumber,
         date,
         start_time: startTime,
@@ -590,19 +593,29 @@ const rowsFromWorksheet = (worksheet: XLSX.WorkSheet): {
   const detected = detectScheduleHeaderRow(rawRows)
   if (!detected) return { rows: [], hasScheduleHeader: false }
 
-  const headers = rawRows[detected.index].map((header, columnIndex) => {
+  const usedCustomNames = new Set<string>()
+  const headers = rawRows[detected.index].map(header => {
     const field = headerFieldFor(header)
-    return field ? canonicalScheduleHeaders[field] : String(header ?? '').trim() || `__column_${columnIndex}`
+    if (field) return { canonical: canonicalScheduleHeaders[field], custom: null as string | null }
+    const base = String(header ?? '').trim()
+    if (!base) return { canonical: null, custom: null }
+    let name = base
+    let suffix = 2
+    while (usedCustomNames.has(name.toLocaleLowerCase())) name = `${base} (${suffix++})`
+    usedCustomNames.add(name.toLocaleLowerCase())
+    return { canonical: null, custom: name }
   })
 
   const rows = rawRows.slice(detected.index + 1).flatMap((values, dataIndex) => {
     if (!values.some(value => String(value ?? '').trim() !== '')) return []
     const row: ScheduleSheetRow = { [SOURCE_ROW_NUMBER]: detected.index + dataIndex + 2 }
+    const customFields: Record<string, string> = {}
     headers.forEach((header, columnIndex) => {
-      if (header.startsWith('__column_')) return
       const value = values[columnIndex] ?? ''
-      if (!(header in row) || String(row[header] ?? '').trim() === '') row[header] = value
+      if (header.custom) customFields[header.custom] = String(value ?? '')
+      else if (header.canonical && (!(header.canonical in row) || String(row[header.canonical] ?? '').trim() === '')) row[header.canonical] = value
     })
+    if (Object.keys(customFields).length) row.custom_fields = customFields
     return [row]
   })
   return { rows, hasScheduleHeader: true }
