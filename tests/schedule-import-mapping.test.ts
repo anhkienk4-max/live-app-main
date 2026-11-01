@@ -67,6 +67,22 @@ test('schedule import detects a normal row-one header', () => {
   assert.deepEqual(result.validShifts[0].technical_names, [])
 })
 
+test('schedule import treats 24:00 as next-day midnight for end time', () => {
+  const overnightRow = withColumn(withColumn(scheduleRow, 1, '19:00'), 2, '24:00')
+  const result = parseScheduleTabularData(
+    [englishHeader, overnightRow].map(csvRow).join('\n'),
+    'string',
+    maps,
+  )
+
+  assert.equal(result.validRows, 1)
+  assert.equal(result.invalidRows, 0)
+  assert.equal(result.validShifts[0].end_time, '00:00')
+  assert.equal(result.validShifts[0].end_date, '2026-09-02')
+  assert.equal(result.validShifts[0].crosses_midnight, true)
+  assert.equal(result.validShifts[0].duration_minutes, 300)
+})
+
 test('Google Sheets Agency partner column is retained separately from execution source', () => {
   const headers = ['Date', 'Start time', 'End time', 'Brand', 'Platform', 'Agency', 'Shift name']
   const row = ['2026-09-01', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'ADA', 'Morning shift']

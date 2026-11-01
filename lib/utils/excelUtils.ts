@@ -397,7 +397,8 @@ export function parseScheduleRows(
     const date = normalizeDate(rawDate, dateOrder.order)
     const [rangeStart, rangeEnd] = normalizeTimeRange(valueFor(normalizedSource, scheduleHeaders.timeRange))
     const startTime = normalizeTime(valueFor(normalizedSource, scheduleHeaders.startTime)) || rangeStart
-    const endTime = normalizeTime(valueFor(normalizedSource, scheduleHeaders.endTime)) || rangeEnd
+    const rawEndTime = normalizeTime(valueFor(normalizedSource, scheduleHeaders.endTime)) || rangeEnd
+    const endTime = rawEndTime === '24:00' ? '00:00' : rawEndTime
     const brandName = textValue(valueFor(normalizedSource, scheduleHeaders.brand)).trim()
     const rawPlatformName = textValue(valueFor(normalizedSource, scheduleHeaders.platform)).trim()
     const platformAlias = normalizeLookup(rawPlatformName)
