@@ -67,6 +67,17 @@ test('schedule import detects a normal row-one header', () => {
   assert.deepEqual(result.validShifts[0].technical_names, [])
 })
 
+test('Google Sheets Agency partner column is retained separately from execution source', () => {
+  const headers = ['Date', 'Start time', 'End time', 'Brand', 'Platform', 'Agency', 'Shift name']
+  const row = ['2026-09-01', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'ADA', 'Morning shift']
+  const result = parseScheduleTabularData([headers, row].map(csvRow).join('\n'), 'string', maps)
+
+  assert.equal(result.validRows, 1)
+  assert.equal(result.rows[0].row.execution_source, 'agency')
+  assert.equal(result.validShifts[0].execution_source, 'agency')
+  assert.equal(result.rows[0].row.custom_fields?.Agency, 'ADA')
+})
+
 test('Google Sheets staffing display aliases normalize names without resolving users', () => {
   const headers = [...englishHeader, 'Host', 'Assistant', 'Tech']
   const row = [...scheduleRow, '  Hương  ', 'An, Linh; An', ' Minh ; Phúc ']

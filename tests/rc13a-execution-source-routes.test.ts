@@ -37,6 +37,16 @@ test('Internal and Agency are the only controlled import execution sources', () 
   assert.match(invalid.rows[0].row.errors.join(' '), /Execution Source must be Internal or Agency/)
 })
 
+test('Agency partner labels are preserved and classify imported rows as agency source', () => {
+  for (const agency of ['ADA', 'SNAP', 'AI']) {
+    const result = parseScheduleRows([{ ...sourceRow, Agency: agency }], maps)
+    assert.equal(result.validRows, 1, agency)
+    assert.equal(result.rows[0].row.execution_source, 'agency', agency)
+    assert.equal(result.validShifts[0].execution_source, 'agency', agency)
+    assert.equal(result.rows[0].row.custom_fields?.Agency, agency)
+  }
+})
+
 test('old import rows derive Internal from Studio semantics and preview round-trip preserves explicit values', () => {
   const old = parseScheduleRows([sourceRow], maps)
   assert.equal(old.validRows, 1)

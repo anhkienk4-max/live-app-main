@@ -77,7 +77,7 @@ type ScheduleSheetRow = Record<string, unknown>
 type SlashDateOrder = 'day-first' | 'month-first'
 
 const scheduleHeaders = {
-  executionSource: ['execution source', 'execution_source', 'agency', 'nguồn thực hiện', 'nguon thuc hien'],
+  executionSource: ['execution source', 'execution_source', 'nguồn thực hiện', 'nguon thuc hien'],
   date: ['date', 'ngày', 'ngay', 'ngày live', 'ngay live'],
   timeRange: ['time', 'giờ', 'gio', 'shift time', 'time range', 'khung giờ', 'khung gio', 'thời gian', 'thoi gian'],
   startTime: ['start', 'start time', 'giờ bắt đầu', 'gio bat dau', 'từ giờ', 'tu gio'],
@@ -156,6 +156,14 @@ const valueFor = (row: ScheduleSheetRow, aliases: readonly string[]) => {
   )
   const alias = aliases.map(normalizeLookup).find(candidate => Object.prototype.hasOwnProperty.call(normalized, candidate))
   return alias ? normalized[alias] : undefined
+}
+
+const customFieldValueFor = (row: ScheduleSheetRow, aliases: readonly string[]) => {
+  const fields = row.custom_fields
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return undefined
+  const names = new Set(aliases.map(normalizeLookup))
+  return Object.entries(fields as Record<string, unknown>)
+    .find(([name]) => names.has(normalizeLookup(name)))?.[1]
 }
 
 const headerFieldFor = (value: unknown): ScheduleHeaderField | undefined => {
@@ -404,12 +412,29 @@ export function parseScheduleRows(
     const rawStudio = String(valueFor(normalizedSource, scheduleHeaders.studio) ?? '')
     const studio = rawStudio.trim()
     const rawExecutionSource = textValue(valueFor(normalizedSource, scheduleHeaders.executionSource)).trim()
+    const rawAgencyName = textValue(
+      valueFor(normalizedSource, ['agency', 'agency name'])
+        ?? customFieldValueFor(normalizedSource, ['agency', 'agency name']),
+    ).trim()
+    const agencyExecutionSource = rawAgencyName
+      ? /^(internal|agency)$/i.test(rawAgencyName)
+        ? resolveExecutionSource({ explicit: rawAgencyName })
+        : 'agency'
+      : undefined
     const executionSource = rawExecutionSource && !/^(internal|agency)$/i.test(rawExecutionSource)
       ? null
-      : resolveExecutionSource({ explicit: rawExecutionSource || undefined, studio })
+      : rawExecutionSource
+        ? resolveExecutionSource({ explicit: rawExecutionSource })
+        : agencyExecutionSource ?? resolveExecutionSource({ studio })
+    const customFields = normalizedSource.custom_fields && typeof normalizedSource.custom_fields === 'object' && !Array.isArray(normalizedSource.custom_fields)
+      ? { ...normalizedSource.custom_fields as Record<string, unknown> }
+      : {}
+    if (rawAgencyName && !Object.keys(customFields).some(name => ['agency', 'agency name'].includes(normalizeLookup(name)))) {
+      customFields.Agency = rawAgencyName
+    }
     const notes = String(valueFor(normalizedSource, scheduleHeaders.notes) ?? '').trim()
     const sourcePresence = (sourceValues.source_presence as ScheduleImportSourcePresence | undefined) ?? {
-      execution_source: sourceFieldProvided(sourceValues, scheduleHeaders.executionSource),
+      execution_source: sourceFieldProvided(sourceValues, scheduleHeaders.executionSource) || Boolean(rawAgencyName),
       campaign_name: sourceFieldProvided(sourceValues, scheduleHeaders.campaign),
       studio: sourceFieldProvided(sourceValues, scheduleHeaders.studio),
       title: sourceFieldProvided(sourceValues, scheduleHeaders.title),
@@ -523,9 +548,7 @@ export function parseScheduleRows(
     previews.push({
       row: toCanonicalScheduleImportPreviewRow({
         execution_source: executionSource,
-        custom_fields: normalizedSource.custom_fields && typeof normalizedSource.custom_fields === 'object'
-          ? Object.fromEntries(Object.entries(normalizedSource.custom_fields as Record<string, unknown>).map(([key, value]) => [key, String(value ?? '')]))
-          : {},
+        custom_fields: Object.fromEntries(Object.entries(customFields).map(([key, value]) => [key, String(value ?? '')])),
         row_number: rowNumber,
         date,
         start_time: startTime,
