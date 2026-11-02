@@ -19,8 +19,9 @@ import { resolveOperationalStorageRoutingMode, type OperationalStorageRoutingMod
 import { createOperationalStorageFolderMaterializer } from '@/lib/server/operationalStorageFolderMaterializer'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { fileStorageService, createFileStorageService } from '@/lib/services/fileStorageService'
+import { createClient as createUserClient } from '@/lib/supabase/server'
 import type { FileProviderAvailability } from '@/lib/server/fileProviderRegistry'
-import { requireRole, authorizationErrorResponse, isAuthorizationError, type ServerUserResolver } from '@/lib/server/authGuards'
+import { requireRole, requireUser, authorizationErrorResponse, isAuthorizationError, type ServerUserResolver } from '@/lib/server/authGuards'
 import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { loadOperationalSystemExport, encodeOperationalSystemExport } from '@/lib/server/operationalSystemExport'
 
@@ -115,6 +116,23 @@ function publicFile(row: Record<string, unknown>) {
     scope_key: row.scope_key, provider: row.provider,
     integrity_status: row.integrity_status === 'sha256_verified' ? 'sha256_verified' : 'provider_reference',
     access_url: '/api/operational-files?file_id=' + encodeURIComponent(String(row.id)),
+  }
+}
+
+async function verifySnapshotFile(storage: StorageGateway, row: Record<string, unknown>, parentId: string) {
+  if ((row.provider !== 'google_drive' && row.provider !== 'onedrive') || row.external_parent_id !== parentId
+    || typeof row.external_file_id !== 'string' || typeof row.checksum_sha256 !== 'string') {
+    throw new Error('OPERATIONAL_FILE_PROVIDER_READBACK_FAILED')
+  }
+  const reference = { provider: row.provider as Provider, external_file_id: row.external_file_id }
+  const metadata = await storage.getMetadata(reference)
+  if (metadata.kind !== 'file' || !metadata.parent_ids?.includes(parentId)) {
+    throw new Error('OPERATIONAL_FILE_PROVIDER_READBACK_FAILED')
+  }
+  const bytes = await storage.read(reference)
+  if (bytes.byteLength !== Number(row.size_bytes)
+    || createHash('sha256').update(bytes).digest('hex') !== row.checksum_sha256) {
+    throw new Error('OPERATIONAL_FILE_PROVIDER_READBACK_FAILED')
   }
 }
 
@@ -228,6 +246,7 @@ async function loadFile(client: SupabaseClient, id: string) {
 export function createOperationalFileRouteHandler(deps: {
   resolveUser?: ServerUserResolver
   createClient?: () => SupabaseClient
+  createUserClient?: () => Promise<SupabaseClient>
   storage?: StorageGateway
   routes?: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
   materializeFolders?: (placement: OperationalStoragePlacement) => Promise<string>
@@ -236,6 +255,7 @@ export function createOperationalFileRouteHandler(deps: {
   allowConfidentialWrites?: () => boolean
 } = {}) {
   const clientFactory = deps.createClient ?? createSupabaseAdminClient
+  const userClientFactory = deps.createUserClient ?? createUserClient
   const storage = deps.storage ?? fileStorageService
   const routingMode = deps.routingMode ?? resolveOperationalStorageRoutingMode()
   const allowConfidentialWrites = deps.allowConfidentialWrites ??
@@ -283,7 +303,8 @@ export function createOperationalFileRouteHandler(deps: {
       if (error instanceof z.ZodError) return errorResponse('OPERATIONAL_FILE_REQUEST_INVALID')
       const code = error instanceof Error ? error.message : 'OPERATIONAL_FILE_FAILED'
       const known = code.startsWith('OPERATIONAL_FILE_') || code.startsWith('FILE_')
-      const status = code.endsWith('NOT_FOUND') ? 404
+      const status = code.includes('READBACK') ? 502
+        : code.endsWith('NOT_FOUND') ? 404
         : code.endsWith('CONFLICT') || code.endsWith('MISMATCH') ? 409
         : code.endsWith('TOO_LARGE') ? 413
         : known ? 400 : 502
@@ -393,8 +414,12 @@ export function createOperationalFileRouteHandler(deps: {
     },
     POST(request: Request) {
       return run(async () => {
-        const actor = await requireRole(request, ['leader', 'admin'], deps.resolveUser)
-        if ((request.headers.get('content-type') || '').includes('application/json')) {
+        const actor = await requireUser(request, deps.resolveUser)
+        const elevated = actor.systemPermission === 'leader' || actor.systemPermission === 'admin'
+        const contentType = request.headers.get('content-type') || ''
+        if (!elevated && !contentType.includes('multipart/form-data')) return errorResponse('PERMISSION_DENIED', 403)
+        if (contentType.includes('application/json')) {
+          if (!elevated) return errorResponse('PERMISSION_DENIED', 403)
           const raw = await readJsonBody(request, 16384)
           const generated = generateExportFields.safeParse(raw)
           if (generated.success) {
@@ -544,6 +569,22 @@ export function createOperationalFileRouteHandler(deps: {
           }))
         const parsed = scopeFields.parse(payload)
         const category = cleanCategory(form.get('category'))
+        if (!elevated) {
+          if (category !== 'live_snapshot' || !parsed.shift_id || parsed.campaign_id
+            || (parsed.provider && parsed.provider !== 'google_drive')) {
+            return errorResponse('PERMISSION_DENIED', 403)
+          }
+          const access = await (await userClientFactory()).from('shifts')
+            .select('id,status,deleted_at,archived_at')
+            .eq('id', parsed.shift_id)
+            .maybeSingle()
+          if (access.error || !access.data) return errorResponse('PERMISSION_DENIED', 403)
+          const activeShift = access.data as Record<string, unknown>
+          if (activeShift.deleted_at || activeShift.archived_at
+            || !['preparing', 'live', 'paused'].includes(String(activeShift.status))) {
+            return errorResponse('OPERATIONAL_FILE_SHIFT_NOT_ACTIVE', 409)
+          }
+        }
         if (restrictedCategories.has(category) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
         if (confidentialWriteBlocked(category)) {
           return errorResponse('OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED', 423)
@@ -556,10 +597,15 @@ export function createOperationalFileRouteHandler(deps: {
         const mime = resolveOperationalFileMime(category, file.name, file.type)
         const bytes = new Uint8Array(await file.arrayBuffer())
         const checksum = createHash('sha256').update(bytes).digest('hex')
+        if (!elevated && !['image/png', 'image/jpeg', 'image/webp'].includes(mime)) {
+          return errorResponse('OPERATIONAL_FILE_TYPE_NOT_ALLOWED', 400)
+        }
         const client = clientFactory()
         const scope = await scopeFromInput(client, parsed)
         const provider = parsed.provider ?? 'google_drive'
         const artifactKey = 'file:' + checksum
+        const storageName = safeName(file.name, category, scope.period_date, checksum)
+        const { placement, parentId } = await resolveFolder(scope, category, provider, storageName)
 
         const lookup = () => client.from('operational_files').select('*')
           .eq('scope_key', scope.scope_key).eq('category', category)
@@ -568,12 +614,14 @@ export function createOperationalFileRouteHandler(deps: {
         if (previous.error) throw previous.error
         if (previous.data) {
           if (previous.data.provider !== provider) return errorResponse('OPERATIONAL_FILE_PROVIDER_CONFLICT', 409)
+          if (category === 'live_snapshot' && scope.shift_id) {
+            try { await verifySnapshotFile(storage, previous.data as Record<string, unknown>, parentId) }
+            catch { return errorResponse('OPERATIONAL_FILE_PROVIDER_READBACK_FAILED', 502) }
+          }
           return Response.json({ ok: true, file: publicFile(previous.data as Record<string, unknown>), reused: true },
             { headers: { 'Cache-Control': 'no-store' } })
         }
 
-        const storageName = safeName(file.name, category, scope.period_date, checksum)
-        const { placement, parentId } = await resolveFolder(scope, category, provider, storageName)
         const actorId = actor.businessUserId ?? actor.id
         const uploaded = await storage.upload({
           name: placement.fileName,
@@ -610,6 +658,15 @@ export function createOperationalFileRouteHandler(deps: {
           artifact_key: artifactKey,
           uploaded_by: actor.businessUserId ?? null,
         }
+        if (category === 'live_snapshot' && scope.shift_id) {
+          try {
+            await verifySnapshotFile(storage, { ...row, external_file_id: uploaded.asset.external_file_id }, parentId)
+          } catch {
+            try { await storage.delete({ provider, external_file_id: uploaded.asset.external_file_id }) }
+            catch { console.error('OPERATIONAL_FILE_ORPHAN_CLEANUP_FAILED') }
+            return errorResponse('OPERATIONAL_FILE_PROVIDER_READBACK_FAILED', 502)
+          }
+        }
         const inserted = await client.from('operational_files').insert(row).select('*').single()
         if (inserted.error || !inserted.data) {
           const winner = await lookup()
@@ -641,6 +698,12 @@ export function createOperationalFileRouteHandler(deps: {
         const client = clientFactory()
         const row = await loadFile(client, parsed.file_id)
         if (!row) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)
+        if (row.category === 'live_snapshot') {
+          const reference = await client.from('dashboard_updates').select('id')
+            .eq('screenshot_file_id', parsed.file_id).maybeSingle()
+          if (reference.error) throw new Error('OPERATIONAL_FILE_SCOPE_LOOKUP_FAILED')
+          if (reference.data) return errorResponse('OPERATIONAL_FILE_IN_USE', 409)
+        }
         if (restrictedCategories.has(String(row.category)) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
         if ((row.provider !== 'google_drive' && row.provider !== 'onedrive') || typeof row.external_file_id !== 'string') {
           return errorResponse('OPERATIONAL_FILE_PROVIDER_INVALID', 409)

@@ -76,7 +76,7 @@ type FakeState = {
   rootMimeType: string
   rootCanAddChildren?: boolean
   rootDriveId?: string
-  customFolder?: { mimeType: string; trashed?: boolean; driveId?: string; capabilities?: { canAddChildren?: boolean; canEdit?: boolean } }
+  customFolder?: { mimeType: string; trashed?: boolean; driveId?: string; parents?: string[]; capabilities?: { canAddChildren?: boolean; canEdit?: boolean } }
   allDriveFlags: { list: boolean; create: boolean; get: boolean; update: boolean }
   readData: unknown
   mediaGetCalls: Array<{
@@ -99,7 +99,20 @@ function fakeDrive(state: FakeState) {
     }
     if (params.fileId === 'root-folder') return { data: { id: 'root-folder', name: 'Root', mimeType: state.rootMimeType, trashed: false, driveId: state.rootDriveId, capabilities: { canAddChildren: state.rootCanAddChildren ?? true } } }
     if (params.fileId === 'custom-folder' && state.customFolder) {
-      return { data: { id: 'custom-folder', name: 'Custom', ...state.customFolder } }
+      return { data: { id: 'custom-folder', name: 'Custom', parents: ['root-folder'], ...state.customFolder } }
+    }
+    if (params.fileId === 'parent') {
+      return { data: { id: 'parent', name: 'Parent', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder'], capabilities: { canAddChildren: true } } }
+    }
+    if (params.fileId === 'foreign-root') {
+      return { data: { id: 'foreign-root', name: 'Foreign root', mimeType: 'application/vnd.google-apps.folder', parents: [] } }
+    }
+    const listedFolder = [...state.folderRows.values()].flat().find(file => file.id === params.fileId)
+    if (listedFolder) return { data: listedFolder }
+    const createdFolder = [...state.folderIds.entries()].find(([, id]) => id === params.fileId)
+    if (createdFolder) {
+      const [parent, name] = createdFolder[0].split('/')
+      return { data: { id: params.fileId, name, mimeType: 'application/vnd.google-apps.folder', parents: [parent], capabilities: { canAddChildren: true } } }
     }
     if (params.alt === 'media') {
       if (!options) throw new Error('media requests require transport options')
@@ -347,6 +360,21 @@ test('invalid custom destination never falls back to the managed root', async ()
     (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_INVALID',
   )
   assert.equal(driveState.folderCreates, 0)
+  assert.equal(driveState.uploadCalls, 0)
+})
+
+test('custom folder outside the configured root is rejected before upload', async () => {
+  const driveState = state()
+  driveState.customFolder = {
+    mimeType: 'application/vnd.google-apps.folder',
+    parents: ['foreign-root'],
+    capabilities: { canAddChildren: true, canEdit: true },
+  }
+  const provider = createGoogleDriveFileProvider({ env, drive: fakeDrive(driveState), retryDelayMs: 0 })
+  await assert.rejects(
+    () => provider.upload({ ...input, destination: { provider: 'google_drive', external_folder_id: 'custom-folder' } }),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_FOLDER_OUTSIDE_ROOT',
+  )
   assert.equal(driveState.uploadCalls, 0)
 })
 
