@@ -20,12 +20,32 @@ type ShiftDraft = Omit<Shift, 'id' | 'created_at' | 'updated_at'>
 
 const normalizeTime = (value: string) => value.length > 5 ? value.slice(0, 5) : value
 
+const normalizeQualifier = (v?: string | null) => (v ? v.trim().toLowerCase() : '')
+
 export function hasExactScheduleImportIdentity(shift: Shift, candidate: ShiftDraft): boolean {
-  return shift.date === candidate.date
-    && normalizeTime(shift.start_time) === normalizeTime(candidate.start_time)
-    && normalizeTime(shift.end_time) === normalizeTime(candidate.end_time)
-    && shift.brand_id === candidate.brand_id
-    && shift.platform_id === candidate.platform_id
+  if (
+    shift.date !== candidate.date
+    || normalizeTime(shift.start_time) !== normalizeTime(candidate.start_time)
+    || normalizeTime(shift.end_time) !== normalizeTime(candidate.end_time)
+    || shift.brand_id !== candidate.brand_id
+    || shift.platform_id !== candidate.platform_id
+  ) {
+    return false
+  }
+
+  const shiftStudio = normalizeQualifier(shift.studio)
+  const candidateStudio = normalizeQualifier(candidate.studio)
+  if (shiftStudio !== candidateStudio) return false
+
+  const shiftCampaign = normalizeQualifier(shift.campaign_id)
+  const candidateCampaign = normalizeQualifier(candidate.campaign_id)
+  if (shiftCampaign !== candidateCampaign) return false
+
+  const shiftTitle = normalizeQualifier(shift.title)
+  const candidateTitle = normalizeQualifier(candidate.title)
+  if (shiftTitle && candidateTitle && shiftTitle !== candidateTitle) return false
+
+  return true
 }
 
 export function hasScheduleImportSlotIdentity(shift: Shift, candidate: ShiftDraft): boolean {
@@ -60,11 +80,32 @@ export function reconcileScheduleImportShift(
 }
 
 function hasSameBatchSlotConflict(batchId: string, candidate: ShiftDraft, shifts: Shift[]) {
-  return shifts.some(shift =>
-    shift.import_batch_id === batchId
-    && hasScheduleImportSlotIdentity(shift, candidate)
-    && !hasExactScheduleImportIdentity(shift, candidate),
-  )
+  return shifts.some(shift => {
+    if (shift.import_batch_id !== batchId) return false
+    if (!hasScheduleImportSlotIdentity(shift, candidate)) return false
+    if (hasExactScheduleImportIdentity(shift, candidate)) return false
+
+    // If both have different non-empty qualifiers, they are distinct operational sessions, not a conflict
+    const shiftStudio = normalizeQualifier(shift.studio)
+    const candidateStudio = normalizeQualifier(candidate.studio)
+    if (shiftStudio && candidateStudio && shiftStudio !== candidateStudio) {
+      return false
+    }
+
+    const shiftCampaign = normalizeQualifier(shift.campaign_id)
+    const candidateCampaign = normalizeQualifier(candidate.campaign_id)
+    if (shiftCampaign && candidateCampaign && shiftCampaign !== candidateCampaign) {
+      return false
+    }
+
+    const shiftTitle = normalizeQualifier(shift.title)
+    const candidateTitle = normalizeQualifier(candidate.title)
+    if (shiftTitle && candidateTitle && shiftTitle !== candidateTitle) {
+      return false
+    }
+
+    return true
+  })
 }
 
 type DuplicateCandidateResolution =
@@ -86,9 +127,32 @@ function resolveDuplicateCandidateShift(
   const exactMatches = shifts.filter(shift => hasExactScheduleImportIdentity(shift, candidate))
   if (exactMatches.length === 1) return { kind: 'unique', shift: exactMatches[0] }
   if (exactMatches.length > 1) return { kind: 'ambiguous', shiftIds: exactMatches.map(s => s.id).sort() }
+
   const slotMatches = shifts.filter(shift => hasScheduleImportSlotIdentity(shift, candidate))
-  if (slotMatches.length === 1) return { kind: 'unique', shift: slotMatches[0] }
-  if (slotMatches.length > 1) return { kind: 'ambiguous', shiftIds: slotMatches.map(s => s.id).sort() }
+  const candidateStudio = normalizeQualifier(candidate.studio)
+  const candidateCampaign = normalizeQualifier(candidate.campaign_id)
+
+  const candidateMatches = slotMatches.filter(shift => {
+    const shiftStudio = normalizeQualifier(shift.studio)
+    const shiftCampaign = normalizeQualifier(shift.campaign_id)
+    if (candidateStudio && shiftStudio && candidateStudio !== shiftStudio) return false
+    if (candidateCampaign && shiftCampaign && candidateCampaign !== shiftCampaign) return false
+    return true
+  })
+
+  if (candidateMatches.length === 1) {
+    const matched = candidateMatches[0]
+    const matchedStudio = normalizeQualifier(matched.studio)
+    const matchedCampaign = normalizeQualifier(matched.campaign_id)
+    if ((candidateStudio && !matchedStudio) || (!candidateStudio && matchedStudio)
+      || (candidateCampaign && !matchedCampaign) || (!candidateCampaign && matchedCampaign)) {
+      return { kind: 'ambiguous', shiftIds: [matched.id] }
+    }
+    return { kind: 'unique', shift: matched }
+  }
+  if (candidateMatches.length > 1) {
+    return { kind: 'ambiguous', shiftIds: candidateMatches.map(s => s.id).sort() }
+  }
   return { kind: 'none' }
 }
 
@@ -105,8 +169,31 @@ function resolveExternalShift(
   const exactMatches = slotMatches.filter(shift => hasExactScheduleImportIdentity(shift, candidate))
   if (exactMatches.length === 1) return { kind: 'unique', shift: exactMatches[0] }
   if (exactMatches.length > 1) return { kind: 'ambiguous', shiftIds: exactMatches.map(s => s.id).sort() }
-  if (slotMatches.length === 1) return { kind: 'unique', shift: slotMatches[0] }
-  return { kind: 'ambiguous', shiftIds: slotMatches.map(s => s.id).sort() }
+
+  const candidateStudio = normalizeQualifier(candidate.studio)
+  const candidateCampaign = normalizeQualifier(candidate.campaign_id)
+
+  const compatibleMatches = slotMatches.filter(shift => {
+    const shiftStudio = normalizeQualifier(shift.studio)
+    const shiftCampaign = normalizeQualifier(shift.campaign_id)
+    if (candidateStudio && shiftStudio && candidateStudio !== shiftStudio) return false
+    if (candidateCampaign && shiftCampaign && candidateCampaign !== shiftCampaign) return false
+    return true
+  })
+
+  if (compatibleMatches.length === 0) return { kind: 'none' }
+
+  if (compatibleMatches.length === 1) {
+    const matched = compatibleMatches[0]
+    const matchedStudio = normalizeQualifier(matched.studio)
+    const matchedCampaign = normalizeQualifier(matched.campaign_id)
+    if ((candidateStudio && !matchedStudio) || (!candidateStudio && matchedStudio)
+      || (candidateCampaign && !matchedCampaign) || (!candidateCampaign && matchedCampaign)) {
+      return { kind: 'ambiguous', shiftIds: [matched.id] }
+    }
+    return { kind: 'unique', shift: matched }
+  }
+  return { kind: 'ambiguous', shiftIds: compatibleMatches.map(s => s.id).sort() }
 }
 
 export function mergeImportedStaffingLabels(

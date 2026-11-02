@@ -403,15 +403,48 @@ export function parseScheduleRows(
   const warnings: ImportError[] = []
   const candidates: Array<Omit<Shift, 'id' | 'created_at' | 'updated_at'>> = []
 
-  const shiftKey = (s: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>) =>
-    `${s.date}|${s.start_time}|${s.end_time}|${s.brand_id}|${s.platform_id}`
+  type ShiftDraft = Omit<Shift, 'id' | 'created_at' | 'updated_at'>
+  const normalizeQualifier = (v?: string | null) => (v ? v.trim().toLowerCase() : '')
 
-  const existingMap = new Map<string, Shift>()
-  for (const s of existingShifts) {
-    existingMap.set(shiftKey(s), s)
+  const slotKey = (s: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>) =>
+    `${s.date}|${normalizeTime(s.start_time)}|${normalizeTime(s.end_time)}|${s.brand_id}|${s.platform_id}`
+
+  const compareShiftQualifiers = (
+    a: Pick<Shift, 'studio' | 'campaign_id' | 'title'>,
+    b: Pick<Shift, 'studio' | 'campaign_id' | 'title'>,
+  ): 'distinct' | 'exact' | 'collision' => {
+    const stA = normalizeQualifier(a.studio)
+    const stB = normalizeQualifier(b.studio)
+    const cpA = normalizeQualifier(a.campaign_id)
+    const cpB = normalizeQualifier(b.campaign_id)
+    const ttA = normalizeQualifier(a.title)
+    const ttB = normalizeQualifier(b.title)
+
+    // 1. If any non-empty qualifier differs, they are distinct operational sessions
+    if (stA && stB && stA !== stB) return 'distinct'
+    if (cpA && cpB && cpA !== cpB) return 'distinct'
+    if (ttA && ttB && ttA !== ttB) return 'distinct'
+
+    // 2. If one specifies a qualifier and the other is blank, identity is ambiguous (collision)
+    const studioConflict = (stA && !stB) || (!stA && stB)
+    const campaignConflict = (cpA && !cpB) || (!cpA && cpB)
+    const titleConflict = (ttA && !ttB) || (!ttA && ttB)
+    if (studioConflict || campaignConflict || titleConflict) {
+      return 'collision'
+    }
+
+    // 3. All qualifiers match (or are both empty) -> exact match
+    return 'exact'
   }
-  const candidateMap = new Map<string, Omit<Shift, 'id' | 'created_at' | 'updated_at'>>()
-  const seenFileSlotNumbers = new Map<string, number>()
+
+  const existingSlotMap = new Map<string, Shift[]>()
+  for (const s of existingShifts) {
+    const key = slotKey(s)
+    const list = existingSlotMap.get(key) ?? []
+    list.push(s)
+    existingSlotMap.set(key, list)
+  }
+  const candidateSlotMap = new Map<string, ShiftDraft[]>()
 
   const brandLookupCache = new Map<string, { id?: string; ambiguous: boolean }>()
   const platformLookupCache = new Map<string, { id?: string; ambiguous: boolean }>()
@@ -532,6 +565,9 @@ export function parseScheduleRows(
       rowErrors.push(`Agency "${rawAgencyName}" không hợp lệ. Chỉ chấp nhận: ADA, SNAP, Live AI.`)
     }
     if (rawExecutionSource && !executionSource) rowErrors.push('Execution Source must be Internal or Agency.')
+    if (agencyCode && executionSource === 'internal') {
+      rowErrors.push('Agency không thể đi cùng Execution Source là Nội bộ (Internal).')
+    }
 
     if (!date) rowErrors.push('Date is required.')
     else if (!validIsoDate(date)) {
@@ -604,29 +640,74 @@ export function parseScheduleRows(
         product_notes: notes || undefined,
         ...shiftDateTimeFields(date, startTime, endTime)!,
       }
-      const key = shiftKey(shift)
-      if (seenFileSlotNumbers.has(key)) {
+      const key = slotKey(shift)
+      const earlierInSlot = candidateSlotMap.get(key) ?? []
+      let inSlotFileComparison: 'none' | 'distinct' | 'exact' | 'collision' = 'none'
+      let fileConflictCandidate: ShiftDraft | undefined
+
+      for (const prev of earlierInSlot) {
+        const comp = compareShiftQualifiers(prev, shift)
+        if (comp === 'exact') {
+          inSlotFileComparison = 'exact'
+          fileConflictCandidate = prev
+          break
+        }
+        if (comp === 'collision') {
+          inSlotFileComparison = 'collision'
+          fileConflictCandidate = prev
+        }
+      }
+
+      if (inSlotFileComparison === 'exact') {
         isInFileDuplicate = true
-        duplicateReference = candidateMap.get(key) ?? existingMap.get(key)
+        duplicateReference = fileConflictCandidate
         duplicateCandidate = shift
         if (!hasScheduleImportEnrichment(duplicateReference ?? shift, shift, sourcePresence)) {
           rowWarnings.push('A shift with the same brand, platform, date, and time already exists.')
         }
         shift = undefined
+      } else if (inSlotFileComparison === 'collision') {
+        duplicateCandidate = shift
+        duplicateReference = fileConflictCandidate
+        rowWarnings.push('Xung đột ca (Collision): Cùng khung giờ nhưng không xác định rõ Studio/Campaign để phân biệt.')
+        shift = undefined
       } else {
-        seenFileSlotNumbers.set(key, rowNumber)
-        const duplicateMatch = existingMap.get(key)
-        if (duplicateMatch) {
-          duplicateReference = duplicateMatch
+        // Not a duplicate within file: check against existing shifts in DB
+        const existingInSlot = existingSlotMap.get(key) ?? []
+        let existingComparison: 'none' | 'distinct' | 'exact' | 'collision' = 'none'
+        let matchingExisting: Shift | undefined
+
+        for (const existing of existingInSlot) {
+          const comp = compareShiftQualifiers(existing, shift)
+          if (comp === 'exact') {
+            existingComparison = 'exact'
+            matchingExisting = existing
+            break
+          }
+          if (comp === 'collision') {
+            existingComparison = 'collision'
+            matchingExisting = existing
+          }
+        }
+
+        if (existingComparison === 'exact' && matchingExisting) {
+          duplicateReference = matchingExisting
           duplicateCandidate = shift
-          if (!hasScheduleImportEnrichment(duplicateMatch, shift, sourcePresence)) {
+          if (!hasScheduleImportEnrichment(matchingExisting, shift, sourcePresence)) {
             rowWarnings.push('A shift with the same brand, platform, date, and time already exists.')
           } else {
             isEnrichment = true
           }
           shift = undefined
+        } else if (existingComparison === 'collision') {
+          duplicateCandidate = shift
+          duplicateReference = matchingExisting
+          rowWarnings.push('Xung đột ca (Collision): Cùng khung giờ nhưng không xác định rõ Studio/Campaign để phân biệt.')
+          shift = undefined
         } else {
-          candidateMap.set(key, shift)
+          // Distinct new shift!
+          earlierInSlot.push(shift)
+          candidateSlotMap.set(key, earlierInSlot)
           candidates.push(shift)
         }
       }

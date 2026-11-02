@@ -1,5 +1,5 @@
--- RC19 Batch 01.1: Persist agency_code on shifts and update create_shift / update_shift RPC whitelists.
--- Issue #133: Agency Mapping and Persistence Contract.
+-- RC19 Batch 01.1 & Batch 01.2: Persist agency_code on shifts and update create_shift / update_shift RPC whitelists.
+-- Issue #133, #161: Agency Mapping and Persistence Contract & Import Integrity Gate.
 -- No speculative backfill of existing rows: existing shifts keep agency_code null.
 
 begin;
@@ -21,9 +21,23 @@ begin
   end if;
 end $$;
 
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'shifts_agency_execution_source_check'
+      and conrelid = 'public.shifts'::regclass
+  ) then
+    alter table public.shifts
+      add constraint shifts_agency_execution_source_check
+      check (agency_code is null or execution_source = 'agency');
+  end if;
+end $$;
+
 comment on column public.shifts.agency_code is 'Designates partner agency assigned to shift: ada, snap, live_ai, or null for internal/unassigned.';
 
--- Update create_shift RPC to accept agency_code
+-- Update create_shift RPC to accept agency_code and enforce execution_source consistency
 CREATE OR REPLACE FUNCTION public.create_shift(p_data jsonb)
  RETURNS shifts
  LANGUAGE plpgsql
@@ -67,6 +81,10 @@ begin
     and p_data->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
     raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
   end if;
+  if (p_data ? 'agency_code' and p_data->>'agency_code' is not null
+    and p_data->>'execution_source' = 'internal') then
+    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
+  end if;
 
   if (p_data ? 'host_names' and jsonb_typeof(p_data->'host_names') <> 'array')
     or (p_data ? 'assistant_names' and jsonb_typeof(p_data->'assistant_names') <> 'array')
@@ -104,7 +122,7 @@ begin
     nullif(p_data->>'live_link', ''),
     nullif(p_data->>'product_notes', ''),
     actor_id,
-    p_data->>'execution_source',
+    coalesce(nullif(p_data->>'execution_source', ''), case when p_data->>'agency_code' is not null then 'agency' else null end),
     p_data->>'agency_code'
   ) returning * into created_shift;
 
@@ -112,18 +130,20 @@ begin
   loop
     initial_user_id := nullif(p_data->>(role_name || '_id'), '');
     if initial_user_id is not null then
-      perform private.apply_legacy_single_staffing_assignment(created_shift.id, role_name, initial_user_id, actor_id);
+      perform private.insert_manual_shift_assignment(
+        created_shift.id, initial_user_id, role_name, actor_id, 'Initial shift assignment', false
+      );
     end if;
   end loop;
 
+  update public.shifts set registration_locked = false where id = created_shift.id;
   select * into created_shift from public.shifts where id = created_shift.id;
-  perform private.assert_shift_staffing_consistent(created_shift);
   return created_shift;
 end;
 $function$;
 
 -- Update update_shift(text, jsonb, boolean)
-CREATE OR REPLACE FUNCTION public.update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean)
+CREATE OR REPLACE FUNCTION public.update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean DEFAULT false)
  RETURNS shifts
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -136,6 +156,8 @@ declare
   updated_shift public.shifts;
   input_key text;
   requested_status text;
+  effective_agency text;
+  effective_source text;
 begin
   actor_id := private.require_shift_actor(true);
   actor_permission := private.current_system_permission();
@@ -169,6 +191,7 @@ begin
     and p_patch->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
     raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
   end if;
+
   select * into existing_shift
   from public.shifts
   where id = p_shift_id and deleted_at is null and archived_at is null
@@ -176,6 +199,20 @@ begin
   if existing_shift.id is null then
     raise exception using errcode = 'P0001', message = 'SHIFT_NOT_FOUND';
   end if;
+
+  effective_agency := case
+    when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
+    else existing_shift.agency_code
+  end;
+  effective_source := case
+    when p_patch ? 'execution_source' then nullif(p_patch->>'execution_source', '')
+    when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and existing_shift.execution_source is null then 'agency'
+    else existing_shift.execution_source
+  end;
+  if (effective_agency is not null and effective_source = 'internal') then
+    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
+  end if;
+
   requested_status := coalesce(nullif(p_patch->>'status', ''), existing_shift.status);
   if actor_permission in ('leader', 'admin')
     and requested_status <> existing_shift.status and not (
@@ -217,9 +254,10 @@ begin
     product_notes = case when p_patch ? 'product_notes' then nullif(p_patch->>'product_notes', '') else shift.product_notes end,
     execution_source = case
       when p_patch ? 'execution_source' then p_patch->>'execution_source'
+      when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and shift.execution_source is null then 'agency'
       else shift.execution_source end,
     agency_code = case
-      when p_patch ? 'agency_code' then p_patch->>'agency_code'
+      when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
       else shift.agency_code end,
     updated_by = actor_id
   where shift.id = p_shift_id
@@ -243,6 +281,8 @@ declare
   updated_shift public.shifts;
   input_key text;
   requested_status text;
+  effective_agency text;
+  effective_source text;
 begin
   actor_id := private.require_shift_actor(true);
   actor_permission := private.current_system_permission();
@@ -276,6 +316,7 @@ begin
     and p_patch->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
     raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
   end if;
+
   select * into existing_shift
   from public.shifts
   where id = p_shift_id and deleted_at is null and archived_at is null
@@ -283,7 +324,22 @@ begin
   if existing_shift.id is null then
     raise exception using errcode = 'P0001', message = 'SHIFT_NOT_FOUND';
   end if;
+
   perform private.assert_expected_version('Shift', p_expected_version, existing_shift.version);
+
+  effective_agency := case
+    when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
+    else existing_shift.agency_code
+  end;
+  effective_source := case
+    when p_patch ? 'execution_source' then nullif(p_patch->>'execution_source', '')
+    when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and existing_shift.execution_source is null then 'agency'
+    else existing_shift.execution_source
+  end;
+  if (effective_agency is not null and effective_source = 'internal') then
+    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
+  end if;
+
   requested_status := coalesce(nullif(p_patch->>'status', ''), existing_shift.status);
   if actor_permission in ('leader', 'admin')
     and requested_status <> existing_shift.status and not (
@@ -327,9 +383,10 @@ begin
     product_notes = case when p_patch ? 'product_notes' then nullif(p_patch->>'product_notes', '') else shift.product_notes end,
     execution_source = case
       when p_patch ? 'execution_source' then p_patch->>'execution_source'
+      when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and shift.execution_source is null then 'agency'
       else shift.execution_source end,
     agency_code = case
-      when p_patch ? 'agency_code' then p_patch->>'agency_code'
+      when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
       else shift.agency_code end,
     updated_by = actor_id
   where shift.id = p_shift_id
