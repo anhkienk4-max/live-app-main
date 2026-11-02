@@ -16,7 +16,7 @@ import {
   type OperationalStoragePlacementInput,
   type OperationalStorageProvider,
 } from '@/lib/files/operationalStoragePlacementResolver'
-import { REPORT_ARTIFACT_GROUPS, isOperationalStorageClassificationWritable, type ReportArtifactGroup } from '@/lib/files/operationalStorageDomainMap'
+import { REPORT_ARTIFACT_GROUPS, canWriteOperationalStoragePlacement, type ReportArtifactGroup } from '@/lib/files/operationalStorageDomainMap'
 import {
   MAX_FILE_NAME_LENGTH,
   sanitizeFileName,
@@ -483,7 +483,7 @@ async function resolveImagePlacement(
       platformId: shift.platform_id,
       fileName,
     })
-    if (placement.sensitive || !isOperationalStorageClassificationWritable(placement.accessClassification ?? '')) {
+    if (!canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false)) {
       throw new ReportImageRouteError('REPORT_IMAGE_CONFIDENTIAL_STORAGE_NOT_APPROVED', 423)
     }
     return placement

@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { MAX_OPERATIONAL_FILE_BYTES, resolveOperationalFileMime } from '@/lib/files/operationalFileCatalog'
 import type { OperationalStoragePlacement } from '@/lib/files/operationalStoragePlacementResolver'
-import { isOperationalStorageClassificationWritable } from '@/lib/files/operationalStorageDomainMap'
+import { canWriteOperationalStoragePlacement } from '@/lib/files/operationalStorageDomainMap'
 import { createFileStorageService, fileStorageService } from '@/lib/services/fileStorageService'
 import { createOperationalStorageDomainRouteRepository, type OperationalStorageDomainRouteRepository } from '@/lib/server/operationalStorageRouteRepository'
 import { createOperationalStorageFolderMaterializer } from '@/lib/server/operationalStorageFolderMaterializer'
@@ -52,6 +52,22 @@ async function verifiedSourceFile(storage: StorageGateway, row: Record<string, u
   return bytes
 }
 
+async function ownedExcelBatch(client: SupabaseClient, batchId: string, actorId: string | undefined, allowConfirmed: boolean) {
+  if (!actorId) return null
+  const result = await client.from('schedule_import_batches')
+    .select('id,source,status,created_by,deleted_at')
+    .eq('id', batchId).is('deleted_at', null).maybeSingle()
+  if (result.error) throw new Error('SCHEDULE_SOURCE_BATCH_LOOKUP_FAILED')
+  const batch = result.data as Record<string, unknown> | null
+  if (!batch || batch.created_by !== actorId) return null
+  if (batch.source !== 'excel'
+    || !(allowConfirmed ? ['previewed', 'failed', 'confirmed'].includes(String(batch.status))
+      : ['previewed', 'failed'].includes(String(batch.status)))) {
+    throw new Error('SCHEDULE_SOURCE_BATCH_INVALID')
+  }
+  return batch
+}
+
 export function createScheduleSourceStorageHandler(dependencies: {
   resolveUser?: ServerUserResolver
   createClient?: () => SupabaseClient
@@ -77,47 +93,94 @@ export function createScheduleSourceStorageHandler(dependencies: {
         if (!parsed.success || !(file instanceof File)) return response('SCHEDULE_SOURCE_REQUEST_INVALID', 400)
         if (file.size < 1 || file.size > MAX_OPERATIONAL_FILE_BYTES) return response('OPERATIONAL_FILE_TOO_LARGE', 413)
 
+        const client = clientFactory()
+        const batch = await ownedExcelBatch(client, parsed.data.batch_id, actor.businessUserId, false)
+        if (!batch) return response('SCHEDULE_SOURCE_BATCH_NOT_FOUND', 404)
+
         const fileName = sanitizeFileName(file.name)
         const mimeType = resolveOperationalFileMime('schedule_source', fileName, file.type)
+        if (!['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(mimeType)) {
+          return response('SCHEDULE_SOURCE_EXCEL_REQUIRED', 400)
+        }
         const bytes = new Uint8Array(await file.arrayBuffer())
         const checksum = createHash('sha256').update(bytes).digest('hex')
-        const client = clientFactory()
         const existing = await client.from('operational_schedule_source_files').select('*')
           .eq('batch_id', parsed.data.batch_id).eq('checksum_sha256', checksum).maybeSingle()
         if (existing.error) throw new Error('SCHEDULE_SOURCE_METADATA_LOOKUP_FAILED')
+        let retryFailedCleaned = false
         if (existing.data) {
           const row = existing.data as Record<string, unknown>
-          if (row.reconciliation_status !== 'provider_verified') {
+          if (row.reconciliation_status === 'provider_verified') {
+            try {
+              await verifiedSourceFile(storage, row)
+              return response('OK', 200, { file: row, reused: true })
+            } catch (error) {
+              await client.from('operational_schedule_source_files').update({
+                reconciliation_status: 'reconciliation_required', updated_at: new Date().toISOString(),
+              }).eq('id', row.id).eq('reconciliation_status', 'provider_verified')
+              throw error
+            }
+          }
+          if (row.reconciliation_status === 'failed_cleaned') {
+            retryFailedCleaned = true
+          } else {
             return response('SCHEDULE_SOURCE_RECONCILIATION_REQUIRED', 409)
           }
-          await verifiedSourceFile(storage, row)
-          return response('OK', 200, { file: row, reused: true })
         }
 
         domainRoutes ??= createOperationalStorageDomainRouteRepository({ client })
         const placement = await domainRoutes.resolveDomainCategoryPlacement('schedule_source', fileName)
-        if (placement.sensitive || !isOperationalStorageClassificationWritable(placement.accessClassification ?? '')) {
+        if (!canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false)) {
           return response('OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED', 423)
         }
         const parentId = await materialize(placement)
-        const receipt = await client.from('operational_schedule_source_files').insert({
-          batch_id: parsed.data.batch_id,
-          provider: 'google_drive',
-          folder_path: placement.folderPath,
-          file_name: fileName,
-          mime_type: mimeType,
-          size_bytes: bytes.byteLength,
-          checksum_sha256: checksum,
-          reconciliation_status: 'pending',
-          uploaded_by: actor.businessUserId ?? actor.id,
-        }).select('*').single()
-        if (receipt.error || !receipt.data) {
-          if (receipt.error?.code === '23505') return response('SCHEDULE_SOURCE_DUPLICATE_RETRY', 409)
-          throw new Error('SCHEDULE_SOURCE_METADATA_WRITE_FAILED')
+        let receiptRow: Record<string, unknown>
+        if (existing.data) {
+          if (retryFailedCleaned) {
+            const retry = await client.from('operational_schedule_source_files').update({
+              external_file_id: null,
+              external_parent_id: null,
+              provider_metadata: {},
+              reconciliation_status: 'pending',
+              uploaded_by: actor.businessUserId ?? actor.id,
+              folder_path: placement.folderPath,
+              file_name: fileName,
+              mime_type: mimeType,
+              size_bytes: bytes.byteLength,
+              updated_at: new Date().toISOString(),
+            }).eq('id', (existing.data as Record<string, unknown>).id)
+              .eq('reconciliation_status', 'failed_cleaned').select('*').maybeSingle()
+            if (retry.error || !retry.data) return response('SCHEDULE_SOURCE_RECONCILIATION_REQUIRED', 409)
+            receiptRow = retry.data as Record<string, unknown>
+          } else {
+            const retry = await client.from('operational_schedule_source_files').select('*')
+              .eq('batch_id', parsed.data.batch_id).eq('checksum_sha256', checksum).maybeSingle()
+            if (retry.error || !retry.data) throw new Error('SCHEDULE_SOURCE_METADATA_LOOKUP_FAILED')
+            receiptRow = retry.data as Record<string, unknown>
+          }
+        } else {
+          const receipt = await client.from('operational_schedule_source_files').insert({
+            batch_id: parsed.data.batch_id,
+            provider: 'google_drive',
+            folder_path: placement.folderPath,
+            file_name: fileName,
+            mime_type: mimeType,
+            size_bytes: bytes.byteLength,
+            checksum_sha256: checksum,
+            reconciliation_status: 'pending',
+            uploaded_by: actor.businessUserId ?? actor.id,
+          }).select('*').single()
+          if (receipt.error || !receipt.data) {
+            if (receipt.error?.code === '23505') return response('SCHEDULE_SOURCE_DUPLICATE_RETRY', 409)
+            throw new Error('SCHEDULE_SOURCE_METADATA_WRITE_FAILED')
+          }
+          receiptRow = receipt.data as Record<string, unknown>
         }
 
         let uploadedId: string | undefined
+        let uploadAttempted = false
         try {
+          uploadAttempted = true
           const uploaded = await storage.upload({
             name: placement.fileName,
             mime_type: mimeType,
@@ -146,11 +209,11 @@ export function createScheduleSourceStorageHandler(dependencies: {
             provider_metadata: uploaded.asset.provider_metadata ?? {},
             reconciliation_status: 'provider_verified',
             updated_at: new Date().toISOString(),
-          }).eq('id', receipt.data.id).select('*').single()
+          }).eq('id', receiptRow.id).eq('reconciliation_status', 'pending').select('*').single()
           if (saved.error || !saved.data) throw new Error('SCHEDULE_SOURCE_METADATA_WRITE_FAILED')
           return response('OK', 200, { file: saved.data, reused: false })
         } catch (error) {
-          let cleanupVerified = false
+          let cleanupVerified = !uploadAttempted
           if (uploadedId) {
             try {
               await storage.delete({ provider: 'google_drive', external_file_id: uploadedId })
@@ -162,7 +225,7 @@ export function createScheduleSourceStorageHandler(dependencies: {
             external_parent_id: uploadedId ? parentId : null,
             reconciliation_status: cleanupVerified ? 'failed_cleaned' : 'reconciliation_required',
             updated_at: new Date().toISOString(),
-          }).eq('id', receipt.data.id)
+          }).eq('id', receiptRow.id)
           throw error
         }
       } catch (error) {
@@ -171,6 +234,7 @@ export function createScheduleSourceStorageHandler(dependencies: {
         const code = error instanceof Error && /^[A-Z][A-Z0-9_]{1,100}$/u.test(error.message)
           ? error.message : 'SCHEDULE_SOURCE_STORAGE_FAILED'
         const status = code === 'OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED' ? 423
+          : code === 'SCHEDULE_SOURCE_BATCH_INVALID' ? 409
           : code.includes('TOO_LARGE') ? 413
           : code.startsWith('SCHEDULE_SOURCE_') ? 502 : 409
         return response(code, status)
@@ -179,13 +243,19 @@ export function createScheduleSourceStorageHandler(dependencies: {
 
     async GET(request: Request) {
       try {
-        await requirePermission(request, 'shifts.import', dependencies.resolveUser)
+        const actor = await requirePermission(request, 'shifts.import', dependencies.resolveUser)
         const parsed = readFields.safeParse({ file_id: new URL(request.url).searchParams.get('file_id') })
         if (!parsed.success) return response('SCHEDULE_SOURCE_REQUEST_INVALID', 400)
-        const result = await clientFactory().from('operational_schedule_source_files').select('*')
+        const client = clientFactory()
+        const result = await client.from('operational_schedule_source_files').select('*')
           .eq('id', parsed.data.file_id).eq('reconciliation_status', 'provider_verified').maybeSingle()
         if (result.error || !result.data) return response('SCHEDULE_SOURCE_NOT_FOUND', 404)
-        const bytes = await verifiedSourceFile(storage, result.data as Record<string, unknown>)
+        const receipt = result.data as Record<string, unknown>
+        if (typeof receipt.batch_id !== 'string'
+          || !await ownedExcelBatch(client, receipt.batch_id, actor.businessUserId, true)) {
+          return response('SCHEDULE_SOURCE_NOT_FOUND', 404)
+        }
+        const bytes = await verifiedSourceFile(storage, receipt)
         return new Response(bytes as BodyInit, {
           headers: {
             'Cache-Control': 'private, no-store',

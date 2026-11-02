@@ -18,8 +18,9 @@ export type DomainFolderRoute = {
   requiresSubtype: boolean
 }
 
-export function isOperationalStorageClassificationWritable(value: string): boolean {
-  return value === 'shared' || value === 'restricted_verified'
+export function canWriteOperationalStoragePlacement(classification: string, sensitive: boolean): boolean {
+  if (classification === 'restricted_verified') return true
+  return !sensitive && (classification === 'shared' || classification === 'pending_restriction_no_sensitive_upload')
 }
 
 const registryFolders = new Map(registry.folders.map(folder => [folder.path, folder]))
@@ -59,7 +60,7 @@ export function domainFolderForCategory(category: OperationalFileCategory): Doma
   return {
     ...folder,
     rootFolderId: route.app_root_id,
-    sensitive: route.sensitive && folder.accessClassification !== 'restricted_verified',
+    sensitive: route.sensitive,
     requiresSubtype: route.requires_subtype,
   }
 }
@@ -73,7 +74,7 @@ export function domainFolderForReportGroup(group: ReportArtifactGroup): DomainFo
   return {
     ...folder,
     rootFolderId: ADA_OPS_ROOT_ID,
-    sensitive: folder.accessClassification !== 'restricted_verified',
+    sensitive: true,
     requiresSubtype: true,
   }
 }

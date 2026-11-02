@@ -12,7 +12,7 @@ import {
   type OperationalFileCategory,
 } from '@/lib/files/operationalFileCatalog'
 import { resolveOperationalFilePlacement, toOperationalFileRouteInput } from '@/lib/files/operationalFilePlacement'
-import { isOperationalStorageClassificationWritable } from '@/lib/files/operationalStorageDomainMap'
+import { canWriteOperationalStoragePlacement } from '@/lib/files/operationalStorageDomainMap'
 import { OperationalStoragePlacementError, type OperationalStoragePlacement } from '@/lib/files/operationalStoragePlacementResolver'
 import { createOperationalStorageDomainRouteRepository, createOperationalStorageRouteRepository, type OperationalStorageDomainRouteRepository, type OperationalStorageRouteRepository } from '@/lib/server/operationalStorageRouteRepository'
 import { createStaticOperationalStorageRouteRepository } from '@/lib/server/staticOperationalStorageRouteRepository'
@@ -22,7 +22,7 @@ import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { fileStorageService, createFileStorageService } from '@/lib/services/fileStorageService'
 import { createClient as createUserClient } from '@/lib/supabase/server'
 import type { FileProviderAvailability } from '@/lib/server/fileProviderRegistry'
-import { requireRole, requireUser, authorizationErrorResponse, isAuthorizationError, type ServerUserResolver } from '@/lib/server/authGuards'
+import { requirePermission, requireUser, authorizationErrorResponse, isAuthorizationError, type ServerUserResolver } from '@/lib/server/authGuards'
 import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { loadOperationalSystemExport, encodeOperationalSystemExport } from '@/lib/server/operationalSystemExport'
 
@@ -244,6 +244,23 @@ async function loadFile(client: SupabaseClient, id: string) {
   return res.data as Record<string, unknown> | null
 }
 
+async function canAccessOperationalFileScope(
+  client: SupabaseClient,
+  actor: Awaited<ReturnType<typeof requireUser>>,
+  scope: { shift_id?: string | null; brand_id?: string | null; scope_key?: string | null },
+): Promise<boolean> {
+  if (actor.systemPermission === 'admin') return true
+  const shiftId = scope.shift_id
+  if (!shiftId || !actor.businessUserId || (scope.scope_key && scope.scope_key !== 'shift:' + shiftId)) return false
+  const shift = await client.from('shifts').select('id,brand_id')
+    .eq('id', shiftId).is('deleted_at', null).maybeSingle()
+  if (shift.error || !shift.data || shift.data.brand_id !== scope.brand_id) return false
+  const assignment = await client.from('shift_registrations').select('id')
+    .eq('shift_id', shiftId).eq('user_id', actor.businessUserId)
+    .in('status', ['approved', 'manually_assigned']).limit(1).maybeSingle()
+  return !assignment.error && Boolean(assignment.data)
+}
+
 export function createOperationalFileRouteHandler(deps: {
   resolveUser?: ServerUserResolver
   createClient?: () => SupabaseClient
@@ -283,7 +300,7 @@ export function createOperationalFileRouteHandler(deps: {
     if (routingMode === 'domain_first' && provider === 'google_drive') {
       domainRouteRepository ??= createOperationalStorageDomainRouteRepository()
       const placement = await domainRouteRepository.resolveDomainCategoryPlacement(category, fileName)
-      if (placement.sensitive || !isOperationalStorageClassificationWritable(placement.accessClassification ?? '')) {
+      if (!canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false)) {
         throw new Error('OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED')
       }
       const parentId = await materialize(placement)
@@ -330,10 +347,11 @@ export function createOperationalFileRouteHandler(deps: {
   return {
     GET(request: Request) {
       return run(async () => {
-        const actor = await requireRole(request, ['leader', 'admin'], deps.resolveUser)
+        const actor = await requirePermission(request, 'shifts.view_assigned', deps.resolveUser)
         const params = new URL(request.url).searchParams
         const client = clientFactory()
         if (params.get('catalog') === '1') {
+          if (actor.systemPermission === 'member') return errorResponse('PERMISSION_DENIED', 403)
           const [brands, platforms, campaigns, activeRouteCount] = await Promise.all([
             client.from('brands').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
             client.from('platforms').select('id,name').is('deleted_at', null).order('name', { ascending: true }),
@@ -361,6 +379,11 @@ export function createOperationalFileRouteHandler(deps: {
         if (fileId) {
           const row = await loadFile(client, fileId)
           if (!row) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)
+          if (!await canAccessOperationalFileScope(client, actor, {
+            shift_id: typeof row.shift_id === 'string' ? row.shift_id : null,
+            brand_id: typeof row.brand_id === 'string' ? row.brand_id : null,
+            scope_key: typeof row.scope_key === 'string' ? row.scope_key : null,
+          })) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)
           if (restrictedCategories.has(String(row.category)) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
           if ((row.provider !== 'google_drive' && row.provider !== 'onedrive') || typeof row.external_file_id !== 'string') {
             return errorResponse('OPERATIONAL_FILE_PROVIDER_INVALID', 409)
@@ -371,12 +394,9 @@ export function createOperationalFileRouteHandler(deps: {
             && !providerMetadata.parent_ids?.includes(row.external_parent_id))) {
             return errorResponse('OPERATIONAL_FILE_EXTERNAL_PARENT_MISMATCH', 409)
           }
-          // Never buffer large videos in a serverless response. The authenticated
-          // route delegates large downloads to the native provider viewer.
-          if (Number(row.size_bytes) > 4 * 1024 * 1024 || String(row.mime_type).startsWith('application/vnd.google-apps.')) {
-            const viewUrl = await storage.getViewUrl(reference)
-            return Response.redirect(viewUrl, 302)
-          }
+          // shortcut: large/native Drive reads stay blocked; add authenticated streaming/export before lifting this cap.
+          if (Number(row.size_bytes) > MAX_OPERATIONAL_FILE_BYTES) return errorResponse('OPERATIONAL_FILE_DOWNLOAD_TOO_LARGE', 413)
+          if (String(row.mime_type).startsWith('application/vnd.google-apps.')) return errorResponse('OPERATIONAL_FILE_DOWNLOAD_UNSUPPORTED', 415)
           const bytes = await storage.read(reference)
           if (typeof row.checksum_sha256 === 'string'
             && createHash('sha256').update(bytes).digest('hex') !== row.checksum_sha256) {
@@ -408,6 +428,7 @@ export function createOperationalFileRouteHandler(deps: {
         const { page: requestedPage, pageSize, category, provider_filter, search } = parsedPage.data
         if (restrictedCategories.has(category) && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
         const scope = await scopeFromInput(client, fromQuery(params))
+        if (!await canAccessOperationalFileScope(client, actor, scope)) return errorResponse('PERMISSION_DENIED', 403)
         const fetchPage = (page: number) => {
           let query = client.from('operational_files').select('*', { count: 'exact' })
             .eq('scope_key', scope.scope_key).is('deleted_at', null)
@@ -450,6 +471,7 @@ export function createOperationalFileRouteHandler(deps: {
             if (input.shift_id || input.campaign_id) return errorResponse('OPERATIONAL_FILE_EXPORT_SCOPE_INVALID', 400)
             const client = clientFactory()
             const scope = await scopeFromInput(client, input)
+            if (!await canAccessOperationalFileScope(client, actor, scope)) return errorResponse('PERMISSION_DENIED', 403)
             const provider = input.provider ?? 'google_drive'
             const category = 'system_export' as const
             // Never export an unbounded full database. The snapshot is exact
@@ -524,6 +546,7 @@ export function createOperationalFileRouteHandler(deps: {
           }
           const client = clientFactory()
           const scope = await scopeFromInput(client, input)
+          if (!await canAccessOperationalFileScope(client, actor, scope)) return errorResponse('PERMISSION_DENIED', 403)
           const provider = input.provider ?? 'google_drive'
           // Placement is derived server-side; arbitrary folder IDs are never accepted.
           const { placement, parentId } = await resolveFolder(scope, category, provider, 'provider-existing-file')
@@ -621,6 +644,7 @@ export function createOperationalFileRouteHandler(deps: {
         }
         const client = clientFactory()
         const scope = await scopeFromInput(client, parsed)
+        if (!await canAccessOperationalFileScope(client, actor, scope)) return errorResponse('PERMISSION_DENIED', 403)
         const provider = parsed.provider ?? 'google_drive'
         const artifactKey = 'file:' + checksum
         const storageName = safeName(file.name, category, scope.period_date, checksum)
@@ -708,11 +732,17 @@ export function createOperationalFileRouteHandler(deps: {
     },
     DELETE(request: Request) {
       return run(async () => {
-        const actor = await requireRole(request, ['leader', 'admin'], deps.resolveUser)
+        const actor = await requireUser(request, deps.resolveUser)
         const parsed = removeFields.parse(await readJsonBody(request, 4096))
+        if (actor.systemPermission !== 'leader' && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
         const client = clientFactory()
         const row = await loadFile(client, parsed.file_id)
         if (!row) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)
+        if (!await canAccessOperationalFileScope(client, actor, {
+          shift_id: typeof row.shift_id === 'string' ? row.shift_id : null,
+          brand_id: typeof row.brand_id === 'string' ? row.brand_id : null,
+          scope_key: typeof row.scope_key === 'string' ? row.scope_key : null,
+        })) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)
         if (row.category === 'live_snapshot') {
           const reference = await client.from('dashboard_updates').select('id')
             .eq('screenshot_file_id', parsed.file_id).maybeSingle()

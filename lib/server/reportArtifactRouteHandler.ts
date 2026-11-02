@@ -20,7 +20,7 @@ import type {
   OperationalStoragePlacementInput,
   OperationalStorageProvider,
 } from '@/lib/files/operationalStoragePlacementResolver'
-import { REPORT_ARTIFACT_GROUPS, isOperationalStorageClassificationWritable, type ReportArtifactGroup } from '@/lib/files/operationalStorageDomainMap'
+import { REPORT_ARTIFACT_GROUPS, canWriteOperationalStoragePlacement, type ReportArtifactGroup } from '@/lib/files/operationalStorageDomainMap'
 import { OperationalStoragePlacementError } from '@/lib/files/operationalStoragePlacementResolver'
 import {
   MAX_FILE_NAME_LENGTH,
@@ -402,7 +402,7 @@ async function persistUploadedArtifact(input: {
       storageName,
     ))
   if (input.routingMode === 'domain_first' && input.provider === 'google_drive'
-    && (placement.sensitive || !isOperationalStorageClassificationWritable(placement.accessClassification ?? ''))) {
+    && !canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false)) {
     throw new Error('REPORT_ARTIFACT_CONFIDENTIAL_STORAGE_NOT_APPROVED')
   }
   const parentId = await input.materializeFolders(placement)

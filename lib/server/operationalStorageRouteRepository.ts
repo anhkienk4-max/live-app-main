@@ -152,16 +152,28 @@ export function createOperationalStorageDomainRouteRepository(
     if (result.error) throw new OperationalStoragePlacementError('STORAGE_ROUTE_LOOKUP_FAILED')
     const rows = new Map(((result.data ?? []) as Array<Record<string, unknown>>)
       .map(row => [String(row.folder_path), row]))
+    const classifications: string[] = []
     for (const expectedPath of expectedPaths) {
       const expected = domainFolderForPath(expectedPath)
       const row = rows.get(expectedPath)
       if (!row || row.folder_id !== expected.folderId || row.parent_folder_id !== expected.parentFolderId
-        || row.access_classification !== expected.accessClassification
         || row.active !== true || row.verified_created !== true) {
         failClosed()
       }
+      const classification = row.access_classification
+      if (typeof classification !== 'string' || ![
+        'shared', 'pending_restriction_no_sensitive_upload', 'shared_schema_template_only', 'restricted_verified',
+      ].includes(classification)) failClosed()
+      classifications.push(classification)
     }
-    return domainFolderForPath(path)
+    const accessClassification = classifications.includes('shared_schema_template_only')
+      ? 'shared_schema_template_only'
+      : classifications.every(value => value === 'restricted_verified')
+        ? 'restricted_verified'
+        : classifications.includes('pending_restriction_no_sensitive_upload')
+          ? 'pending_restriction_no_sensitive_upload'
+          : 'shared'
+    return { ...domainFolderForPath(path), accessClassification }
   }
 
   return {
@@ -180,7 +192,7 @@ export function createOperationalStorageDomainRouteRepository(
         folderPath: route.path,
         expectedBaseParentId: route.parentFolderId,
         accessClassification: folder.accessClassification,
-        sensitive: route.sensitive && folder.accessClassification !== 'restricted_verified',
+        sensitive: route.sensitive,
         fileName: sanitizeFileName(fileName),
         logicalCategory: 'data_source',
         periodLabel: '',

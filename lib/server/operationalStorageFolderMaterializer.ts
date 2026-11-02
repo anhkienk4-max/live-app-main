@@ -11,6 +11,16 @@ type GetMetadata = (id: string, provider: OperationalStoragePlacement['provider'
 /** Resolves only planned folder segments; the filename is never a folder input. */
 export function createOperationalStorageFolderMaterializer(ensureFolder: EnsureFolder, getMetadata?: GetMetadata) {
   return async (placement: OperationalStoragePlacement): Promise<string> => {
+    const verifyWritable = async (folderId: string, expectedParentId?: string) => {
+      if (placement.provider !== 'google_drive' || !placement.expectedBaseParentId) return
+      if (!getMetadata) throw new Error('GOOGLE_DRIVE_FOLDER_NOT_WRITABLE')
+      const folder = await getMetadata(folderId, placement.provider)
+      if (folder.id !== folderId || folder.kind !== 'folder' || folder.trashed === true
+        || (expectedParentId && !folder.parent_ids?.includes(expectedParentId))
+        || folder.capabilities?.canAddChildren !== true) {
+        throw new Error('GOOGLE_DRIVE_FOLDER_NOT_WRITABLE')
+      }
+    }
     if (placement.expectedBaseParentId) {
       if (!getMetadata) throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
       const folder = await getMetadata(placement.baseFolderId, placement.provider)
@@ -21,8 +31,12 @@ export function createOperationalStorageFolderMaterializer(ensureFolder: EnsureF
     }
     let parentId = placement.baseFolderId
     for (const segment of placement.folderSegments) {
-      parentId = (await ensureFolder(parentId, segment, placement.provider)).id
+      await verifyWritable(parentId)
+      const child = await ensureFolder(parentId, segment, placement.provider)
+      await verifyWritable(child.id, parentId)
+      parentId = child.id
     }
+    if (!placement.folderSegments.length) await verifyWritable(parentId, placement.expectedBaseParentId)
     return parentId
   }
 }
