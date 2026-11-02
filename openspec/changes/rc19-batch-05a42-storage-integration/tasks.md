@@ -16,6 +16,6 @@
 ## 3. Verification and release
 
 - [x] 3.1 Run sequential migration, focused Import, runtime security and regression tests (local PGlite/handler and regression evidence; PostgreSQL-server-dependent tests remain skipped where localhost:5432 is unavailable).
-- [ ] 3.2 Run full ESLint, TypeScript and production build.
-- [ ] 3.3 Validate project memory on the exact integration branch.
+- [ ] 3.2 Run full ESLint, TypeScript and production build (ESLint and TypeScript pass; build is blocked by `ENV_SUPABASE_CONFIG_REQUIRED`).
+- [x] 3.3 Validate project memory on the integration branch (initial sync/validation passed; clean-state refresh follows this handoff update).
 - [x] 3.4 Keep Production NO-GO and do not apply remote migrations or deploy.
