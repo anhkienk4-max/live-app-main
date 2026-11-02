@@ -419,6 +419,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
       required_host_count smallint,
       required_support_count smallint,
       required_technical_count smallint,
+      registration_locked boolean default false,
       registration_cutoff_at timestamptz,
       allow_multi_role boolean,
       import_batch_id text,
@@ -436,6 +437,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
     create or replace function private.current_system_permission() returns text as 'select ''admin'';' language sql;
     create or replace function private.normalize_shift_capacity(val text, def smallint) returns smallint as 'select coalesce(val::smallint, def);' language sql;
     create or replace function private.apply_legacy_single_staffing_assignment(s text, r text, u text, a text) returns void as 'select null;' language sql;
+    create or replace function private.insert_manual_shift_assignment(s text, u text, r text, a text, n text, l boolean) returns void as 'select null;' language sql;
     create or replace function private.assert_shift_staffing_consistent(s public.shifts) returns void as 'select null;' language sql;
     create or replace function private.assert_expected_version(e text, exp integer, act integer) returns void as 'select null;' language sql;
   `)
@@ -447,7 +449,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
   // Insert settings
   await db.exec(`insert into public.system_settings (id) values ('default');`)
 
-  // Test 1: create_shift with agency_code = 'live_ai'
+  // Test 1: create_shift with agency_code = 'live_ai' and execution_source = 'agency'
   const createResult = await db.query(`
     select * from public.create_shift('{
       "date": "2026-11-10",
@@ -462,15 +464,56 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
   assert.equal(createdShift.agency_code, 'live_ai')
   assert.equal(createdShift.execution_source, 'agency')
 
-  // Test 2: update_shift changing agency_code to 'snap'
+  // Test 2: create_shift with agency_code = 'live_ai' and execution_source = 'internal' MUST FAIL with SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT
+  await assert.rejects(
+    async () => {
+      await db.query(`
+        select * from public.create_shift('{
+          "date": "2026-11-10",
+          "start_time": "14:00",
+          "end_time": "16:00",
+          "execution_source": "internal",
+          "agency_code": "live_ai"
+        }'::jsonb)
+      `)
+    },
+    (err: any) => err.message.includes('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT'),
+  )
+
+  // Test 3: create_shift with agency_code = 'snap' and omitted execution_source auto-sets execution_source = 'agency'
+  const autoAgencyResult = await db.query(`
+    select * from public.create_shift('{
+      "date": "2026-11-10",
+      "start_time": "16:00",
+      "end_time": "18:00",
+      "agency_code": "snap"
+    }'::jsonb)
+  `)
+  const autoShift = autoAgencyResult.rows[0] as any
+  assert.equal(autoShift.agency_code, 'snap')
+  assert.equal(autoShift.execution_source, 'agency')
+
+  // Test 4: update_shift changing agency_code to 'ada'
   const updateResult = await db.query(`
     select * from public.update_shift('${createdShift.id}', '{
-      "agency_code": "snap"
+      "agency_code": "ada"
     }'::jsonb, false)
   `)
-  assert.equal((updateResult.rows[0] as any).agency_code, 'snap')
+  assert.equal((updateResult.rows[0] as any).agency_code, 'ada')
 
-  // Test 3: update_shift with invalid agency_code must reject with SHIFT_AGENCY_CODE_INVALID
+  // Test 5: update_shift with agency_code and execution_source = 'internal' MUST FAIL
+  await assert.rejects(
+    async () => {
+      await db.query(`
+        select * from public.update_shift('${createdShift.id}', '{
+          "execution_source": "internal"
+        }'::jsonb, false)
+      `)
+    },
+    (err: any) => err.message.includes('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT'),
+  )
+
+  // Test 6: update_shift with invalid agency_code must reject with SHIFT_AGENCY_CODE_INVALID
   await assert.rejects(
     async () => {
       await db.query(`
@@ -482,7 +525,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
     (err: any) => err.message.includes('SHIFT_AGENCY_CODE_INVALID'),
   )
 
-  // Test 4: update_shift with invalid execution_source must reject with SHIFT_EXECUTION_SOURCE_INVALID
+  // Test 7: update_shift with invalid execution_source must reject with SHIFT_EXECUTION_SOURCE_INVALID
   await assert.rejects(
     async () => {
       await db.query(`
@@ -492,5 +535,212 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
       `)
     },
     (err: any) => err.message.includes('SHIFT_EXECUTION_SOURCE_INVALID'),
+  )
+})
+
+test('SCENARIO 7: Two parallel sessions at same time in different Studios -> 2 distinct shifts, 0 duplicates', async () => {
+  const sourceRows = [
+    {
+      Date: '2026-11-05',
+      'Start time': '09:00',
+      'End time': '11:00',
+      Brand: 'Brand A',
+      Platform: 'Shopee',
+      Studio: 'Studio 1',
+      Host: 'Host A',
+    },
+    {
+      Date: '2026-11-05',
+      'Start time': '09:00',
+      'End time': '11:00',
+      Brand: 'Brand A',
+      Platform: 'Shopee',
+      Studio: 'Studio 2',
+      Host: 'Host B',
+    },
+  ]
+  const parsed = normalizeScheduleImportResult(parseScheduleRows(sourceRows, baseMaps, []))
+  assert.equal(parsed.validRows, 2)
+  assert.equal(parsed.rows.filter(r => r.isInFileDuplicate).length, 0)
+  assert.equal(parsed.validShifts.length, 2)
+
+  const createdShifts: any[] = []
+  const recordedOutcomes: any[] = []
+  const result = await processScheduleImportRows({
+    batchId: 'batch-parallel-studios',
+    previews: parsed.rows,
+    batchRows: mockPendingBatchRows('batch-parallel-studios', parsed.rows),
+    initialShifts: [],
+    createShift: async (data) => {
+      const shift = { ...data, id: `shift-${createdShifts.length + 1}`, version: 1 }
+      createdShifts.push(shift)
+      return shift as Shift
+    },
+    refreshShifts: async () => createdShifts,
+    updateShift: async () => null,
+    updateStaffingLabels: async () => null,
+    recordOutcome: async (outcome) => {
+      recordedOutcomes.push(outcome)
+    },
+  })
+  assert.equal(result.imported, 2)
+  assert.equal(result.duplicateSkipped, 0)
+  assert.equal(createdShifts.length, 2)
+  assert.equal(createdShifts[0].studio, 'Studio 1')
+  assert.equal(createdShifts[1].studio, 'Studio 2')
+})
+
+test('SCENARIO 8: Two parallel sessions at same time with different Campaigns -> 2 distinct shifts, 0 duplicates', async () => {
+  const extendedMaps: EntityMaps = {
+    ...baseMaps,
+    campaigns: new Map([
+      ['Campaign 1', 'camp-1'],
+      ['Campaign 2', 'camp-2'],
+    ]),
+  }
+  const sourceRows = [
+    {
+      Date: '2026-11-05',
+      'Start time': '14:00',
+      'End time': '16:00',
+      Brand: 'Brand A',
+      Platform: 'Shopee',
+      Campaign: 'Campaign 1',
+      Host: 'Host A',
+    },
+    {
+      Date: '2026-11-05',
+      'Start time': '14:00',
+      'End time': '16:00',
+      Brand: 'Brand A',
+      Platform: 'Shopee',
+      Campaign: 'Campaign 2',
+      Host: 'Host B',
+    },
+  ]
+  const parsed = normalizeScheduleImportResult(parseScheduleRows(sourceRows, extendedMaps, []))
+  assert.equal(parsed.validRows, 2)
+  assert.equal(parsed.rows.filter(r => r.isInFileDuplicate).length, 0)
+  assert.equal(parsed.validShifts.length, 2)
+
+  const createdShifts: any[] = []
+  const recordedOutcomes: any[] = []
+  const result = await processScheduleImportRows({
+    batchId: 'batch-parallel-campaigns',
+    previews: parsed.rows,
+    batchRows: mockPendingBatchRows('batch-parallel-campaigns', parsed.rows),
+    initialShifts: [],
+    createShift: async (data) => {
+      const shift = { ...data, id: `shift-${createdShifts.length + 1}`, version: 1 }
+      createdShifts.push(shift)
+      return shift as Shift
+    },
+    refreshShifts: async () => createdShifts,
+    updateShift: async () => null,
+    updateStaffingLabels: async () => null,
+    recordOutcome: async (outcome) => {
+      recordedOutcomes.push(outcome)
+    },
+  })
+  assert.equal(result.imported, 2)
+  assert.equal(result.duplicateSkipped, 0)
+  assert.equal(createdShifts.length, 2)
+  assert.equal(createdShifts[0].campaign_id, 'camp-1')
+  assert.equal(createdShifts[1].campaign_id, 'camp-2')
+})
+
+test('SCENARIO 9: Unclear identity (one row with Studio, one without) reports collision warning', async () => {
+  const sourceRows = [
+    {
+      Date: '2026-11-06',
+      'Start time': '09:00',
+      'End time': '11:00',
+      Brand: 'Brand A',
+      Platform: 'Shopee',
+      Studio: 'Studio 1',
+      Host: 'Host A',
+    },
+    {
+      Date: '2026-11-06',
+      'Start time': '09:00',
+      'End time': '11:00',
+      Brand: 'Brand A',
+      Platform: 'Shopee',
+      // Blank studio!
+      Host: 'Host B',
+    },
+  ]
+  const parsed = normalizeScheduleImportResult(parseScheduleRows(sourceRows, baseMaps, []))
+  const collisionRow = parsed.rows[1]
+  assert.ok(collisionRow.row.warnings.some(w => w.includes('Collision') || w.includes('Xung đột ca')))
+
+  // In recovery: second row cannot be created without resolving collision
+  const createdShifts: any[] = []
+  const recordedOutcomes: any[] = []
+  const result = await processScheduleImportRows({
+    batchId: 'batch-collision',
+    previews: parsed.rows,
+    batchRows: mockPendingBatchRows('batch-collision', parsed.rows),
+    initialShifts: [],
+    createShift: async (data) => {
+      const shift = { ...data, id: `shift-${createdShifts.length + 1}`, version: 1 }
+      createdShifts.push(shift)
+      return shift as Shift
+    },
+    refreshShifts: async () => createdShifts,
+    updateShift: async () => null,
+    updateStaffingLabels: async () => null,
+    recordOutcome: async (outcome) => {
+      recordedOutcomes.push(outcome)
+    },
+  })
+  // Row 1 created, Row 2 is flagged ambiguous / retryable
+  assert.equal(result.imported, 1)
+  assert.equal(result.retryable, 1)
+})
+
+test('SCENARIO 10: Agency = Live AI with Execution Source = Internal rejected at Import parser', async () => {
+  const sourceRows = [
+    {
+      Date: '2026-11-07',
+      'Start time': '09:00',
+      'End time': '11:00',
+      Brand: 'Brand A',
+      Platform: 'Shopee',
+      Agency: 'Live AI',
+      'Execution source': 'Internal',
+    },
+  ]
+  const parsed = normalizeScheduleImportResult(parseScheduleRows(sourceRows, baseMaps, []))
+  assert.equal(parsed.validRows, 0)
+  assert.equal(parsed.invalidRows, 1)
+  assert.ok(parsed.rows[0].row.errors.some(e => e.includes('Agency không thể đi cùng Execution Source là Nội bộ')))
+})
+
+test('SCENARIO 11: Service layer rejects createShift with agency_code and execution_source = internal', async () => {
+  const { createSupabaseShiftRepository } = await import('../lib/services/supabaseShiftService')
+  const mockClient: any = {
+    rpc: async () => ({ data: null, error: null }),
+  }
+  const repo = createSupabaseShiftRepository(mockClient)
+  await assert.rejects(
+    async () => {
+      await repo.create({
+        date: '2026-11-08',
+        start_time: '09:00',
+        end_time: '11:00',
+        brand_id: 'brand-a',
+        platform_id: 'plat-shopee',
+        required_host_count: 1,
+        required_support_count: 1,
+        required_technical_count: 1,
+        registration_locked: false,
+        allow_multi_role: false,
+        status: 'scheduled',
+        agency_code: 'live_ai',
+        execution_source: 'internal',
+      } as any)
+    },
+    (err: any) => err.message.includes('Agency cannot have execution_source = internal'),
   )
 })

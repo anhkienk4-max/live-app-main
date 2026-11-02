@@ -458,9 +458,16 @@ export function createSupabaseShiftRepository(
     },
 
     async create(data) {
-      const payload = createPayload(data, routingMode)
+      if (data.agency_code && data.execution_source === 'internal') {
+        throw new Error('Agency cannot have execution_source = internal. Agency shifts must have execution_source = agency.')
+      }
+      const effectiveData = {
+        ...data,
+        execution_source: data.agency_code && !data.execution_source ? 'agency' : data.execution_source,
+      }
+      const payload = createPayload(effectiveData, routingMode)
       let result = await client.rpc('create_shift', { p_data: payload }).single()
-      if (result.error && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
+      if (result.error && !result.error.message?.includes('CONFLICT') && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
         const fallbackPayload = { ...payload }
         delete fallbackPayload.agency_code
         result = await client.rpc('create_shift', { p_data: fallbackPayload }).single()
@@ -468,19 +475,26 @@ export function createSupabaseShiftRepository(
       return shiftFromRow(
         requiredRow('shift create', result) as unknown as ShiftRow,
         routingMode,
-        data.execution_source,
+        effectiveData.execution_source,
       )
     },
 
     async update(id, data, confirmImpact = false, expectedVersion) {
-      const patch = updatePayload(data, routingMode)
+      if (data.agency_code && data.execution_source === 'internal') {
+        throw new Error('Agency cannot have execution_source = internal. Agency shifts must have execution_source = agency.')
+      }
+      const effectiveData = {
+        ...data,
+        execution_source: data.agency_code && !data.execution_source ? 'agency' : data.execution_source,
+      }
+      const patch = updatePayload(effectiveData, routingMode)
       let result = await client.rpc('update_shift', {
         p_shift_id: id,
         p_patch: patch,
         p_confirm_impact: confirmImpact,
         p_expected_version: expectedVersion ?? null,
       }).single()
-      if (result.error && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
+      if (result.error && !result.error.message?.includes('CONFLICT') && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
         const fallbackPatch = { ...patch }
         delete fallbackPatch.agency_code
         result = await client.rpc('update_shift', {
@@ -491,7 +505,7 @@ export function createSupabaseShiftRepository(
         }).single()
       }
       if (result.error) throw requestError('shift update', result.error)
-      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode, data.execution_source) : null
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode, effectiveData.execution_source) : null
     },
 
     async updateStaffingLabels(id, labels, expectedVersion) {
