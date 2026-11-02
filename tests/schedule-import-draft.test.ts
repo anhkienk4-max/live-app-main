@@ -144,3 +144,93 @@ test('import button enablement uses committed validation only', () => {
   assert.equal(next.validRows, 1)
   assert.equal(next.invalidRows, 0)
 })
+
+test('draft changes remain preserved across simulated page navigation', () => {
+  const rows = Array.from({ length: 60 }, (_, i) =>
+    sourceRow({ 'Shift title': `Shift #${i + 1}` }),
+  )
+  const committed = parseSourceRows(rows)
+  const rowPage1 = committed.rows[0].row
+  const rowNumber = rowPage1.row_number
+
+  // User edits row on page 1
+  let drafts = updateRowDraft({}, rowNumber, rowPage1, 'title', 'Renamed Morning Shift')
+
+  // User navigates to page 2 (rows 51-60)
+  let page = 2
+  const page2Slice = committed.rows.slice(50, 60)
+  assert.equal(page2Slice.length, 10)
+
+  // Drafts map is not cleared by page navigation
+  assert.ok(rowNumber in drafts)
+
+  // User navigates back to page 1
+  page = 1
+  const activeValue = rowDraftValue(drafts, rowNumber, 'title', rowPage1.title)
+  assert.equal(activeValue, 'Renamed Morning Shift')
+})
+
+test('adding, modifying and removing a custom column preserves canonical fields', () => {
+  const committed = parseSourceRows([sourceRow()])
+  let row = buildScheduleImportPreviewSourceRow(committed.rows[0].row)
+
+  // 1. Add custom column
+  row.custom_fields = { ...((row.custom_fields as Record<string, string> | undefined) ?? {}), 'Ghi chú vận hành': 'Cần chuẩn bị quà' }
+  let parsed = parseSourceRows([row])
+  assert.equal(parsed.rows[0].row.custom_fields?.['Ghi chú vận hành'], 'Cần chuẩn bị quà')
+  assert.equal(parsed.rows[0].row.title, 'Morning shift')
+
+  // 2. Modify custom column via draft
+  const draft = updateRowDraft({}, parsed.rows[0].row.row_number, parsed.rows[0].row, 'custom:Ghi chú vận hành', 'Đã chuẩn bị xong quà')
+  const draftRow = draft[parsed.rows[0].row.row_number]
+  assert.ok(draftRow)
+  row = commitRowDraftToSource(row, draftRow)
+  parsed = parseSourceRows([row])
+  assert.equal(parsed.rows[0].row.custom_fields?.['Ghi chú vận hành'], 'Đã chuẩn bị xong quà')
+
+  // 3. Remove custom column
+  const fields = { ...((row.custom_fields as Record<string, string> | undefined) ?? {}) }
+  delete fields['Ghi chú vận hành']
+  row.custom_fields = fields
+  parsed = parseSourceRows([row])
+  assert.equal(parsed.rows[0].row.custom_fields?.['Ghi chú vận hành'], undefined)
+  assert.equal(parsed.rows[0].row.brand_name, 'Mars Wrigley')
+  assert.equal(parsed.rows[0].row.validRows ?? parsed.validRows, 1)
+})
+
+test('bulk updates apply to selected rows while preserving unselected rows and unrelated fields', () => {
+  const rows = [
+    sourceRow({ 'Shift title': 'Shift 1', 'Execution Source': 'Internal' }),
+    sourceRow({ 'Shift title': 'Shift 2', 'Execution Source': 'Internal' }),
+    sourceRow({ 'Shift title': 'Shift 3', 'Execution Source': 'Internal' }),
+  ]
+  const committed = parseSourceRows(rows)
+  const sourceRows = committed.rows.map(p => buildScheduleImportPreviewSourceRow(p.row))
+
+  // Select row 1 and row 3, bulk update Agency and Execution Source
+  const selected = new Set([committed.rows[0].row.row_number, committed.rows[2].row.row_number])
+
+  sourceRows.forEach((row, index) => {
+    const rowNum = committed.rows[index].row.row_number
+    if (selected.has(rowNum)) {
+      row['Execution Source'] = 'agency'
+      const customFields = { ...((row.custom_fields as Record<string, string> | undefined) ?? {}) }
+      customFields.Agency = 'SNAP'
+      row.custom_fields = customFields
+    }
+  })
+
+  const updated = parseSourceRows(sourceRows)
+  assert.equal(updated.rows[0].row.execution_source, 'agency')
+  assert.equal(updated.rows[0].row.custom_fields?.Agency, 'SNAP')
+  assert.equal(updated.rows[0].row.title, 'Shift 1')
+
+  assert.equal(updated.rows[1].row.execution_source, 'internal')
+  assert.equal(updated.rows[1].row.custom_fields?.Agency, undefined)
+  assert.equal(updated.rows[1].row.title, 'Shift 2')
+
+  assert.equal(updated.rows[2].row.execution_source, 'agency')
+  assert.equal(updated.rows[2].row.custom_fields?.Agency, 'SNAP')
+  assert.equal(updated.rows[2].row.title, 'Shift 3')
+})
+

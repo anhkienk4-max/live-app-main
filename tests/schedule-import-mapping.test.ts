@@ -758,3 +758,89 @@ test('S4 regression: realistic Excel date+time row round-trips to exact wall-clo
   assert.equal(result.validShifts[0].start_time, '14:00')
   assert.equal(result.validShifts[0].end_time, '16:00')
 })
+
+test('November KAO layout detects normalized headers and preserves segment cells without data loss', () => {
+  const kaoHeaders = [
+    'Date',
+    'Timeslot',
+    'Start time',
+    'End time',
+    'Brand',
+    'Platform',
+    'HOST',
+    'Trợ',
+    'Mã ca live',
+    'Khung nhân sự',
+    'Số khung',
+    'NOTE',
+  ]
+  const kaoRow = [
+    '2026-11-05',
+    '09:00 - 13:00',
+    '09:00',
+    '13:00',
+    'Mars Wrigley',
+    'Shopee Live',
+    'Linh Đan',
+    'Hà My',
+    'KAO_LIVE_01',
+    'Khung A (09:00-11:00)',
+    '2',
+    'Ghi chú ca KAO',
+  ]
+  const result = parseScheduleTabularData(
+    [kaoHeaders, kaoRow].map(csvRow).join('\n'),
+    'string',
+    maps,
+  )
+
+  assert.equal(result.validRows, 1, `expected 1 valid row, got errors: ${JSON.stringify(result.errors)}`)
+  assert.equal(result.validShifts[0].title, 'KAO_LIVE_01')
+  assert.deepEqual(result.validShifts[0].host_names, ['Linh Đan'])
+  assert.deepEqual(result.validShifts[0].assistant_names, ['Hà My'])
+  assert.equal(result.validShifts[0].product_notes, 'Ghi chú ca KAO')
+  assert.equal(result.rows[0].row.custom_fields?.['Khung nhân sự'], 'Khung A (09:00-11:00)')
+  assert.equal(result.rows[0].row.custom_fields?.['Số khung'], '2')
+})
+
+test('schedule import processes 670+ rows stably without lag or freezing', () => {
+  const startTime = Date.now()
+  const rows: unknown[][] = [englishHeader]
+  for (let i = 1; i <= 675; i++) {
+    const day = String((i % 28) + 1).padStart(2, '0')
+    const startHour = String(8 + (i % 12)).padStart(2, '0')
+    const endHour = String(10 + (i % 12)).padStart(2, '0')
+    rows.push([
+      `2026-10-${day}`,
+      `${startHour}:00`,
+      `${endHour}:00`,
+      'Mars Wrigley',
+      'Shopee Live',
+      'World Cup',
+      `Shift Batch 01 #${i}`,
+      'Studio A',
+      1,
+      1,
+      1,
+      i % 2 === 0 ? 'Internal' : 'Agency',
+    ])
+  }
+  const csvContent = rows.map(csvRow).join('\n')
+  const result = parseScheduleTabularData(csvContent, 'string', maps)
+  const duration = Date.now() - startTime
+
+  assert.equal(result.totalRows, 675)
+  assert.ok(result.validRows > 0)
+  assert.ok(duration < 2500, `Expected parse to complete in < 2500ms, took ${duration}ms`)
+})
+
+test('Agency header aliases correctly map operating partners to custom fields and agency source', () => {
+  const headers = ['Date', 'Start time', 'End time', 'Brand', 'Platform', 'Đơn vị vận hành', 'Shift title']
+  const row = ['2026-09-01', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'Live AI', 'Morning shift']
+  const result = parseScheduleTabularData([headers, row].map(csvRow).join('\n'), 'string', maps)
+
+  assert.equal(result.validRows, 1)
+  assert.equal(result.rows[0].row.execution_source, 'agency')
+  assert.equal(result.rows[0].row.custom_fields?.Agency, 'Live AI')
+})
+

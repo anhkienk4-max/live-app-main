@@ -126,11 +126,13 @@ export function ScheduleImportStaffingInput({
   rowNumber,
   value,
   onChange,
+  onKeyDown,
 }: {
   field: typeof previewStaffingFields[number]
   rowNumber?: number
   value: number | string
   onChange: (value: string) => void
+  onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
 }) {
   return (
     <Input
@@ -139,6 +141,7 @@ export function ScheduleImportStaffingInput({
       aria-label={`${rowNumber === undefined ? '' : `Row ${rowNumber} `}${field.replaceAll('_', ' ')}`}
       min="0"
       onChange={event => onChange(event.target.value)}
+      onKeyDown={onKeyDown}
       step="1"
       type="number"
       value={value}
@@ -325,7 +328,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   }
 
   const addPreviewRow = () => {
-    applySourceRows([
+    const existingCustomFields = Object.fromEntries(customColumnNames.map(name => [name, '']))
+    const nextRows = [
       ...sourceRowsFromPreview(),
       normalizeScheduleImportSourceRow({
         Date: '',
@@ -341,8 +345,11 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         required_support_count: DEFAULT_SHIFT_STAFFING.required_support_count,
         required_technical_count: DEFAULT_SHIFT_STAFFING.required_technical_count,
         Notes: '',
+        custom_fields: existingCustomFields,
       }),
-    ])
+    ]
+    applySourceRows(nextRows)
+    setPreviewPage(Math.ceil(nextRows.length / previewPageSize))
   }
 
   const addCustomColumn = () => {
@@ -398,6 +405,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         next.delete(rowNumber)
         return next
       })
+      const maxPage = Math.max(1, Math.ceil(sourceRows.length / previewPageSize))
+      if (previewPage > maxPage) {
+        setPreviewPage(maxPage)
+      }
     }
   }
 
@@ -418,7 +429,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     })
   }
 
-  const bulkUpdateSelected = (updates: Partial<{ execution_source: string; brand_name: string; platform_name: string }>) => {
+  const bulkUpdateSelected = (updates: Partial<{ execution_source: string; brand_name: string; platform_name: string; agency: string }>) => {
     if (selectedRowNumbers.size === 0) return
     const sourceRows = sourceRowsFromPreview()
     let changed = false
@@ -437,6 +448,15 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           row = { ...row, Platform: updates.platform_name }
           changed = true
         }
+        if (updates.agency !== undefined) {
+          const customFields = { ...((row.custom_fields as Record<string, string> | undefined) ?? {}) }
+          customFields.Agency = updates.agency
+          row = { ...row, custom_fields: customFields }
+          if (updates.agency.trim() && !row['Execution Source']) {
+            row['Execution Source'] = 'Agency'
+          }
+          changed = true
+        }
         sourceRows[index] = row
       }
     })
@@ -452,12 +472,20 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     const keptRows: Record<string, unknown>[] = []
     result?.rows.forEach((preview, index) => {
       if (!selectedRowNumbers.has(preview.row.row_number) && sourceRows[index]) {
-        keptRows.push(sourceRows[index])
+        const rowNum = preview.row.row_number
+        const committedRow = draftRows[rowNum]
+          ? commitRowDraftToSource(sourceRows[index], draftRows[rowNum])
+          : sourceRows[index]
+        keptRows.push(committedRow)
       }
     })
     applySourceRows(keptRows)
     setSelectedRowNumbers(new Set())
     setDraftRows({})
+    const maxPage = Math.max(1, Math.ceil(keptRows.length / previewPageSize))
+    if (previewPage > maxPage) {
+      setPreviewPage(maxPage)
+    }
   }
 
   // This archive is deliberately isolated from import-batch state transitions.
@@ -621,32 +649,33 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     }
   }
 
-  if (userLoading || !currentUser) return <div className="py-12 text-center">{t('loading')}</div>
-  if (!hasPermission(currentUser, 'shifts.import')) {
-    return <Card><CardContent className="py-12 text-center text-muted-foreground">{t('permissionDenied')}</CardContent></Card>
-  }
-
-  const previewCounts = result ? previewPresentationCounts(result) : null
-  const customColumnNames = [...new Set((result?.rows ?? []).flatMap(preview => Object.keys(preview.row.custom_fields ?? {})))]
-  const visiblePreviews = result?.rows.filter(preview => {
-    const status = previewStatusForRow(preview)
-    if (previewFilter !== 'all' && previewFilter !== status) return false
-    const query = previewSearch.trim().toLocaleLowerCase()
-    if (!query) return true
-    return [
-      preview.row.title,
-      preview.row.brand_name,
-      preview.row.platform_name,
-      preview.row.campaign_name,
-      preview.row.execution_source,
-      preview.row.studio,
-      preview.row.host_names?.join(' ') ?? '',
-      preview.row.assistant_names?.join(' ') ?? '',
-      preview.row.technical_names?.join(' ') ?? '',
-      ...Object.values(preview.row.custom_fields ?? {}),
-      String(preview.row.row_number),
-    ].some(value => String(value ?? '').toLocaleLowerCase().includes(query))
-  }) ?? []
+  const previewCounts = React.useMemo(() => (result ? previewPresentationCounts(result) : null), [result])
+  const customColumnNames = React.useMemo(
+    () => [...new Set((result?.rows ?? []).flatMap(preview => Object.keys(preview.row.custom_fields ?? {})))],
+    [result],
+  )
+  const visiblePreviews = React.useMemo(() => {
+    if (!result) return []
+    return result.rows.filter(preview => {
+      const status = previewStatusForRow(preview)
+      if (previewFilter !== 'all' && previewFilter !== status) return false
+      const query = previewSearch.trim().toLocaleLowerCase()
+      if (!query) return true
+      return [
+        preview.row.title,
+        preview.row.brand_name,
+        preview.row.platform_name,
+        preview.row.campaign_name,
+        preview.row.execution_source,
+        preview.row.studio,
+        preview.row.host_names?.join(' ') ?? '',
+        preview.row.assistant_names?.join(' ') ?? '',
+        preview.row.technical_names?.join(' ') ?? '',
+        ...Object.values(preview.row.custom_fields ?? {}),
+        String(preview.row.row_number),
+      ].some(value => String(value ?? '').toLocaleLowerCase().includes(query))
+    })
+  }, [result, previewFilter, previewSearch])
   const completedCounts = completedImport ? batchPresentationCounts(completedImport.rows) : null
   const importableCount = previewCounts ? previewCounts.ready + previewCounts.warning : 0
   const previewAttention = previewCounts
@@ -657,6 +686,11 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     const start = (previewPage - 1) * previewPageSize
     return visiblePreviews.slice(start, start + previewPageSize)
   }, [visiblePreviews, previewPage, previewPageSize])
+
+  if (userLoading || !currentUser) return <div className="py-12 text-center">{t('loading')}</div>
+  if (!hasPermission(currentUser, 'shifts.import')) {
+    return <Card><CardContent className="py-12 text-center text-muted-foreground">{t('permissionDenied')}</CardContent></Card>
+  }
 
   return (
     <div className="space-y-5">
@@ -789,6 +823,35 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     <option value="" disabled>{language === 'vi' ? 'Gán Platform...' : 'Set Platform...'}</option>
                     {platforms.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                   </select>
+                  <select
+                    aria-label="Bulk Agency"
+                    className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                    defaultValue=""
+                    onChange={e => {
+                      if (e.target.value) {
+                        bulkUpdateSelected({ agency: e.target.value })
+                        e.target.value = ''
+                      }
+                    }}
+                  >
+                    <option value="" disabled>{language === 'vi' ? 'Gán Agency...' : 'Set Agency...'}</option>
+                    <option value="ADA">ADA</option>
+                    <option value="SNAP">SNAP</option>
+                    <option value="Live AI">Live AI</option>
+                  </select>
+                  {visiblePreviews.length > paginatedPreviews.length && selectedRowNumbers.size < visiblePreviews.length && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs bg-white text-blue-700 border-blue-300 hover:bg-blue-50"
+                      onClick={() => {
+                        setSelectedRowNumbers(new Set(visiblePreviews.map(p => p.row.row_number)))
+                      }}
+                    >
+                      {language === 'vi' ? `Chọn toàn bộ ${visiblePreviews.length} dòng` : `Select all ${visiblePreviews.length} rows`}
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     size="sm"
@@ -978,6 +1041,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                               rowNumber={rowNumber}
                               value={cellValue(field)}
                               onChange={value => draftChange(rowNumber, field, value)}
+                              onKeyDown={handleCellKeyDown}
                             />
                           </td>
                         ))}
