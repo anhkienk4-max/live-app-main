@@ -73,6 +73,7 @@ import { scheduleArchiveFailureMessage } from '@/lib/utils/scheduleArchiveMessag
 import { processScheduleImportRows } from '@/lib/utils/scheduleImportRecovery'
 import { usePagedList } from '@/lib/hooks/usePagedList'
 import { scheduleImportBatchPort, scheduleImportHistoryService } from '@/lib/services/scheduleImportBatchPort'
+import { uploadScheduleSourceFile, verifyScheduleSourceFile } from '@/lib/services/scheduleSourceStorageService'
 import { planScheduleImportArchive, persistScheduleArchive, type ScheduleArchivePlan } from '@/lib/utils/scheduleImportArchive'
 import {
   type MasterDataState,
@@ -167,6 +168,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [result, setResult] = React.useState<ImportResult | null>(null)
   const [source, setSource] = React.useState<Source | null>(null)
   const [batch, setBatch] = React.useState<ScheduleImportBatch | null>(null)
+  const [sourceFileId, setSourceFileId] = React.useState<string | null>(null)
   const [sourceFileStatus, setSourceFileStatus] = React.useState<'not_required' | 'saving' | 'saved' | 'failed'>('not_required')
   const [busy, setBusy] = React.useState(false)
   const [masterState, setMasterState] = React.useState<MasterDataState>('loading')
@@ -249,18 +251,12 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     setSource(null)
     setBatch(null)
     setSourceFileStatus('not_required')
+    setSourceFileId(null)
     originalImportFileRef.current = null
   }
 
   const saveOriginalScheduleSource = async (batchId: string, file: File) => {
-    const form = new FormData()
-    form.set('batch_id', batchId)
-    form.set('file', file)
-    const response = await fetch('/api/schedule-source-files', { method: 'POST', body: form })
-    const payload = await response.json() as { ok?: boolean; file?: { external_file_id?: string; checksum_sha256?: string }; error?: { code?: string } }
-    if (!response.ok || !payload.ok || !payload.file?.external_file_id || !payload.file.checksum_sha256) {
-      throw new Error(payload.error?.code || 'SCHEDULE_SOURCE_STORAGE_FAILED')
-    }
+    return uploadScheduleSourceFile(batchId, file)
   }
 
   const handleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -279,7 +275,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       const created = await recordPreview(next, { type: 'excel', name: file.name })
       setSourceFileStatus('saving')
       try {
-        await saveOriginalScheduleSource(created.id, file)
+        const receipt = await saveOriginalScheduleSource(created.id, file)
+        setSourceFileId(receipt.id)
         setSourceFileStatus('saved')
       } catch (error) {
         setSourceFileStatus('failed')
@@ -582,10 +579,14 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
 
   const confirmImport = async () => {
     if (!result || !batch || !source || importableCount === 0
-      || (source.type === 'excel' && sourceFileStatus !== 'saved')) return
+      || (source.type === 'excel' && (sourceFileStatus !== 'saved' || !sourceFileId))) return
     const completedSource = source
     setBusy(true)
     try {
+      if (completedSource.type === 'excel') {
+        if (!sourceFileId) throw new Error('SCHEDULE_SOURCE_REQUIRED')
+        await verifyScheduleSourceFile(sourceFileId)
+      }
       const batchRows = await scheduleImportBatchPort.listBatchRows(batch.id)
       const importResult = await processScheduleImportRows({
         batchId: batch.id,
@@ -626,6 +627,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         setBatch(null)
         setSource(null)
         setSourceFileStatus('not_required')
+        setSourceFileId(null)
         setDraftRows({})
         toast({
           title: t('error'),
@@ -651,6 +653,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       setBatch(null)
       setSource(null)
       setSourceFileStatus('not_required')
+      setSourceFileId(null)
       setDraftRows({})
       setExistingShifts(await shiftService.getAll())
       onImported?.()
@@ -668,7 +671,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     setBusy(true)
     setSourceFileStatus('saving')
     try {
-      await saveOriginalScheduleSource(batch.id, file)
+      const receipt = await saveOriginalScheduleSource(batch.id, file)
+      setSourceFileId(receipt.id)
       setSourceFileStatus('saved')
     } catch (error) {
       setSourceFileStatus('failed')
@@ -1254,7 +1258,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             </div>}
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
-              <Button onClick={confirmImport} disabled={busy || importableCount === 0 || (source?.type === 'excel' && sourceFileStatus !== 'saved')} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
+              <Button onClick={confirmImport} disabled={busy || importableCount === 0 || (source?.type === 'excel' && (sourceFileStatus !== 'saved' || !sourceFileId))} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
             </div>
           </CardContent>
         </Card>

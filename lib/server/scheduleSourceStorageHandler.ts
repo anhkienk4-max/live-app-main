@@ -24,7 +24,10 @@ const uploadFields = z.object({
   batch_id: z.string().trim().min(1).max(120).regex(/^[A-Za-z0-9_-]+$/u),
 }).strict()
 
-const readFields = z.object({ file_id: z.string().uuid() }).strict()
+const readFields = z.object({
+  file_id: z.string().uuid(),
+  verify_only: z.enum(['true']).optional(),
+}).strict()
 
 function response(code: string, status: number, extra: Record<string, unknown> = {}) {
   return Response.json({ ok: status < 400, ...(status < 400 ? extra : { error: { code } }) }, {
@@ -236,7 +239,7 @@ export function createScheduleSourceStorageHandler(dependencies: {
         const status = code === 'OPERATIONAL_FILE_CONFIDENTIAL_STORAGE_NOT_APPROVED' ? 423
           : code === 'SCHEDULE_SOURCE_BATCH_INVALID' ? 409
           : code.includes('TOO_LARGE') ? 413
-          : code.startsWith('SCHEDULE_SOURCE_') ? 502 : 409
+          : code.startsWith('SCHEDULE_SOURCE_') || code.startsWith('GOOGLE_DRIVE_') ? 502 : 409
         return response(code, status)
       }
     },
@@ -244,7 +247,11 @@ export function createScheduleSourceStorageHandler(dependencies: {
     async GET(request: Request) {
       try {
         const actor = await requirePermission(request, 'shifts.import', dependencies.resolveUser)
-        const parsed = readFields.safeParse({ file_id: new URL(request.url).searchParams.get('file_id') })
+        const params = new URL(request.url).searchParams
+        const parsed = readFields.safeParse({
+          file_id: params.get('file_id'),
+          verify_only: params.get('verify_only') ?? undefined,
+        })
         if (!parsed.success) return response('SCHEDULE_SOURCE_REQUEST_INVALID', 400)
         const client = clientFactory()
         const result = await client.from('operational_schedule_source_files').select('*')
@@ -255,7 +262,19 @@ export function createScheduleSourceStorageHandler(dependencies: {
           || !await ownedExcelBatch(client, receipt.batch_id, actor.businessUserId, true)) {
           return response('SCHEDULE_SOURCE_NOT_FOUND', 404)
         }
-        const bytes = await verifiedSourceFile(storage, receipt)
+        let bytes: Uint8Array
+        try {
+          bytes = await verifiedSourceFile(storage, receipt)
+        } catch (error) {
+          const batch = await ownedExcelBatch(client, receipt.batch_id, actor.businessUserId, true)
+          if (batch && batch.status !== 'confirmed') {
+            await client.from('operational_schedule_source_files').update({
+              reconciliation_status: 'reconciliation_required', updated_at: new Date().toISOString(),
+            }).eq('id', receipt.id).eq('reconciliation_status', 'provider_verified')
+          }
+          throw error
+        }
+        if (parsed.data.verify_only) return response('OK', 200, { file_id: receipt.id, checksum_sha256: receipt.checksum_sha256 })
         return new Response(bytes as BodyInit, {
           headers: {
             'Cache-Control': 'private, no-store',

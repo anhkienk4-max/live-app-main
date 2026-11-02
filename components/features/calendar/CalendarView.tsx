@@ -898,7 +898,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         />
       )}
 
-      {currentUser && (hasPermission(currentUser, 'shifts.assign_staff') || hasPermission(currentUser, 'shifts.approve_registration')) && (
+      {showBulkStaffingAssign && currentUser && (hasPermission(currentUser, 'shifts.assign_staff') || hasPermission(currentUser, 'shifts.approve_registration')) && (
         <BulkStaffingAssignDialog
           open={showBulkStaffingAssign}
           onOpenChange={setShowBulkStaffingAssign}

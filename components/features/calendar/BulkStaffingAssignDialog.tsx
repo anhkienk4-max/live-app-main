@@ -11,8 +11,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { UserCheck, Users, AlertCircle, CheckCircle } from 'lucide-react'
+import { UserCheck, AlertCircle } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { shiftRegistrationService } from '@/lib/services/dataService'
@@ -55,14 +54,6 @@ export function BulkStaffingAssignDialog({
   const eligibleUsers = React.useMemo(() => {
     return activeUsers.filter(u => !u.operational_roles || u.operational_roles.includes(selectedRole))
   }, [activeUsers, selectedRole])
-
-  React.useEffect(() => {
-    if (open) {
-      setSelectedUserId('')
-      setResult(null)
-      setProgress(null)
-    }
-  }, [open])
 
   const handleAssign = async () => {
     if (!currentUser || !selectedUserId || selectedShiftIds.length === 0) return

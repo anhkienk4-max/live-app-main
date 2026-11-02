@@ -108,8 +108,22 @@ test('pending ACL routes allow only non-sensitive categories and never infer ACL
     assert.equal(route.sensitive, domainFolderForCategory(category).sensitive, category)
     assert.equal(canWriteOperationalStoragePlacement(route.accessClassification ?? '', route.sensitive ?? false), !route.sensitive, category)
   }
+  assert.equal(domainFolderForCategory('schedule_source').sensitive, true)
+  assert.equal(canWriteOperationalStoragePlacement('shared', domainFolderForCategory('schedule_source').sensitive), false)
+  assert.equal(canWriteOperationalStoragePlacement('pending_restriction_no_sensitive_upload', domainFolderForCategory('schedule_source').sensitive), false)
   assert.equal(canWriteOperationalStoragePlacement('restricted_verified', true), true)
+  assert.equal(canWriteOperationalStoragePlacement('restricted_pending_app_acl_verification', false), false)
   assert.equal(canWriteOperationalStoragePlacement('shared_schema_template_only', false), false)
+})
+
+test('restricted-pending registry status is preserved and never becomes an upload grant', async () => {
+  const route = routeMap.standard_category_routes.schedule_export
+  const resolver = createOperationalStorageDomainRouteRepository({
+    client: registryClient({ [route.path]: { access_classification: 'restricted_pending_app_acl_verification' } }).client,
+  })
+  const placement = await resolver.resolveDomainCategoryPlacement('schedule_export', 'synthetic.csv')
+  assert.equal(placement.accessClassification, 'restricted_pending_app_acl_verification')
+  assert.equal(canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false), false)
 })
 
 test('domain materialization requires positive Google Drive write capability on the exact target folder', async () => {
@@ -204,6 +218,7 @@ test('schedule-source API requires no shift or execution_source and serves only 
   const checksum = createHash('sha256').update(bytes).digest('hex')
   let uploadedParent = ''
   let uploadCount = 0
+  let sourceExists = true
   const storage = {
     async upload(input: FileUploadInput): Promise<FileUploadResult> {
       uploadCount += 1
@@ -215,6 +230,7 @@ test('schedule-source API requires no shift or execution_source and serves only 
     },
     async getMetadata(reference: { external_file_id: string } | string) {
       const id = typeof reference === 'string' ? reference : reference.external_file_id
+      if (id === 'source-drive-id' && !sourceExists) throw new Error('GOOGLE_DRIVE_FILE_NOT_FOUND')
       return { id, kind: id === uploadedParent ? 'folder' as const : 'file' as const,
         parent_ids: id === uploadedParent ? ['1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh'] : [uploadedParent], trashed: false }
     },
@@ -253,6 +269,9 @@ test('schedule-source API requires no shift or execution_source and serves only 
   const read = await handler.GET(new Request(`https://example.test/api/schedule-source-files?file_id=${state.rows[0]?.id}`))
   assert.equal(read.status, 200)
   assert.deepEqual(new Uint8Array(await read.arrayBuffer()), bytes)
+  const verified = await handler.GET(new Request(`https://example.test/api/schedule-source-files?file_id=${state.rows[0]?.id}&verify_only=true`))
+  assert.equal(verified.status, 200)
+  assert.equal((await verified.json() as { checksum_sha256?: string }).checksum_sha256, checksum)
 
   const retryForm = new FormData()
   retryForm.set('batch_id', 'batch-1')
@@ -261,6 +280,11 @@ test('schedule-source API requires no shift or execution_source and serves only 
   assert.equal(retry.status, 200)
   assert.equal((await retry.json() as { reused?: boolean }).reused, true)
   assert.equal(uploadCount, 1)
+
+  sourceExists = false
+  const stale = await handler.GET(new Request(`https://example.test/api/schedule-source-files?file_id=${state.rows[0]?.id}&verify_only=true`))
+  assert.equal(stale.status, 502)
+  assert.equal(state.rows[0]?.reconciliation_status, 'reconciliation_required')
 
   const unknownBatchForm = new FormData()
   unknownBatchForm.set('batch_id', 'forged-batch')
@@ -282,6 +306,43 @@ test('schedule-source API requires no shift or execution_source and serves only 
   foreignForm.set('file', new File([bytes], 'foreign.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
   assert.equal((await foreign.POST(new Request('https://example.test/api/schedule-source-files', { method: 'POST', body: foreignForm }))).status, 404)
   assert.equal(uploadCount, 1)
+})
+
+test('schedule-source upload cannot register provider-verified metadata for a missing Drive file', async () => {
+  const state = scheduleClient()
+  const bytes = new Uint8Array([1, 3, 5])
+  const handler = createScheduleSourceStorageHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'admin-auth', systemPermission: 'admin', businessUserId: 'admin' }),
+    storage: {
+      async upload(input: FileUploadInput): Promise<FileUploadResult> {
+        return { asset: { id: 'fake-drive-id', provider: 'google_drive', external_file_id: 'fake-drive-id',
+          external_parent_id: input.external_parent_id ?? '', name: input.name, mime_type: input.mime_type,
+          size_bytes: input.size_bytes, checksum_sha256: input.checksum_sha256, entity_type: 'schedule_import',
+          entity_id: 'batch-1', status: 'active', created_by: 'admin', created_at: new Date().toISOString() } }
+      },
+      async getMetadata() { throw new Error('GOOGLE_DRIVE_FILE_NOT_FOUND') },
+      async read() { throw new Error('GOOGLE_DRIVE_FILE_NOT_FOUND') },
+      async delete() { throw new Error('GOOGLE_DRIVE_FILE_NOT_FOUND') },
+    } as never,
+    domainRoutes: {
+      async resolveDomainCategoryPlacement() {
+        return { provider: 'google_drive', storageProfile: 'DOMAIN_CATEGORY_FOLDER', rootFolderId: 'root',
+          baseFolderId: 'schedule-folder', folderSegments: [], folderPath: 'raw', expectedBaseParentId: 'parent',
+          accessClassification: 'restricted_verified', sensitive: true, fileName: 'original.xlsx',
+          logicalCategory: 'data_source', periodLabel: '' }
+      },
+      async resolveReportArtifactGroupPlacement() { throw new Error('unused') },
+    },
+    materializeFolders: async () => 'schedule-folder',
+  })
+  const form = new FormData()
+  form.set('batch_id', 'batch-1')
+  form.set('file', new File([bytes], 'original.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+  const response = await handler.POST(new Request('https://example.test/api/schedule-source-files', { method: 'POST', body: form }))
+  assert.equal(response.status, 502)
+  assert.equal(state.rows[0]?.external_file_id, 'fake-drive-id')
+  assert.equal(state.rows[0]?.reconciliation_status, 'reconciliation_required')
 })
 
 test('schedule-source upload fails closed while the route ACL remains pending', async () => {
@@ -329,6 +390,14 @@ test('operational-file reads require the actor assignment and never redirect pri
         limit() { return query },
         async maybeSingle() {
           if (table === 'operational_files') return { data: filters.every(filter => filter(fileRow)) ? fileRow : null, error: null }
+          if (table === 'brands') {
+            const brand = { id: 'brand-1', name: 'Brand One', deleted_at: null }
+            return { data: filters.every(filter => filter(brand)) ? brand : null, error: null }
+          }
+          if (table === 'platforms') {
+            const platform = { id: 'platform-1', name: 'Shopee', deleted_at: null }
+            return { data: filters.every(filter => filter(platform)) ? platform : null, error: null }
+          }
           if (table === 'shifts') {
             const shift = { id: 'shift-1', brand_id: 'brand-1', deleted_at: null }
             return { data: filters.every(filter => filter(shift)) ? shift : null, error: null }
@@ -368,6 +437,17 @@ test('operational-file reads require the actor assignment and never redirect pri
     resolveUser: async () => member, storage: storage as never,
   })
   assert.equal((await forgedShift.GET(new Request('https://example.test/api/operational-files?file_id=file-1'))).status, 404)
+
+  const leaderBrandScope = createOperationalFileRouteHandler({
+    createClient: () => accessDb(row, true) as unknown as SupabaseClient,
+    resolveUser: async () => ({ id: 'leader-auth', businessUserId: 'leader-1', systemPermission: 'leader' }),
+    storage: storage as never,
+  })
+  const deniedBrandScope = await leaderBrandScope.GET(new Request(
+    'https://example.test/api/operational-files?brand_id=brand-1&platform_id=platform-1&period_date=2026-11-01&execution_source=internal',
+  ))
+  assert.equal(deniedBrandScope.status, 403)
+  assert.equal(providerReads, 2)
 
   const large = createOperationalFileRouteHandler({
     createClient: () => accessDb({ ...row, size_bytes: 4 * 1024 * 1024 + 1 }, true) as unknown as SupabaseClient,

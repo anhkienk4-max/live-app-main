@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { Shift } from '../lib/types/database.types'
+import type { ImportPreviewRow } from '../lib/utils/excelUtils'
 import {
   type EntityMaps,
   parseScheduleRows,
@@ -32,7 +34,9 @@ const baseMaps: EntityMaps = {
   ]),
 }
 
-function mockPendingBatchRows(batchId: string, previews: any[]) {
+type RecordOutcome = Parameters<NonNullable<Parameters<typeof processScheduleImportRows>[0]['recordOutcome']>>[0]
+
+function mockPendingBatchRows(batchId: string, previews: ImportPreviewRow[]) {
   return previews.map(preview => ({
     id: `${batchId}:${preview.row.row_number}`,
     batch_id: batchId,
@@ -83,8 +87,8 @@ test('SCENARIO 1: 52 truly distinct shifts -> exactly 52 created, 0 duplicates',
   assert.equal(parsed.validShifts.length, 52)
 
   // Simulate processScheduleImportRows
-  const createdShifts: any[] = []
-  const recordedOutcomes: any[] = []
+  const createdShifts: Shift[] = []
+  const recordedOutcomes: RecordOutcome[] = []
 
   const result = await processScheduleImportRows({
     batchId: 'batch-52-distinct',
@@ -97,7 +101,7 @@ test('SCENARIO 1: 52 truly distinct shifts -> exactly 52 created, 0 duplicates',
       return shift as Shift
     },
     refreshShifts: async () => createdShifts,
-    updateShift: async (id, patch) => null,
+    updateShift: async () => null,
     recordOutcome: async (outcome) => {
       recordedOutcomes.push(outcome)
     },
@@ -148,8 +152,8 @@ test('SCENARIO 2: 52 rows representing 2 slots (50 in-file duplicates) -> exactl
   assert.equal(parsed.validShifts.length, 2)
 
   // Verify outcomes when processing import
-  const createdShifts: any[] = []
-  const recordedOutcomes: any[] = []
+  const createdShifts: Shift[] = []
+  const recordedOutcomes: RecordOutcome[] = []
 
   const result = await processScheduleImportRows({
     batchId: 'batch-52-with-duplicates',
@@ -162,7 +166,7 @@ test('SCENARIO 2: 52 rows representing 2 slots (50 in-file duplicates) -> exactl
       return shift as Shift
     },
     refreshShifts: async () => createdShifts,
-    updateShift: async (id, patch) => null,
+    updateShift: async () => null,
     recordOutcome: async (outcome) => {
       recordedOutcomes.push(outcome)
     },
@@ -230,8 +234,8 @@ test('SCENARIO 3: Re-import existing shifts without changes -> 0 created, duplic
   assert.equal(parsed.validShifts.length, 0, 'No new shifts to create')
   assert.equal(parsed.rows[0].duplicateReference?.id, 'existing-shift-100')
 
-  const createdShifts: any[] = []
-  const recordedOutcomes: any[] = []
+  const createdShifts: Shift[] = []
+  const recordedOutcomes: RecordOutcome[] = []
 
   const result = await processScheduleImportRows({
     batchId: 'batch-reimport',
@@ -460,7 +464,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
     }'::jsonb)
   `)
   assert.equal(createResult.rows.length, 1)
-  const createdShift = createResult.rows[0] as any
+  const createdShift = createResult.rows[0] as Record<string, unknown>
   assert.equal(createdShift.agency_code, 'live_ai')
   assert.equal(createdShift.execution_source, 'agency')
 
@@ -477,7 +481,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
         }'::jsonb)
       `)
     },
-    (err: any) => err.message.includes('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT'),
+    (err: unknown) => err instanceof Error && err.message.includes('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT'),
   )
 
   // Test 3: create_shift with agency_code = 'snap' and omitted execution_source auto-sets execution_source = 'agency'
@@ -489,7 +493,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
       "agency_code": "snap"
     }'::jsonb)
   `)
-  const autoShift = autoAgencyResult.rows[0] as any
+  const autoShift = autoAgencyResult.rows[0] as Record<string, unknown>
   assert.equal(autoShift.agency_code, 'snap')
   assert.equal(autoShift.execution_source, 'agency')
 
@@ -499,7 +503,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
       "agency_code": "ada"
     }'::jsonb, false)
   `)
-  assert.equal((updateResult.rows[0] as any).agency_code, 'ada')
+  assert.equal((updateResult.rows[0] as Record<string, unknown>).agency_code, 'ada')
 
   // Test 5: update_shift with agency_code and execution_source = 'internal' MUST FAIL
   await assert.rejects(
@@ -510,7 +514,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
         }'::jsonb, false)
       `)
     },
-    (err: any) => err.message.includes('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT'),
+    (err: unknown) => err instanceof Error && err.message.includes('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT'),
   )
 
   // Test 6: update_shift with invalid agency_code must reject with SHIFT_AGENCY_CODE_INVALID
@@ -522,7 +526,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
         }'::jsonb, false)
       `)
     },
-    (err: any) => err.message.includes('SHIFT_AGENCY_CODE_INVALID'),
+    (err: unknown) => err instanceof Error && err.message.includes('SHIFT_AGENCY_CODE_INVALID'),
   )
 
   // Test 7: update_shift with invalid execution_source must reject with SHIFT_EXECUTION_SOURCE_INVALID
@@ -534,7 +538,7 @@ test('SCENARIO 6: PostgreSQL Migration executes correctly and validates agency_c
         }'::jsonb, false)
       `)
     },
-    (err: any) => err.message.includes('SHIFT_EXECUTION_SOURCE_INVALID'),
+    (err: unknown) => err instanceof Error && err.message.includes('SHIFT_EXECUTION_SOURCE_INVALID'),
   )
 })
 
@@ -564,8 +568,8 @@ test('SCENARIO 7: Two parallel sessions at same time in different Studios -> 2 d
   assert.equal(parsed.rows.filter(r => r.isInFileDuplicate).length, 0)
   assert.equal(parsed.validShifts.length, 2)
 
-  const createdShifts: any[] = []
-  const recordedOutcomes: any[] = []
+  const createdShifts: Shift[] = []
+  const recordedOutcomes: RecordOutcome[] = []
   const result = await processScheduleImportRows({
     batchId: 'batch-parallel-studios',
     previews: parsed.rows,
@@ -623,8 +627,8 @@ test('SCENARIO 8: Two parallel sessions at same time with different Campaigns ->
   assert.equal(parsed.rows.filter(r => r.isInFileDuplicate).length, 0)
   assert.equal(parsed.validShifts.length, 2)
 
-  const createdShifts: any[] = []
-  const recordedOutcomes: any[] = []
+  const createdShifts: Shift[] = []
+  const recordedOutcomes: RecordOutcome[] = []
   const result = await processScheduleImportRows({
     batchId: 'batch-parallel-campaigns',
     previews: parsed.rows,
@@ -675,8 +679,8 @@ test('SCENARIO 9: Unclear identity (one row with Studio, one without) reports co
   assert.ok(collisionRow.row.warnings.some(w => w.includes('Collision') || w.includes('Xung đột ca')))
 
   // In recovery: second row cannot be created without resolving collision
-  const createdShifts: any[] = []
-  const recordedOutcomes: any[] = []
+  const createdShifts: Shift[] = []
+  const recordedOutcomes: RecordOutcome[] = []
   const result = await processScheduleImportRows({
     batchId: 'batch-collision',
     previews: parsed.rows,
@@ -719,9 +723,9 @@ test('SCENARIO 10: Agency = Live AI with Execution Source = Internal rejected at
 
 test('SCENARIO 11: Service layer rejects createShift with agency_code and execution_source = internal', async () => {
   const { createSupabaseShiftRepository } = await import('../lib/services/supabaseShiftService')
-  const mockClient: any = {
+  const mockClient = {
     rpc: async () => ({ data: null, error: null }),
-  }
+  } as unknown as SupabaseClient
   const repo = createSupabaseShiftRepository(mockClient)
   await assert.rejects(
     async () => {
@@ -739,8 +743,8 @@ test('SCENARIO 11: Service layer rejects createShift with agency_code and execut
         status: 'scheduled',
         agency_code: 'live_ai',
         execution_source: 'internal',
-      } as any)
+      })
     },
-    (err: any) => err.message.includes('Agency cannot have execution_source = internal'),
+    (err: unknown) => err instanceof Error && err.message.includes('Agency cannot have execution_source = internal'),
   )
 })

@@ -27,6 +27,19 @@ export async function uploadScheduleSourceFile(
   return payload.file
 }
 
+export async function verifyScheduleSourceFile(
+  fileId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const response = await fetcher(`/api/schedule-source-files?file_id=${encodeURIComponent(fileId)}&verify_only=true`, {
+    credentials: 'same-origin', cache: 'no-store',
+  })
+  const payload = await response.json().catch(() => null) as { ok?: unknown; error?: { code?: unknown } } | null
+  if (!response.ok || payload?.ok !== true) {
+    throw new Error(typeof payload?.error?.code === 'string' ? payload.error.code : 'SCHEDULE_SOURCE_VERIFY_FAILED')
+  }
+}
+
 export async function downloadScheduleSourceFile(
   fileId: string,
   fetcher: typeof fetch = fetch,

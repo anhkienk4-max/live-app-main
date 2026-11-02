@@ -5,7 +5,7 @@
   "new_data_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
   "drive_bytes_primary": true,
   "supabase_binary_storage_allowed": false,
-  "source_code_compatibility": "BLOCKED: current CANONICAL_V1 and operationalFilePlacement do not support domain-first folder ID selection",
+  "source_code_compatibility": "IMPLEMENTED_IN_STORAGE_BRANCH; production routes remain inactive pending release gates",
   "production_active_routes_last_verified": 0,
   "standard_category_routes": {
     "schedule_source": {

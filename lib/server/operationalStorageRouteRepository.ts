@@ -162,7 +162,8 @@ export function createOperationalStorageDomainRouteRepository(
       }
       const classification = row.access_classification
       if (typeof classification !== 'string' || ![
-        'shared', 'pending_restriction_no_sensitive_upload', 'shared_schema_template_only', 'restricted_verified',
+        'shared', 'pending_restriction_no_sensitive_upload', 'shared_schema_template_only',
+        'restricted_pending_app_acl_verification', 'restricted_verified',
       ].includes(classification)) failClosed()
       classifications.push(classification)
     }
@@ -170,6 +171,8 @@ export function createOperationalStorageDomainRouteRepository(
       ? 'shared_schema_template_only'
       : classifications.every(value => value === 'restricted_verified')
         ? 'restricted_verified'
+        : classifications.includes('restricted_pending_app_acl_verification')
+          ? 'restricted_pending_app_acl_verification'
         : classifications.includes('pending_restriction_no_sensitive_upload')
           ? 'pending_restriction_no_sensitive_upload'
           : 'shared'
