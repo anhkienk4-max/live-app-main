@@ -7,13 +7,14 @@
   "access_warning": "Shared root has anyone:writer. Inherited child folders also have anyone:writer. Do not put confidential HR, attendance photos, payroll, contracts, personal records or tokens here until a verified restricted storage destination is configured.",
   "do_not_assume_live_app_routing": "These folders exist in Drive; no storage route registry entries, Vercel variables, migrations or application identity OAuth permissions have been changed.",
   "routing_policy": {
-    "database": "Supabase PG remains canonical source for shifts, metrics, approvals, staffing, payroll, audit. Drive contains provider-backed file bytes and versioned exports/snapshots, not the transactional DB.",
-    "operational_assets": "Use 00_ADA_OPS_PLATFORM domain folders by verified folder IDs.",
-    "report_assets": "Existing brand LS Report folders under LIVESTREAM REPORT are preserved and should be reused as brand roots where confirmed. Inside a selected brand/platform path create YYYY/M_MM/<stable_shift_business_code> on demand and the per-shift child categories from 00_SHIFT_FOLDER_TEMPLATE; save provider IDs and checksums.",
+    "database": "Google Drive is the primary file-byte and recoverable raw/snapshot store; Supabase stores file metadata and minimal transactional application state for shift, staffing, audit and payroll consistency, not binary file payloads.",
+    "operational_assets": "All NEW app file bytes and datasets go into 00_ADA_OPS_PLATFORM domain-first folders, by exact verified folder ID. No parallel Brand/Platform root tree outside the approved new app root.",
+    "report_assets": "All NEW app-generated report assets must be written under 00_ADA_OPS_PLATFORM/03_LIVE_REPORTS, dynamically organized by Brand ID, Platform ID, YYYY/MM, stable parent shift UUID and nine evidence subfolders. Older Brand LS Report folders under LIVESTREAM REPORT are LEGACY READ-ONLY sources for prior assets; do not silently reuse them for new writes.",
     "do_not_write_into_template": true,
-    "private_data": "No upload into 08 or 11 until child permissions are independently verified restricted; restricted independent Drive root may be needed.",
+    "private_data": "HR and Finance directories have been created, but inherit anyone:writer and are not private; use for structure only until approved restricted root or reviewed ACL policy supports sensitive data.",
     "idempotency": "Resolve by actual parent folder ID plus exact name, verify provider metadata; do not create duplicates by loose name match.",
-    "no_secrets": "Do not write bearer tokens, refresh tokens, service-role keys, payroll details or authentication cookies into shared root."
+    "no_secrets": "Do not write bearer tokens, refresh tokens, service-role keys, payroll details or authentication cookies into shared root.",
+    "supersedes_prior_report_roots": "Owner 2026-11-02: all NEW app files to 00_ADA_OPS_PLATFORM, not historical Brand LS Report folders. Historical files remain readable."
   },
   "folders": [
     {
