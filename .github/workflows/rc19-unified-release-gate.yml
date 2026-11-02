@@ -5,6 +5,7 @@ on:
     branches:
       - gemini/rc19-batch01.3.1-unified-release
       - integration/rc19-unified-release
+      - codex/rc19-batch05a43-ci-hardening
   pull_request:
     branches:
       - main
@@ -24,12 +25,13 @@ jobs:
       postgres17:
         image: postgres:17-alpine
         env:
-          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_USER: rc19_ci
+          POSTGRES_PASSWORD: rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres"
+          --health-cmd="pg_isready -U rc19_ci -d postgres"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=12
@@ -39,17 +41,29 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Verify exact HEAD SHA
         run: |
           echo "Verified Head SHA: ${{ github.sha }}"
           git rev-parse HEAD
 
-      - name: Set up Node.js 22
+      - name: Verify PostgreSQL 17 and create isolated Storage test databases
+        env:
+          PGPASSWORD: rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          version_num="$(psql -h localhost -U rc19_ci -d postgres -Atqc 'SHOW server_version_num')"
+          case "$version_num" in
+            17*) echo "PostgreSQL server major version: 17 (${version_num})" ;;
+            *) echo "::error::Expected PostgreSQL 17, got ${version_num}"; exit 1 ;;
+          esac
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_migrations_disposable'
+
+      - name: Set up Node.js 24 (matches Vercel Production runtime)
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install pinned pnpm
         run: |
@@ -68,9 +82,13 @@ jobs:
         run: |
           pnpm run lint
 
+      - name: Validate canonical project memory
+        run: pnpm run memory:validate
+
       - name: PostgreSQL 17 Multi-Connection Concurrency Gate
         env:
-          DATABASE_URL: postgresql://postgres@localhost:5432/postgres
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/postgres
           STRICT_CONCURRENCY_GATE: 'true'
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
@@ -78,22 +96,48 @@ jobs:
 
       - name: Owner ID 23 Segmented Staffing & Database Identity Suites
         env:
-          DATABASE_URL: postgresql://postgres@localhost:5432/postgres
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/postgres
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
             tests/rc19-owner23-segmented-staffing.test.ts \
             tests/rc19-batch01-3-database-identity.test.ts
+
+      - name: PostgreSQL 17 Storage Route Seed (10 real server tests)
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_sto01_disposable
+          RC19_STO01_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto01-storage-seed-postgres17.test.ts
+
+      - name: PostgreSQL 17 ordered 05A migration, RLS, receipt, and rollback tests
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_sto01_migrations_disposable
+          RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-batch05a-storage-migrations-postgres17.test.ts
 
       - name: Storage Runtime & Sequential Migration Verification
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
             tests/rc19-sto01-storage-seed-preflight.test.ts \
             tests/rc19-storage-security-patch.test.ts \
-            tests/rc19-sequential-migration-runner.test.ts
+            tests/rc19-sequential-migration-runner.test.ts \
+            tests/rc19-batch05a41-sequential-migrations.test.ts
 
-      - name: Production Next.js Build (Turbopack, Offline Credential-Free)
+      - name: Full canonical Node regression (PostgreSQL 17 suites are gated separately)
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
+
+      - name: Next.js production build (credential-free CI compile)
         env:
           CI: 'true'
+          VERCEL: ''
+          VERCEL_ENV: ''
+          VERCEL_TARGET_ENV: ''
           NEXT_PUBLIC_SUPABASE_URL: ''
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
           SUPABASE_URL: ''

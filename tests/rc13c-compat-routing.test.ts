@@ -385,6 +385,10 @@ function compatHarness(options: {
       storageCalls.push(`read:${reference.provider}:${reference.external_file_id}`)
       return new Uint8Array([1, 2, 3])
     },
+    async getMetadata(reference: { provider: string; external_file_id: string }) {
+      storageCalls.push(`metadata:${reference.provider}:${reference.external_file_id}`)
+      return { id: reference.external_file_id, name: 'compat.png', parent_ids: [] }
+    },
     async delete(reference: { provider: string; external_file_id: string }) {
       storageCalls.push(`delete:${reference.provider}:${reference.external_file_id}`)
       if (options.providerDeleteFails) throw new Error('provider failure detail')

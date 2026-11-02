@@ -1076,18 +1076,11 @@ test('16. Edit Studio/Campaign on active Shift with registrations and reports ->
   })
 })
 
-test('17. Multi-Row Candidate Reconciliation Invariant (Historical 52->2 Counter Bug Fix Verification)', async () => {
-  // Production historical context:
-  // - 52 audit rows recorded under 2 Shift IDs (51:1 distribution).
-  // - Batch header historically logged 52 imported, 0 duplicate, 0 failed.
-  // - PROVEN ROOT CAUSE: In Batch 01.1, processScheduleImportRows incremented batch.imported
-  //   for every processed row even when multiple rows resolved to the same parent shift.
-  // - EVIDENCE LIMITS: The exact physical Excel rows uploaded historically were not persisted in audit logs.
-  //   The fixture below verifies the mathematical invariant: 52 candidate rows resolving to 2 parent
-  //   shifts yields exactly 2 imported shifts and 50 duplicate_skipped rows, ensuring batch.imported == 2.
+test('17. Synthetic repeated-row import keeps one parent per distinct shift identity', async () => {
+  // This synthetic input checks candidate reconciliation only; it does not reproduce a Production import cause.
   await asAdmin(async () => {
     const rows: any[] = []
-    // 51 candidate rows for Shift 1 (09:00 - 11:00, Studio A)
+    // Repeated candidates resolve to one parent shift.
     for (let i = 0; i < 51; i++) {
       rows.push({
         Date: '2026-11-29',
@@ -1099,7 +1092,7 @@ test('17. Multi-Row Candidate Reconciliation Invariant (Historical 52->2 Counter
         Host: `Host S1-Staff-${i + 1}`,
       })
     }
-    // 1 row for Shift 2 (14:00 - 16:00, Studio B)
+    // A distinct identity creates a second parent shift.
     rows.push({
       Date: '2026-11-29',
       'Start time': '14:00',
@@ -1293,15 +1286,3 @@ test('19. RLS & RPC Security Gate -> Leader/Admin allowed, Member/Anon rejected'
     )
   })
 })
-
-// Test 20: Concurrency Gate. If strict release gate is on and PostgreSQL server is absent, fail immediately.
-// Otherwise, explicitly mark as skipped (SKIP status, never a false PASS).
-if (process.env.STRICT_CONCURRENCY_GATE === 'true' && !process.env.DATABASE_URL) {
-  test('20. Concurrency DB Test Gate -> Release Gate Failure (PostgreSQL 17 Server Required)', () => {
-    assert.fail('[CONCURRENCY GATE FAILURE] Strict release gate requires real PostgreSQL 17 server. PGlite single-thread cannot verify multi-connection concurrency.')
-  })
-} else {
-  test.skip('20. Concurrency DB Test Gate -> BLOCKED: Requires PostgreSQL 17 server (See tests/rc19-postgres17-concurrency.integration.test.ts for multi-connection suite)', async () => {
-    // Skipped when local PostgreSQL server is unavailable. Does NOT produce a false PASS.
-  })
-}

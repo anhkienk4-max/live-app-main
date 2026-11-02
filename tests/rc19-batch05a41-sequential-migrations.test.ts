@@ -12,81 +12,14 @@ const migrationPaths = [
   '../supabase/migrations/20261102160334_rc19_batch05a41_storage_release_blockers.sql',
   '../supabase/migrations/20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql',
 ].map(path => fileURLToPath(new URL(path, import.meta.url)))
+const baselinePath = fileURLToPath(new URL('./fixtures/rc19-batch05a-migration-baseline.sql', import.meta.url))
+const baselineSql = await readFile(baselinePath, 'utf8')
 
 test('05A -> 05A.3 -> 05A.4 -> 05A.4.1 -> 05A.4.2 applies and preserves route/receipt gates', async () => {
   const db = new PGlite()
   try {
     assert.match(String((await db.query('select version()')).rows[0]?.version), /^PostgreSQL 17\./u)
-    await db.exec(`
-      create role anon;
-      create role authenticated;
-      create role service_role bypassrls;
-      create schema private;
-      create schema storage;
-      create table storage.buckets (id text primary key, public boolean not null);
-      create table storage.objects (bucket_id text not null, name text not null);
-      insert into storage.buckets values ('live-dashboard-images', true);
-      create policy "live dashboard image public read" on storage.objects for select
-        using (bucket_id = 'live-dashboard-images');
-      create table public.report_images (id text primary key, provider text, external_file_id text);
-      create table public.live_report_images (id text primary key, provider text, external_file_id text);
-      create table public.operational_files (
-        id text primary key, scope_key text, category text, provider text, shift_id text,
-        integrity_status text, external_file_id text, external_parent_id text,
-        checksum_sha256 text, mime_type text, deleted_at timestamptz
-      );
-      create table public.shifts (
-        id text primary key, status text, deleted_at timestamptz, archived_at timestamptz,
-        import_batch_id text
-      );
-      create table public.schedule_import_batches (
-        id text primary key, source text not null, status text not null,
-        created_by text, deleted_at timestamptz
-      );
-      create table private.actor_context (singleton boolean primary key default true, actor_id text, permission text);
-      insert into private.actor_context (actor_id, permission) values ('business-1', 'leader');
-      create table public.dashboard_updates (
-        id text primary key default gen_random_uuid()::text, shift_id text not null,
-        time timestamptz not null, revenue numeric not null, gmv numeric, orders integer not null,
-        peak_viewers integer not null, current_viewers integer not null, total_views integer,
-        total_viewers integer, likes integer, comments integer, shares integer,
-        screenshot_url text, screenshot_storage_path text, dashboard_platform text not null,
-        normalized_metrics jsonb, ocr_review jsonb, raw_ocr_output text, notes text,
-        created_by text, deleted_at timestamptz,
-        check (screenshot_storage_path is null or screenshot_storage_path like 'dashboard/%')
-      );
-      create function public.upload_report_image_with_provider(text,text,text,text,text,bigint,text,text,text)
-        returns public.report_images language plpgsql as $$
-        declare result public.report_images;
-        begin
-          insert into public.report_images(id, provider, external_file_id)
-          values ('report-image-1', $8, $9) returning * into result;
-          return result;
-        end $$;
-      create function public.upsert_live_report_image_with_provider(jsonb)
-        returns public.live_report_images language plpgsql as $$
-        declare result public.live_report_images;
-        begin
-          insert into public.live_report_images(id, provider, external_file_id)
-          values ('live-image-1', $1->>'provider', $1->>'external_file_id') returning * into result;
-          return result;
-        end $$;
-      create function private.current_business_user_id() returns text language sql security definer set search_path = '' as $$
-        select actor_id from private.actor_context limit 1 $$;
-      create function private.current_system_permission() returns text language sql security definer set search_path = '' as $$
-        select permission from private.actor_context limit 1 $$;
-      create function private.is_leader_or_admin() returns boolean language sql security definer set search_path = '' as $$
-        select private.current_system_permission() in ('leader', 'admin') $$;
-      create function private.require_shift_actor(boolean) returns text language plpgsql security definer set search_path = '' as $$
-        declare actor_id text;
-        begin
-          actor_id := private.current_business_user_id();
-          if actor_id is null then raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED'; end if;
-          if $1 and not private.is_leader_or_admin() then raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED'; end if;
-          return actor_id;
-        end $$;
-      create function private.can_read_shift(text) returns boolean language sql as $$ select true $$;
-    `)
+    await db.exec(baselineSql)
 
     await db.exec(`insert into public.schedule_import_batches (id, source, status, created_by)
       values ('legacy-confirmed', 'excel', 'confirmed', 'business-1'),
