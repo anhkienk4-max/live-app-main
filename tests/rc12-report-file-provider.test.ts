@@ -6,6 +6,7 @@ import { resolve } from 'node:path'
 import type { FileProviderName, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import { GoogleDriveError } from '@/lib/server/googleDriveAuth'
 import {
+  type OperationalStoragePlacement,
   resolveOperationalStoragePlacement,
   type OperationalStoragePlacementInput,
   type OperationalStorageRoute,
@@ -28,6 +29,7 @@ function fakeStorage(options: {
   uploadInputs?: FileUploadInput[]
 } = {}) {
   const calls = options.calls || []
+  const uploaded = new Map<string, { parentId: string; bytes: Uint8Array }>()
   return {
     calls,
     async upload(input: FileUploadInput): Promise<FileUploadResult> {
@@ -35,11 +37,16 @@ function fakeStorage(options: {
       if (options.uploadError) throw options.uploadError
       const provider = input.destination?.provider || options.uploadProvider || 'google_drive'
       calls.push(`${provider}:upload`)
+      uploaded.set(`${provider}-file`, {
+        parentId: input.external_parent_id || '',
+        bytes: new Uint8Array(input.content),
+      })
       return {
         asset: {
           id: `${provider}-asset`,
           provider,
           external_file_id: `${provider}-file`,
+          external_parent_id: input.external_parent_id,
           name: input.name,
           mime_type: input.mime_type,
           size_bytes: input.size_bytes,
@@ -58,7 +65,11 @@ function fakeStorage(options: {
     },
     async read(reference: { provider: FileProviderName; external_file_id: string }) {
       calls.push(`${reference.provider}:read:${reference.external_file_id}`)
-      return options.readBytes || new Uint8Array([1, 2, 3])
+      return options.readBytes || uploaded.get(reference.external_file_id)?.bytes || new Uint8Array([1, 2, 3])
+    },
+    async getMetadata(reference: { provider: FileProviderName; external_file_id: string }) {
+      const object = uploaded.get(reference.external_file_id)
+      return { kind: 'file' as const, parent_ids: object?.parentId ? [object.parentId] : [] }
     },
     async delete(reference: { provider: FileProviderName; external_file_id: string }) {
       calls.push(`${reference.provider}:delete:${reference.external_file_id}`)
@@ -189,9 +200,52 @@ test('RC1.2 report and live uploads use the selected provider once and persist i
     assert.equal(payload.ok, true)
     assert.equal(payload.image?.external_file_id, undefined, 'provider IDs stay server-side')
     assert.deepEqual(calls.filter(call => call.endsWith(':upload')), [`${provider}:upload`])
-    const rpcCall = calls.find(call => call.startsWith(kind === 'report' ? 'upload_report_image_with_provider' : 'upsert_live_report_image_with_provider'))
+    const rpcCall = calls.find(call => call.startsWith(kind === 'report' ? 'upload_report_image_with_storage_metadata' : 'upsert_live_report_image_with_storage_metadata'))
     assert.match(rpcCall || '', new RegExp(`"p_provider":"${provider}"|"provider":"${provider}"`))
   }
+})
+
+test('domain-first report image routes the selected artifact group for NULL execution_source', async () => {
+  const calls: string[] = []
+  const client = fakeClient({
+    calls,
+    shift: { date: '2026-10-01', brand_id: 'stg-b1', platform_id: 'stg-p1', execution_source: null },
+    rpcData: { id: 'report-image', provider: 'google_drive', external_file_id: 'google_drive-file' },
+  })
+  const storage = fakeStorage({ calls })
+  const placements: OperationalStoragePlacement[] = []
+  let selectedGroup = ''
+  const handler = createReportImageRouteHandler({
+    resolveUser: async () => user,
+    createClient: async () => client as never,
+    storage,
+    routeResolver: { async resolvePlacement() { throw new Error('legacy route must not be used') } },
+    domainRouteResolver: {
+      async resolveDomainCategoryPlacement() { throw new Error('category route must not be used') },
+      async resolveReportArtifactGroupPlacement(input) {
+        selectedGroup = input.group
+        const placement: OperationalStoragePlacement = {
+          provider: 'google_drive', storageProfile: 'REPORT_ARTIFACT_GROUP',
+          rootFolderId: 'app-root', baseFolderId: 'report-root',
+          folderSegments: ['stg-b1', 'stg-p1', '2026', '10', 'SHIFT_20261001__shift-1', '04_DASHBOARD_30MIN'],
+          folderPath: 'stg-b1/stg-p1/2026/10/SHIFT_20261001__shift-1/04_DASHBOARD_30MIN',
+          expectedBaseParentId: 'app-root', accessClassification: 'shared', sensitive: false,
+          fileName: input.fileName, logicalCategory: 'dashboard', periodLabel: '10/2026',
+        }
+        placements.push(placement)
+        return placement
+      },
+    },
+    materializeFolders: async () => 'report-image-parent',
+    routingMode: 'domain_first',
+  })
+  const response = await handler.POST(uploadRequest({
+    kind: 'report', report_id: 'report-1', image_type: 'dashboard', artifact_group: 'dashboard_30min',
+  }))
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()))
+  assert.equal(selectedGroup, 'dashboard_30min')
+  assert.equal(placements.length, 1)
+  assert.equal(calls.some(call => call.startsWith('upload_report_image_with_storage_metadata:')), true)
 })
 
 test('RC1.2 metadata failure attempts cleanup through the same provider', async () => {

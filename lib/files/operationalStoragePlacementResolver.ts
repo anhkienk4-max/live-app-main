@@ -11,6 +11,8 @@ export type OperationalStorageProfile =
   | 'CANONICAL_V1'
   | 'EXISTING_BRAND_YEAR_PERIOD_PLATFORM'
   | 'TEMP_AGENCY_BRAND_PERIOD_CATEGORY'
+  | 'DOMAIN_CATEGORY_FOLDER'
+  | 'REPORT_ARTIFACT_GROUP'
 export type OperationalLogicalCategory = 'dashboard' | 'live_visual' | 'data_report' | 'data_source'
 export type OperationalPeriodNamingStyle =
   | 'THANG_M_DASH_YEAR'
@@ -73,6 +75,10 @@ export interface OperationalStoragePlacement {
   folderSegments: string[]
   /** folderSegments joined with '/'; always relative to baseFolderId. */
   folderPath: string
+  /** Actual Drive parent expected for a verified category/report root. */
+  expectedBaseParentId?: string
+  accessClassification?: string
+  sensitive?: boolean
   fileName: string
   logicalCategory: OperationalLogicalCategory
   periodLabel: string
@@ -334,6 +340,8 @@ export function resolveOperationalStoragePlacement(
       if (!input.brandLabel) fail('STORAGE_ROUTE_CONFIG_INVALID')
       folderSegments = [safeSegment(input.brandLabel), period, ...category]
       break
+    default:
+      return fail('STORAGE_ROUTE_PROFILE_UNSUPPORTED')
   }
 
   const fileName = input.fileName.trim() ? sanitizeFileName(input.fileName) : ''

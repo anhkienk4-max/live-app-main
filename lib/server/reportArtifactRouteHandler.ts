@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import * as XLSX from 'xlsx'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -19,6 +20,7 @@ import type {
   OperationalStoragePlacementInput,
   OperationalStorageProvider,
 } from '@/lib/files/operationalStoragePlacementResolver'
+import { REPORT_ARTIFACT_GROUPS, isOperationalStorageClassificationWritable, type ReportArtifactGroup } from '@/lib/files/operationalStorageDomainMap'
 import { OperationalStoragePlacementError } from '@/lib/files/operationalStoragePlacementResolver'
 import {
   MAX_FILE_NAME_LENGTH,
@@ -29,7 +31,9 @@ import {
 import { createFileStorageService, fileStorageService } from '@/lib/services/fileStorageService'
 import { createOperationalStorageFolderMaterializer } from '@/lib/server/operationalStorageFolderMaterializer'
 import {
+  createOperationalStorageDomainRouteRepository,
   createOperationalStorageRouteRepository,
+  type OperationalStorageDomainRouteRepository,
   type OperationalStorageRouteRepository,
 } from '@/lib/server/operationalStorageRouteRepository'
 import { createStaticOperationalStorageRouteRepository } from '@/lib/server/staticOperationalStorageRouteRepository'
@@ -50,13 +54,13 @@ import {
 import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 
 type CloudProvider = 'google_drive' | 'onedrive'
-type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder'>
+type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'getMetadata' | 'delete' | 'ensureFolder'>
 
 type ReportShiftContext = {
   date: string
   brand_id: string
   platform_id: string | null
-  execution_source: 'internal' | 'agency'
+  execution_source?: 'internal' | 'agency'
   brand_label?: string
   platform_label?: string
 }
@@ -65,6 +69,7 @@ const generateFields = z.object({
   action: z.literal('generate_data_report'),
   report_id: z.string().trim().min(1).max(200),
   provider: z.enum(['google_drive', 'onedrive']).optional(),
+  artifact_group: z.enum(REPORT_ARTIFACT_GROUPS as [ReportArtifactGroup, ...ReportArtifactGroup[]]).optional(),
 }).strict()
 
 const deleteFields = z.object({
@@ -74,6 +79,7 @@ const deleteFields = z.object({
 const sourceFields = z.object({
   report_id: z.string().trim().min(1).max(200),
   provider: z.enum(['google_drive', 'onedrive']).optional(),
+  artifact_group: z.enum(REPORT_ARTIFACT_GROUPS as [ReportArtifactGroup, ...ReportArtifactGroup[]]).optional(),
 }).strict()
 
 function errorResponse(code: string, message: string, status: number) {
@@ -160,7 +166,7 @@ async function reportContext(
     ? resolveExecutionSource({ studio: rawShift.studio })
     : rawShift.execution_source
 
-  if (executionSource !== 'internal' && executionSource !== 'agency') {
+  if (routingMode !== 'domain_first' && executionSource !== 'internal' && executionSource !== 'agency') {
     throw new OperationalStoragePlacementError('STORAGE_EXECUTION_SOURCE_NOT_CONFIGURED')
   }
 
@@ -169,7 +175,7 @@ async function reportContext(
     shift: {
       ...rawShift,
       platform_id: platformId || '',
-      execution_source: executionSource,
+      execution_source: executionSource === 'internal' || executionSource === 'agency' ? executionSource : undefined,
       brand_label: labels[0],
       platform_label: labels[1],
     },
@@ -182,6 +188,9 @@ function routedPlacementInput(
   logicalCategory: OperationalLogicalCategory,
   fileName: string,
 ): OperationalStoragePlacementInput {
+  if (shift.execution_source !== 'internal' && shift.execution_source !== 'agency') {
+    throw new OperationalStoragePlacementError('STORAGE_EXECUTION_SOURCE_NOT_CONFIGURED')
+  }
   return {
     provider,
     executionSource: shift.execution_source,
@@ -292,6 +301,25 @@ async function workbookContext(client: SupabaseClient, report: Report, shift: Sh
   }
 }
 
+function addFinalInsights(bytes: Uint8Array, report: Report) {
+  const workbook = XLSX.read(bytes, { type: 'array' })
+  const rows: unknown[][] = [['Insight', 'Part', 'Content']]
+  for (const [label, value] of [
+    ['What Went Well', report.insights_good ?? ''],
+    ['Improvement Areas', report.insights_improvement ?? ''],
+  ]) {
+    if (!value) rows.push([label, 1, ''])
+    for (let offset = 0, part = 1; offset < value.length; part++) {
+      let end = Math.min(offset + 32000, value.length)
+      if (end < value.length && /[\uD800-\uDBFF]/u.test(value[end - 1])) end--
+      rows.push([label, part, value.slice(offset, end)])
+      offset = end
+    }
+  }
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), '05_FINAL_INSIGHTS')
+  return new Uint8Array(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }))
+}
+
 async function findExisting(
   client: SupabaseClient,
   reportId: string,
@@ -309,6 +337,29 @@ async function findExisting(
   return result.data as Record<string, unknown> | null
 }
 
+async function verifyProviderArtifact(
+  storage: StorageGateway,
+  row: Record<string, unknown>,
+  provider: CloudProvider,
+  parentId: string,
+  checksum: string,
+  sizeBytes: number,
+) {
+  if (row.provider !== provider || row.external_parent_id !== parentId
+    || typeof row.external_file_id !== 'string' || row.checksum_sha256 !== checksum) {
+    throw new Error('REPORT_ARTIFACT_PROVIDER_READBACK_FAILED')
+  }
+  const reference = { provider, external_file_id: row.external_file_id }
+  const metadata = await storage.getMetadata(reference)
+  if (metadata.kind !== 'file' || metadata.trashed === true || !metadata.parent_ids?.includes(parentId)) {
+    throw new Error('REPORT_ARTIFACT_PROVIDER_READBACK_FAILED')
+  }
+  const bytes = await storage.read(reference)
+  if (bytes.byteLength !== sizeBytes || createHash('sha256').update(bytes).digest('hex') !== checksum) {
+    throw new Error('REPORT_ARTIFACT_PROVIDER_READBACK_FAILED')
+  }
+}
+
 async function persistUploadedArtifact(input: {
   client: SupabaseClient
   storage: StorageGateway
@@ -322,9 +373,41 @@ async function persistUploadedArtifact(input: {
   bytes: Uint8Array
   reportVersion?: number | null
   provider: CloudProvider
+  routingMode: OperationalStorageRoutingMode
+  domainRouteResolver: OperationalStorageDomainRouteRepository
+  artifactGroup: ReportArtifactGroup
   routeResolver: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
   materializeFolders: (placement: OperationalStoragePlacement) => Promise<string>
 }) {
+  const checksum = createHash('sha256').update(input.bytes).digest('hex')
+  const storageName = providerStorageFileName(
+    input.shift.date,
+    input.logicalCategory,
+    input.originalName,
+    input.bytes,
+  )
+  const placement = input.routingMode === 'domain_first' && input.provider === 'google_drive'
+    ? await input.domainRouteResolver.resolveReportArtifactGroupPlacement({
+      group: input.artifactGroup,
+      shiftId: input.shift.id,
+      shiftDate: input.shift.date,
+      brandId: input.shift.brand_id,
+      platformId: input.shift.platform_id,
+      fileName: storageName,
+    })
+    : await input.routeResolver.resolvePlacement(routedPlacementInput(
+      input.provider,
+      input.shift,
+      input.logicalCategory,
+      storageName,
+    ))
+  if (input.routingMode === 'domain_first' && input.provider === 'google_drive'
+    && (placement.sensitive || !isOperationalStorageClassificationWritable(placement.accessClassification ?? ''))) {
+    throw new Error('REPORT_ARTIFACT_CONFIDENTIAL_STORAGE_NOT_APPROVED')
+  }
+  const parentId = await input.materializeFolders(placement)
+  const logicalPath = [placement.folderPath, placement.fileName].filter(Boolean).join('/')
+
   const existing = await findExisting(
     input.client,
     input.report.id,
@@ -333,24 +416,9 @@ async function persistUploadedArtifact(input: {
   )
   if (existing) {
     if (existing.provider !== input.provider) throw new Error('REPORT_ARTIFACT_PROVIDER_CONFLICT')
+    await verifyProviderArtifact(input.storage, existing, input.provider, parentId, checksum, input.bytes.byteLength)
     return publicArtifact(existing)
   }
-
-  const checksum = createHash('sha256').update(input.bytes).digest('hex')
-  const storageName = providerStorageFileName(
-    input.shift.date,
-    input.logicalCategory,
-    input.originalName,
-    input.bytes,
-  )
-  const placement = await input.routeResolver.resolvePlacement(routedPlacementInput(
-    input.provider,
-    input.shift,
-    input.logicalCategory,
-    storageName,
-  ))
-  const parentId = await input.materializeFolders(placement)
-  const logicalPath = [...placement.folderSegments, placement.fileName].join('/')
 
   validateFileUploadInput({
     name: storageName,
@@ -377,6 +445,19 @@ async function persistUploadedArtifact(input: {
     external_parent_id: parentId,
     destination: { provider: input.provider },
   })
+
+  try {
+    await verifyProviderArtifact(input.storage, {
+      provider: uploaded.asset.provider,
+      external_file_id: uploaded.asset.external_file_id,
+      external_parent_id: uploaded.asset.external_parent_id,
+      checksum_sha256: checksum,
+    }, input.provider, parentId, checksum, input.bytes.byteLength)
+  } catch {
+    try { await input.storage.delete({ provider: input.provider, external_file_id: uploaded.asset.external_file_id }) }
+    catch { console.error('REPORT_ARTIFACT_UPLOAD_CLEANUP_FAILED') }
+    throw new Error('REPORT_ARTIFACT_PROVIDER_READBACK_FAILED')
+  }
 
   const row = {
     provider: uploaded.asset.provider,
@@ -405,18 +486,18 @@ async function persistUploadedArtifact(input: {
     input.logicalCategory,
     input.artifactKey,
   )
-  try {
-    await input.storage.delete({
-      provider: uploaded.asset.provider as CloudProvider,
-      external_file_id: uploaded.asset.external_file_id,
-    })
-  } catch {
-    console.error('REPORT_ARTIFACT_UPLOAD_CLEANUP_FAILED')
-  }
   if (winner) {
     if (winner.provider !== input.provider) throw new Error('REPORT_ARTIFACT_PROVIDER_CONFLICT')
+    if (winner.external_file_id === uploaded.asset.external_file_id) {
+      await verifyProviderArtifact(input.storage, winner, input.provider, parentId, checksum, input.bytes.byteLength)
+      return publicArtifact(winner)
+    }
+    try { await input.storage.delete({ provider: input.provider, external_file_id: uploaded.asset.external_file_id }) }
+    catch { console.error('REPORT_ARTIFACT_UPLOAD_CLEANUP_FAILED') }
     return publicArtifact(winner)
   }
+  try { await input.storage.delete({ provider: input.provider, external_file_id: uploaded.asset.external_file_id }) }
+  catch { console.error('REPORT_ARTIFACT_UPLOAD_CLEANUP_FAILED') }
   throw inserted.error || new Error('REPORT_ARTIFACT_METADATA_PERSIST_FAILED')
 }
 
@@ -425,6 +506,7 @@ export function createReportArtifactRouteHandler(dependencies: {
   createClient?: () => SupabaseClient
   storage?: StorageGateway
   routeResolver?: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
+  domainRouteResolver?: OperationalStorageDomainRouteRepository
   materializeFolders?: (placement: OperationalStoragePlacement) => Promise<string>
   routingMode?: OperationalStorageRoutingMode
 } = {}) {
@@ -440,9 +522,21 @@ export function createReportArtifactRouteHandler(dependencies: {
       return defaultRouteResolver.resolvePlacement(input)
     },
   }
+  let defaultDomainRouteResolver: OperationalStorageDomainRouteRepository | undefined
+  const domainRouteResolver = dependencies.domainRouteResolver || {
+    resolveDomainCategoryPlacement: (category: Parameters<OperationalStorageDomainRouteRepository['resolveDomainCategoryPlacement']>[0], fileName: string) => {
+      defaultDomainRouteResolver ??= createOperationalStorageDomainRouteRepository()
+      return defaultDomainRouteResolver.resolveDomainCategoryPlacement(category, fileName)
+    },
+    resolveReportArtifactGroupPlacement: (input: Parameters<OperationalStorageDomainRouteRepository['resolveReportArtifactGroupPlacement']>[0]) => {
+      defaultDomainRouteResolver ??= createOperationalStorageDomainRouteRepository()
+      return defaultDomainRouteResolver.resolveReportArtifactGroupPlacement(input)
+    },
+  }
   const materializeFolders = dependencies.materializeFolders
     || createOperationalStorageFolderMaterializer(
       (parentId, name, provider) => storage.ensureFolder(parentId, name, provider),
+      (id, provider) => storage.getMetadata(id, provider),
     )
 
   return {
@@ -467,7 +561,18 @@ export function createReportArtifactRouteHandler(dependencies: {
           if ((provider !== 'google_drive' && provider !== 'onedrive') || typeof externalFileId !== 'string') {
             return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
           }
-          const bytes = await storage.read({ provider, external_file_id: externalFileId })
+          const reference = { provider: provider as CloudProvider, external_file_id: externalFileId }
+          const metadata = await storage.getMetadata(reference)
+          if (metadata.kind !== 'file' || metadata.trashed === true || (typeof row.external_parent_id === 'string'
+            && !metadata.parent_ids?.includes(row.external_parent_id))) {
+            return errorResponse('REPORT_ARTIFACT_REFERENCE_STALE', 'The report artifact is no longer in its recorded Drive folder.', 409)
+          }
+          const bytes = await storage.read(reference)
+          if ((typeof row.size_bytes === 'number' && bytes.byteLength !== row.size_bytes)
+            || (typeof row.checksum_sha256 === 'string'
+              && createHash('sha256').update(bytes).digest('hex') !== row.checksum_sha256)) {
+            return errorResponse('REPORT_ARTIFACT_READBACK_MISMATCH', 'The report artifact failed its stored integrity check.', 502)
+          }
           return new Response(bytes as BodyInit, {
             headers: {
               'Cache-Control': 'private, no-store',
@@ -511,6 +616,7 @@ export function createReportArtifactRouteHandler(dependencies: {
           const parsed = sourceFields.safeParse({
             report_id: typeof form.get('report_id') === 'string' ? form.get('report_id') : undefined,
             provider: typeof form.get('provider') === 'string' ? form.get('provider') : undefined,
+            artifact_group: typeof form.get('artifact_group') === 'string' ? form.get('artifact_group') : undefined,
           })
           const file = form.get('file')
           if (!parsed.success || !(file instanceof Blob)) {
@@ -542,6 +648,9 @@ export function createReportArtifactRouteHandler(dependencies: {
             bytes,
             reportVersion: report.version_number,
             provider: parsed.data.provider ?? 'google_drive',
+            routingMode,
+            domainRouteResolver,
+            artifactGroup: parsed.data.artifact_group ?? 'metrics_snapshot',
             routeResolver,
             materializeFolders,
           })
@@ -559,7 +668,7 @@ export function createReportArtifactRouteHandler(dependencies: {
         }
         const version = report.version_number ?? 0
         const context = await workbookContext(client, report, shift)
-        const bytes = buildReportDetailWorkbookBytes(report, context)
+        const bytes = addFinalInsights(buildReportDetailWorkbookBytes(report, context), report)
         const artifact = await persistUploadedArtifact({
           client,
           storage,
@@ -573,6 +682,9 @@ export function createReportArtifactRouteHandler(dependencies: {
           bytes,
           reportVersion: version,
           provider: parsed.data.provider ?? 'google_drive',
+          routingMode,
+          domainRouteResolver,
+          artifactGroup: parsed.data.artifact_group ?? 'final_report_insights',
           routeResolver,
           materializeFolders,
         })
@@ -584,6 +696,9 @@ export function createReportArtifactRouteHandler(dependencies: {
           return errorResponse(error.code, 'The report data file could not be placed in the configured storage route.', 409)
         }
         const code = error instanceof Error ? error.message : ''
+        if (code === 'REPORT_ARTIFACT_CONFIDENTIAL_STORAGE_NOT_APPROVED') {
+          return errorResponse(code, 'Report artifacts require a restricted Drive destination.', 423)
+        }
         if (code === 'REPORT_PERMISSION_DENIED') return errorResponse('PERMISSION_DENIED', 'You do not have permission to modify this report.', 403)
         if (code === 'REPORT_NOT_FOUND') return errorResponse(code, 'The report was not found.', 404)
         if (code === 'REPORT_ARTIFACT_PROVIDER_CONFLICT') {

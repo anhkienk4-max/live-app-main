@@ -1,0 +1,164 @@
+{
+  "version": "rc19-storage-folder-mapping-v1-PROPOSED-NOT-ACTIVE",
+  "date": "2026-11-02",
+  "historical_root_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+  "new_data_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+  "drive_bytes_primary": true,
+  "supabase_binary_storage_allowed": false,
+  "source_code_compatibility": "BLOCKED: current CANONICAL_V1 and operationalFilePlacement do not support domain-first folder ID selection",
+  "production_active_routes_last_verified": 0,
+  "standard_category_routes": {
+    "schedule_source": {
+      "domain_folder_id": "1vikkWOtthV4ZebZxr3JZF5NkchrNaV15",
+      "path": "00_ADA_OPS_PLATFORM/01_SCHEDULE_IMPORT_EXPORT/01_RAW_XLSX_CSV",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": true,
+      "requires_subtype": false
+    },
+    "schedule_export": {
+      "domain_folder_id": "1MlmQBAY3PKfYmDLdn8E1V8xDilcWrWVo",
+      "path": "00_ADA_OPS_PLATFORM/01_SCHEDULE_IMPORT_EXPORT/03_SCHEDULE_EXPORTS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": false,
+      "requires_subtype": false
+    },
+    "live_snapshot": {
+      "domain_folder_id": "19t3RguHpduM9GXBFquCRvUKU4MXmXgtA",
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": true,
+      "requires_subtype": true
+    },
+    "video_recording": {
+      "domain_folder_id": "11NXPwLhCGo0S7eavOaztoJ2iRrDTUDkB",
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/07_VIDEO_OUTPUTS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": false,
+      "requires_subtype": false
+    },
+    "video_livecut": {
+      "domain_folder_id": "1drCcEN3ruH8iWiEnlPWJt4mFUWLedhgZ",
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/05_LIVECUT_TEASERS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": false,
+      "requires_subtype": false
+    },
+    "production_asset": {
+      "domain_folder_id": "1sV1boY0-bZl7fchdujSpTMl8tj3ilb7b",
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/04_CAMPAIGN_ASSETS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": false,
+      "requires_subtype": true
+    },
+    "content_script": {
+      "domain_folder_id": "1hLlt4LUBlGLl2m10hynxH2kCyjmHPyBg",
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/08_SCRIPT_BRIEFS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": false,
+      "requires_subtype": false
+    },
+    "content_brief": {
+      "domain_folder_id": "1hLlt4LUBlGLl2m10hynxH2kCyjmHPyBg",
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/08_SCRIPT_BRIEFS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": false,
+      "requires_subtype": false
+    },
+    "campaign_document": {
+      "domain_folder_id": "1sV1boY0-bZl7fchdujSpTMl8tj3ilb7b",
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/04_CAMPAIGN_ASSETS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": false,
+      "requires_subtype": false
+    },
+    "staffing_document": {
+      "domain_folder_id": "1ya58ltFDDzSg5-jtN2C6LeP8ETqMJpCz",
+      "path": "00_ADA_OPS_PLATFORM/02_SHIFT_STAFFING/05_STAFFING_EXPORTS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": true,
+      "requires_subtype": true
+    },
+    "acceptance_document": {
+      "domain_folder_id": "1V-m1bFCnB9PrvYVvuurrOd25A1BIUFGE",
+      "path": "00_ADA_OPS_PLATFORM/11_CONTRACTS_FINANCE_RESTRICTED/02_ACCEPTANCE_BBNT",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": true,
+      "requires_subtype": false
+    },
+    "payment_document": {
+      "domain_folder_id": "17MtKcYJkccBwa1A78NwH5PZaT92D1BXR",
+      "path": "00_ADA_OPS_PLATFORM/11_CONTRACTS_FINANCE_RESTRICTED/03_INVOICES_PAYMENTS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": true,
+      "requires_subtype": false
+    },
+    "ai_output": {
+      "domain_folder_id": "1TvP2RSI86jps1Fb-O3tFz4_1hI--nIso",
+      "path": "00_ADA_OPS_PLATFORM/10_AI_AUTOMATION_KNOWLEDGE/04_AGENT_OUTPUTS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": false,
+      "requires_subtype": true
+    },
+    "system_export": {
+      "domain_folder_id": "1hRc_c9T9z5N1NN2vtN1Vnt64x6Jklmqg",
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS/05_DATA_EXPORT_BACKUPS",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": true,
+      "requires_subtype": false
+    },
+    "sop_document": {
+      "domain_folder_id": "16C-fjr62MSC0N1K9poU0a6vnlorc0lUS",
+      "path": "00_ADA_OPS_PLATFORM/13_OPERATIONS_SUPPORT/02_STANDARD_OPERATING_PROCEDURES",
+      "app_root_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "sensitive": false,
+      "requires_subtype": false
+    }
+  },
+  "report_root_id": "19t3RguHpduM9GXBFquCRvUKU4MXmXgtA",
+  "report_per_shift_relative_pattern": "<brand_id>/<platform_id>/<YYYY>/<MM>/<human_code>__<shift_uuid>/<evidence_folder>",
+  "report_subfolders": [
+    "01_KV_BEFORE_LIVE",
+    "02_KV_AFTER_LIVE",
+    "03_DASHBOARD_SUMMARY",
+    "04_DASHBOARD_30MIN",
+    "05_LIVE_SESSION_PHOTOS",
+    "06_OTHER_EVIDENCE",
+    "07_FINAL_REPORT_AND_INSIGHTS",
+    "08_METRICS_DATA_SNAPSHOTS",
+    "09_FILE_MANIFEST_CHECKSUMS"
+  ],
+  "report_artifact_groups": {
+    "kv_before": "01_KV_BEFORE_LIVE",
+    "kv_after": "02_KV_AFTER_LIVE",
+    "dashboard_summary": "03_DASHBOARD_SUMMARY",
+    "dashboard_30min": "04_DASHBOARD_30MIN",
+    "live_session_photo": "05_LIVE_SESSION_PHOTOS",
+    "other_evidence": "06_OTHER_EVIDENCE",
+    "final_report_insights": "07_FINAL_REPORT_AND_INSIGHTS",
+    "metrics_snapshot": "08_METRICS_DATA_SNAPSHOTS",
+    "file_manifest_checksums": "09_FILE_MANIFEST_CHECKSUMS"
+  },
+  "real_report_folder_required": true,
+  "do_not_upload_into_template": true,
+  "secret_and_sensitive_data_warning": "08_HR and 11_FINANCE inherit anyone:writer from ancestor; require verified restricted root or ACL remediation before sensitive plaintext.",
+  "additional_domains": {
+    "product_packshots": "1IslTBDUfqGyjDE0mm-BVjD9l749RFqh8",
+    "raw_tiktok": "1Z10VxtGTTse1Bt3feMbH-EtFItppt5iF",
+    "raw_shopee": "1TCQu2_wJv-l1av7CMw3K8Ku8sueTFzh-",
+    "normalized_ecommerce": "1dkWx5OA644tOFld6F25-yIDmMYkPtMK9",
+    "catalog_sku": "1TsUNt2bLnmb8GIBbfHJiYZQR3JBnD_OI",
+    "personnel": "1A6QgDPZ6mxaDWWIT4hwsFZzXzbDW0aMM",
+    "payroll": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+    "attendance_image": "1w1Ip1M6BoJgzbdoqO6o8HJPM0deaxgkG"
+  },
+  "gates": [
+    "app runtime drive OAuth/service-account identity",
+    "resumable uploads for large files",
+    "source executor info not null or properly classified",
+    "domain routing code + database schema",
+    "auth + real file upload/download/checksum",
+    "restricted private payload ACL",
+    "preview build",
+    "production approval"
+  ]
+}
