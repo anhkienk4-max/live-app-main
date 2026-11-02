@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "625bdedf8e663d9e5e918f6797d96435f7a51fb8",
+    "head": "48162df875d0de7e111178dd50dc20bfafb491ed",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -118,10 +118,10 @@
         "components": 187,
         "lib": 274,
         "scripts": 35,
-        "supabase": 126,
-        "tests": 317
+        "supabase": 127,
+        "tests": 322
       },
-      "total": 1029
+      "total": 1035
     },
     "tests": {
       "files": [
@@ -283,8 +283,10 @@
         "tests/rc19-attendance-photo-review.test.ts",
         "tests/rc19-auth-responsive-layout.test.tsx",
         "tests/rc19-batch01-1-acceptance.test.ts",
+        "tests/rc19-batch01-3-database-identity.test.ts",
         "tests/rc19-batch05a-dashboard-screenshot.test.ts",
         "tests/rc19-batch05a-storage-migration.test.ts",
+        "tests/rc19-batch05a-storage-migrations-postgres17.test.ts",
         "tests/rc19-batch05a3-domain-folder-registry.test.ts",
         "tests/rc19-batch05a4-storage-runtime-integration.test.ts",
         "tests/rc19-batch05a4-storage-runtime-migration.test.ts",
@@ -292,6 +294,8 @@
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-filter01a-shifts.test.ts",
         "tests/rc19-my-payslip.test.ts",
+        "tests/rc19-owner23-segmented-staffing.test.ts",
+        "tests/rc19-postgres17-concurrency.integration.test.ts",
         "tests/rc19-production-uat-host-policy.test.ts",
         "tests/rc19-rbac01-security.test.ts",
         "tests/rc19-rbac01b-audit-slice.test.ts",
@@ -378,7 +382,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 252
+      "count": 256
     },
     "migrations": {
       "files": [
@@ -479,9 +483,10 @@
         "supabase/migrations/20261102150000_rc19_batch05a4_storage_runtime.sql",
         "supabase/migrations/20261102160334_rc19_batch05a41_storage_release_blockers.sql",
         "supabase/migrations/20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
-        "supabase/migrations/20261102190000_rc19_batch01_1_agency_code.sql"
+        "supabase/migrations/20261102190000_rc19_batch01_1_agency_code.sql",
+        "supabase/migrations/20261102200000_rc19_batch01_3_shift_identity_index.sql"
       ],
-      "count": 98
+      "count": 99
     }
   },
   "verification": {
@@ -495,5 +500,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-03T00:26:40+07:00"
+  "synced_at": "2026-11-03T02:15:59+07:00"
 }
