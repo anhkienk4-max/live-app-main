@@ -267,7 +267,7 @@ function LoginPageContent() {
 function LoginPagePending() {
   const { t } = useTranslation()
   return (
-    <AuthLayout title={t('signIn')} subtitle={t('loginSubtitle')}>
+    <AuthLayout variant="login" title={t('signIn')} subtitle={t('loginSubtitle')}>
       <div role="status" aria-busy="true" aria-label={t('loading')} data-testid="login-pending" className="space-y-5">
         <div className="h-4 w-20 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" />
         <div className="h-12 w-full animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />

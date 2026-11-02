@@ -99,6 +99,8 @@ export function ListView({
               <div className="w-full shrink-0 sm:w-auto sm:border-l sm:pl-2">
                 <ShiftRegistrationActions
                   allShifts={allShifts}
+                  brandName={brands.find(b => b.id === shift.brand_id)?.name}
+                  platformName={platforms.find(p => p.id === shift.platform_id)?.name}
                   compact
                   currentUser={currentUser}
                   onRegister={role => onRegister(shift.id, role)}

@@ -315,6 +315,8 @@ export function DaySessionsDialog({
                     )}
                     <ShiftRegistrationActions
                       allShifts={allShifts ?? shifts}
+                      brandName={brands.find(b => b.id === shift.brand_id)?.name}
+                      platformName={platforms.find(p => p.id === shift.platform_id)?.name}
                       currentUser={currentUser}
                       disabled={Boolean(busyAction)}
                       onRegister={role => currentUser

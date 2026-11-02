@@ -856,16 +856,22 @@ export function exportShiftsToExcel(
       Campaign: shift.campaign_id ? campaigns.get(shift.campaign_id) || shift.campaign_id : '',
       Studio: shift.studio || '',
       'Execution Source': shift.execution_source || '',
-      Host: shift.host_id ? users.get(shift.host_id) || shift.host_id : '',
-      Support: shift.support_id ? users.get(shift.support_id) || shift.support_id : '',
-      Technical: shift.technical_id ? users.get(shift.technical_id) || shift.technical_id : '',
+      Host: (shift.host_names && shift.host_names.length > 0)
+        ? shift.host_names.join(', ')
+        : (shift.host_id ? (users.get(shift.host_id) || shift.host_id) : ''),
+      Support: (shift.assistant_names && shift.assistant_names.length > 0)
+        ? shift.assistant_names.join(', ')
+        : (shift.support_id ? (users.get(shift.support_id) || shift.support_id) : ''),
+      Technical: (shift.technical_names && shift.technical_names.length > 0)
+        ? shift.technical_names.join(', ')
+        : (shift.technical_id ? (users.get(shift.technical_id) || shift.technical_id) : ''),
       'Required Host': shift.required_host_count ?? 1,
       'Required Support': shift.required_support_count ?? 1,
       'Required Technical': shift.required_technical_count ?? 1,
       'Registration Locked': Boolean(shift.registration_locked),
       Status: shift.status,
       'Live Link': shift.live_link || '',
-      Notes: shift.product_notes || '',
+      Notes: shift.product_notes || shift.notes || '',
     }}),
   }])
 }

@@ -4,7 +4,7 @@ import * as React from 'react'
 import type { OperationalRole, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
-import { getShiftRoleCapacities } from '@/lib/services/dataService'
+import { getShiftRoleCapacities, brandService, platformService } from '@/lib/services/dataService'
 import { resolveRegistrationCta, runEligibleRegistration, type RegistrationCtaResult } from '@/lib/utils/shiftRegistration'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -37,6 +37,39 @@ export function ShiftRegistrationActions({
   const { t } = useTranslation()
   const [busyRole, setBusyRole] = React.useState<OperationalRole | null>(null)
   const [confirmRole, setConfirmRole] = React.useState<RegistrationCtaResult | null>(null)
+  const [resolvedBrandName, setResolvedBrandName] = React.useState<string | undefined>(brandName)
+  const [resolvedPlatformName, setResolvedPlatformName] = React.useState<string | undefined>(platformName)
+
+  React.useEffect(() => {
+    if (brandName) {
+      setResolvedBrandName(brandName)
+      return
+    }
+    if (shift.brand_name) {
+      setResolvedBrandName(shift.brand_name)
+      return
+    }
+    void brandService.getAll().then(all => {
+      const match = all.find(b => b.id === shift.brand_id)
+      if (match) setResolvedBrandName(match.name)
+    }).catch(() => {})
+  }, [brandName, shift.brand_id, shift.brand_name])
+
+  React.useEffect(() => {
+    if (platformName) {
+      setResolvedPlatformName(platformName)
+      return
+    }
+    if (shift.platform_name) {
+      setResolvedPlatformName(shift.platform_name)
+      return
+    }
+    void platformService.getAll().then(all => {
+      const match = all.find(p => p.id === shift.platform_id)
+      if (match) setResolvedPlatformName(match.name)
+    }).catch(() => {})
+  }, [platformName, shift.platform_id, shift.platform_name])
+
   const capacities = React.useMemo(() => getShiftRoleCapacities(shift, registrations), [registrations, shift])
 
   if (!currentUser || !hasPermission(currentUser, 'shifts.register')) return null
@@ -131,9 +164,9 @@ export function ShiftRegistrationActions({
         </DialogHeader>
         <dl className="grid grid-cols-[90px_1fr] gap-x-3 gap-y-2 text-sm">
           <dt className="text-muted-foreground">Brand</dt>
-          <dd>{brandName || shift.brand_id}</dd>
+          <dd>{resolvedBrandName || brandName || shift.brand_name || shift.brand_id}</dd>
           <dt className="text-muted-foreground">Platform</dt>
-          <dd>{platformName || shift.platform_id}</dd>
+          <dd>{resolvedPlatformName || platformName || shift.platform_name || shift.platform_id}</dd>
           <dt className="text-muted-foreground">Ngày</dt>
           <dd>{shift.date}</dd>
           <dt className="text-muted-foreground">Giờ</dt>

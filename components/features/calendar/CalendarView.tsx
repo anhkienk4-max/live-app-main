@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import * as React from 'react'
 import { useListPagination } from '@/lib/hooks/useListPagination'
@@ -31,6 +31,7 @@ import {
   X,
   Download,
   Trash2,
+  UserPlus,
 } from 'lucide-react'
 import { format, addMonths, addDays, addWeeks, startOfWeek } from 'date-fns'
 import { MonthView } from './MonthView'
@@ -43,6 +44,7 @@ import { ShiftDetailModal } from '../shifts/ShiftDetailModal'
 import { ShiftPreviewDrawer } from '../shifts/ShiftPreviewDrawer'
 import { DaySessionsDialog } from './DaySessionsDialog'
 import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
+import { BulkStaffingAssignDialog } from './BulkStaffingAssignDialog'
 import { BulkDeleteShiftsDialog } from './BulkDeleteShiftsDialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
@@ -207,6 +209,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [showBulkStaffingApproval, setShowBulkStaffingApproval] = React.useState(false)
   const [bulkApprovalLoading, setBulkApprovalLoading] = React.useState(false)
   const [showBulkDelete, setShowBulkDelete] = React.useState(false)
+  const [showBulkStaffingAssign, setShowBulkStaffingAssign] = React.useState(false)
   const searchTerm = params.get('calendar_search') ?? ''
   const [searchInput, setSearchInput] = React.useState(searchTerm)
   React.useEffect(() => {
@@ -729,6 +732,19 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   {t('deleteSelectedCount', { count: visibleSelection.selectedVisibleShiftIds.length })}
                 </Button>
               )}
+              {view === 'list' && currentUser && (hasPermission(currentUser, 'shifts.manage_all') || hasPermission(currentUser, 'shifts.approve_registration')) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => setShowBulkStaffingAssign(true)}
+                  disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
+                  data-testid="open-bulk-staffing-assign"
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  {language === 'vi' ? 'Phân bổ nhân sự' : 'Bulk Assign'} ({visibleSelection.selectedVisibleShiftIds.length})
+                </Button>
+              )}
               {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
                 <Button type="button" variant="outline" size="sm" className="h-9"
                   data-testid="calendar-open-staffing-gaps"
@@ -878,6 +894,20 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               return next
             })
             void loadData()
+          }}
+        />
+      )}
+
+      {currentUser && (hasPermission(currentUser, 'shifts.manage_all') || hasPermission(currentUser, 'shifts.approve_registration')) && (
+        <BulkStaffingAssignDialog
+          open={showBulkStaffingAssign}
+          onOpenChange={setShowBulkStaffingAssign}
+          selectedShiftIds={visibleSelection.selectedVisibleShiftIds}
+          shifts={shifts}
+          users={users}
+          onSuccess={() => {
+            void loadData()
+            setSelectedShiftIds(new Set())
           }}
         />
       )}

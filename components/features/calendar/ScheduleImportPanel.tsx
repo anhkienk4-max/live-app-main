@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { AlertTriangle, Check, Download, FileSpreadsheet, Link2, Moon, Plus, Upload, X } from 'lucide-react'
+import { AlertTriangle, Check, Download, FileSpreadsheet, Link2, Moon, Plus, Trash2, Upload, X } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -99,7 +99,6 @@ const importStatusLabelKey: Record<ImportResultPresentationStatus, TranslationKe
 
 
 
-
 function importStatusLabel(status: ImportResultPresentationStatus, t: (key: TranslationKey) => string) {
   return t(importStatusLabelKey[status])
 }
@@ -167,6 +166,9 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [masterState, setMasterState] = React.useState<MasterDataState>('loading')
   const [previewFilter, setPreviewFilter] = React.useState<PreviewFilter>('all')
   const [previewSearch, setPreviewSearch] = React.useState('')
+  const [previewPage, setPreviewPage] = React.useState(1)
+  const previewPageSize = 50
+  const [selectedRowNumbers, setSelectedRowNumbers] = React.useState<Set<number>>(new Set())
   const [previewMaxHeight, setPreviewMaxHeight] = React.useState(560)
   const [previewMinWidth, setPreviewMinWidth] = React.useState(1780)
   const [customHeaderDrafts, setCustomHeaderDrafts] = React.useState<Record<string, string>>({})
@@ -174,6 +176,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [draftRows, setDraftRows] = React.useState<DraftRows>({})
   const [completedImport, setCompletedImport] = React.useState<CompletedImport | null>(null)
   const [retryingArchive, setRetryingArchive] = React.useState(false)
+
+  React.useEffect(() => {
+    setPreviewPage(1)
+  }, [previewFilter, previewSearch])
 
   React.useEffect(() => {
     if (completedImport) completedImportRef.current?.focus()
@@ -210,6 +216,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     incompleteArchiveRef.current = null
     setPreviewFilter('all')
     setPreviewSearch('')
+    setPreviewPage(1)
+    setSelectedRowNumbers(new Set())
     setResult(normalizedNext)
     setSource(nextSource)
     const createdBy = currentUser?.id || currentUserService.getId()
@@ -376,6 +384,80 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       delete next[oldName]
       return next
     })
+  }
+
+  const removePreviewRow = (rowNumber: number) => {
+    const sourceRows = sourceRowsFromPreview()
+    const index = result?.rows.findIndex(preview => preview.row.row_number === rowNumber) ?? -1
+    if (index >= 0) {
+      sourceRows.splice(index, 1)
+      applySourceRows(sourceRows)
+      setDraftRows(prev => removeRowDraft(prev, rowNumber))
+      setSelectedRowNumbers(prev => {
+        const next = new Set(prev)
+        next.delete(rowNumber)
+        return next
+      })
+    }
+  }
+
+  const removeCustomColumn = (columnName: string) => {
+    const sourceRows = sourceRowsFromPreview().map((sourceRow, index) => {
+      const rowNumber = result?.rows[index]?.row.row_number ?? -1
+      const committed = commitRowDraftToSource(sourceRow, draftRows[rowNumber] ?? {})
+      const fields = { ...((committed.custom_fields as Record<string, string> | undefined) ?? {}) }
+      delete fields[columnName]
+      return { ...committed, custom_fields: fields }
+    })
+    applySourceRows(sourceRows)
+    setDraftRows({})
+    setCustomHeaderDrafts(current => {
+      const next = { ...current }
+      delete next[columnName]
+      return next
+    })
+  }
+
+  const bulkUpdateSelected = (updates: Partial<{ execution_source: string; brand_name: string; platform_name: string }>) => {
+    if (selectedRowNumbers.size === 0) return
+    const sourceRows = sourceRowsFromPreview()
+    let changed = false
+    result?.rows.forEach((preview, index) => {
+      if (selectedRowNumbers.has(preview.row.row_number) && sourceRows[index]) {
+        let row = sourceRows[index]
+        if (updates.execution_source !== undefined) {
+          row = { ...row, 'Execution Source': updates.execution_source }
+          changed = true
+        }
+        if (updates.brand_name !== undefined) {
+          row = { ...row, Brand: updates.brand_name }
+          changed = true
+        }
+        if (updates.platform_name !== undefined) {
+          row = { ...row, Platform: updates.platform_name }
+          changed = true
+        }
+        sourceRows[index] = row
+      }
+    })
+    if (changed) {
+      applySourceRows(sourceRows)
+      setDraftRows({})
+    }
+  }
+
+  const bulkDeleteSelected = () => {
+    if (selectedRowNumbers.size === 0) return
+    const sourceRows = sourceRowsFromPreview()
+    const keptRows: Record<string, unknown>[] = []
+    result?.rows.forEach((preview, index) => {
+      if (!selectedRowNumbers.has(preview.row.row_number) && sourceRows[index]) {
+        keptRows.push(sourceRows[index])
+      }
+    })
+    applySourceRows(keptRows)
+    setSelectedRowNumbers(new Set())
+    setDraftRows({})
   }
 
   // This archive is deliberately isolated from import-batch state transitions.
@@ -571,6 +653,11 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     ? previewCounts.warning + previewCounts.invalid + previewCounts.duplicate + previewCounts.retryable
     : 0
 
+  const paginatedPreviews = React.useMemo(() => {
+    const start = (previewPage - 1) * previewPageSize
+    return visiblePreviews.slice(start, start + previewPageSize)
+  }, [visiblePreviews, previewPage, previewPageSize])
+
   return (
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-2">
@@ -652,6 +739,80 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 {(result.errors.length > 0 || result.warnings.length > 0) && <Button size="sm" variant="outline" onClick={() => downloadScheduleImportErrors(result)}><Download className="mr-2 h-4 w-4" />{language === 'vi' ? 'Tải lỗi import' : 'Download errors'}</Button>}
               </div>
             </div>
+
+            {selectedRowNumbers.size > 0 && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-sm text-blue-950" data-testid="schedule-import-bulk-bar">
+                <span className="font-semibold">
+                  {language === 'vi' ? `Đã chọn ${selectedRowNumbers.size} dòng:` : `${selectedRowNumbers.size} rows selected:`}
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label="Bulk Execution Source"
+                    className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                    defaultValue=""
+                    onChange={e => {
+                      if (e.target.value) {
+                        bulkUpdateSelected({ execution_source: e.target.value })
+                        e.target.value = ''
+                      }
+                    }}
+                  >
+                    <option value="" disabled>{language === 'vi' ? 'Gán nguồn thực hiện...' : 'Set Execution Source...'}</option>
+                    <option value="internal">{language === 'vi' ? 'Nội bộ' : 'Internal'}</option>
+                    <option value="agency">Agency</option>
+                  </select>
+                  <select
+                    aria-label="Bulk Brand"
+                    className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                    defaultValue=""
+                    onChange={e => {
+                      if (e.target.value) {
+                        bulkUpdateSelected({ brand_name: e.target.value })
+                        e.target.value = ''
+                      }
+                    }}
+                  >
+                    <option value="" disabled>{language === 'vi' ? 'Gán Brand...' : 'Set Brand...'}</option>
+                    {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                  </select>
+                  <select
+                    aria-label="Bulk Platform"
+                    className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                    defaultValue=""
+                    onChange={e => {
+                      if (e.target.value) {
+                        bulkUpdateSelected({ platform_name: e.target.value })
+                        e.target.value = ''
+                      }
+                    }}
+                  >
+                    <option value="" disabled>{language === 'vi' ? 'Gán Platform...' : 'Set Platform...'}</option>
+                    {platforms.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="h-8 text-xs"
+                    onClick={bulkDeleteSelected}
+                    data-testid="schedule-import-bulk-delete"
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    {language === 'vi' ? `Xóa ${selectedRowNumbers.size} dòng` : `Delete ${selectedRowNumbers.size} rows`}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs text-slate-600 hover:text-slate-900"
+                    onClick={() => setSelectedRowNumbers(new Set())}
+                  >
+                    {language === 'vi' ? 'Bỏ chọn' : 'Deselect'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
               <label htmlFor="schedule-import-preview-height" className="font-medium text-foreground">{language === 'vi' ? 'Chiều cao bảng xem trước' : 'Preview table height'}</label>
               <input id="schedule-import-preview-height" type="range" min={320} max={920} step={40} value={previewMaxHeight} onChange={event => setPreviewMaxHeight(Number(event.target.value))} className="w-40 accent-primary" />
@@ -664,9 +825,78 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             {visiblePreviews.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" role="status">{result.rows.length === 0 ? t('importNoRows') : t('importNoMatchingRows')}</p>}
             <div className="hidden overflow-auto rounded-lg border md:block" style={{ maxHeight: `${previewMaxHeight}px` }}>
               <table className="w-full text-sm" style={{ minWidth: `${previewMinWidth}px` }}>
-                <thead className="sticky top-0 z-10 bg-background"><tr className="border-b text-left"><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('date')}</th><th className="p-2">{t('time')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('studio')}</th><th className="p-2">{t('importHostNames')}</th><th className="p-2">{t('importAssistantNames')}</th><th className="p-2">{t('importTechnicalNames')}</th><th className="p-2">{t('requiredHostCount')}</th><th className="p-2">{t('requiredSupportCount')}</th><th className="p-2">{t('requiredTechnicalCount')}</th>{customColumnNames.map(name => <th key={name} className="min-w-48 p-2"><Input aria-label={language === 'vi' ? `Đổi tên cột ${name}` : `Rename ${name} column`} value={customHeaderDrafts[name] ?? name} onChange={event => setCustomHeaderDrafts(current => ({ ...current, [name]: event.target.value }))} onBlur={event => renameCustomColumn(name, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); renameCustomColumn(name, event.currentTarget.value) } }} /></th>)}<th className="min-w-64 p-2">{t('status')}</th></tr></thead>
+                <thead className="sticky top-0 z-10 bg-background">
+                  <tr className="border-b text-left">
+                    <th className="p-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={paginatedPreviews.length > 0 && paginatedPreviews.every(p => selectedRowNumbers.has(p.row.row_number))}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setSelectedRowNumbers(prev => {
+                                const next = new Set(prev)
+                                paginatedPreviews.forEach(p => next.add(p.row.row_number))
+                                return next
+                              })
+                            } else {
+                              setSelectedRowNumbers(prev => {
+                                const next = new Set(prev)
+                                paginatedPreviews.forEach(p => next.delete(p.row.row_number))
+                                return next
+                              })
+                            }
+                          }}
+                          aria-label={language === 'vi' ? 'Chọn tất cả dòng trên trang' : 'Select all rows on page'}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>{t('importSourceRow')}</span>
+                      </div>
+                    </th>
+                    <th className="p-2">{t('date')}</th>
+                    <th className="p-2">{t('time')}</th>
+                    <th className="p-2">{t('brand')}</th>
+                    <th className="p-2">{t('platform')}</th>
+                    <th className="p-2">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}</th>
+                    <th className="p-2">{t('campaign')}</th>
+                    <th className="p-2">{t('shiftTitle')}</th>
+                    <th className="p-2">{t('studio')}</th>
+                    <th className="p-2">{t('importHostNames')}</th>
+                    <th className="p-2">{t('importAssistantNames')}</th>
+                    <th className="p-2">{t('importTechnicalNames')}</th>
+                    <th className="p-2">{t('requiredHostCount')}</th>
+                    <th className="p-2">{t('requiredSupportCount')}</th>
+                    <th className="p-2">{t('requiredTechnicalCount')}</th>
+                    {customColumnNames.map(name => (
+                      <th key={name} className="min-w-56 p-2">
+                        <div className="flex items-center gap-1">
+                          <Input
+                            aria-label={language === 'vi' ? `Đổi tên cột ${name}` : `Rename ${name} column`}
+                            value={customHeaderDrafts[name] ?? name}
+                            onChange={event => setCustomHeaderDrafts(current => ({ ...current, [name]: event.target.value }))}
+                            onBlur={event => renameCustomColumn(name, event.target.value)}
+                            onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); renameCustomColumn(name, event.currentTarget.value) } }}
+                            className="h-8 text-xs"
+                          />
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="ghost"
+                            className="h-7 w-7 text-slate-400 hover:text-red-600"
+                            onClick={() => removeCustomColumn(name)}
+                            aria-label={language === 'vi' ? `Xóa cột ${name}` : `Delete column ${name}`}
+                            title={language === 'vi' ? `Xóa cột ${name}` : `Delete column ${name}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </th>
+                    ))}
+                    <th className="min-w-64 p-2">{t('status')}</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {visiblePreviews.map(preview => {
+                  {paginatedPreviews.map(preview => {
                     const rowNumber = preview.row.row_number
                     const rowStatus = previewStatusForRow(preview)
                     const editing = draftRows[rowNumber]
@@ -690,7 +920,36 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                       editing ? rowDraftValue(draftRows, rowNumber, field, fallback) : fallback
                     return (
                       <tr key={rowNumber} data-status={rowStatus} className={`border-b align-top${editing ? ' bg-amber-50/50' : ''}`}>
-                        <td className="p-2">{rowNumber}</td>
+                        <td className="p-2">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              checked={selectedRowNumbers.has(rowNumber)}
+                              onChange={e => {
+                                setSelectedRowNumbers(prev => {
+                                  const next = new Set(prev)
+                                  if (e.target.checked) next.add(rowNumber)
+                                  else next.delete(rowNumber)
+                                  return next
+                                })
+                              }}
+                              aria-label={`Select row ${rowNumber}`}
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="font-mono text-xs">{rowNumber}</span>
+                            <Button
+                              type="button"
+                              size="icon-xs"
+                              variant="ghost"
+                              className="h-6 w-6 text-slate-400 hover:text-red-600"
+                              onClick={() => removePreviewRow(rowNumber)}
+                              aria-label={`Delete row ${rowNumber}`}
+                              title={language === 'vi' ? `Xóa dòng ${rowNumber}` : `Delete row ${rowNumber}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </td>
                         <td className="p-2"><Input aria-label={`Row ${rowNumber} date`} className="w-36" value={cellValue('date')} onChange={changeField('date')} onKeyDown={handleCellKeyDown} /></td>
                         <td className="p-2"><div className="flex gap-1"><Input aria-label={`Row ${rowNumber} start time`} className="w-24" value={cellValue('start_time')} onChange={changeField('start_time')} onKeyDown={handleCellKeyDown} /><Input aria-label={`Row ${rowNumber} end time`} className="w-24" value={cellValue('end_time')} onChange={changeField('end_time')} onKeyDown={handleCellKeyDown} /></div>{preview.row.crosses_midnight && <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-xs text-indigo-700"><Moon className="h-3 w-3" />{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} brand`} value={entityValue('brand_name', preview.row.brand_name)} onChange={value => draftChange(rowNumber, 'brand_name', value)} options={brands} /></td>
@@ -746,12 +1005,48 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 </tbody>
               </table>
             </div>
+
             <div className="space-y-2 md:hidden" data-testid="schedule-import-mobile-rows">
-              {visiblePreviews.map(preview => {
+              {paginatedPreviews.map(preview => {
                 const status = previewStatusForRow(preview)
+                const rowNum = preview.row.row_number
                 const identity = [preview.row.date, `${preview.row.start_time}–${preview.row.end_time}`, preview.row.title || preview.row.brand_name].filter(Boolean).join(' · ')
-                return <div key={preview.row.row_number} className={`rounded-md border p-3 ${rowStatusClass(status)}`}>
-                  <div className="flex items-start justify-between gap-2"><div><p className="text-xs text-muted-foreground">{t('importSourceRow')} {preview.row.row_number}</p><p className="font-medium">{identity || t('importNoRows')}</p></div><Badge variant="outline">{importStatusLabel(status, t)}</Badge></div>
+                return <div key={rowNum} className={`rounded-md border p-3 ${rowStatusClass(status)}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedRowNumbers.has(rowNum)}
+                        onChange={e => {
+                          setSelectedRowNumbers(prev => {
+                            const next = new Set(prev)
+                            if (e.target.checked) next.add(rowNum)
+                            else next.delete(rowNum)
+                            return next
+                          })
+                        }}
+                        aria-label={`Select mobile row ${rowNum}`}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div>
+                        <p className="text-xs text-muted-foreground">{t('importSourceRow')} {rowNum}</p>
+                        <p className="font-medium">{identity || t('importNoRows')}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline">{importStatusLabel(status, t)}</Badge>
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        className="h-7 w-7 text-slate-400 hover:text-red-600"
+                        onClick={() => removePreviewRow(rowNum)}
+                        aria-label={`Delete mobile row ${rowNum}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
                   <p className="mt-1 text-xs text-muted-foreground">{preview.row.brand_name} · {preview.row.platform_name}{preview.row.campaign_name ? ` · ${preview.row.campaign_name}` : ''}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}: {preview.row.execution_source === 'agency' ? 'Agency' : preview.row.execution_source === 'internal' ? (language === 'vi' ? 'Nội bộ' : 'Internal') : (language === 'vi' ? 'Chưa phân loại' : 'Unclassified')}</p>
                   {Object.entries(preview.row.custom_fields ?? {}).map(([name, value]) => <p key={name} className="mt-1 break-words text-xs text-muted-foreground"><span className="font-medium text-foreground">{name}:</span> {value || '—'}</p>)}
@@ -760,6 +1055,23 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 </div>
               })}
             </div>
+
+            {visiblePreviews.length > previewPageSize && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3" data-testid="schedule-import-pagination">
+                <p className="text-xs text-muted-foreground">
+                  {language === 'vi'
+                    ? `Hiển thị ${(previewPage - 1) * previewPageSize + 1}–${Math.min(previewPage * previewPageSize, visiblePreviews.length)} trên tổng số ${visiblePreviews.length} dòng`
+                    : `Showing ${(previewPage - 1) * previewPageSize + 1}–${Math.min(previewPage * previewPageSize, visiblePreviews.length)} of ${visiblePreviews.length} rows`}
+                </p>
+                <HistoryPagination
+                  page={previewPage}
+                  pageSize={previewPageSize}
+                  total={visiblePreviews.length}
+                  onPageChange={setPreviewPage}
+                />
+              </div>
+            )}
+
             {result.invalidRows > 0 && <p className="text-sm text-red-700">{t('correctRows')}</p>}
             {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: importableCount, attention: previewAttention })}</p>}
             <div className="flex flex-wrap justify-end gap-2">

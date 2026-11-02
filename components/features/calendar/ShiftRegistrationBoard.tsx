@@ -934,6 +934,8 @@ function CompactShiftList({
 
                   <ShiftRegistrationActions
                     allShifts={allShifts}
+                    brandName={brandName(brands, shift.brand_id)}
+                    platformName={platformName(platforms, shift.platform_id)}
                     compact
                     currentUser={currentUser}
                     onRegister={role => onRegister(shift.id, role)}
@@ -1075,7 +1077,7 @@ function ShiftSummaryTable({
         <td className="p-2">{platformName(platforms, shift.platform_id)}</td>
         <td className="p-2">{visibleCapacities.map(capacity => t(capacity.role)).join(', ')}</td>
         <td className="p-2">{visibleCapacities.map(capacity => `${t(capacity.role)} ${capacity.approved}/${capacity.required}`).join(' · ')}</td>
-        <td className="p-2"><div className="flex items-center gap-2"><ShiftRegistrationActions allShifts={allShifts} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div></td>
+        <td className="p-2"><div className="flex items-center gap-2"><ShiftRegistrationActions allShifts={allShifts} brandName={brandName(brands, shift.brand_id)} platformName={platformName(platforms, shift.platform_id)} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div></td>
       </tr>
     })}</tbody>
   </table></CardContent></Card>

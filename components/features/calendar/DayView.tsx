@@ -44,7 +44,7 @@ export function DayView({ currentDate, shifts, allShifts = shifts, onRegister, b
         <p className="text-xs font-medium">{formatShiftTimeRange(shift)}</p>
         {continuation && <p className="text-xs text-muted-foreground">{language === 'vi' ? 'Tiếp từ ngày' : 'Continues from'} {shift.date}</p>}
         <ShiftCard shift={shift} users={users} showDate variant="expanded" context={context} onClick={() => onShiftClick?.(shift)} />
-        {currentUser && onRegister && <ShiftRegistrationActions shift={shift} currentUser={currentUser} allShifts={allShifts} registrations={registrations} onRegister={role => onRegister(shift.id, role)} />}
+        {currentUser && onRegister && <ShiftRegistrationActions shift={shift} brandName={context.brands?.find(b => b.id === shift.brand_id)?.name} platformName={context.platforms?.find(p => p.id === shift.platform_id)?.name} currentUser={currentUser} allShifts={allShifts} registrations={registrations} onRegister={role => onRegister(shift.id, role)} />}
       </div>
     </div>)}
   </section>
