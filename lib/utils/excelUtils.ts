@@ -354,8 +354,52 @@ const normalizeTime = (value: unknown): string => {
   return match ? `${match[1].padStart(2, '0')}:${match[2]}` : text
 }
 
+export interface MultilineTimeSegment {
+  segmentIndex: number
+  startTime: string
+  endTime: string
+}
+
+export const parseMultilineTimeSegments = (value: unknown): MultilineTimeSegment[] => {
+  const str = String(value ?? '').trim()
+  const lines = str.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  const segments: MultilineTimeSegment[] = []
+  lines.forEach((line, index) => {
+    const parts = line.split(/\s*(?:-|–|—|to|đến)\s*/i)
+    if (parts.length >= 2) {
+      const start = normalizeTime(parts[0])
+      const end = normalizeTime(parts[1])
+      if (start && end) {
+        segments.push({
+          segmentIndex: index + 1,
+          startTime: start,
+          endTime: end === '24:00' ? '00:00' : end,
+        })
+      }
+    }
+  })
+  return segments
+}
+
+export const parseMultilineStaffingNames = (value: unknown): string[][] => {
+  const str = String(value ?? '').trim()
+  const lines = str.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  return lines.map(line =>
+    line.split(/[,;]+/).map(n => n.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  )
+}
+
 const normalizeTimeRange = (value: unknown): [string, string] => {
-  const parts = String(value ?? '').split(/\s*(?:-|–|—|to|đến)\s*/i)
+  const str = String(value ?? '').trim()
+  const lines = str.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  if (lines.length > 1) {
+    const firstParts = lines[0].split(/\s*(?:-|–|—|to|đến)\s*/i)
+    const lastParts = lines[lines.length - 1].split(/\s*(?:-|–|—|to|đến)\s*/i)
+    if (firstParts.length >= 2 && lastParts.length >= 2) {
+      return [normalizeTime(firstParts[0]), normalizeTime(lastParts[1])]
+    }
+  }
+  const parts = str.split(/\s*(?:-|–|—|to|đến)\s*/i)
   if (parts.length < 2) return ['', '']
   return [normalizeTime(parts[0]), normalizeTime(parts[1])]
 }

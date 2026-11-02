@@ -4,6 +4,7 @@
 -- Aligned 1:1 with TypeScript canonical normalization: trim().toLowerCase().replace(/\s+/g, ' ')
 
 begin;
+set local lock_timeout = '5s';
 
 -- Step 1: Define canonical shift qualifier normalization function
 -- Fully compatible with TypeScript normalizeShiftQualifier contract:
@@ -83,40 +84,28 @@ comment on index public.shifts_active_identity_uidx is
 commit;
 
 -- ==============================================================================
--- ROLLBACK & FORWARD-FIX RECOVERY PROTOCOL (For Emergency Operations):
+-- DISASTER RECOVERY & FORWARD-FIX PROTOCOL:
 -- ==============================================================================
--- Note on CREATE INDEX CONCURRENTLY:
--- In transactional migration runners (like Supabase CLI db push), CREATE INDEX CONCURRENTLY
--- cannot run inside an explicit transaction block (begin...commit).
--- For production zero-downtime execution outside migrations, run CONCURRENTLY without begin/commit.
+-- ARCHITECTURAL BOUNDARY: IRREVERSIBLE COMPATIBILITY UPGRADE
+-- Once parallel shifts (same slot, distinct physical studios or campaigns) are created
+-- under shifts_active_identity_uidx, legacy index shifts_active_slot_uidx CANNOT be
+-- restored while preserving active business operations.
 --
--- Note on Rollback with Parallel Shifts:
--- If parallel shifts (same brand/platform/slot, distinct studios) were created under
--- shifts_active_identity_uidx, creating legacy shifts_active_slot_uidx directly will fail
--- with unique violation 23505.
--- NEVER delete or merge valid shifts (to protect staffing, registrations, reports, and payroll).
--- Instead, run the Safe Rollback Isolation Protocol below:
+-- DO NOT ATTEMPT TO SOFT-ARCHIVE PARALLEL SHIFTS (e.g. UPDATE shifts SET archived_at = now()).
+-- Soft-archived shifts disappear from active calendar queries (where deleted_at is null
+-- and archived_at is null), causing operational data loss across Staffing, Check-in,
+-- Attendance, Reports, and Payroll.
 --
--- begin;
---   -- Soft-archive any conflicting parallel shifts created after upgrade:
---   with ranked_shifts as (
---     select id,
---       row_number() over (
---         partition by brand_id, platform_id, date, start_time, end_time
---         order by created_at asc
---       ) as slot_rank
---     from public.shifts
---     where deleted_at is null and archived_at is null
---   )
---   update public.shifts
---   set archived_at = now(),
---       deletion_reason = 'ROLLBACK_PARALLEL_SHIFT_PRESERVED'
---   where id in (select id from ranked_shifts where slot_rank > 1);
---
---   create unique index if not exists shifts_active_slot_uidx
---     on public.shifts (brand_id, platform_id, date, start_time, end_time)
---     where deleted_at is null and archived_at is null;
---
---   drop index if exists public.shifts_active_identity_uidx;
--- commit;
+-- APPROVED DISASTER RECOVERY: FORWARD-FIX / APPLICATION ROLLBACK
+-- 1. If an application bug is identified after deployment, roll back application code
+--    to a version compatible with canonical identity. shifts_active_identity_uidx is a
+--    strict superset of uniqueness constraints that permits parallel studios while
+--    guaranteeing slot uniqueness for single-session shifts.
+-- 2. If invalid duplicate shifts were imported due to bad input data, perform targeted
+--    reconciliation or soft-deletion ONLY on the erroneous duplicate records after
+--    verifying there are no approved registrations, reports, or payroll lines attached.
+-- 3. Migration Pre-flight Guard:
+--    Step 2 above enforces that no existing active shifts in the database violate
+--    shifts_active_identity_uidx before creating the index.
 -- ==============================================================================
+
