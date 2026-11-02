@@ -78,6 +78,7 @@ type SlashDateOrder = 'day-first' | 'month-first'
 
 const scheduleHeaders = {
   executionSource: ['execution source', 'execution_source', 'nguồn thực hiện', 'nguon thuc hien'],
+  agencyName: ['agency', 'agency name', 'agency / execution source', 'agency / nguồn thực hiện'],
   date: ['date', 'ngày', 'ngay', 'ngày live', 'ngay live'],
   timeRange: ['time', 'giờ', 'gio', 'shift time', 'time range', 'khung giờ', 'khung gio', 'thời gian', 'thoi gian'],
   startTime: ['start', 'start time', 'giờ bắt đầu', 'gio bat dau', 'từ giờ', 'tu gio'],
@@ -94,6 +95,7 @@ type ScheduleHeaderField = keyof typeof scheduleHeaders | PreviewStaffingField |
 
 const canonicalScheduleHeaders: Record<ScheduleHeaderField, string> = {
   executionSource: 'Execution Source',
+  agencyName: 'Agency',
   date: 'Date',
   timeRange: 'Time',
   startTime: 'Start time',
@@ -414,7 +416,7 @@ export function parseScheduleRows(
     const studio = rawStudio.trim()
     const rawExecutionSource = textValue(valueFor(normalizedSource, scheduleHeaders.executionSource)).trim()
     const rawAgencyName = textValue(
-      valueFor(normalizedSource, ['agency', 'agency name'])
+      valueFor(normalizedSource, scheduleHeaders.agencyName)
         ?? customFieldValueFor(normalizedSource, ['agency', 'agency name']),
     ).trim()
     const agencyExecutionSource = rawAgencyName
@@ -422,11 +424,11 @@ export function parseScheduleRows(
         ? resolveExecutionSource({ explicit: rawAgencyName })
         : 'agency'
       : undefined
-    const executionSource = rawExecutionSource && !/^(internal|agency)$/i.test(rawExecutionSource)
-      ? null
-      : rawExecutionSource
+    const executionSource = rawExecutionSource
+      ? /^(internal|agency)$/i.test(rawExecutionSource)
         ? resolveExecutionSource({ explicit: rawExecutionSource })
-        : agencyExecutionSource ?? resolveExecutionSource({ studio })
+        : rawAgencyName && normalizeLookup(rawExecutionSource) === normalizeLookup(rawAgencyName) ? 'agency' : null
+      : agencyExecutionSource ?? resolveExecutionSource({ studio })
     const customFields = normalizedSource.custom_fields && typeof normalizedSource.custom_fields === 'object' && !Array.isArray(normalizedSource.custom_fields)
       ? { ...normalizedSource.custom_fields as Record<string, unknown> }
       : {}

@@ -25,8 +25,11 @@ test('full-screen ADA loader renders one large centered logo without panels or c
   assert.equal((markup.match(/data-testid="ada-brand-lockup"/g) ?? []).length, 1)
   assert.match(markup, /ada-loading-screen__logo/)
   const css = readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8')
+  const brand = readFileSync(fileURLToPath(new URL('../components/branding/AdaBrand.tsx', import.meta.url)), 'utf8')
   assert.match(css, /\.ada-loading-screen__logo \.ada-brand__symbol \{ width: 144px; height: 144px;/)
-  assert.match(css, /animation: ada-loading-symbol-spin 4\.8s linear infinite/)
+  assert.match(css, /animation: ada-loading-symbol-glow 1\.8s ease-in-out infinite/)
+  assert.match(brand, /<path d="M4 37\.2 .*? fill="#fff"/)
+  assert.doesNotMatch(css, /ada-loading-symbol-spin|rotate\(360deg\)/)
   assert.doesNotMatch(markup, /content-skeleton|skeleton|ĐANG TẢI|LOADING|ada-loading-screen__halo|ada-loading-screen__progress/)
 })
 
@@ -37,7 +40,7 @@ test('route transition uses an opaque white screen and animates only the centere
   assert.match(transition, /inset:\s*0/)
   assert.match(transition, /background:\s*#fff/)
   assert.match(css, /\.ada-loading-screen__logo\s*\{[^}]*animation:\s*ada-loading-float/)
-  assert.match(css, /@keyframes ada-loading-symbol-spin \{ to \{ transform: rotate\(360deg\); \} \}/)
+  assert.match(css, /@keyframes ada-loading-symbol-glow/)
   assert.match(css, /prefers-reduced-motion:\s*reduce/)
 })
 

@@ -396,11 +396,14 @@
   justify-content: center;
   animation: ada-loading-float 1.8s ease-in-out infinite;
 }
-.ada-loading-screen__logo .ada-brand__symbol { width: 144px; height: 144px; border-radius: 38px; animation: ada-loading-symbol-spin 4.8s linear infinite; }
+.ada-loading-screen__logo .ada-brand__symbol { width: 144px; height: 144px; border-radius: 38px; animation: ada-loading-symbol-glow 1.8s ease-in-out infinite; }
 .ada-loading-screen__logo .ada-brand__symbol-svg { width: 102px; height: 102px; }
 .ada-loading-screen__logo .ada-brand__name { font-size: 66px; }
 .ada-loading-screen__logo .ada-brand__descriptor { font-size: 16px; }
-@keyframes ada-loading-symbol-spin { to { transform: rotate(360deg); } }
+@keyframes ada-loading-symbol-glow {
+  0%, 100% { box-shadow: 0 5px 15px rgba(31, 59, 180, .16); }
+  50% { box-shadow: 0 10px 28px rgba(37, 99, 235, .3); }
+}
 @keyframes ada-loading-float {
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-5px) scale(1.035); }

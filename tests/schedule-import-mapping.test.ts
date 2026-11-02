@@ -94,6 +94,59 @@ test('Google Sheets Agency partner column is retained separately from execution 
   assert.equal(result.rows[0].row.custom_fields?.Agency, 'ADA')
 })
 
+test('schedule import classifies an Agency partner repeated in the execution-source column', () => {
+  const headers = ['Date', 'Start time', 'End time', 'Brand', 'Platform', 'Agency', 'Execution Source']
+  const rows = [
+    ['2026-09-01', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'ADA', 'ADA'],
+    ['2026-09-02', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'AI', 'AI'],
+    ['2026-09-03', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'SNAP', 'SNAP'],
+  ]
+  const result = parseScheduleTabularData([headers, ...rows].map(csvRow).join('\n'), 'string', maps)
+
+  assert.equal(result.validRows, 3)
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['agency', 'agency', 'agency'])
+})
+
+test('Google Sheets combined Agency / execution-source header classifies partner rows', () => {
+  const headers = ['Date', 'Weekday formula', 'DAY/NIGHT', 'Timeslot', 'Start time', 'End time', 'Duration', 'STUDIO', 'Type of Campaign', 'Status', 'Platform', 'Brand', 'Agency / Nguồn thực hiện', 'TARGET']
+  const rows = [
+    ['2026-09-01', 'Thứ Ba', 'DAY', '09:00 - 13:00', '09:00', '13:00', 4, 'Studio A', 'BAU', 'Not yet', 'Shopee Live', 'Mars Wrigley', 'ADA', ''],
+    ['2026-09-02', 'Thứ Tư', 'NIGHT', '19:00 - 23:00', '19:00', '23:00', 4, 'Studio A', 'BAU', 'Not yet', 'TikTok Shop', 'Mars Wrigley', 'AI', ''],
+    ['2026-09-03', 'Thứ Năm', 'DAY', '10:00 - 14:00', '10:00', '14:00', 4, 'Studio A', 'Mini Spike', 'Not yet', 'Shopee Live', 'Mars Wrigley', 'SNAP', ''],
+  ]
+  const result = parseScheduleTabularData([headers, ...rows].map(csvRow).join('\n'), 'string', maps)
+
+  assert.equal(result.validRows, 3)
+  assert.equal(result.invalidRows, 0)
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['agency', 'agency', 'agency'])
+  assert.deepEqual(result.rows.map(({ row }) => row.custom_fields?.Agency), ['ADA', 'AI', 'SNAP'])
+})
+
+test('Google Sheets calendar format with Agency but no execution-source column imports agency rows', () => {
+  const headers = ['Date', 'Weekday formula', 'DAY/NIGHT', 'Timeslot', 'Start time', 'End time', 'Duration', 'STUDIO', 'Type of Campaign', 'Status', 'Platform', 'Brand', 'Agency', 'TARGET']
+  const rows = [
+    ['2026-11-01', 'Chủ Nhật', 'DAY', '11:00 - 14:00', '11:00', '14:00', 3, 'AI', 'BAU', 'In progress', 'TikTok Shop', 'KAO', 'ADA', ''],
+    ['2026-11-01', 'Chủ Nhật', 'NIGHT', '19:00 - 23:00', '19:00', '23:00', 4, 'AI', 'BAU', 'Not yet', 'Shopee Live', 'KAO', 'AI', ''],
+    ['2026-11-02', 'Thứ Hai', 'DAY', '07:00 - 09:00', '07:00', '09:00', 2, 'AI', 'Mini Spike', 'Not yet', 'Shopee Live', 'KAO', 'SNAP', ''],
+  ]
+  const screenshotMaps = { ...maps, brands: new Map([...maps.brands, ['KAO', 'brand-kao']]) }
+  const result = parseScheduleTabularData([headers, ...rows].map(csvRow).join('\n'), 'string', screenshotMaps)
+
+  assert.equal(result.validRows, 3)
+  assert.equal(result.invalidRows, 0)
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['agency', 'agency', 'agency'])
+  assert.deepEqual(result.rows.map(({ row }) => row.custom_fields?.Agency), ['ADA', 'AI', 'SNAP'])
+})
+
+test('an invalid explicit execution-source value stays invalid even when an Agency partner is present', () => {
+  const headers = ['Date', 'Start time', 'End time', 'Brand', 'Platform', 'Agency', 'Execution Source']
+  const row = ['2026-09-01', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'ADA', 'Other']
+  const result = parseScheduleTabularData([headers, row].map(csvRow).join('\n'), 'string', maps)
+
+  assert.equal(result.validRows, 0)
+  assert.match(result.rows[0].row.errors.join(' '), /Execution Source must be Internal or Agency/)
+})
+
 test('Google Sheets staffing display aliases normalize names without resolving users', () => {
   const headers = [...englishHeader, 'Host', 'Assistant', 'Tech']
   const row = [...scheduleRow, '  Hương  ', 'An, Linh; An', ' Minh ; Phúc ']

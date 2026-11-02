@@ -1,10 +1,18 @@
 import { shiftService } from './dataService'
 import type { ListFilters, ShiftListPage } from './operationsPageService'
 
-export async function readCalendarWindow(filters: ListFilters, signal?: AbortSignal, onFirstPage?: (first: ShiftListPage) => void): Promise<ShiftListPage> {
+export async function readCalendarWindow(
+  filters: ListFilters,
+  signal?: AbortSignal,
+  onFirstPage?: (first: ShiftListPage) => void,
+  registrationMode?: 'open' | 'mine',
+): Promise<ShiftListPage> {
   if (!filters.from || !filters.to) throw new Error('CALENDAR_RANGE_REQUIRED')
   signal?.throwIfAborted()
-  const first = await shiftService.getCalendarPage({ page: 1, pageSize: 50, filters }, signal)
+  const getPage = (page: number) => registrationMode
+    ? shiftService.getRegistrationPage(registrationMode, { page, pageSize: 50, filters }, signal)
+    : shiftService.getCalendarPage({ page, pageSize: 50, filters }, signal)
+  const first = await getPage(1)
   const items: ShiftListPage['items'] = []
   const registrations = new Map<string, ShiftListPage['registrations'][number]>()
   const ids = new Set<string>()
@@ -24,7 +32,7 @@ export async function readCalendarWindow(filters: ListFilters, signal?: AbortSig
   for (let page = 2; page * 50 - 50 < first.total; page += 3) {
     signal?.throwIfAborted()
     const pages = Array.from({ length: Math.min(3, Math.ceil(first.total / 50) - page + 1) }, (_, index) => page + index)
-    const results = await Promise.all(pages.map(next => shiftService.getCalendarPage({ page: next, pageSize: 50, filters }, signal)))
+    const results = await Promise.all(pages.map(getPage))
     signal?.throwIfAborted()
     results.forEach((result, index) => acceptPage(result, pages[index]))
   }

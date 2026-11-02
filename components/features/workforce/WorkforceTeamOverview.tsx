@@ -104,24 +104,14 @@ export function WorkforceTeamOverview({
     )
   }
 
-  if (!overview) {
-    return (
-      <Card className="border-dashed border-slate-300 bg-slate-50/50 p-8 text-center">
-        <p className="text-sm text-slate-500">
-          {en ? `No team performance data for ${period} and this role.` : `Chưa có dữ liệu hiệu suất đội ngũ cho kỳ ${period} và vai trò được chọn.`}
-        </p>
-      </Card>
-    )
+  const data = overview ?? {
+    staffCount: 0, assignedShifts: 0, verifiedShifts: 0, unknownAttendanceShifts: 0,
+    workedShifts: 0, approvedNoShows: 0, actualMinutes: 0, onTimeShifts: 0,
+    lateShifts: 0, attendanceCoveragePct: null, punctualityPct: null,
+    knownReliabilityPct: null, isComplete: false, incompleteStaffCount: 0,
   }
-
-  if (view === 'team' && overview.staffCount === 0) {
-    return <Card className="border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600" role="status">
-      {en ? `No assigned shifts or approved attendance for ${period}.` : `Chưa có ca phân công hoặc chấm công đã duyệt trong kỳ ${period}.`}
-    </Card>
-  }
-
-  const hoursWorked = Math.floor(overview.actualMinutes / 60)
-  const minutesWorked = overview.actualMinutes % 60
+  const hoursWorked = Math.floor(data.actualMinutes / 60)
+  const minutesWorked = data.actualMinutes % 60
 
   return (
     <div className="space-y-6">
@@ -140,12 +130,12 @@ export function WorkforceTeamOverview({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight text-slate-900">
-              {overview.attendanceCoveragePct !== null
+              {overview?.attendanceCoveragePct !== null && overview
                 ? `${overview.attendanceCoveragePct}%`
-                : (en ? 'No data' : 'Chưa có dữ liệu')}
+                : '—'}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              {en ? `${overview.verifiedShifts}/${overview.assignedShifts} shifts verified` : `${overview.verifiedShifts}/${overview.assignedShifts} ca có minh chứng xác minh`}
+              {overview ? (en ? `${data.verifiedShifts}/${data.assignedShifts} shifts verified` : `${data.verifiedShifts}/${data.assignedShifts} ca có minh chứng xác minh`) : (en ? 'No data for this period' : 'Chưa có dữ liệu trong kỳ')}
             </p>
           </CardContent>
         </Card>
@@ -162,12 +152,12 @@ export function WorkforceTeamOverview({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight text-emerald-700">
-              {overview.punctualityPct !== null
+              {overview?.punctualityPct !== null && overview
                 ? `${overview.punctualityPct}%`
-                : (en ? 'No data' : 'Chưa có dữ liệu')}
+                : '—'}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              {en ? `${overview.onTimeShifts} on time / ${overview.lateShifts} late` : `${overview.onTimeShifts} ca đúng giờ / ${overview.lateShifts} ca đi muộn`}
+              {overview ? (en ? `${data.onTimeShifts} on time / ${data.lateShifts} late` : `${data.onTimeShifts} ca đúng giờ / ${data.lateShifts} ca đi muộn`) : (en ? 'No data for this period' : 'Chưa có dữ liệu trong kỳ')}
             </p>
           </CardContent>
         </Card>
@@ -184,10 +174,10 @@ export function WorkforceTeamOverview({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight text-slate-900">
-              {overview.verifiedShifts > 0 ? `${hoursWorked}h ${minutesWorked}p` : (en ? 'No approved data' : 'Chưa có dữ liệu duyệt')}
+              {overview ? (data.verifiedShifts > 0 ? `${hoursWorked}h ${minutesWorked}p` : (en ? 'No approved data' : 'Chưa có dữ liệu duyệt')) : '—'}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              {en ? `${overview.workedShifts} approved worked shifts (${overview.actualMinutes.toLocaleString()} minutes)` : `${overview.workedShifts} ca làm việc thực tế (${overview.actualMinutes.toLocaleString()} phút)`}
+              {overview ? (en ? `${data.workedShifts} approved worked shifts (${data.actualMinutes.toLocaleString()} minutes)` : `${data.workedShifts} ca làm việc thực tế (${data.actualMinutes.toLocaleString()} phút)`) : (en ? 'No data for this period' : 'Chưa có dữ liệu trong kỳ')}
             </p>
           </CardContent>
         </Card>
@@ -204,26 +194,27 @@ export function WorkforceTeamOverview({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight text-purple-900">
-              {overview.knownReliabilityPct !== null
+              {overview?.knownReliabilityPct !== null && overview
                 ? `${overview.knownReliabilityPct}%`
-                : (en ? 'No data' : 'Chưa có dữ liệu')}
+                : '—'}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              {en ? `${overview.approvedNoShows} approved no-shows` : `${overview.approvedNoShows} ca vắng mặt có xác minh (No-show)`}
+              {overview ? (en ? `${data.approvedNoShows} approved no-shows` : `${data.approvedNoShows} ca vắng mặt có xác minh (No-show)`) : (en ? 'No data for this period' : 'Chưa có dữ liệu trong kỳ')}
             </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Warnings & Integrity Strip */}
-      {overview.unknownAttendanceShifts > 0 && (
+      {overview && data.unknownAttendanceShifts > 0 && (
         <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-800">
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
           <span>
-            {en ? <>{overview.unknownAttendanceShifts} shifts have no approved attendance evidence. Their status remains unknown.</> : <>Có <strong>{overview.unknownAttendanceShifts}</strong> ca làm việc chưa có minh chứng chấm công. Hệ thống giữ trạng thái <em>Chưa rõ</em> thay vì quy chụp là vắng mặt hoặc đi muộn.</>}
+            {en ? <>{data.unknownAttendanceShifts} shifts have no approved attendance evidence. Their status remains unknown.</> : <>Có <strong>{data.unknownAttendanceShifts}</strong> ca làm việc chưa có minh chứng chấm công. Hệ thống giữ trạng thái <em>Chưa rõ</em> thay vì quy chụp là vắng mặt hoặc đi muộn.</>}
           </span>
         </div>
       )}
+      {!overview && view === 'team' && <Card className="border-dashed border-slate-300 bg-slate-50/50 p-5 text-center" role="status"><p className="text-sm text-slate-600">{en ? `No team performance data for ${period} and this role.` : `Chưa có dữ liệu hiệu suất đội ngũ cho kỳ ${period} và vai trò được chọn.`}</p></Card>}
       </>}
 
       {/* Staff Comparison Table */}

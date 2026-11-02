@@ -79,6 +79,16 @@ test('Real components show UNKNOWN evidence and do not fabricate punctuality or 
   assert.match(leaderboard,/Chưa kích hoạt/)
 })
 
+test('Team performance keeps the KPI layout and uses unknown values when the period has no data',()=>{
+  const html=render(<WorkforceTeamOverview view="team" overview={null} staffList={[]} period="2026-09" role="host" onSelectStaff={()=>{}} />)
+  assert.match(html,/Bao phủ chấm công/)
+  assert.match(html,/Tỷ lệ đúng giờ/)
+  assert.match(html,/Tổng giờ thực tế/)
+  assert.match(html,/Độ tin cậy xác minh/)
+  assert.match(html,/Chưa có dữ liệu hiệu suất đội ngũ/)
+  assert.doesNotMatch(html,/>0%?</)
+})
+
 test('Audit component renders full immutable snapshots and UUID details',()=>{
   const html=render(<PayrollAuditTimeline audit={[{id:1,period_id:'p',line_id:'l',line_version:2,action:'void_line',actor_id:'admin',reason:'Approved terminal void',from_status:'draft',to_status:'draft',created_at:'2026-09-01T00:00:00Z',request_id:'synthetic-uuid',request_payload:{action:'void_line'},previous_values:{net_vnd:125000},updated_values:{voided_at:'2026-09-01T00:00:00Z'}}]} />)
   assert.match(html,/synthetic-uuid/);assert.match(html,/net_vnd/);assert.match(html,/voided_at/)

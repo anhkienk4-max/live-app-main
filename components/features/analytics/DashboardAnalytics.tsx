@@ -479,18 +479,20 @@ export function DashboardAnalytics() {
               />
             ))}
           </div>
-          <details className="mt-2 border-t pt-2 text-xs text-slate-500">
-            <summary className="cursor-pointer font-medium hover:text-slate-800">KPI definitions & business rules</summary>
+          <section className="mt-2 border-t pt-2 text-xs text-slate-500">
+            <h3 className="font-medium text-slate-700">{tr('kpiDefinitionsBusinessRules', 'Định nghĩa KPI và quy tắc nghiệp vụ', 'KPI definitions & business rules')}</h3>
             <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               {metricDefinitions.map(metric => (
                 <div key={metric.key}>
                   <strong className="text-slate-700">{metric.label}</strong>
                   <p className="text-[11px] text-slate-500">{metric.source}</p>
-                </div>              ))}
-            </div>            <p className="mt-2 text-[11px] text-slate-400">
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-slate-400">
               * Dữ liệu chỉ tính từ báo cáo ca đã xác nhận (confirmed). Giá trị chưa phát sinh hiển thị là &quot;—&quot;; số 0 hợp lệ được giữ nguyên.
             </p>
-          </details>
+          </section>
         </section>
       )}
 

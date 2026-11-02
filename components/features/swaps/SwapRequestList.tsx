@@ -221,7 +221,7 @@ export function SwapRequestList() {
         <MultiSelectFilter label={t('role')} value={filters.roles} options={(['host','support','technical'] as OperationalRole[]).map(role => ({ value: role, label: t(role) }))} onChange={value => updateFilters(current => ({ ...current, roles: value as OperationalRole[] }))} />
         <MultiSelectFilter label={t('status')} value={filters.statuses} options={SWAP_REQUEST_STATUSES.map(status => ({ value: status, label: t(status) }))} onChange={value => updateFilters(current => ({ ...current, statuses: value }))} />
       </div>
-      <details className="mt-2"><summary className="cursor-pointer text-xs font-medium text-slate-500">{t('filters')}</summary>
+      <div className="mt-3 border-t border-slate-100 pt-3">
       <div className="mt-3 grid gap-3 md:grid-cols-4">
         <label className="text-xs font-medium">{t('startDate')}<Input className="mt-1" type="date" value={filters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
         <label className="text-xs font-medium">{t('endDate')}<Input className="mt-1" type="date" value={filters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>
@@ -252,11 +252,11 @@ export function SwapRequestList() {
           )}
         </div>
       </div>
-      </details>
+      </div>
     </section>
 
     {mineMode && <p className="text-xs text-muted-foreground">{copy('Yêu cầu của tôi', 'My requests')} · {page}/{Math.max(1, Math.ceil(total / pageSize))} · {copy('Lọc loại yêu cầu trên trang này', 'Request type filtered on this page')}</p>}
-    {filtered.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noSwaps')}{mineMode && <HistoryPagination page={safePage} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />}</CardContent></Card> : <Card className="overflow-hidden border-slate-200 shadow-none"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Shift & request','Requester','Replacement','Role / mode','Reason','Status','Created','Actions'].map(label=><th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody>{visibleSwaps.map(swap => {
+    <Card className="overflow-hidden border-slate-200 shadow-none"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500"><tr>{[copy('Ca và yêu cầu','Shift & request'),copy('Người yêu cầu','Requester'),copy('Người nhận','Replacement'),copy('Vai trò / hình thức','Role / mode'),copy('Lý do','Reason'),t('status'),copy('Ngày tạo','Created'),t('actions')].map(label=><th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody>{filtered.length === 0 ? <tr><td colSpan={8} className="px-3 py-12 text-center text-sm text-muted-foreground">{t('noSwaps')}</td></tr> : visibleSwaps.map(swap => {
       const shift = shiftById.get(swap.shift_id)
       if (!shift) return null
       const actions = getSwapUiActions(swap, currentUser)
@@ -295,7 +295,7 @@ export function SwapRequestList() {
                     )}
                   /></td>
       </tr>
-    })}</tbody></table></div><HistoryPagination page={safePage} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} /></CardContent></Card>}
+    })}</tbody></table></div><HistoryPagination page={safePage} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} /></CardContent></Card>
 
 
     {showForm && currentUser && <SwapRequestFormModal key={currentUser.id} open={showForm} onOpenChange={onFormOpenChange} brands={brands} platforms={platforms}

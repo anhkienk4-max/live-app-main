@@ -83,6 +83,29 @@ test('Calendar abort and changed owner/count fail closed', async () => {
   try { await assert.rejects(readCalendarWindow({ from: '2026-10-01', to: '2026-10-31' }), /COLLECTION_CHANGED/) }
   finally { shiftService.getCalendarPage = original }
 })
+test('My shift calendar reads every filtered page through the role-scoped registration endpoint', async () => {
+  const original = shiftService.getRegistrationPage
+  const calls: Array<{ mode: string; page: number }> = []
+  shiftService.getRegistrationPage = async (mode, query) => {
+    calls.push({ mode, page: query.page })
+    assert.equal(query.pageSize, 50)
+    assert.equal(query.filters?.from, '2026-10-01')
+    assert.equal(query.filters?.to, '2026-10-31')
+    const count = query.page === 1 ? 50 : 1
+    return {
+      items: Array.from({ length: count }, (_, index) => ({ id: `${query.page}-${index}` })),
+      total: 51, page: query.page, pageSize: 50, ownerKey: 'member:member',
+      registrations: query.page === 1 ? [{ id: 'own-registration', user_id: 'member' }] : [],
+      pendingTotal: 0, pendingPage: 1, pendingIds: [], studios: [],
+    } as unknown as ShiftListPage
+  }
+  try {
+    const result = await readCalendarWindow({ from: '2026-10-01', to: '2026-10-31' }, undefined, undefined, 'mine')
+    assert.deepEqual(calls, [{ mode: 'mine', page: 1 }, { mode: 'mine', page: 2 }])
+    assert.equal(result.items.length, 51)
+    assert.deepEqual(result.registrations.map(item => item.id), ['own-registration'])
+  } finally { shiftService.getRegistrationPage = original }
+})
 test('reference promises deduplicate same owner and isolate permission/identity', async () => {
   const originals = [brandService.getAll, platformService.getAll, campaignService.getAll, userService.getAllFiltered] as const
   let calls = 0
