@@ -329,6 +329,7 @@ export interface DashboardUpdate extends LifecycleMetadata {
   shares?: number
   screenshot_url?: string
   screenshot_storage_path?: string
+  screenshot_file_id?: string | null
   dashboard_platform?: ReportDashboardPlatform
   normalized_metrics?: Partial<Record<ReportMetricKey, ReportMetricValue>>
   ocr_review?: OcrReviewData
@@ -423,6 +424,8 @@ export interface ReportImage extends LifecycleMetadata {
   mime_type?: string
   size_bytes?: number
   image_type: ReportImageCategory
+  external_parent_id?: string | null
+  checksum_sha256?: string | null
   uploaded_by?: string
   created_at: string
 }
@@ -446,6 +449,8 @@ export interface LiveReportImage {
   file_name: string
   storage_file_name?: string | null
   storage_idempotency_key?: string | null
+  external_parent_id?: string | null
+  checksum_sha256?: string | null
   mime_type: string
   size_bytes: number
   sort_order: number

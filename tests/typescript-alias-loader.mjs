@@ -67,6 +67,11 @@ function resolve(specifier, context, nextResolve) {
 }
 
 function load(url, context, nextLoad) {
+  if (url.startsWith('file:') && url.endsWith('.json')) {
+    const filename = fileURLToPath(url)
+    if (!filename.startsWith(projectRoot) || /[/\\]node_modules[/\\]/u.test(filename)) return nextLoad(url, context)
+    return { format: 'module', source: `export default ${readFileSync(filename, 'utf8').trim()};`, shortCircuit: true }
+  }
   if (url.startsWith('file:') && /\.(?:ts|tsx)$/.test(url)) {
     const filename = fileURLToPath(url)
     const source = readFileSync(filename, 'utf8')

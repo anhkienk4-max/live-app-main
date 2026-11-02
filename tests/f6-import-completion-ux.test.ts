@@ -87,7 +87,10 @@ test('completion card separates persisted warnings from non-persisted outcomes',
 
 test('preview confirmation and summary share the actionable ready plus warning count', () => {
   assert.match(panel, /const importableCount = previewCounts \? previewCounts.ready \+ previewCounts.warning : 0/)
-  assert.match(panel, /if \(!result \|\| !batch \|\| !source \|\| importableCount === 0\) return/)
-  assert.match(panel, /disabled=\{busy \|\| importableCount === 0\}/)
+  assert.match(panel, /if \(!result \|\| !batch \|\| !source \|\| importableCount === 0/)
+  assert.match(panel, /source\?\.type === 'excel' && sourceFileStatus !== 'saved'/)
+  assert.match(panel, /disabled=\{busy \|\| importableCount === 0 \|\| \(source\?\.type === 'excel' && sourceFileStatus !== 'saved'\)\}/)
   assert.match(panel, /ready: importableCount, attention: previewAttention/)
+  assert.match(panel, /form\.set\('batch_id', batchId\)/)
+  assert.match(panel, /fetch\('\/api\/schedule-source-files', \{ method: 'POST', body: form \}\)/)
 })
