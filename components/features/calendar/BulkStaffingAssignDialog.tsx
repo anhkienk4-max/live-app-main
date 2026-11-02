@@ -144,7 +144,7 @@ export function BulkStaffingAssignDialog({
             <div className="mt-1 max-h-24 overflow-y-auto space-y-0.5 font-mono text-[11px]">
               {selectedShiftsSummary.slice(0, 5).map(s => (
                 <div key={s.id} className="truncate">
-                  • {s.date} ({s.start_time}–{s.end_time}) {s.title || s.brand_name || ''}
+                  • {s.date} ({s.start_time}–{s.end_time}) {s.title || (s as unknown as { brand_name?: string }).brand_name || ''}
                 </div>
               ))}
               {selectedShiftsSummary.length > 5 && (

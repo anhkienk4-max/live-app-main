@@ -871,7 +871,7 @@ export function exportShiftsToExcel(
       'Registration Locked': Boolean(shift.registration_locked),
       Status: shift.status,
       'Live Link': shift.live_link || '',
-      Notes: shift.product_notes || shift.notes || '',
+      Notes: shift.product_notes || (shift as unknown as { notes?: string }).notes || '',
     }}),
   }])
 }

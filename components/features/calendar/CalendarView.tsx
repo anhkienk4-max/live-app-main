@@ -732,7 +732,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   {t('deleteSelectedCount', { count: visibleSelection.selectedVisibleShiftIds.length })}
                 </Button>
               )}
-              {view === 'list' && currentUser && (hasPermission(currentUser, 'shifts.manage_all') || hasPermission(currentUser, 'shifts.approve_registration')) && (
+              {view === 'list' && currentUser && (hasPermission(currentUser, 'shifts.assign_staff') || hasPermission(currentUser, 'shifts.approve_registration')) && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -898,7 +898,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         />
       )}
 
-      {currentUser && (hasPermission(currentUser, 'shifts.manage_all') || hasPermission(currentUser, 'shifts.approve_registration')) && (
+      {currentUser && (hasPermission(currentUser, 'shifts.assign_staff') || hasPermission(currentUser, 'shifts.approve_registration')) && (
         <BulkStaffingAssignDialog
           open={showBulkStaffingAssign}
           onOpenChange={setShowBulkStaffingAssign}
