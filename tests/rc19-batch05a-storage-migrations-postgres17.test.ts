@@ -89,9 +89,10 @@ test('RC19 05A migration chain on PostgreSQL 17 preserves registry, security, re
       if (migrationPath.includes('20261102150000')) {
         const failureInjection = migration.replace(
           'CREATE TABLE IF NOT EXISTS public.operational_schedule_source_files (',
-          "DO $$ BEGIN RAISE EXCEPTION 'SYNTHETIC 05A MIGRATION ROLLBACK TEST'; END $$;\nCREATE TABLE IF NOT EXISTS public.operational_schedule_source_files (",
+          () => "DO $$ BEGIN RAISE EXCEPTION 'SYNTHETIC 05A MIGRATION ROLLBACK TEST'; END $$;\nCREATE TABLE IF NOT EXISTS public.operational_schedule_source_files (",
         )
         assert.notEqual(failureInjection, migration, 'The rollback injection point must exist')
+        assert.ok(failureInjection.includes("DO $$ BEGIN RAISE EXCEPTION 'SYNTHETIC 05A MIGRATION ROLLBACK TEST'; END $$;"))
         await assert.rejects(() => client.query(failureInjection), /SYNTHETIC 05A MIGRATION ROLLBACK TEST/u)
         await client.query('ROLLBACK')
         const rolledBackRuntime = await client.query(`
