@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import assert from 'node:assert/strict'
 import test, { afterEach, beforeEach } from 'node:test'
 import fs from 'node:fs'
@@ -6,8 +7,6 @@ import { PGlite } from '@electric-sql/pglite'
 import type { Shift } from '../lib/types/database.types'
 import {
   isScheduleImportDuplicateError,
-  SCHEDULE_IMPORT_SLOT_CONSTRAINTS,
-  SCHEDULE_IMPORT_SLOT_CONSTRAINT,
 } from '../lib/utils/scheduleImportBatch'
 import {
   parseScheduleRows,

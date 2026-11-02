@@ -2,7 +2,6 @@ import type { ScheduleImportRow } from '@/lib/types/database.types'
 import {
   normalizeAgencyCode,
   agencyDisplayLabel,
-  type AgencyCode,
 } from '@/lib/utils/executionSource'
 import {
   getScheduleImportSourceField,
