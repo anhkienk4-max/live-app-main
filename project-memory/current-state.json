@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "3b04da338938400bb2b4ea48f74c7e5f40b8fb61",
+    "head": "c2076c15c0a02d504ff8f0d706315d88c3a4a082",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -118,10 +118,10 @@
         "components": 187,
         "lib": 274,
         "scripts": 35,
-        "supabase": 125,
+        "supabase": 126,
         "tests": 317
       },
-      "total": 1028
+      "total": 1029
     },
     "tests": {
       "files": [
@@ -478,9 +478,10 @@
         "supabase/migrations/20261102135047_rc19_batch05a3_domain_storage_routes.sql",
         "supabase/migrations/20261102150000_rc19_batch05a4_storage_runtime.sql",
         "supabase/migrations/20261102160334_rc19_batch05a41_storage_release_blockers.sql",
+        "supabase/migrations/20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
         "supabase/migrations/20261102190000_rc19_batch01_1_agency_code.sql"
       ],
-      "count": 97
+      "count": 98
     }
   },
   "verification": {
@@ -494,5 +495,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-02T23:25:35+07:00"
+  "synced_at": "2026-11-03T00:25:03+07:00"
 }
