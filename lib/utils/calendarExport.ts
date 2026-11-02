@@ -9,7 +9,7 @@ export interface CalendarExportField { id: string; label: string; group: ExportS
 const labels: Partial<Record<keyof ScheduleExportRow, string>> = {
   'Shift ID': 'Mã ca', Date: 'Ngày', 'Start Time': 'Bắt đầu', 'End Time': 'Kết thúc', 'End Date': 'Ngày kết thúc',
   'Crosses Midnight': 'Qua ngày', 'Duration (min)': 'Thời lượng (phút)', Brand: 'Thương hiệu', Platform: 'Nền tảng', Campaign: 'Chiến dịch',
-  Title: 'Tiêu đề', Studio: 'Studio', Status: 'Trạng thái', Notes: 'Ghi chú', 'Live Link': 'Link livestream',
+  Title: 'Tiêu đề', Studio: 'Studio', 'Execution Source': 'Nguồn thực hiện', Agency: 'Agency', Status: 'Trạng thái', Notes: 'Ghi chú', 'Live Link': 'Link livestream',
   'Assigned Host Names': 'Host đã gán', 'Assigned Support Names': 'Trợ live đã gán', 'Assigned Technical Names': 'Kỹ thuật đã gán',
   'Scheduled Host Names': 'Host theo lịch', 'Scheduled Support Names': 'Trợ live theo lịch', 'Scheduled Technical Names': 'Kỹ thuật theo lịch',
   'Required Host Count': 'Số Host cần', 'Required Support Count': 'Số Trợ live cần', 'Required Technical Count': 'Số Kỹ thuật cần', 'Registration Locked': 'Khóa đăng ký',

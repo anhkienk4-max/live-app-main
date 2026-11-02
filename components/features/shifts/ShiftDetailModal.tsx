@@ -61,6 +61,7 @@ import { SelfAttendancePanel } from '@/components/features/attendance/SelfAttend
 import type { ListFilters } from '@/lib/services/operationsPageService'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
 import { getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { agencyDisplayLabel } from '@/lib/utils/executionSource'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview'
@@ -816,6 +817,18 @@ export function ShiftDetailModal({
                         <div><dt className="text-xs text-muted-foreground">{t('platform')}</dt><dd className="mt-1 font-medium">{platform?.name || fallback}</dd></div>
                         <div><dt className="text-xs text-muted-foreground">{t('campaign')}</dt><dd className="mt-1 font-medium">{campaign?.name || fallback}</dd></div>
                         <div><dt className="text-xs text-muted-foreground">{t('studio')}</dt><dd className="mt-1 font-medium">{shift.studio?.trim() || fallback}</dd></div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}</dt>
+                          <dd className="mt-1 font-medium">
+                            {shift.execution_source === 'agency' ? 'Agency' : shift.execution_source === 'internal' ? (language === 'vi' ? 'Nội bộ' : 'Internal') : fallback}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">Agency</dt>
+                          <dd className="mt-1 font-medium">
+                            {shift.agency_code ? agencyDisplayLabel(shift.agency_code) : fallback}
+                          </dd>
+                        </div>
                         <div><dt className="text-xs text-muted-foreground">{t('date')}</dt><dd className="mt-1 font-medium">{safeFormatShiftDate(shift.date, 'EEEE, PP', language, fallback)}</dd></div>
                         <div><dt className="text-xs text-muted-foreground">{t('time')}</dt><dd className="mt-1 font-medium">{shift.start_time || fallback} – {shift.end_time || fallback}{dateTime?.valid && dateTime.crossesMidnight && <span className="mt-1 block text-xs font-semibold text-indigo-700" data-testid="shift-detail-overnight">{t('endsNextDay')}: {safeFormatShiftDate(dateTime.endDate, 'MMM d', language, fallback)}</span>}</dd></div>
                         <div><dt className="text-xs text-muted-foreground">{t('timezone')}</dt><dd className="mt-1 break-all font-medium">{shift.timezone || fallback}</dd></div>
@@ -878,6 +891,8 @@ export function ShiftDetailModal({
               <TabsContent value="details" className="space-y-4 p-4 sm:p-6">
                 <dl className="grid gap-3 rounded-lg border bg-white p-4 text-xs sm:grid-cols-3" data-testid="shift-production-provenance">{[
                   ['Mã ca', shift.id], ['Múi giờ', shift.timezone], ['Ngày kết thúc', shift.end_date],
+                  ['Nguồn thực hiện', shift.execution_source ? (shift.execution_source === 'agency' ? 'Agency' : 'Nội bộ') : undefined],
+                  ['Agency', shift.agency_code ? agencyDisplayLabel(shift.agency_code) : undefined],
                   ['Thời lượng', dateTime?.valid ? dateTime.durationMinutes + ' phút' : undefined],
                   ['Chế độ trạng thái', shift.status_mode], ['Lô nhập', shift.import_batch_id],
                   ['Phiên bản', shift.version], ['Bắt đầu (UTC)', shift.start_at], ['Kết thúc (UTC)', shift.end_at],

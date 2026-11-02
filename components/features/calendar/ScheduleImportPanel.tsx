@@ -22,6 +22,8 @@ import {
   importShiftsFromGoogleSheetsUrl,
   normalizeLookup,
   type ImportResult,
+  type AgencyCode,
+  agencyDisplayLabel,
   parseScheduleRows,
 } from '@/lib/utils/excelUtils'
 import { Badge } from '@/components/ui/badge'
@@ -177,6 +179,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [customHeaderDrafts, setCustomHeaderDrafts] = React.useState<Record<string, string>>({})
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [draftRows, setDraftRows] = React.useState<DraftRows>({})
+  const [batchAgency, setBatchAgency] = React.useState<AgencyCode | null>(null)
   const [completedImport, setCompletedImport] = React.useState<CompletedImport | null>(null)
   const [retryingArchive, setRetryingArchive] = React.useState(false)
 
@@ -248,7 +251,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     }
     setBusy(true)
     try {
-      const next = await importShiftsFromExcel(file, maps.brands, maps.platforms, maps.campaigns, undefined, existingShifts)
+      const next = await importShiftsFromExcel(file, maps.brands, maps.platforms, maps.campaigns, undefined, existingShifts, { batchAgency })
       await recordPreview(next, { type: 'excel', name: file.name })
       originalImportFileRef.current = file
     } catch (error) {
@@ -268,7 +271,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     }
     setBusy(true)
     try {
-      const next = await importShiftsFromGoogleSheetsUrl(googleUrl, maps.brands, maps.platforms, maps.campaigns, existingShifts)
+      const next = await importShiftsFromGoogleSheetsUrl(googleUrl, maps.brands, maps.platforms, maps.campaigns, existingShifts, { batchAgency })
       await recordPreview(next, { type: 'google_sheets', name: googleUrl })
       originalImportFileRef.current = null
     } catch (error) {
@@ -288,7 +291,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       brands: maps.brands,
       platforms: maps.platforms,
       campaigns: maps.campaigns,
-    }, existingShifts))
+    }, existingShifts, { batchAgency }))
     setResult(nextResult)
     if (batch) {
       void scheduleImportBatchPort.updateBatchPreview(
@@ -429,7 +432,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     })
   }
 
-  const bulkUpdateSelected = (updates: Partial<{ execution_source: string; brand_name: string; platform_name: string; agency: string }>) => {
+  const bulkUpdateSelected = (updates: Partial<{ execution_source: string; brand_name: string; platform_name: string; agency: string; agency_code: string }>) => {
     if (selectedRowNumbers.size === 0) return
     const sourceRows = sourceRowsFromPreview()
     let changed = false
@@ -448,11 +451,12 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           row = { ...row, Platform: updates.platform_name }
           changed = true
         }
-        if (updates.agency !== undefined) {
+        if (updates.agency_code !== undefined || updates.agency !== undefined) {
+          const agencyLabel = updates.agency || (updates.agency_code ? agencyDisplayLabel(updates.agency_code as AgencyCode) : '')
           const customFields = { ...((row.custom_fields as Record<string, string> | undefined) ?? {}) }
-          customFields.Agency = updates.agency
-          row = { ...row, custom_fields: customFields }
-          if (updates.agency.trim() && !row['Execution Source']) {
+          customFields.Agency = agencyLabel
+          row = { ...row, Agency: agencyLabel, custom_fields: customFields }
+          if (agencyLabel.trim() && !row['Execution Source']) {
             row['Execution Source'] = 'Agency'
           }
           changed = true
@@ -716,6 +720,20 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 <Download className="mr-2 h-4 w-4" />{t('downloadTemplate')}
               </Button>
             </div>
+            <div className="flex items-center gap-2 pt-1 text-xs">
+              <span className="font-medium text-slate-700">{language === 'vi' ? 'Gán Agency mặc định:' : 'Default Agency:'}</span>
+              <select
+                aria-label={language === 'vi' ? 'Gán Agency mặc định' : 'Default Agency'}
+                className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                value={batchAgency ?? ''}
+                onChange={e => setBatchAgency((e.target.value as AgencyCode) || null)}
+              >
+                <option value="">{language === 'vi' ? '— Không —' : '— None —'}</option>
+                <option value="ada">ADA</option>
+                <option value="snap">SNAP</option>
+                <option value="live_ai">Live AI</option>
+              </select>
+            </div>
           </CardContent>
         </Card>
 
@@ -794,6 +812,22 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     <option value="" disabled>{language === 'vi' ? 'Gán nguồn thực hiện...' : 'Set Execution Source...'}</option>
                     <option value="internal">{language === 'vi' ? 'Nội bộ' : 'Internal'}</option>
                     <option value="agency">Agency</option>
+                  </select>
+                  <select
+                    aria-label="Bulk Agency"
+                    className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                    defaultValue=""
+                    onChange={e => {
+                      if (e.target.value) {
+                        bulkUpdateSelected({ agency_code: e.target.value, execution_source: 'agency' })
+                        e.target.value = ''
+                      }
+                    }}
+                  >
+                    <option value="" disabled>{language === 'vi' ? 'Gán Agency...' : 'Set Agency...'}</option>
+                    <option value="ada">ADA</option>
+                    <option value="snap">SNAP</option>
+                    <option value="live_ai">Live AI</option>
                   </select>
                   <select
                     aria-label="Bulk Brand"
@@ -921,6 +955,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     <th className="p-2">{t('brand')}</th>
                     <th className="p-2">{t('platform')}</th>
                     <th className="p-2">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}</th>
+                    <th className="p-2">Agency</th>
                     <th className="p-2">{t('campaign')}</th>
                     <th className="p-2">{t('shiftTitle')}</th>
                     <th className="p-2">{t('studio')}</th>
@@ -1018,6 +1053,25 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} brand`} value={entityValue('brand_name', preview.row.brand_name)} onChange={value => draftChange(rowNumber, 'brand_name', value)} options={brands} /></td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} platform`} value={entityValue('platform_name', preview.row.platform_name)} onChange={value => draftChange(rowNumber, 'platform_name', value)} options={platforms} /></td>
                         <td className="p-2"><select aria-label={`Row ${rowNumber} Agency / execution source`} className="h-9 rounded-md border bg-background px-2" value={cellValue('execution_source')} onChange={event => draftChange(rowNumber, 'execution_source', event.target.value)}><option value="">{language === 'vi' ? 'Chưa phân loại' : 'Unclassified'}</option><option value="internal">{language === 'vi' ? 'Nội bộ' : 'Internal'}</option><option value="agency">Agency</option></select></td>
+                        <td className="p-2">
+                          <select
+                            aria-label={`Row ${rowNumber} Agency`}
+                            className="h-9 rounded-md border bg-background px-2"
+                            value={cellValue('agency_code')}
+                            onChange={event => {
+                              const code = event.target.value
+                              draftChange(rowNumber, 'agency_code', code)
+                              if (code) {
+                                draftChange(rowNumber, 'execution_source', 'agency')
+                              }
+                            }}
+                          >
+                            <option value="">{language === 'vi' ? '— Không —' : '— None —'}</option>
+                            <option value="ada">ADA</option>
+                            <option value="snap">SNAP</option>
+                            <option value="live_ai">Live AI</option>
+                          </select>
+                        </td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} campaign`} optional value={entityValue('campaign_name', preview.row.campaign_name || '')} onChange={value => draftChange(rowNumber, 'campaign_name', value)} options={campaigns} /></td>
                         <td className="p-2"><Input aria-label={`Row ${rowNumber} shift title`} className="w-48" value={cellValue('title')} onChange={changeField('title')} onKeyDown={handleCellKeyDown} /></td>
                         <td className="p-2"><Input aria-label={`Row ${rowNumber} studio`} className="w-36" value={cellValue('studio')} onChange={changeField('studio')} onKeyDown={handleCellKeyDown} /></td>

@@ -416,3 +416,14 @@ test('buildScheduleExportRows — all required operational fields present', () =
   assert.equal(row['Live Link'], 'https://tiktok.com/live/123')
   assert.equal(row['Notes'], 'Ghi chu san pham')
 })
+
+test('buildScheduleExportRows — exports Execution Source and Agency correctly', () => {
+  const shift = makeShift({
+    execution_source: 'agency',
+    agency_code: 'live_ai',
+  })
+  const rows = buildScheduleExportRows([shift], brands, platforms, campaigns, usersMap, [])
+  assert.equal(rows[0]['Execution Source'], 'Agency')
+  assert.equal(rows[0]['Agency'], 'Live AI')
+})
+

@@ -3,6 +3,7 @@ import { withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadSer
 
 import { createClient } from '@/lib/supabase/client'
 import type {
+  AgencyCode,
   DeletionImpact,
   LifecycleMetadata,
   Shift,
@@ -25,6 +26,7 @@ const shiftColumns = [
   'duration_minutes',
   'brand_id',
   'execution_source',
+  'agency_code',
   'platform_id',
   'campaign_id',
   'title',
@@ -60,7 +62,7 @@ const shiftColumns = [
 type ShiftSchemaMode = 'database' | 'compat'
 
 function selectedShiftColumns(mode: ShiftSchemaMode): string {
-  return shiftColumns.filter(column => mode === 'database' || column !== 'execution_source').join(',')
+  return shiftColumns.filter(column => mode === 'database' || (column !== 'execution_source' && column !== 'agency_code')).join(',')
 }
 
 const SUPABASE_PAGE_SIZE = 1000
@@ -187,6 +189,7 @@ export function shiftFromRow(row: ShiftRow, mode: ShiftSchemaMode, explicitExecu
     execution_source: mode === 'compat'
       ? resolveExecutionSource({ explicit: explicitExecutionSource, studio: row.studio })
       : row.execution_source ?? null,
+    agency_code: mode === 'compat' ? null : ((row.agency_code as AgencyCode | null) ?? null),
     platform_id: row.platform_id,
     campaign_id: row.campaign_id ?? undefined,
     title: row.title ?? undefined,
@@ -224,7 +227,10 @@ function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>, mo
     end_time: data.end_time,
     timezone: data.timezone || DEFAULT_BUSINESS_TIMEZONE,
     brand_id: data.brand_id,
-    ...(mode === 'database' ? { execution_source: data.execution_source } : {}),
+    ...(mode === 'database' ? {
+      execution_source: data.execution_source,
+      agency_code: data.agency_code ?? null,
+    } : {}),
     platform_id: data.platform_id,
     campaign_id: data.campaign_id,
     title: data.title,
@@ -257,7 +263,10 @@ function updatePayload(data: Partial<Shift>, mode: ShiftSchemaMode): Record<stri
     start_time: data.start_time,
     end_time: data.end_time,
     brand_id: data.brand_id,
-    ...(mode === 'database' ? { execution_source: data.execution_source } : {}),
+    ...(mode === 'database' ? {
+      execution_source: data.execution_source,
+      agency_code: data.agency_code,
+    } : {}),
     platform_id: data.platform_id,
     campaign_id: data.campaign_id,
     title: data.title,
@@ -449,7 +458,13 @@ export function createSupabaseShiftRepository(
     },
 
     async create(data) {
-      const result = await client.rpc('create_shift', { p_data: createPayload(data, routingMode) }).single()
+      const payload = createPayload(data, routingMode)
+      let result = await client.rpc('create_shift', { p_data: payload }).single()
+      if (result.error && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
+        const fallbackPayload = { ...payload }
+        delete fallbackPayload.agency_code
+        result = await client.rpc('create_shift', { p_data: fallbackPayload }).single()
+      }
       return shiftFromRow(
         requiredRow('shift create', result) as unknown as ShiftRow,
         routingMode,
@@ -458,12 +473,23 @@ export function createSupabaseShiftRepository(
     },
 
     async update(id, data, confirmImpact = false, expectedVersion) {
-      const result = await client.rpc('update_shift', {
+      const patch = updatePayload(data, routingMode)
+      let result = await client.rpc('update_shift', {
         p_shift_id: id,
-        p_patch: updatePayload(data, routingMode),
+        p_patch: patch,
         p_confirm_impact: confirmImpact,
         p_expected_version: expectedVersion ?? null,
       }).single()
+      if (result.error && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
+        const fallbackPatch = { ...patch }
+        delete fallbackPatch.agency_code
+        result = await client.rpc('update_shift', {
+          p_shift_id: id,
+          p_patch: fallbackPatch,
+          p_confirm_impact: confirmImpact,
+          p_expected_version: expectedVersion ?? null,
+        }).single()
+      }
       if (result.error) throw requestError('shift update', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode, data.execution_source) : null
     },

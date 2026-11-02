@@ -66,7 +66,11 @@ export function sourceRowFingerprint(values: Record<string, unknown>): string {
 export function classifyRowOutcome(preview: ImportPreviewRow): ImportBatchRowStatus {
   const { errors, warnings } = preview.row
   if (errors.length > 0) return 'validation_failed'
-  if (!preview.shift && warnings.some(message => message.includes('already exists'))) {
+  if (preview.isInFileDuplicate) return 'duplicate_skipped'
+  if (!preview.shift && warnings.some(message => message.includes('already exists') || message.includes('trùng lặp') || message.includes('duplicate'))) {
+    return 'duplicate_skipped'
+  }
+  if (!preview.shift && preview.duplicateCandidate && !preview.isEnrichment) {
     return 'duplicate_skipped'
   }
   // A row with a shift AND warnings (e.g. overnight) still produces a shift:

@@ -293,6 +293,17 @@ export async function processScheduleImportRows({
     }
     const expectedOutcome = batchRow.status as ImportBatchRetryableRowStatus
 
+    // Case 0: In-file duplicate rows (same slot in same file) must NEVER enrich or create shifts.
+    if (preview.isInFileDuplicate) {
+      await recordOutcome({
+        rowNumber: preview.row.row_number,
+        outcome: 'duplicate_skipped',
+        expectedOutcome,
+      })
+      result.duplicateSkipped += 1
+      continue
+    }
+
     // Case A: preview is a duplicate (shift suppressed) but we kept duplicateCandidate for merge.
     // This happens when parseScheduleRows detected sameShift against existingShifts / earlier candidates.
     const duplicateCandidate = preview.duplicateCandidate

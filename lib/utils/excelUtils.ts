@@ -21,7 +21,13 @@ import {
   resolveShiftDateTime,
   shiftDateTimeFields,
 } from '@/lib/utils/shiftUtils'
-import { resolveExecutionSource } from '@/lib/utils/executionSource'
+import {
+  resolveExecutionSource,
+  agencyDisplayLabel,
+  normalizeAgencyCode,
+  type AgencyCode,
+} from '@/lib/utils/executionSource'
+export { agencyDisplayLabel, normalizeAgencyCode, type AgencyCode }
 import {
   getCanonicalStaffingField,
   getCanonicalStaffingNameField,
@@ -53,6 +59,10 @@ export interface ImportPreviewRow {
   duplicateCandidate?: Omit<Shift, 'id' | 'created_at' | 'updated_at'>
   /** The unique canonical slot used to classify a duplicate as unchanged or enrichment. */
   duplicateReference?: Omit<Shift, 'id' | 'created_at' | 'updated_at'>
+  /** True when this row has the exact same slot as an earlier row in the same import file. */
+  isInFileDuplicate?: boolean
+  /** True when this row enriches an existing DB shift with new fields or staffing. */
+  isEnrichment?: boolean
 }
 
 export interface ImportResult {
@@ -372,6 +382,7 @@ export function parseScheduleRows(
   sourceRows: ScheduleSheetRow[],
   maps: EntityMaps,
   existingShifts: Shift[] = [],
+  options: { batchAgency?: AgencyCode | null } = {},
 ): ImportResult {
   const dateOrder = inferSlashDateOrder(sourceRows)
   if (dateOrder.error) {
@@ -400,6 +411,7 @@ export function parseScheduleRows(
     existingMap.set(shiftKey(s), s)
   }
   const candidateMap = new Map<string, Omit<Shift, 'id' | 'created_at' | 'updated_at'>>()
+  const seenFileSlotNumbers = new Map<string, number>()
 
   const brandLookupCache = new Map<string, { id?: string; ambiguous: boolean }>()
   const platformLookupCache = new Map<string, { id?: string; ambiguous: boolean }>()
@@ -453,9 +465,9 @@ export function parseScheduleRows(
     const brandName = textValue(valueForNormalized(normalizedRow, normalizedScheduleHeaders.brand)).trim()
     const rawPlatformName = textValue(valueForNormalized(normalizedRow, normalizedScheduleHeaders.platform)).trim()
     const platformAlias = normalizeLookup(rawPlatformName)
-    const platformName = ['shp', 'shopee'].includes(platformAlias)
+    const platformName = ['shp', 'shopee', 'shopee live'].includes(platformAlias)
       ? 'Shopee Live'
-      : ['tts', 'tiktok', 'tt shop', 'tiktok shop'].includes(platformAlias)
+      : ['tts', 'tiktok', 'tik tok', 'tt shop', 'tiktok shop'].includes(platformAlias)
         ? 'TikTok Shop'
         : rawPlatformName
     const campaignName = String(valueForNormalized(normalizedRow, normalizedScheduleHeaders.campaign) ?? '').trim()
@@ -468,13 +480,15 @@ export function parseScheduleRows(
       valueForNormalized(normalizedRow, normalizedScheduleHeaders.agencyName)
         ?? customFieldValueFor(normalizedSource, ['agency', 'agency name']),
     ).trim()
-    const agencyExecutionSource = rawAgencyName
-      ? /^(internal|agency)$/i.test(rawAgencyName)
+    const parsedAgencyCode = rawAgencyName ? normalizeAgencyCode(rawAgencyName) : (options.batchAgency ?? null)
+    const agencyCode: AgencyCode | null = parsedAgencyCode
+    const agencyExecutionSource = (agencyCode || rawAgencyName)
+      ? /^(internal|noi bo)$/i.test(rawAgencyName)
         ? resolveExecutionSource({ explicit: rawAgencyName })
         : 'agency'
       : undefined
     const executionSource = rawExecutionSource
-      ? /^(internal|agency)$/i.test(rawExecutionSource)
+      ? /^(internal|agency|noi bo)$/i.test(rawExecutionSource)
         ? resolveExecutionSource({ explicit: rawExecutionSource })
         : rawAgencyName && normalizeLookup(rawExecutionSource) === normalizeLookup(rawAgencyName) ? 'agency' : null
       : agencyExecutionSource ?? resolveExecutionSource({ studio })
@@ -483,14 +497,17 @@ export function parseScheduleRows(
       : {}
     if (rawAgencyName && !Object.keys(customFields).some(name => ['agency', 'agency name'].includes(normalizeLookup(name)))) {
       customFields.Agency = rawAgencyName
+    } else if (agencyCode && !customFields.Agency) {
+      customFields.Agency = agencyDisplayLabel(agencyCode)
     }
     const notes = String(valueForNormalized(normalizedRow, normalizedScheduleHeaders.notes) ?? '').trim()
     const sourcePresence = (sourceValues.source_presence as ScheduleImportSourcePresence | undefined) ?? {
-      execution_source: valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.executionSource) !== undefined || Boolean(rawAgencyName),
-      campaign_name: valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.campaign) !== undefined,
-      studio: valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.studio) !== undefined,
-      title: valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.title) !== undefined,
-      notes: valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.notes) !== undefined,
+      execution_source: explicitSourceValue(valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.executionSource)) || Boolean(rawAgencyName),
+      agency_code: Boolean(rawAgencyName) || Boolean(options.batchAgency),
+      campaign_name: explicitSourceValue(valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.campaign)),
+      studio: explicitSourceValue(valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.studio)),
+      title: explicitSourceValue(valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.title)),
+      notes: explicitSourceValue(valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.notes)),
       required_host_count: staffingFieldProvided(sourceValues, 'required_host_count'),
       required_support_count: staffingFieldProvided(sourceValues, 'required_support_count'),
       required_technical_count: staffingFieldProvided(sourceValues, 'required_technical_count'),
@@ -511,6 +528,9 @@ export function parseScheduleRows(
     const validatedStaffing = validateStaffingValues(staffingValues)
     const rowErrors: string[] = []
     const rowWarnings: string[] = []
+    if (rawAgencyName && !parsedAgencyCode) {
+      rowErrors.push(`Agency "${rawAgencyName}" không hợp lệ. Chỉ chấp nhận: ADA, SNAP, Live AI.`)
+    }
     if (rawExecutionSource && !executionSource) rowErrors.push('Execution Source must be Internal or Agency.')
 
     if (!date) rowErrors.push('Date is required.')
@@ -560,9 +580,12 @@ export function parseScheduleRows(
     let shift: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
     let duplicateCandidate: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
     let duplicateReference: Omit<Shift, 'id' | 'created_at' | 'updated_at'> | undefined
+    let isInFileDuplicate = false
+    let isEnrichment = false
     if (brandId && platformId && rowErrors.length === 0) {
       shift = {
         execution_source: executionSource,
+        agency_code: agencyCode,
         date,
         start_time: startTime,
         end_time: endTime,
@@ -582,17 +605,30 @@ export function parseScheduleRows(
         ...shiftDateTimeFields(date, startTime, endTime)!,
       }
       const key = shiftKey(shift)
-      const duplicateMatch = existingMap.get(key) ?? candidateMap.get(key)
-      if (duplicateMatch) {
-        duplicateReference = duplicateMatch
+      if (seenFileSlotNumbers.has(key)) {
+        isInFileDuplicate = true
+        duplicateReference = candidateMap.get(key) ?? existingMap.get(key)
         duplicateCandidate = shift
-        if (!hasScheduleImportEnrichment(duplicateMatch, shift, sourcePresence)) {
+        if (!hasScheduleImportEnrichment(duplicateReference ?? shift, shift, sourcePresence)) {
           rowWarnings.push('A shift with the same brand, platform, date, and time already exists.')
         }
         shift = undefined
       } else {
-        candidateMap.set(key, shift)
-        candidates.push(shift)
+        seenFileSlotNumbers.set(key, rowNumber)
+        const duplicateMatch = existingMap.get(key)
+        if (duplicateMatch) {
+          duplicateReference = duplicateMatch
+          duplicateCandidate = shift
+          if (!hasScheduleImportEnrichment(duplicateMatch, shift, sourcePresence)) {
+            rowWarnings.push('A shift with the same brand, platform, date, and time already exists.')
+          } else {
+            isEnrichment = true
+          }
+          shift = undefined
+        } else {
+          candidateMap.set(key, shift)
+          candidates.push(shift)
+        }
       }
     }
 
@@ -601,6 +637,7 @@ export function parseScheduleRows(
     previews.push({
       row: toCanonicalScheduleImportPreviewRow({
         execution_source: executionSource,
+        agency_code: agencyCode,
         custom_fields: Object.fromEntries(Object.entries(customFields).map(([key, value]) => [key, String(value ?? '')])),
         row_number: rowNumber,
         date,
@@ -624,6 +661,8 @@ export function parseScheduleRows(
       shift,
       duplicateCandidate,
       duplicateReference,
+      isInFileDuplicate,
+      isEnrichment,
     })
   })
 
@@ -746,9 +785,10 @@ export function parseScheduleTabularData(
   type: 'array' | 'string',
   maps: EntityMaps,
   existingShifts: Shift[] = [],
+  options: { batchAgency?: AgencyCode | null } = {},
 ): ImportResult {
   try {
-    return parseScheduleRows(rowsFromWorkbook(data, type), normalizeEntityMaps(maps), existingShifts)
+    return parseScheduleRows(rowsFromWorkbook(data, type), normalizeEntityMaps(maps), existingShifts, options)
   } catch (error) {
     if (error instanceof ScheduleImportHeaderError) return headerErrorResult()
     throw error
@@ -762,13 +802,14 @@ export async function importShiftsFromExcel(
   campaignsMap: Map<string, string>,
   _usersMap?: Map<string, string>,
   existingShifts: Shift[] = [],
+  options: { batchAgency?: AgencyCode | null } = {},
 ): Promise<ImportResult> {
   try {
     return parseScheduleTabularData(await file.arrayBuffer(), 'array', {
       brands: brandsMap,
       platforms: platformsMap,
       campaigns: campaignsMap,
-    }, existingShifts)
+    }, existingShifts, options)
   } catch {
     return {
       success: false,
@@ -815,13 +856,14 @@ export async function importShiftsFromGoogleSheetsUrl(
   platformsMap: Map<string, string>,
   campaignsMap: Map<string, string>,
   existingShifts: Shift[] = [],
+  options: { batchAgency?: AgencyCode | null } = {},
 ): Promise<ImportResult> {
   const maps = normalizeEntityMaps({ brands: brandsMap, platforms: platformsMap, campaigns: campaignsMap })
-  if (url === 'mock://schedule') return parseScheduleRows(mockGoogleRows, maps, existingShifts)
+  if (url === 'mock://schedule') return parseScheduleRows(mockGoogleRows, maps, existingShifts, options)
   const normalizedUrl = normalizeGoogleSheetsUrl(url)
   const response = await fetch(normalizedUrl)
   if (!response.ok) throw new Error('The public Google Sheets CSV could not be loaded.')
-  return parseScheduleTabularData(await response.text(), 'string', maps, existingShifts)
+  return parseScheduleTabularData(await response.text(), 'string', maps, existingShifts, options)
 }
 
 type WorkbookSheet = {

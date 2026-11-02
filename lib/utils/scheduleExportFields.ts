@@ -20,6 +20,8 @@ export interface ScheduleExportRow {
   'Campaign': string
   'Title': string
   'Studio': string
+  'Execution Source': string
+  'Agency': string
   /** Comma-separated assigned host full names from staffed registrations / assigned host_id */
   'Assigned Host Names': string
   /** Comma-separated assigned support full names from staffed registrations / assigned support_id */
@@ -56,6 +58,8 @@ export const SCHEDULE_EXPORT_COLUMN_ORDER: ReadonlyArray<keyof ScheduleExportRow
   'Campaign',
   'Title',
   'Studio',
+  'Execution Source',
+  'Agency',
   'Assigned Host Names',
   'Assigned Support Names',
   'Assigned Technical Names',
