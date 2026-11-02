@@ -341,8 +341,8 @@ export function createSupabaseReportRepository(client: SupabaseClient): Supabase
     }
     return [...rows.values()]
   }
-  const selectReportImages = () => client.from('report_images').select('id,report_id,image_url,storage_path,original_name,mime_type,size_bytes,image_type,uploaded_by,created_at,deleted_at')
-  const selectLiveReportImages = () => client.from('live_report_images').select('id,report_id,category,title,description,captured_at,file_url,thumbnail_url,file_name,mime_type,size_bytes,sort_order,is_cover,uploaded_by,created_at')
+  const selectReportImages = () => client.from('report_images').select('id,report_id,image_url,storage_path,original_name,mime_type,size_bytes,image_type,external_parent_id,checksum_sha256,uploaded_by,created_at,deleted_at')
+  const selectLiveReportImages = () => client.from('live_report_images').select('id,report_id,category,title,description,captured_at,file_url,thumbnail_url,file_name,mime_type,size_bytes,external_parent_id,checksum_sha256,sort_order,is_cover,uploaded_by,created_at')
   const cleanupUploadedObject = async (storagePath: string, uploadedThisAttempt: boolean) => {
     if (!uploadedThisAttempt) return
     try {

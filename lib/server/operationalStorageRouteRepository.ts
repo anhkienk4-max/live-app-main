@@ -2,6 +2,17 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
+import { sanitizeFileName } from '@/lib/files/fileValidation'
+import type { OperationalFileCategory } from '@/lib/files/operationalFileCatalog'
+import {
+  ADA_OPS_REPORT_ROOT_ID,
+  domainFolderAncestors,
+  domainFolderForCategory,
+  domainFolderForPath,
+  domainFolderForReportGroup,
+  reportArtifactGroupFolder,
+  type ReportArtifactGroup,
+} from '@/lib/files/operationalStorageDomainMap'
 import {
   noRouteErrorForBrand,
   OperationalStoragePlacementError,
@@ -27,6 +38,18 @@ export interface OperationalStorageRouteRepository {
 
 interface OperationalStorageRouteRepositoryOptions {
   client?: SupabaseClient
+}
+
+export interface OperationalStorageDomainRouteRepository {
+  resolveDomainCategoryPlacement(category: OperationalFileCategory, fileName: string): Promise<OperationalStoragePlacement>
+  resolveReportArtifactGroupPlacement(input: {
+    group: ReportArtifactGroup
+    shiftId: string
+    shiftDate: string
+    brandId: string
+    platformId: string | null
+    fileName: string
+  }): Promise<OperationalStoragePlacement>
 }
 
 function routeKey(input: OperationalStorageRouteKey) {
@@ -90,6 +113,125 @@ export function createOperationalStorageRouteRepository(
         placementInput = { ...input, brandLabel, platformLabel }
       }
       return resolveOperationalStoragePlacement(route, placementInput)
+    },
+  }
+}
+
+function failClosed(): never {
+  throw new OperationalStoragePlacementError('STORAGE_CATEGORY_NOT_CONFIGURED')
+}
+
+function safeScopeSegment(value: string): string {
+  if (!/^[A-Za-z0-9_-]{1,128}$/u.test(value)) {
+    throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
+  }
+  return value
+}
+
+function dateParts(value: string): { year: string; month: string; compactDate: string } {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value)
+  if (!match) throw new OperationalStoragePlacementError('STORAGE_DATE_INVALID')
+  const date = new Date(value + 'T00:00:00.000Z')
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new OperationalStoragePlacementError('STORAGE_DATE_INVALID')
+  }
+  return { year: match[1], month: match[2], compactDate: match[1] + match[2] + match[3] }
+}
+
+/** Domain destinations are read-only DB routes backed by the checked-in 93-folder manifest. */
+export function createOperationalStorageDomainRouteRepository(
+  options: OperationalStorageRouteRepositoryOptions = {},
+): OperationalStorageDomainRouteRepository {
+  const client = options.client ?? createSupabaseAdminClient()
+
+  async function verifyRegistryPath(path: string) {
+    const expectedPaths = domainFolderAncestors(path)
+    const result = await client.from('operational_storage_domain_folders')
+      .select('folder_path,folder_id,parent_folder_id,access_classification,active,verified_created')
+      .in('folder_path', expectedPaths)
+    if (result.error) throw new OperationalStoragePlacementError('STORAGE_ROUTE_LOOKUP_FAILED')
+    const rows = new Map(((result.data ?? []) as Array<Record<string, unknown>>)
+      .map(row => [String(row.folder_path), row]))
+    const classifications: string[] = []
+    for (const expectedPath of expectedPaths) {
+      const expected = domainFolderForPath(expectedPath)
+      const row = rows.get(expectedPath)
+      if (!row || row.folder_id !== expected.folderId || row.parent_folder_id !== expected.parentFolderId
+        || row.active !== true || row.verified_created !== true) {
+        failClosed()
+      }
+      const classification = row.access_classification
+      if (typeof classification !== 'string' || ![
+        'shared', 'pending_restriction_no_sensitive_upload', 'shared_schema_template_only',
+        'restricted_pending_app_acl_verification', 'restricted_verified',
+      ].includes(classification)) failClosed()
+      classifications.push(classification)
+    }
+    const accessClassification = classifications.includes('shared_schema_template_only')
+      ? 'shared_schema_template_only'
+      : classifications.every(value => value === 'restricted_verified')
+        ? 'restricted_verified'
+        : classifications.includes('restricted_pending_app_acl_verification')
+          ? 'restricted_pending_app_acl_verification'
+        : classifications.includes('pending_restriction_no_sensitive_upload')
+          ? 'pending_restriction_no_sensitive_upload'
+          : 'shared'
+    return { ...domainFolderForPath(path), accessClassification }
+  }
+
+  return {
+    async resolveDomainCategoryPlacement(category, fileName) {
+      const route = domainFolderForCategory(category)
+      const folder = await verifyRegistryPath(route.path)
+      if (folder.folderId !== route.folderId) {
+        throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
+      }
+      return {
+        provider: 'google_drive',
+        storageProfile: 'DOMAIN_CATEGORY_FOLDER',
+        rootFolderId: route.rootFolderId,
+        baseFolderId: route.folderId,
+        folderSegments: [],
+        folderPath: route.path,
+        expectedBaseParentId: route.parentFolderId,
+        accessClassification: folder.accessClassification,
+        sensitive: route.sensitive,
+        fileName: sanitizeFileName(fileName),
+        logicalCategory: 'data_source',
+        periodLabel: '',
+      }
+    },
+
+    async resolveReportArtifactGroupPlacement(input) {
+      const route = domainFolderForReportGroup(input.group)
+      const folder = await verifyRegistryPath(route.path)
+      if (folder.folderId !== ADA_OPS_REPORT_ROOT_ID || !input.platformId) {
+        throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
+      }
+      const { year, month, compactDate } = dateParts(input.shiftDate)
+      const shiftFolder = 'SHIFT_' + compactDate + '__' + safeScopeSegment(input.shiftId)
+      const folderSegments = [
+        safeScopeSegment(input.brandId),
+        safeScopeSegment(input.platformId),
+        year,
+        month,
+        shiftFolder,
+        reportArtifactGroupFolder(input.group),
+      ]
+      return {
+        provider: 'google_drive',
+        storageProfile: 'REPORT_ARTIFACT_GROUP',
+        rootFolderId: route.rootFolderId,
+        baseFolderId: route.folderId,
+        folderSegments,
+        folderPath: folderSegments.join('/'),
+        expectedBaseParentId: route.parentFolderId,
+        accessClassification: folder.accessClassification,
+        sensitive: route.sensitive,
+        fileName: sanitizeFileName(input.fileName),
+        logicalCategory: 'data_report',
+        periodLabel: month + '/' + year,
+      }
     },
   }
 }

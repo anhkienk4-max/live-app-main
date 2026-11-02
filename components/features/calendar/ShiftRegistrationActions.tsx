@@ -38,37 +38,31 @@ export function ShiftRegistrationActions({
   const enrichedShift = shift as Shift & { brand_name?: string; platform_name?: string }
   const [busyRole, setBusyRole] = React.useState<OperationalRole | null>(null)
   const [confirmRole, setConfirmRole] = React.useState<RegistrationCtaResult | null>(null)
-  const [resolvedBrandName, setResolvedBrandName] = React.useState<string | undefined>(brandName)
-  const [resolvedPlatformName, setResolvedPlatformName] = React.useState<string | undefined>(platformName)
+  const [loadedBrand, setLoadedBrand] = React.useState<{ id: string; name: string } | null>(null)
+  const [loadedPlatform, setLoadedPlatform] = React.useState<{ id: string; name: string } | null>(null)
+  const resolvedBrandName = brandName ?? enrichedShift.brand_name
+    ?? (loadedBrand?.id === shift.brand_id ? loadedBrand.name : undefined)
+  const resolvedPlatformName = platformName ?? enrichedShift.platform_name
+    ?? (loadedPlatform?.id === shift.platform_id ? loadedPlatform.name : undefined)
 
   React.useEffect(() => {
-    if (brandName) {
-      setResolvedBrandName(brandName)
-      return
-    }
-    if (enrichedShift.brand_name) {
-      setResolvedBrandName(enrichedShift.brand_name)
-      return
-    }
+    if (brandName || enrichedShift.brand_name) return
+    let cancelled = false
     void brandService.getAll().then(all => {
       const match = all.find(b => b.id === shift.brand_id)
-      if (match) setResolvedBrandName(match.name)
+      if (!cancelled && match) setLoadedBrand({ id: shift.brand_id, name: match.name })
     }).catch(() => {})
+    return () => { cancelled = true }
   }, [brandName, shift.brand_id, enrichedShift.brand_name])
 
   React.useEffect(() => {
-    if (platformName) {
-      setResolvedPlatformName(platformName)
-      return
-    }
-    if (enrichedShift.platform_name) {
-      setResolvedPlatformName(enrichedShift.platform_name)
-      return
-    }
+    if (platformName || enrichedShift.platform_name) return
+    let cancelled = false
     void platformService.getAll().then(all => {
       const match = all.find(p => p.id === shift.platform_id)
-      if (match) setResolvedPlatformName(match.name)
+      if (!cancelled && match) setLoadedPlatform({ id: shift.platform_id, name: match.name })
     }).catch(() => {})
+    return () => { cancelled = true }
   }, [platformName, shift.platform_id, enrichedShift.platform_name])
 
   const capacities = React.useMemo(() => getShiftRoleCapacities(shift, registrations), [registrations, shift])

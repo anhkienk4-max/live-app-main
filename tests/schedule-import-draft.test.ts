@@ -154,10 +154,9 @@ test('draft changes remain preserved across simulated page navigation', () => {
   const rowNumber = rowPage1.row_number
 
   // User edits row on page 1
-  let drafts = updateRowDraft({}, rowNumber, rowPage1, 'title', 'Renamed Morning Shift')
+  const drafts = updateRowDraft({}, rowNumber, rowPage1, 'title', 'Renamed Morning Shift')
 
   // User navigates to page 2 (rows 51-60)
-  let page = 2
   const page2Slice = committed.rows.slice(50, 60)
   assert.equal(page2Slice.length, 10)
 
@@ -165,7 +164,6 @@ test('draft changes remain preserved across simulated page navigation', () => {
   assert.ok(rowNumber in drafts)
 
   // User navigates back to page 1
-  page = 1
   const activeValue = rowDraftValue(drafts, rowNumber, 'title', rowPage1.title)
   assert.equal(activeValue, 'Renamed Morning Shift')
 })
