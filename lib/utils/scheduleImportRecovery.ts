@@ -20,7 +20,7 @@ type ShiftDraft = Omit<Shift, 'id' | 'created_at' | 'updated_at'>
 
 const normalizeTime = (value: string) => value.length > 5 ? value.slice(0, 5) : value
 
-const normalizeQualifier = (v?: string | null) => (v ? v.trim().toLowerCase() : '')
+const normalizeQualifier = (v?: string | null) => (v ? v.trim().toLowerCase().replace(/\s+/g, ' ') : '')
 
 export function hasExactScheduleImportIdentity(shift: Shift, candidate: ShiftDraft): boolean {
   if (
@@ -40,10 +40,6 @@ export function hasExactScheduleImportIdentity(shift: Shift, candidate: ShiftDra
   const shiftCampaign = normalizeQualifier(shift.campaign_id)
   const candidateCampaign = normalizeQualifier(candidate.campaign_id)
   if (shiftCampaign !== candidateCampaign) return false
-
-  const shiftTitle = normalizeQualifier(shift.title)
-  const candidateTitle = normalizeQualifier(candidate.title)
-  if (shiftTitle && candidateTitle && shiftTitle !== candidateTitle) return false
 
   return true
 }
@@ -95,12 +91,6 @@ function hasSameBatchSlotConflict(batchId: string, candidate: ShiftDraft, shifts
     const shiftCampaign = normalizeQualifier(shift.campaign_id)
     const candidateCampaign = normalizeQualifier(candidate.campaign_id)
     if (shiftCampaign && candidateCampaign && shiftCampaign !== candidateCampaign) {
-      return false
-    }
-
-    const shiftTitle = normalizeQualifier(shift.title)
-    const candidateTitle = normalizeQualifier(candidate.title)
-    if (shiftTitle && candidateTitle && shiftTitle !== candidateTitle) {
       return false
     }
 

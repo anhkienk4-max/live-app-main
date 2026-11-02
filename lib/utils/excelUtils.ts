@@ -404,36 +404,33 @@ export function parseScheduleRows(
   const candidates: Array<Omit<Shift, 'id' | 'created_at' | 'updated_at'>> = []
 
   type ShiftDraft = Omit<Shift, 'id' | 'created_at' | 'updated_at'>
-  const normalizeQualifier = (v?: string | null) => (v ? v.trim().toLowerCase() : '')
+  const normalizeQualifier = (v?: string | null) => (v ? v.trim().toLowerCase().replace(/\s+/g, ' ') : '')
 
   const slotKey = (s: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>) =>
     `${s.date}|${normalizeTime(s.start_time)}|${normalizeTime(s.end_time)}|${s.brand_id}|${s.platform_id}`
 
   const compareShiftQualifiers = (
-    a: Pick<Shift, 'studio' | 'campaign_id' | 'title'>,
-    b: Pick<Shift, 'studio' | 'campaign_id' | 'title'>,
+    a: Pick<Shift, 'studio' | 'campaign_id'>,
+    b: Pick<Shift, 'studio' | 'campaign_id'>,
   ): 'distinct' | 'exact' | 'collision' => {
     const stA = normalizeQualifier(a.studio)
     const stB = normalizeQualifier(b.studio)
     const cpA = normalizeQualifier(a.campaign_id)
     const cpB = normalizeQualifier(b.campaign_id)
-    const ttA = normalizeQualifier(a.title)
-    const ttB = normalizeQualifier(b.title)
 
-    // 1. If any non-empty qualifier differs, they are distinct operational sessions
+    // 1. If physical studio differs, they are distinct operational sessions (parallel livestreams)
     if (stA && stB && stA !== stB) return 'distinct'
+    // 2. If campaign differs, they are distinct operational sessions (parallel livestreams)
     if (cpA && cpB && cpA !== cpB) return 'distinct'
-    if (ttA && ttB && ttA !== ttB) return 'distinct'
 
-    // 2. If one specifies a qualifier and the other is blank, identity is ambiguous (collision)
+    // 3. If one specifies a discriminator and the other is blank, identity is ambiguous (collision)
     const studioConflict = (stA && !stB) || (!stA && stB)
     const campaignConflict = (cpA && !cpB) || (!cpA && cpB)
-    const titleConflict = (ttA && !ttB) || (!ttA && ttB)
-    if (studioConflict || campaignConflict || titleConflict) {
+    if (studioConflict || campaignConflict) {
       return 'collision'
     }
 
-    // 3. All qualifiers match (or are both empty) -> exact match
+    // 4. Qualifiers match (both same studio & campaign, or both empty) -> exact match
     return 'exact'
   }
 

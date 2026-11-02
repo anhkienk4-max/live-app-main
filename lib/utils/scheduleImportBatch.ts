@@ -172,7 +172,11 @@ export function isRowImported(row: ImportBatchRow): boolean {
  * unidentifiable one) must surface as retryable instead of being silently
  * skipped as a duplicate.
  */
-export const SCHEDULE_IMPORT_SLOT_CONSTRAINT = 'shifts_active_slot_uidx'
+export const SCHEDULE_IMPORT_SLOT_CONSTRAINTS = [
+  'shifts_active_identity_uidx',
+  'shifts_active_slot_uidx',
+] as const
+export const SCHEDULE_IMPORT_SLOT_CONSTRAINT = 'shifts_active_identity_uidx'
 
 export function isScheduleImportDuplicateError(error: unknown): boolean {
   const shaped = error as
@@ -185,7 +189,7 @@ export function isScheduleImportDuplicateError(error: unknown): boolean {
   const isUniqueViolation = shaped?.code === '23505'
     || /duplicate key value violates unique constraint/i.test(text)
   if (!isUniqueViolation) return false
-  return text.includes(SCHEDULE_IMPORT_SLOT_CONSTRAINT)
+  return SCHEDULE_IMPORT_SLOT_CONSTRAINTS.some(constraint => text.includes(constraint))
 }
 
 export function scheduleImportFailureCode(error: unknown): string {
