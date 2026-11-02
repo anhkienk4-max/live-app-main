@@ -139,17 +139,17 @@ test('RC19 05A migration chain on PostgreSQL 17 preserves registry, security, re
     `))
 
     const access = await client.query(`
-      SELECT table_name, relrowsecurity,
-        has_table_privilege('anon', format('public.%I', table_name), 'SELECT') AS anon_select,
-        has_table_privilege('authenticated', format('public.%I', table_name), 'SELECT') AS authenticated_select,
-        has_table_privilege('service_role', format('public.%I', table_name), 'SELECT') AS service_role_select
+      SELECT c.relname AS table_name, c.relrowsecurity,
+        has_table_privilege('anon', format('public.%I', c.relname), 'SELECT') AS anon_select,
+        has_table_privilege('authenticated', format('public.%I', c.relname), 'SELECT') AS authenticated_select,
+        has_table_privilege('service_role', format('public.%I', c.relname), 'SELECT') AS service_role_select
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relname IN (
         'operational_storage_domain_folders', 'operational_schedule_source_files',
         'operational_storage_drive_probe_runs', 'operational_storage_drive_probe_rate_limits'
       )
-      ORDER BY table_name
+      ORDER BY c.relname
     `)
     assert.equal(access.rows.length, 4)
     assert.ok(access.rows.every(row => row.relrowsecurity))
