@@ -20,7 +20,10 @@ type ShiftDraft = Omit<Shift, 'id' | 'created_at' | 'updated_at'>
 
 const normalizeTime = (value: string) => value.length > 5 ? value.slice(0, 5) : value
 
-const normalizeQualifier = (v?: string | null) => (v ? v.trim().toLowerCase().replace(/\s+/g, ' ') : '')
+export const normalizeShiftQualifier = (v?: string | null): string =>
+  (v ? v.trim().toLowerCase().replace(/\s+/g, ' ') : '')
+
+const normalizeQualifier = normalizeShiftQualifier
 
 export function hasExactScheduleImportIdentity(shift: Shift, candidate: ShiftDraft): boolean {
   if (

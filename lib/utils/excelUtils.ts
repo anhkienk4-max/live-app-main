@@ -137,6 +137,9 @@ const textValue = (value: unknown): string => {
   return String(value ?? '')
 }
 
+export const normalizeShiftQualifier = (v?: string | null): string =>
+  (v ? v.trim().toLowerCase().replace(/\s+/g, ' ') : '')
+
 export const normalizeLookup = (value: unknown) => textValue(value)
   .normalize('NFKC')
   .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\u2060\uFEFF]/g, '')
@@ -404,7 +407,7 @@ export function parseScheduleRows(
   const candidates: Array<Omit<Shift, 'id' | 'created_at' | 'updated_at'>> = []
 
   type ShiftDraft = Omit<Shift, 'id' | 'created_at' | 'updated_at'>
-  const normalizeQualifier = (v?: string | null) => (v ? v.trim().toLowerCase().replace(/\s+/g, ' ') : '')
+  const normalizeQualifier = normalizeShiftQualifier
 
   const slotKey = (s: Pick<Shift, 'date' | 'start_time' | 'end_time' | 'brand_id' | 'platform_id'>) =>
     `${s.date}|${normalizeTime(s.start_time)}|${normalizeTime(s.end_time)}|${s.brand_id}|${s.platform_id}`
