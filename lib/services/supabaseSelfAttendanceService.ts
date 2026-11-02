@@ -59,6 +59,26 @@ export async function writeSelfAttendancePhotoCheckOut(
   return writeSelfAttendancePhoto(shiftId,role,'check_out',requestId,photo,captureSource)
 }
 
+export interface SelfAttendancePhotoReviewContext {
+  event_id:string; shift_id:string; role:AttendanceRole; event:AttendanceEventKind
+  review_version:number; decision:'approved'|'rejected'|'correction_requested'|null
+  reason:string|null; evidence_request_id:string|null; can_submit_correction:boolean
+}
+
+export async function readSelfAttendancePhotoReviewContext(eventId:string):Promise<SelfAttendancePhotoReviewContext> {
+  const response=await fetch(`/api/workforce/self-attendance-photo/correction?event_id=${encodeURIComponent(eventId)}`,{credentials:'same-origin',cache:'no-store'})
+  const payload=await response.json()
+  if(!response.ok||payload?.ok!==true)throw new Error(payload?.error?.code||'ATTENDANCE_REVIEW_CONTEXT_UNAVAILABLE')
+  return payload.context as SelfAttendancePhotoReviewContext
+}
+
+export async function submitSelfAttendancePhotoCorrection(eventId:string,requestId:string,file:File,captureSource:'camera'|'file_picker') {
+  const form=new FormData();form.set('event_id',eventId);form.set('request_id',requestId);form.set('capture_source',captureSource);form.set('file',file)
+  const response=await fetch('/api/workforce/self-attendance-photo/correction',{method:'POST',body:form,credentials:'same-origin',cache:'no-store'})
+  const payload=await response.json()
+  if(!response.ok||payload?.ok!==true)throw new Error(payload?.error?.code||'ATTENDANCE_PHOTO_CORRECTION_FAILED')
+  return payload as {ok:true;request_id:string;replayed?:boolean}
+}
 /** Resume a server-verified photo reservation after reload or network failure.
  * This deliberately sends no image bytes, Drive IDs, staff ID or provider path. */
 export async function recoverSelfAttendancePhoto(
