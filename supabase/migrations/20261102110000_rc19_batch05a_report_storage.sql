@@ -175,10 +175,7 @@ declare
   screenshot_url_value text := nullif(p_data ->> 'screenshot_url', '');
   screenshot_path_value text := nullif(p_data ->> 'screenshot_storage_path', '');
 begin
-  actor_id := private.current_business_user_id();
-  if actor_id is null then
-    raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED';
-  end if;
+  actor_id := private.require_shift_actor(true);
   if shift_key is null or not private.can_read_shift(shift_key) then
     raise exception using errcode = '42501', message = 'DASHBOARD_UPDATE_NOT_ALLOWED';
   end if;

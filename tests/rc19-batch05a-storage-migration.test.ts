@@ -30,6 +30,8 @@ test('Batch 05A migration applies on isolated PostgreSQL 17 and enforces provide
         checksum_sha256 text, mime_type text, deleted_at timestamptz
       );
       create table public.shifts (id text primary key, status text, deleted_at timestamptz, archived_at timestamptz);
+      create table private.actor_context (singleton boolean primary key default true, actor_id text, permission text);
+      insert into private.actor_context (actor_id, permission) values ('business-1', 'leader');
       create table public.dashboard_updates (
         id text primary key default gen_random_uuid()::text, shift_id text not null,
         time timestamptz not null, revenue numeric not null, gmv numeric, orders integer not null,
@@ -58,8 +60,25 @@ test('Batch 05A migration applies on isolated PostgreSQL 17 and enforces provide
         returning * into result;
         return result;
       end $$;
-      create function private.current_business_user_id() returns text language sql as $$
-        select 'business-1'::text $$;
+      create function private.current_business_user_id() returns text language sql security definer set search_path = '' as $$
+        select actor_id from private.actor_context limit 1 $$;
+      create function private.current_system_permission() returns text language sql security definer set search_path = '' as $$
+        select permission from private.actor_context limit 1 $$;
+      create function private.is_leader_or_admin() returns boolean language sql security definer set search_path = '' as $$
+        select private.current_system_permission() in ('leader', 'admin') $$;
+      create function private.require_shift_actor(p_leader_required boolean) returns text
+        language plpgsql security definer set search_path = '' as $$
+      declare actor_id text;
+      begin
+        actor_id := private.current_business_user_id();
+        if actor_id is null then
+          raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED';
+        end if;
+        if p_leader_required and not private.is_leader_or_admin() then
+          raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
+        end if;
+        return actor_id;
+      end $$;
       create function private.can_read_shift(text) returns boolean language sql as $$
         select true $$;
       insert into public.shifts(id, status) values ('shift-1', 'live');
@@ -68,6 +87,10 @@ test('Batch 05A migration applies on isolated PostgreSQL 17 and enforces provide
     assert.equal((await db.query(`select public from storage.buckets where id='live-dashboard-images'`)).rows[0]?.public, false)
     const imagePolicies = await db.query(`select policyname from pg_policies where schemaname='storage' and tablename='objects'`)
     assert.deepEqual(imagePolicies.rows, [{ policyname: 'live dashboard image scoped read' }])
+    const rpcPrivileges = await db.query(`select
+      has_function_privilege('anon', 'public.create_dashboard_update(jsonb)', 'execute') as anon_can_execute,
+      has_function_privilege('authenticated', 'public.create_dashboard_update(jsonb)', 'execute') as authenticated_can_execute`)
+    assert.deepEqual(rpcPrivileges.rows[0], { anon_can_execute: false, authenticated_can_execute: true })
 
     const uploaded = await db.query(`select (public.upload_report_image_with_storage_metadata(
       'report-1', 'report/path.png', 'report/path.png', 'image.png', 'image/png', 3,
@@ -77,6 +100,24 @@ test('Batch 05A migration applies on isolated PostgreSQL 17 and enforces provide
     await assert.rejects(() => db.query(`select public.upload_report_image_with_storage_metadata(
       'report-1', 'path', 'path', 'image.png', 'image/png', 3, 'receipt', null,
       'drive-id', 'folder-id', '${'a'.repeat(64)}')`))
+
+    assert.equal((await db.query(`select private.can_read_shift('shift-1') as can_read`)).rows[0]?.can_read, true)
+    await db.exec(`update private.actor_context set permission='member'`)
+    await assert.rejects(() => db.query(`select public.create_dashboard_update(jsonb_build_object(
+      'shift_id', 'shift-1'
+    ))`), /OPERATION_NOT_ALLOWED/u)
+    await db.exec(`update private.actor_context set actor_id=null`)
+    await assert.rejects(() => db.query(`select public.create_dashboard_update(jsonb_build_object(
+      'shift_id', 'shift-1'
+    ))`), /AUTHENTICATION_REQUIRED/u)
+    await db.exec(`update private.actor_context set actor_id='business-1', permission='leader'`)
+
+    await db.exec(`update private.actor_context set permission='admin'`)
+    const adminUpdate = await db.query(`select created_by from public.create_dashboard_update(jsonb_build_object(
+      'shift_id', 'shift-1'
+    ))`)
+    assert.equal(adminUpdate.rows[0]?.created_by, 'business-1')
+    await db.exec(`update private.actor_context set permission='leader'`)
 
     const live = await db.query(`select (public.upsert_live_report_image_with_storage_metadata(jsonb_build_object(
       'provider', 'google_drive', 'external_file_id', 'drive-live-image',
