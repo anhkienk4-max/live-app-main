@@ -28,6 +28,7 @@ function fakeStorage(options: {
   uploadInputs?: FileUploadInput[]
 } = {}) {
   const calls = options.calls || []
+  const uploaded = new Map<string, { parentId: string; bytes: Uint8Array }>()
   return {
     calls,
     async upload(input: FileUploadInput): Promise<FileUploadResult> {
@@ -35,11 +36,16 @@ function fakeStorage(options: {
       if (options.uploadError) throw options.uploadError
       const provider = input.destination?.provider || options.uploadProvider || 'google_drive'
       calls.push(`${provider}:upload`)
+      uploaded.set(`${provider}-file`, {
+        parentId: input.external_parent_id || '',
+        bytes: new Uint8Array(input.content),
+      })
       return {
         asset: {
           id: `${provider}-asset`,
           provider,
           external_file_id: `${provider}-file`,
+          external_parent_id: input.external_parent_id,
           name: input.name,
           mime_type: input.mime_type,
           size_bytes: input.size_bytes,
@@ -58,7 +64,11 @@ function fakeStorage(options: {
     },
     async read(reference: { provider: FileProviderName; external_file_id: string }) {
       calls.push(`${reference.provider}:read:${reference.external_file_id}`)
-      return options.readBytes || new Uint8Array([1, 2, 3])
+      return options.readBytes || uploaded.get(reference.external_file_id)?.bytes || new Uint8Array([1, 2, 3])
+    },
+    async getMetadata(reference: { provider: FileProviderName; external_file_id: string }) {
+      const object = uploaded.get(reference.external_file_id)
+      return { kind: 'file' as const, parent_ids: object?.parentId ? [object.parentId] : [] }
     },
     async delete(reference: { provider: FileProviderName; external_file_id: string }) {
       calls.push(`${reference.provider}:delete:${reference.external_file_id}`)
@@ -189,7 +199,7 @@ test('RC1.2 report and live uploads use the selected provider once and persist i
     assert.equal(payload.ok, true)
     assert.equal(payload.image?.external_file_id, undefined, 'provider IDs stay server-side')
     assert.deepEqual(calls.filter(call => call.endsWith(':upload')), [`${provider}:upload`])
-    const rpcCall = calls.find(call => call.startsWith(kind === 'report' ? 'upload_report_image_with_provider' : 'upsert_live_report_image_with_provider'))
+    const rpcCall = calls.find(call => call.startsWith(kind === 'report' ? 'upload_report_image_with_storage_metadata' : 'upsert_live_report_image_with_storage_metadata'))
     assert.match(rpcCall || '', new RegExp(`"p_provider":"${provider}"|"provider":"${provider}"`))
   }
 })

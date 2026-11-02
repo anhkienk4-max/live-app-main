@@ -47,7 +47,7 @@ import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/a
 
 type ReportImageKind = 'report' | 'live'
 type CloudProvider = Extract<FileProviderName, 'google_drive' | 'onedrive'>
-type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder'>
+type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'getMetadata' | 'delete' | 'ensureFolder'>
 type ReportShiftContext = {
   date: string
   brand_id: string
@@ -309,6 +309,30 @@ function logicalMetadataPath(placement: OperationalStoragePlacement): string {
   return [...placement.folderSegments, placement.fileName].join('/')
 }
 
+async function verifyProviderImage(
+  storage: StorageGateway,
+  row: Record<string, unknown>,
+  provider: CloudProvider,
+  parentId: string,
+  checksum: string,
+  sizeBytes: number,
+) {
+  if (row.provider !== provider || typeof row.external_file_id !== 'string'
+    || (typeof row.external_parent_id === 'string' && row.external_parent_id !== parentId)
+    || (typeof row.checksum_sha256 === 'string' && row.checksum_sha256 !== checksum)) {
+    throw new ReportImageRouteError('REPORT_IMAGE_PROVIDER_READBACK_FAILED', 502)
+  }
+  const reference = { provider, external_file_id: row.external_file_id }
+  const metadata = await storage.getMetadata(reference)
+  if (metadata.kind !== 'file' || !metadata.parent_ids?.includes(parentId)) {
+    throw new ReportImageRouteError('REPORT_IMAGE_PROVIDER_READBACK_FAILED', 502)
+  }
+  const bytes = await storage.read(reference)
+  if (bytes.byteLength !== sizeBytes || createHash('sha256').update(bytes).digest('hex') !== checksum) {
+    throw new ReportImageRouteError('REPORT_IMAGE_PROVIDER_READBACK_FAILED', 502)
+  }
+}
+
 function existingRoutedImage(
   row: Record<string, unknown>,
   categoryField: 'image_type' | 'category',
@@ -409,6 +433,7 @@ function safeProviderErrorMessage(code: string) {
     GOOGLE_DRIVE_AUTH_FAILED: 'Google Drive authentication failed.',
     GOOGLE_DRIVE_FOLDER_NOT_FOUND: 'Google Drive destination folder was not found.',
     GOOGLE_DRIVE_FOLDER_AMBIGUOUS: 'Google Drive has multiple matching destination folders.',
+    GOOGLE_DRIVE_FOLDER_OUTSIDE_ROOT: 'Google Drive destination is outside the authorized operational root.',
     GOOGLE_DRIVE_UPLOAD_FAILED: 'Google Drive could not upload the report image.',
     GOOGLE_DRIVE_NETWORK_ERROR: 'Google Drive could not be reached.',
     GOOGLE_DRIVE_RATE_LIMITED: 'Google Drive is temporarily rate limiting uploads.',
@@ -449,16 +474,25 @@ async function uploadReportImage(
   const provider: CloudProvider = parsed.data.provider ?? 'google_drive'
   const placement = await resolvePlacementWithContext(dependencies.routeResolver, routedPlacementInput(provider, shift, category, name))
   const logicalPath = logicalMetadataPath(placement)
+  const checksum = createHash('sha256').update(bytes).digest('hex')
   const existing = await client.from('report_images')
     .select(dependencies.routingMode === 'compat' ? legacyReportImageColumns : '*')
     .eq('report_id', parsed.data.report_id)
     .eq('storage_path', logicalPath)
     .maybeSingle()
   if (existing.error) throw existing.error
-  if (existing.data) return existingRoutedImage(
-    existing.data as unknown as Record<string, unknown>, 'image_type', parsed.data.image_type, provider,
-    dependencies.routingMode, 'image_url',
-  )
+  if (existing.data) {
+    const row = existing.data as unknown as Record<string, unknown>
+    const image = existingRoutedImage(row, 'image_type', parsed.data.image_type, provider, dependencies.routingMode, 'image_url')
+    if (dependencies.routingMode === 'database') {
+      const existingParentId = typeof row.external_parent_id === 'string'
+        ? row.external_parent_id
+        : await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
+      await verifyProviderImage(storage, row, provider, existingParentId, checksum, bytes.byteLength)
+    }
+    return image
+  }
+  const exactParentId = await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
   await inUploadPhase('validation', () => {
     validateFileUploadInput({
       name,
@@ -471,7 +505,6 @@ async function uploadReportImage(
     logical_path: logicalPath,
     })
   })
-  const exactParentId = await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
   const result = await inUploadPhase('provider_upload', () => storage.upload({
     name,
     mime_type: fileValue.type,
@@ -484,6 +517,19 @@ async function uploadReportImage(
     external_parent_id: exactParentId,
     destination: { provider },
   }))
+  if (dependencies.routingMode === 'database') {
+    try {
+      await verifyProviderImage(storage, {
+        provider: result.asset.provider,
+        external_file_id: result.asset.external_file_id,
+        external_parent_id: result.asset.external_parent_id,
+      }, provider, exactParentId, checksum, bytes.byteLength)
+    } catch {
+      try { await storage.delete({ provider, external_file_id: result.asset.external_file_id }) }
+      catch { console.error('REPORT_IMAGE_UPLOAD_CLEANUP_FAILED') }
+      throw new ReportImageRouteError('REPORT_IMAGE_PROVIDER_READBACK_FAILED', 502)
+    }
+  }
   try {
     const persisted = await inUploadPhase('metadata_persist', async () => {
       const persistedResult = await (dependencies.routingMode === 'compat'
@@ -499,7 +545,7 @@ async function uploadReportImage(
           p_size_bytes: bytes.byteLength,
           p_image_type: parsed.data.image_type,
         }).single()
-      : client.rpc('upload_report_image_with_provider', {
+      : client.rpc('upload_report_image_with_storage_metadata', {
           p_report_id: parsed.data.report_id,
           p_storage_path: logicalPath,
           p_image_url: logicalPath,
@@ -509,6 +555,8 @@ async function uploadReportImage(
           p_image_type: parsed.data.image_type,
           p_provider: result.asset.provider,
           p_external_file_id: result.asset.external_file_id,
+          p_external_parent_id: exactParentId,
+          p_checksum_sha256: checksum,
         }).single())
       if (persistedResult.error) throw persistedResult.error
       return publicRow((persistedResult.data || {}) as Record<string, unknown>, 'report')
@@ -554,6 +602,7 @@ async function uploadLiveReportImage(
   const category = reportImageLogicalCategory('live', parsed.data.category)
   const name = providerStorageFileName(shift.date, parsed.data.category, sourceName, bytes)
   const idempotencyKey = `${parsed.data.category}:${createHash('sha256').update(bytes).digest('hex')}`
+  const checksum = createHash('sha256').update(bytes).digest('hex')
   const provider: CloudProvider = parsed.data.provider ?? 'google_drive'
   const placement = await resolvePlacementWithContext(dependencies.routeResolver, routedPlacementInput(provider, shift, category, name))
   const logicalPath = logicalMetadataPath(placement)
@@ -566,17 +615,22 @@ async function uploadLiveReportImage(
     if (existing.error) throw existing.error
     const matching = (existing.data ?? []) as unknown as Record<string, unknown>[]
     if (matching.length > 1) throw new ReportImageRouteError('REPORT_IMAGE_FILE_NAME_CONFLICT', 409)
-    if (matching.length > 0) return existingRoutedImage(
-      matching[0], 'category', parsed.data.category, provider, 'compat', 'file_url',
-    )
+    if (matching.length > 0) return existingRoutedImage(matching[0], 'category', parsed.data.category, provider, 'compat', 'file_url')
   } else {
     const existing = await client.from('live_report_images').select('*')
       .eq('report_id', parsed.data.report_id).eq('storage_idempotency_key', idempotencyKey).maybeSingle()
     if (existing.error) throw existing.error
-    if (existing.data) return existingRoutedImage(
-      existing.data as Record<string, unknown>, 'category', parsed.data.category, provider, 'database', 'file_url',
-    )
+    if (existing.data) {
+      const row = existing.data as Record<string, unknown>
+      const image = existingRoutedImage(row, 'category', parsed.data.category, provider, 'database', 'file_url')
+      const existingParentId = typeof row.external_parent_id === 'string'
+        ? row.external_parent_id
+        : await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
+      await verifyProviderImage(storage, row, provider, existingParentId, checksum, bytes.byteLength)
+      return image
+    }
   }
+  const exactParentId = await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
   await inUploadPhase('validation', () => validateFileUploadInput({
     name,
     mime_type: fileValue.type,
@@ -587,7 +641,6 @@ async function uploadLiveReportImage(
     created_by: user.businessUserId || user.id,
     logical_path: logicalPath,
   }))
-  const exactParentId = await inUploadPhase('folder_materialization', () => dependencies.materializeFolders(placement))
   const result = await inUploadPhase('provider_upload', () => storage.upload({
     name,
     mime_type: fileValue.type,
@@ -600,11 +653,24 @@ async function uploadLiveReportImage(
     external_parent_id: exactParentId,
     destination: { provider },
   }))
+  if (dependencies.routingMode === 'database') {
+    try {
+      await verifyProviderImage(storage, {
+        provider: result.asset.provider,
+        external_file_id: result.asset.external_file_id,
+        external_parent_id: result.asset.external_parent_id,
+      }, provider, exactParentId, checksum, bytes.byteLength)
+    } catch {
+      try { await storage.delete({ provider, external_file_id: result.asset.external_file_id }) }
+      catch { console.error('LIVE_REPORT_IMAGE_UPLOAD_CLEANUP_FAILED') }
+      throw new ReportImageRouteError('REPORT_IMAGE_PROVIDER_READBACK_FAILED', 502)
+    }
+  }
   let persistedRow: Record<string, unknown>
   try {
     const persistedRowResult = await inUploadPhase('metadata_persist', async () => {
       const persisted = await client.rpc(
-      dependencies.routingMode === 'compat' ? 'upsert_live_report_image' : 'upsert_live_report_image_with_provider', {
+      dependencies.routingMode === 'compat' ? 'upsert_live_report_image' : 'upsert_live_report_image_with_storage_metadata', {
       p_data: {
         report_id: parsed.data.report_id,
         category: parsed.data.category,
@@ -627,6 +693,8 @@ async function uploadLiveReportImage(
         ...(dependencies.routingMode === 'database' ? {
           provider: result.asset.provider,
           external_file_id: result.asset.external_file_id,
+          external_parent_id: exactParentId,
+          checksum_sha256: checksum,
         } : {}),
       },
       }).single()
@@ -747,7 +815,17 @@ export function createReportImageRouteHandler(dependencies: {
           ? { provider: provider as CloudProvider, external_file_id: externalId }
           : cloudReferenceForRow(kind, row)
         if (cloudReference) {
+          const metadata = await storage.getMetadata(cloudReference)
+          if (typeof row.external_parent_id === 'string'
+            && !metadata.parent_ids?.includes(row.external_parent_id)) {
+            return errorResponse('REPORT_IMAGE_PROVIDER_REFERENCE_STALE', 'The report image is no longer in its recorded Drive folder.', 409)
+          }
           bytes = await storage.read(cloudReference)
+          if ((typeof row.size_bytes === 'number' && bytes.byteLength !== row.size_bytes)
+            || (typeof row.checksum_sha256 === 'string'
+              && createHash('sha256').update(bytes).digest('hex') !== row.checksum_sha256)) {
+            return errorResponse('REPORT_IMAGE_PROVIDER_READBACK_MISMATCH', 'The report image failed its stored integrity check.', 502)
+          }
         } else {
           const path = kind === 'report' ? row.storage_path || row.image_url : row.file_url
           if (typeof path !== 'string' || !path) return errorResponse('REPORT_IMAGE_NOT_FOUND', 'The report image was not found.', 404)

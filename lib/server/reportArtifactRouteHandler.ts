@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import * as XLSX from 'xlsx'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -50,7 +51,7 @@ import {
 import { readFormDataBody, readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 
 type CloudProvider = 'google_drive' | 'onedrive'
-type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'delete' | 'ensureFolder'>
+type StorageGateway = Pick<ReturnType<typeof createFileStorageService>, 'upload' | 'read' | 'getMetadata' | 'delete' | 'ensureFolder'>
 
 type ReportShiftContext = {
   date: string
@@ -292,6 +293,25 @@ async function workbookContext(client: SupabaseClient, report: Report, shift: Sh
   }
 }
 
+function addFinalInsights(bytes: Uint8Array, report: Report) {
+  const workbook = XLSX.read(bytes, { type: 'array' })
+  const rows: unknown[][] = [['Insight', 'Part', 'Content']]
+  for (const [label, value] of [
+    ['What Went Well', report.insights_good ?? ''],
+    ['Improvement Areas', report.insights_improvement ?? ''],
+  ]) {
+    if (!value) rows.push([label, 1, ''])
+    for (let offset = 0, part = 1; offset < value.length; part++) {
+      let end = Math.min(offset + 32000, value.length)
+      if (end < value.length && /[\uD800-\uDBFF]/u.test(value[end - 1])) end--
+      rows.push([label, part, value.slice(offset, end)])
+      offset = end
+    }
+  }
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), '05_FINAL_INSIGHTS')
+  return new Uint8Array(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }))
+}
+
 async function findExisting(
   client: SupabaseClient,
   reportId: string,
@@ -307,6 +327,29 @@ async function findExisting(
     .maybeSingle()
   if (result.error) throw result.error
   return result.data as Record<string, unknown> | null
+}
+
+async function verifyProviderArtifact(
+  storage: StorageGateway,
+  row: Record<string, unknown>,
+  provider: CloudProvider,
+  parentId: string,
+  checksum: string,
+  sizeBytes: number,
+) {
+  if (row.provider !== provider || row.external_parent_id !== parentId
+    || typeof row.external_file_id !== 'string' || row.checksum_sha256 !== checksum) {
+    throw new Error('REPORT_ARTIFACT_PROVIDER_READBACK_FAILED')
+  }
+  const reference = { provider, external_file_id: row.external_file_id }
+  const metadata = await storage.getMetadata(reference)
+  if (metadata.kind !== 'file' || !metadata.parent_ids?.includes(parentId)) {
+    throw new Error('REPORT_ARTIFACT_PROVIDER_READBACK_FAILED')
+  }
+  const bytes = await storage.read(reference)
+  if (bytes.byteLength !== sizeBytes || createHash('sha256').update(bytes).digest('hex') !== checksum) {
+    throw new Error('REPORT_ARTIFACT_PROVIDER_READBACK_FAILED')
+  }
 }
 
 async function persistUploadedArtifact(input: {
@@ -325,17 +368,6 @@ async function persistUploadedArtifact(input: {
   routeResolver: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
   materializeFolders: (placement: OperationalStoragePlacement) => Promise<string>
 }) {
-  const existing = await findExisting(
-    input.client,
-    input.report.id,
-    input.logicalCategory,
-    input.artifactKey,
-  )
-  if (existing) {
-    if (existing.provider !== input.provider) throw new Error('REPORT_ARTIFACT_PROVIDER_CONFLICT')
-    return publicArtifact(existing)
-  }
-
   const checksum = createHash('sha256').update(input.bytes).digest('hex')
   const storageName = providerStorageFileName(
     input.shift.date,
@@ -351,6 +383,18 @@ async function persistUploadedArtifact(input: {
   ))
   const parentId = await input.materializeFolders(placement)
   const logicalPath = [...placement.folderSegments, placement.fileName].join('/')
+
+  const existing = await findExisting(
+    input.client,
+    input.report.id,
+    input.logicalCategory,
+    input.artifactKey,
+  )
+  if (existing) {
+    if (existing.provider !== input.provider) throw new Error('REPORT_ARTIFACT_PROVIDER_CONFLICT')
+    await verifyProviderArtifact(input.storage, existing, input.provider, parentId, checksum, input.bytes.byteLength)
+    return publicArtifact(existing)
+  }
 
   validateFileUploadInput({
     name: storageName,
@@ -377,6 +421,19 @@ async function persistUploadedArtifact(input: {
     external_parent_id: parentId,
     destination: { provider: input.provider },
   })
+
+  try {
+    await verifyProviderArtifact(input.storage, {
+      provider: uploaded.asset.provider,
+      external_file_id: uploaded.asset.external_file_id,
+      external_parent_id: uploaded.asset.external_parent_id,
+      checksum_sha256: checksum,
+    }, input.provider, parentId, checksum, input.bytes.byteLength)
+  } catch {
+    try { await input.storage.delete({ provider: input.provider, external_file_id: uploaded.asset.external_file_id }) }
+    catch { console.error('REPORT_ARTIFACT_UPLOAD_CLEANUP_FAILED') }
+    throw new Error('REPORT_ARTIFACT_PROVIDER_READBACK_FAILED')
+  }
 
   const row = {
     provider: uploaded.asset.provider,
@@ -405,18 +462,18 @@ async function persistUploadedArtifact(input: {
     input.logicalCategory,
     input.artifactKey,
   )
-  try {
-    await input.storage.delete({
-      provider: uploaded.asset.provider as CloudProvider,
-      external_file_id: uploaded.asset.external_file_id,
-    })
-  } catch {
-    console.error('REPORT_ARTIFACT_UPLOAD_CLEANUP_FAILED')
-  }
   if (winner) {
     if (winner.provider !== input.provider) throw new Error('REPORT_ARTIFACT_PROVIDER_CONFLICT')
+    if (winner.external_file_id === uploaded.asset.external_file_id) {
+      await verifyProviderArtifact(input.storage, winner, input.provider, parentId, checksum, input.bytes.byteLength)
+      return publicArtifact(winner)
+    }
+    try { await input.storage.delete({ provider: input.provider, external_file_id: uploaded.asset.external_file_id }) }
+    catch { console.error('REPORT_ARTIFACT_UPLOAD_CLEANUP_FAILED') }
     return publicArtifact(winner)
   }
+  try { await input.storage.delete({ provider: input.provider, external_file_id: uploaded.asset.external_file_id }) }
+  catch { console.error('REPORT_ARTIFACT_UPLOAD_CLEANUP_FAILED') }
   throw inserted.error || new Error('REPORT_ARTIFACT_METADATA_PERSIST_FAILED')
 }
 
@@ -467,7 +524,18 @@ export function createReportArtifactRouteHandler(dependencies: {
           if ((provider !== 'google_drive' && provider !== 'onedrive') || typeof externalFileId !== 'string') {
             return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
           }
-          const bytes = await storage.read({ provider, external_file_id: externalFileId })
+          const reference = { provider: provider as CloudProvider, external_file_id: externalFileId }
+          const metadata = await storage.getMetadata(reference)
+          if (metadata.kind !== 'file' || (typeof row.external_parent_id === 'string'
+            && !metadata.parent_ids?.includes(row.external_parent_id))) {
+            return errorResponse('REPORT_ARTIFACT_REFERENCE_STALE', 'The report artifact is no longer in its recorded Drive folder.', 409)
+          }
+          const bytes = await storage.read(reference)
+          if ((typeof row.size_bytes === 'number' && bytes.byteLength !== row.size_bytes)
+            || (typeof row.checksum_sha256 === 'string'
+              && createHash('sha256').update(bytes).digest('hex') !== row.checksum_sha256)) {
+            return errorResponse('REPORT_ARTIFACT_READBACK_MISMATCH', 'The report artifact failed its stored integrity check.', 502)
+          }
           return new Response(bytes as BodyInit, {
             headers: {
               'Cache-Control': 'private, no-store',
@@ -559,7 +627,7 @@ export function createReportArtifactRouteHandler(dependencies: {
         }
         const version = report.version_number ?? 0
         const context = await workbookContext(client, report, shift)
-        const bytes = buildReportDetailWorkbookBytes(report, context)
+        const bytes = addFinalInsights(buildReportDetailWorkbookBytes(report, context), report)
         const artifact = await persistUploadedArtifact({
           client,
           storage,

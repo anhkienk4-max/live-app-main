@@ -58,6 +58,7 @@ function harness(options: {
   const routeInputs: OperationalStoragePlacementInput[] = []
   let reportImage = options.existingReportImage ?? null
   let liveImage = options.existingLiveImage ?? null
+  const objects = new Map<string, { parentId: string; bytes: Uint8Array }>()
   const report = { id: 'report-1', shift_id: 'shift-1', created_at: '2026-09-19T23:30:00-07:00', submitted_by: 'business-1', metrics_confirmed: false, status: 'draft' }
   const shift = options.shift ?? { date: '2026-10-01', brand_id: 'stg-b1', platform_id: 'stg-p1', execution_source: 'internal' }
   const client = {
@@ -81,14 +82,15 @@ function harness(options: {
       calls.push(`${name}:${JSON.stringify(args)}`)
       return { single: async () => {
         if (options.rpcError) return { data: null, error: options.rpcError }
-        if (name === 'upsert_live_report_image_with_provider') {
+        if (name === 'upsert_live_report_image_with_storage_metadata' || name === 'upsert_live_report_image_with_provider') {
           liveImage = { id: 'live-image-1', ...(args.p_data as Record<string, unknown>) }
           return { data: liveImage, error: null }
         }
-        if (name === 'upload_report_image_with_provider') {
+        if (name === 'upload_report_image_with_storage_metadata' || name === 'upload_report_image_with_provider') {
           reportImage = {
             id: 'report-image-1', report_id: args.p_report_id, storage_path: args.p_storage_path,
             image_type: args.p_image_type, provider: args.p_provider, external_file_id: args.p_external_file_id,
+            external_parent_id: args.p_external_parent_id, checksum_sha256: args.p_checksum_sha256,
           }
           return { data: reportImage, error: null }
         }
@@ -106,15 +108,21 @@ function harness(options: {
       uploads.push(input)
       calls.push(`upload:${input.destination?.provider}:${input.name}:${input.external_parent_id}`)
       const provider = input.destination?.provider ?? 'google_drive'
+      objects.set('file-1', { parentId: input.external_parent_id || '', bytes: new Uint8Array(input.content) })
       return {
         asset: {
           id: 'asset-1', provider, external_file_id: 'file-1', name: input.name, mime_type: input.mime_type,
+          external_parent_id: input.external_parent_id,
           size_bytes: input.size_bytes, entity_type: input.entity_type, entity_id: input.entity_id,
           status: 'active', created_by: input.created_by, created_at: '2026-09-19T00:00:00.000Z',
         },
       }
     },
-    async read() { return new Uint8Array() },
+    async read(reference: { external_file_id: string }) { return objects.get(reference.external_file_id)?.bytes ?? new Uint8Array() },
+    async getMetadata(reference: { external_file_id: string }) {
+      const object = objects.get(reference.external_file_id)
+      return { kind: 'file' as const, parent_ids: object?.parentId ? [object.parentId] : [] }
+    },
     async delete(reference: { provider: string; external_file_id: string }) {
       calls.push(`delete:${reference.provider}:${reference.external_file_id}`)
     },

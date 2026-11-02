@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import * as XLSX from 'xlsx'
 
 import type { FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import {
@@ -28,6 +29,8 @@ const report = {
   average_viewer: 5,
   comments: 1,
   shares: 1,
+  insights_good: 'Retention improved',
+  insights_improvement: 'Reduce response lag',
   created_at: '2026-10-01T00:00:00.000Z',
   updated_at: '2026-10-01T00:00:00.000Z',
 }
@@ -189,9 +192,11 @@ test('DATA/SOURCE upload resolves canonical folder, writes provider bytes, and s
   const routeInputs: OperationalStoragePlacementInput[] = []
   const placements: string[][] = []
   const uploads: FileUploadInput[] = []
+  const providerFiles = new Map<string, Uint8Array>()
   const storage = {
     async upload(input: FileUploadInput): Promise<FileUploadResult> {
       uploads.push(input)
+      providerFiles.set('drive-file-1', new Uint8Array(input.content as Uint8Array))
       return {
         asset: {
           id: 'asset-1',
@@ -211,7 +216,10 @@ test('DATA/SOURCE upload resolves canonical folder, writes provider bytes, and s
         },
       }
     },
-    async read() { return new Uint8Array() },
+    async getMetadata(reference: { external_file_id: string }) {
+      return { id: reference.external_file_id, name: 'source.xlsx', kind: 'file', parent_ids: ['source-parent'] }
+    },
+    async read(reference: { external_file_id: string }) { return providerFiles.get(reference.external_file_id) ?? new Uint8Array() },
     async delete() {},
     async ensureFolder() { throw new Error('unused') },
   }
@@ -282,7 +290,10 @@ test('same DATA/SOURCE content is idempotent and skips a second provider upload'
     createClient: () => db.client,
     storage: {
       async upload() { uploads += 1; throw new Error('should not upload') },
-      async read() { return new Uint8Array() },
+      async getMetadata(reference: { external_file_id: string }) {
+        return { id: reference.external_file_id, name: 'existing.xlsx', kind: 'file', parent_ids: ['source-parent'] }
+      },
+      async read() { return new Uint8Array([1, 2, 3]) },
       async delete() {},
       async ensureFolder() { throw new Error('unused') },
     } as never,
@@ -335,12 +346,14 @@ test('confirmed report generates XLSX into canonical DATA/REPORT and persists on
   const routeInputs: OperationalStoragePlacementInput[] = []
   const placements: string[][] = []
   const uploads: FileUploadInput[] = []
+  const providerFiles = new Map<string, Uint8Array>()
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
     createClient: () => db.client,
     storage: {
       async upload(input: FileUploadInput): Promise<FileUploadResult> {
         uploads.push(input)
+        providerFiles.set('drive-report-1', new Uint8Array(input.content as Uint8Array))
         return {
           asset: {
             id: 'asset-report',
@@ -360,7 +373,10 @@ test('confirmed report generates XLSX into canonical DATA/REPORT and persists on
           },
         }
       },
-      async read() { return new Uint8Array() },
+      async getMetadata(reference: { external_file_id: string }) {
+        return { id: reference.external_file_id, name: 'report.xlsx', kind: 'file', parent_ids: ['report-parent'] }
+      },
+      async read(reference: { external_file_id: string }) { return providerFiles.get(reference.external_file_id) ?? new Uint8Array() },
       async delete() {},
       async ensureFolder() { throw new Error('unused') },
     } as never,
@@ -391,6 +407,13 @@ test('confirmed report generates XLSX into canonical DATA/REPORT and persists on
   assert.equal(uploads.length, 1)
   assert.equal(uploads[0].mime_type, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   assert.ok(uploads[0].size_bytes > 0)
+  const workbook = XLSX.read(uploads[0].content as Uint8Array, { type: 'array' })
+  const insights = XLSX.utils.sheet_to_json(workbook.Sheets['05_FINAL_INSIGHTS'], { header: 1 })
+  assert.deepEqual(insights, [
+    ['Insight', 'Part', 'Content'],
+    ['What Went Well', 1, 'Retention improved'],
+    ['Improvement Areas', 1, 'Reduce response lag'],
+  ])
   assert.match(uploads[0].name, /^20260914_data-report_[A-F0-9]{64}_report_report-1_v5\.xlsx$/u)
   assert.equal(db.rows[0].artifact_key, 'report:v5')
   assert.equal(db.rows[0].report_version, 5)
