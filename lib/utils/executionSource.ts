@@ -1,4 +1,5 @@
 export type ExecutionSource = 'internal' | 'agency'
+export type AgencyCode = 'ada' | 'snap' | 'live_ai'
 
 export class ExecutionSourceError extends Error {
   readonly code = 'EXECUTION_SOURCE_INVALID'
@@ -7,6 +8,34 @@ export class ExecutionSourceError extends Error {
     super('EXECUTION_SOURCE_INVALID')
     this.name = 'ExecutionSourceError'
   }
+}
+
+export function agencyDisplayLabel(code?: AgencyCode | null): string {
+  switch (code) {
+    case 'ada': return 'ADA'
+    case 'snap': return 'SNAP'
+    case 'live_ai': return 'Live AI'
+    default: return ''
+  }
+}
+
+export function normalizeAgencyCode(value: unknown): AgencyCode | null {
+  if (!value) return null
+  const text = String(value)
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\u2060\uFEFF]/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+  if (['ada', 'ada group', 'cong ty ada'].includes(text)) return 'ada'
+  if (['snap', 'snap live', 'snaplive'].includes(text)) return 'snap'
+  if (['live ai', 'live_ai', 'liveai', 'ai'].includes(text)) return 'live_ai'
+  return null
 }
 
 export function normalizeStudio(value: unknown): string {

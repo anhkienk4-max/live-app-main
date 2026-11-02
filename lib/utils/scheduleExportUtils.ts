@@ -20,6 +20,7 @@ import * as XLSX from 'xlsx'
 import { format } from 'date-fns'
 import type { Shift, Brand, Platform, Campaign, User, ShiftRegistration } from '@/lib/types/database.types'
 import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { agencyDisplayLabel } from '@/lib/utils/executionSource'
 import { safeSpreadsheetValue } from './calendarExport'
 
 // --- Row shape ---------------------------------------------------------------
@@ -102,6 +103,8 @@ export function buildScheduleExportRows(
       'Campaign': shift.campaign_id ? (campaigns.get(shift.campaign_id) ?? shift.campaign_id) : '',
       'Title': shift.title ?? '',
       'Studio': shift.studio ?? '',
+      'Execution Source': shift.execution_source ? (shift.execution_source === 'agency' ? 'Agency' : 'Internal') : '',
+      'Agency': shift.agency_code ? agencyDisplayLabel(shift.agency_code) : '',
       'Assigned Host Names': getAssignedNames(shift, 'host', shift.host_id),
       'Assigned Support Names': getAssignedNames(shift, 'support', shift.support_id),
       'Assigned Technical Names': getAssignedNames(shift, 'technical', shift.technical_id),

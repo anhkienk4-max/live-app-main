@@ -1,6 +1,7 @@
 import type { ScheduleImportRow, Shift } from '@/lib/types/database.types'
 import type { ImportResult } from '@/lib/utils/excelUtils'
 import { DEFAULT_SHIFT_STAFFING, MAX_SHIFT_CAPACITY } from '@/lib/utils/shiftUtils'
+import { agencyDisplayLabel } from '@/lib/utils/executionSource'
 
 export type PreviewStaffingField = 'required_host_count' | 'required_support_count' | 'required_technical_count'
 export type PreviewStaffingValues = Record<PreviewStaffingField, number | string>
@@ -9,6 +10,7 @@ export type PreviewStaffingNameField = 'host_names' | 'assistant_names' | 'techn
 export type PreviewStaffingNameValues = Record<PreviewStaffingNameField, string[]>
 export type ScheduleImportSourcePresence = Partial<Record<
   | 'execution_source'
+  | 'agency_code'
   | 'campaign_name'
   | 'studio'
   | 'title'
@@ -19,6 +21,7 @@ export type ScheduleImportSourcePresence = Partial<Record<
 
 type ScheduleImportEnrichmentShape = Pick<Shift,
   | 'execution_source'
+  | 'agency_code'
   | 'campaign_id'
   | 'studio'
   | 'title'
@@ -53,6 +56,7 @@ export function buildScheduleImportEnrichmentPatch(
   sourcePresence: ScheduleImportSourcePresence = {},
 ): Partial<Pick<Shift,
   | 'execution_source'
+  | 'agency_code'
   | 'campaign_id'
   | 'studio'
   | 'title'
@@ -63,6 +67,7 @@ export function buildScheduleImportEnrichmentPatch(
 >> {
   const patch: Partial<Pick<Shift,
     | 'execution_source'
+    | 'agency_code'
     | 'campaign_id'
     | 'studio'
     | 'title'
@@ -73,6 +78,9 @@ export function buildScheduleImportEnrichmentPatch(
   >> = {}
   if (sourcePresence.execution_source && imported.execution_source && existing.execution_source !== imported.execution_source) {
     patch.execution_source = imported.execution_source
+  }
+  if (sourcePresence.agency_code && imported.agency_code !== undefined && existing.agency_code !== imported.agency_code) {
+    patch.agency_code = imported.agency_code
   }
   if (sourceValueProvided(sourcePresence.campaign_name, Boolean(imported.campaign_id)) && imported.campaign_id && existing.campaign_id !== imported.campaign_id) {
     patch.campaign_id = imported.campaign_id
@@ -128,6 +136,7 @@ export const previewStaffingNameFields = [
 
 const previewFieldToSourceField: Record<string, string> = {
   execution_source: 'Execution Source',
+  agency_code: 'Agency',
   date: 'Date',
   start_time: 'Start time',
   end_time: 'End time',
@@ -409,6 +418,7 @@ export function normalizeScheduleImportSourceRow(
 export function buildScheduleImportPreviewSourceRow(row: ScheduleImportRow) {
   return normalizeScheduleImportSourceRow({
     'Execution Source': row.execution_source || '',
+    Agency: row.agency_code ? agencyDisplayLabel(row.agency_code) : (row.custom_fields?.Agency || ''),
     Date: row.date,
     'Start time': row.start_time,
     'End time': row.end_time,
@@ -437,6 +447,7 @@ export function toCanonicalScheduleImportPreviewRow(
 
   return {
     ...canonical,
+    agency_code: (row as ScheduleImportRow).agency_code ?? canonical.agency_code,
     studio: studio || undefined,
     host_names: canonical.host_names,
     assistant_names: canonical.assistant_names,
@@ -455,6 +466,8 @@ export function normalizeScheduleImportResult(result: ImportResult): ImportResul
     const shift = preview.shift && previewStaffingFields.every(field => staffing[field] !== null)
       ? {
           ...preview.shift,
+          execution_source: row.execution_source,
+          agency_code: row.agency_code,
           studio: row.studio,
           host_names: row.host_names ?? [],
           assistant_names: row.assistant_names ?? [],

@@ -5,6 +5,7 @@ export type AccountStatus = 'pending_email_verification' | 'pending_approval' | 
 
 export type ShiftStatus = 'scheduled' | 'preparing' | 'live' | 'paused' | 'completed' | 'cancelled'
 export type ExecutionSource = 'internal' | 'agency'
+export type AgencyCode = 'ada' | 'snap' | 'live_ai'
 export type ShiftStatusMode = 'auto' | 'manual'
 export type RegistrationStatus =
   | 'available'
@@ -270,6 +271,7 @@ export interface Shift extends LifecycleMetadata {
   registration_conflict?: boolean
   id: string
   execution_source?: ExecutionSource | null
+  agency_code?: AgencyCode | null
   date: string
   start_time: string
   end_time: string
@@ -911,6 +913,7 @@ export type ScheduleImportRowOutcome =
 export interface ScheduleImportRow {
   row_number: number
   execution_source?: ExecutionSource | null
+  agency_code?: AgencyCode | null
   /** Custom columns from the import source, retained as batch provenance only. */
   custom_fields?: Record<string, string>
   date: string

@@ -1,5 +1,10 @@
 import type { ScheduleImportRow } from '@/lib/types/database.types'
 import {
+  normalizeAgencyCode,
+  agencyDisplayLabel,
+  type AgencyCode,
+} from '@/lib/utils/executionSource'
+import {
   getScheduleImportSourceField,
   previewStaffingFields,
   previewStaffingNameFields,
@@ -9,6 +14,7 @@ import {
 
 export type DraftField =
   | 'execution_source'
+  | 'agency_code'
   | 'date'
   | 'start_time'
   | 'end_time'
@@ -23,6 +29,7 @@ export type DraftField =
 
 export const draftFields: readonly DraftField[] = [
   'execution_source',
+  'agency_code',
   'date',
   'start_time',
   'end_time',
@@ -104,7 +111,16 @@ export function commitRowDraftToSource<T extends Record<string, unknown>>(
       continue
     }
     next[getScheduleImportSourceField(field)] = value
-    if (['execution_source', 'campaign_name', 'studio', 'title', 'notes', ...previewStaffingFields, ...previewStaffingNameFields].includes(field as DraftField)) {
+    if (field === 'agency_code') {
+      const normalized = normalizeAgencyCode(value)
+      next.agency_code = normalized
+      const customFields = (next.custom_fields as Record<string, string> | undefined) ?? {}
+      if (normalized) {
+        customFields.Agency = agencyDisplayLabel(normalized)
+      }
+      next.custom_fields = customFields
+    }
+    if (['execution_source', 'agency_code', 'campaign_name', 'studio', 'title', 'notes', ...previewStaffingFields, ...previewStaffingNameFields].includes(field as DraftField)) {
       sourcePresence[field] = value.trim().length > 0
     }
   }
