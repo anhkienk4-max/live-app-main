@@ -427,3 +427,54 @@ test('buildScheduleExportRows — exports Execution Source and Agency correctly'
   assert.equal(rows[0]['Agency'], 'Live AI')
 })
 
+test('buildScheduleExportRows — includes KPI fields and preserves 1 Parent = 1 Row GMV integrity (Issue #162)', () => {
+  const shift = makeShift({ id: 'shift-kpi-1' })
+  const registrations = [
+    makeRegistration({ id: 'reg-1', shift_id: 'shift-kpi-1', user_id: 'user-host-1', operational_role: 'host' }),
+    makeRegistration({ id: 'reg-2', shift_id: 'shift-kpi-1', user_id: 'user-support-1', operational_role: 'support' }),
+  ]
+  const reports = new Map([
+    ['shift-kpi-1', {
+      shift_id: 'shift-kpi-1',
+      gmv: 50000000,
+      target_gmv: 45000000,
+      orders: 320,
+      peak_viewer: 1500,
+    }],
+  ])
+
+  const rows = buildScheduleExportRows(
+    [shift],
+    brands,
+    platforms,
+    campaigns,
+    usersMap,
+    registrations,
+    reports,
+    { includeKpi: true },
+  )
+
+  // 1 Parent livestream = exactly 1 physical row
+  assert.equal(rows.length, 1)
+  const row = rows[0]
+
+  // KPI / GMV values mapped correctly without duplication
+  assert.equal(row['Target GMV'], 45000000)
+  assert.equal(row['Actual GMV'], 50000000)
+  assert.equal(row['Total Orders'], 320)
+  assert.equal(row['Peak Viewers'], 1500)
+
+  // Multiple staffed segments formatted cleanly in cell
+  assert.ok(row['Assigned Host Names'].includes('Nguyễn Thị Hương'))
+  assert.ok(row['Assigned Support Names'].includes('Lê Văn An'))
+})
+
+test('KAO header aliases dictionary maps all operational and KPI fields', async () => {
+  const { KAO_SCHEDULE_HEADER_ALIASES } = await import('../lib/utils/scheduleExportFields.ts')
+  assert.ok(KAO_SCHEDULE_HEADER_ALIASES['Date'].includes('ngày'))
+  assert.ok(KAO_SCHEDULE_HEADER_ALIASES['Brand'].includes('thương hiệu'))
+  assert.ok(KAO_SCHEDULE_HEADER_ALIASES['Studio'].includes('phòng live'))
+  assert.ok(KAO_SCHEDULE_HEADER_ALIASES['Actual GMV'].includes('doanh thu thực tế'))
+})
+
+

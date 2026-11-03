@@ -15,7 +15,7 @@ export function AuthLayout({ children, title, subtitle, variant = 'default' }: {
   const { t } = useTranslation()
 
   if (variant === 'login') return (
-    <div data-testid="ada-reference-login" className="ada-login-reference relative isolate flex min-h-dvh flex-col overflow-hidden bg-white">
+    <div data-testid="ada-reference-login" className="ada-login-reference relative isolate flex min-h-dvh flex-col overflow-y-auto overflow-x-hidden bg-white">
       <svg className="ada-login-reference__top" viewBox="0 0 390 200" preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <linearGradient id="ada-login-top-gradient" x1="0" y1="0" x2="1" y2="1">
