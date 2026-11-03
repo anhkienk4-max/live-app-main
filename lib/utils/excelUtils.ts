@@ -24,6 +24,7 @@ import {
 import {
   resolveExecutionSource,
   agencyDisplayLabel,
+  executionSourceForAgency,
   normalizeAgencyCode,
   type AgencyCode,
 } from '@/lib/utils/executionSource'
@@ -559,16 +560,18 @@ export function parseScheduleRows(
     ).trim()
     const parsedAgencyCode = rawAgencyName ? normalizeAgencyCode(rawAgencyName) : (options.batchAgency ?? null)
     const agencyCode: AgencyCode | null = parsedAgencyCode
-    const agencyExecutionSource = (agencyCode || rawAgencyName)
-      ? /^(internal|noi bo)$/i.test(rawAgencyName)
-        ? resolveExecutionSource({ explicit: rawAgencyName })
-        : 'agency'
-      : undefined
-    const executionSource = rawExecutionSource
+    // Agency identifies the actual operating unit, not merely whether work was outsourced.
+    // ADA is our internal team. SNAP and AI are external partners.
+    const agencyExecutionSource = executionSourceForAgency(agencyCode)
+    const explicitExecutionSource = rawExecutionSource
       ? /^(internal|agency|noi bo)$/i.test(rawExecutionSource)
-        ? resolveExecutionSource({ explicit: rawExecutionSource })
-        : rawAgencyName && normalizeLookup(rawExecutionSource) === normalizeLookup(rawAgencyName) ? 'agency' : null
-      : agencyExecutionSource ?? resolveExecutionSource({ studio })
+        ? resolveExecutionSource({ explicit: normalizeLookup(rawExecutionSource) === 'noi bo' ? 'internal' : rawExecutionSource })
+        : rawAgencyName && normalizeLookup(rawExecutionSource) === normalizeLookup(rawAgencyName)
+          ? agencyExecutionSource
+          : null
+      : null
+    const executionSource = agencyExecutionSource
+      ?? (rawExecutionSource ? explicitExecutionSource : resolveExecutionSource({ studio }))
     const customFields = normalizedSource.custom_fields && typeof normalizedSource.custom_fields === 'object' && !Array.isArray(normalizedSource.custom_fields)
       ? { ...normalizedSource.custom_fields as Record<string, unknown> }
       : {}
@@ -609,8 +612,8 @@ export function parseScheduleRows(
       rowErrors.push(`Agency "${rawAgencyName}" không hợp lệ. Chỉ chấp nhận: ADA, SNAP, Live AI.`)
     }
     if (rawExecutionSource && !executionSource) rowErrors.push('Execution Source must be Internal or Agency.')
-    if (agencyCode && executionSource === 'internal') {
-      rowErrors.push('Agency không thể đi cùng Execution Source là Nội bộ (Internal).')
+    if (agencyExecutionSource && explicitExecutionSource && explicitExecutionSource !== agencyExecutionSource) {
+      rowWarnings.push(`Nguồn thực hiện "${rawExecutionSource}" không khớp với Agency "${rawAgencyName || agencyDisplayLabel(agencyCode)}". Đã ưu tiên ${agencyExecutionSource === 'internal' ? 'Internal (ADA)' : 'External (SNAP/AI)'}; vui lòng kiểm tra trước khi xác nhận.`)
     }
 
     if (!date) rowErrors.push('Date is required.')
