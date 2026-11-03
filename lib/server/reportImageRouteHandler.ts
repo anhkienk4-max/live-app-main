@@ -55,6 +55,7 @@ type ReportShiftContext = {
   brand_id: string
   platform_id: string | null
   execution_source?: 'internal' | 'agency'
+  agency_code?: string | null
   brand_label?: string
   platform_label?: string
 }
@@ -213,7 +214,7 @@ async function reportForUpload(
   const shiftResult = await client
     .from('shifts')
     .select(routingMode === 'compat' ? 'date,brand_id,platform_id,studio'
-      : routingMode === 'domain_first' ? 'date,brand_id,platform_id' : 'date,brand_id,platform_id,execution_source')
+      : routingMode === 'domain_first' ? 'date,brand_id,platform_id,execution_source,agency_code' : 'date,brand_id,platform_id,execution_source')
     .eq('id', report.shift_id)
     .maybeSingle()
   if (shiftResult.error) throw shiftResult.error
@@ -239,6 +240,7 @@ async function reportForUpload(
       id: String(report.shift_id),
       brand_id: shift.brand_id,
       platform_id: platformId,
+      agency_code: typeof shift.agency_code === 'string' ? shift.agency_code : null,
       execution_source: routingMode === 'compat'
         ? resolveExecutionSource({ studio: shift.studio })
         : shift.execution_source === 'internal' || shift.execution_source === 'agency'
@@ -481,6 +483,8 @@ async function resolveImagePlacement(
       shiftDate: shift.date,
       brandId: shift.brand_id,
       platformId: shift.platform_id,
+      agencyCode: shift.agency_code ?? null,
+      executionSource: shift.execution_source ?? null,
       fileName,
     })
     if (!canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false)) {
