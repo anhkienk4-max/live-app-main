@@ -73,7 +73,8 @@ test('domain resolver covers all 15 categories and 9 report groups using exact r
     const expected = domainFolderForReportGroup(group)
     const placement = await resolver.resolveReportArtifactGroupPlacement({
       group: group as ReportArtifactGroup,
-      shiftId: 'shift-123', shiftDate: '2026-10-31', brandId: 'brand-1', platformId: 'platform-1', fileName: 'report.png',
+      shiftId: 'shift-123', shiftDate: '2026-10-31', brandId: 'brand-1', platformId: 'platform-1',
+      agencyCode: 'ada', executionSource: 'internal', fileName: 'report.png',
     })
     assert.equal(placement.baseFolderId, routeMap.report_root_id, group)
     assert.equal(placement.expectedBaseParentId, expected.parentFolderId, group)
@@ -83,6 +84,60 @@ test('domain resolver covers all 15 categories and 9 report groups using exact r
     assert.equal(placement.folderSegments.includes('00_SHIFT_FOLDER_TEMPLATE'), false)
   }
   assert.ok(state.requestedPaths.every(paths => paths.length > 0 && paths[0] === '00_ADA_OPS_PLATFORM'))
+})
+
+test('new report artifacts are isolated by persisted Shift agency without changing internal paths', async () => {
+  const resolver = createOperationalStorageDomainRouteRepository({ client: registryClient().client })
+  const base = {
+    group: 'dashboard_30min' as ReportArtifactGroup,
+    shiftId: 'shift-123',
+    shiftDate: '2026-11-03',
+    brandId: 'brand-shared',
+    platformId: 'platform-shared',
+    fileName: 'safe-synthetic.png',
+  }
+  const internal = await resolver.resolveReportArtifactGroupPlacement({
+    ...base, agencyCode: 'ada', executionSource: 'internal',
+  })
+  const snap = await resolver.resolveReportArtifactGroupPlacement({
+    ...base, agencyCode: 'snap', executionSource: 'agency',
+  })
+  const ai = await resolver.resolveReportArtifactGroupPlacement({
+    ...base, agencyCode: 'live_ai', executionSource: 'agency',
+  })
+  const unchangedTail = ['brand-shared', 'platform-shared', '2026', '11', 'SHIFT_20261103__shift-123', '04_DASHBOARD_30MIN']
+  assert.deepEqual(internal.folderSegments, unchangedTail)
+  assert.deepEqual(snap.folderSegments, ['EXTERNAL', 'SNAP', ...unchangedTail])
+  assert.deepEqual(ai.folderSegments, ['EXTERNAL', 'AI', ...unchangedTail])
+  assert.equal(new Set([internal.folderPath, snap.folderPath, ai.folderPath]).size, 3)
+  assert.equal(snap.baseFolderId, routeMap.report_root_id)
+  assert.equal(ai.baseFolderId, routeMap.report_root_id)
+  assert.equal(snap.sensitive, true)
+  assert.equal(ai.sensitive, true)
+})
+
+test('new report routing fails closed for missing, mismatched or unknown Agency instead of using SNAP', async () => {
+  const resolver = createOperationalStorageDomainRouteRepository({ client: registryClient().client })
+  const base = {
+    group: 'kv_before' as ReportArtifactGroup,
+    shiftId: 'shift-123',
+    shiftDate: '2026-11-03',
+    brandId: 'brand-1',
+    platformId: 'platform-1',
+    fileName: 'safe-synthetic.png',
+  }
+  for (const scope of [
+    { agencyCode: null, executionSource: 'agency' as const },
+    { agencyCode: 'ada', executionSource: 'agency' as const },
+    { agencyCode: 'snap', executionSource: 'internal' as const },
+    { agencyCode: 'live_ai', executionSource: 'internal' as const },
+    { agencyCode: 'unknown', executionSource: 'agency' as const },
+  ]) {
+    await assert.rejects(
+      resolver.resolveReportArtifactGroupPlacement({ ...base, ...scope }),
+      /STORAGE_(EXECUTION_SOURCE_NOT_CONFIGURED|ROUTE_CONFIG_INVALID)/u,
+    )
+  }
 })
 
 test('domain resolver fails closed when a registry ID/parent/classification is not the approved mapping', async () => {
@@ -144,7 +199,8 @@ test('all nine report groups remain sensitive until every registered ancestor is
   for (const group of REPORT_ARTIFACT_GROUPS) {
     const placement = await pendingRoutes.resolveReportArtifactGroupPlacement({
       group: group as ReportArtifactGroup, shiftId: 'shift-123', shiftDate: '2026-10-31',
-      brandId: 'brand-1', platformId: 'platform-1', fileName: 'fake.png',
+      brandId: 'brand-1', platformId: 'platform-1',
+      agencyCode: 'ada', executionSource: 'internal', fileName: 'fake.png',
     })
     assert.equal(placement.sensitive, true, group)
     assert.equal(canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false), false, group)
@@ -155,7 +211,8 @@ test('all nine report groups remain sensitive until every registered ancestor is
   for (const group of REPORT_ARTIFACT_GROUPS) {
     const placement = await approvedRoutes.resolveReportArtifactGroupPlacement({
       group: group as ReportArtifactGroup, shiftId: 'shift-123', shiftDate: '2026-10-31',
-      brandId: 'brand-1', platformId: 'platform-1', fileName: 'fake.png',
+      brandId: 'brand-1', platformId: 'platform-1',
+      agencyCode: 'ada', executionSource: 'internal', fileName: 'fake.png',
     })
     assert.equal(placement.accessClassification, 'restricted_verified', group)
     assert.equal(canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false), true, group)
