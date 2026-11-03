@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "fa3599dab20c24cce775e0030b18db78ae84cb95",
+    "head": "754892295e830d400a1fec7375e111a7fc30ca70",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -119,9 +119,9 @@
         "lib": 276,
         "scripts": 35,
         "supabase": 128,
-        "tests": 331
+        "tests": 333
       },
-      "total": 1047
+      "total": 1049
     },
     "tests": {
       "files": [
@@ -144,6 +144,7 @@
         "tests/auth-identity-bridge.test.tsx",
         "tests/auth-session-foundation.test.ts",
         "tests/bi01-catalog.test.ts",
+        "tests/brand-catalog-media-kpi.test.ts",
         "tests/brand-catalog-schema-pending-ui.test.ts",
         "tests/brand-profile-import.test.ts",
         "tests/brand-profile-page.test.ts",
@@ -199,6 +200,7 @@
         "tests/leaked-password-protection.test.ts",
         "tests/lifecycle-action-dialog.test.ts",
         "tests/live-dashboard-persistence.test.ts",
+        "tests/live-hydration-resilience.test.tsx",
         "tests/live-monitoring-upgrade.test.tsx",
         "tests/live-report-images.test.tsx",
         "tests/media-poc-config-contract.test.ts",
@@ -390,7 +392,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 264
+      "count": 266
     },
     "migrations": {
       "files": [
@@ -509,5 +511,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-04T00:37:41+07:00"
+  "synced_at": "2026-11-04T02:30:48+07:00"
 }
