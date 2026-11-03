@@ -87,10 +87,10 @@ test('completion card separates persisted warnings from non-persisted outcomes',
 
 
 test('preview confirmation and summary share the actionable ready plus warning count', () => {
-  assert.match(panel, /const importableCount = previewCounts \? previewCounts.ready \+ previewCounts.warning : 0/)
-  assert.match(panel, /if \(!result \|\| !batch \|\| !source \|\| importableCount === 0/)
+  assert.match(panel, /const importableCount = mappedPreviewCounts \? mappedPreviewCounts.ready \+ mappedPreviewCounts.warning : 0/)
+  assert.match(panel, /if \(!result \|\| !batch \|\| !source \|\| hasPendingDrafts \|\| hasAgencySourceConflict \|\| importableCount === 0/)
   assert.match(panel, /source\?\.type === 'excel' && \(sourceFileStatus !== 'saved' \|\| !sourceFileId\)/)
-  assert.match(panel, /disabled=\{busy \|\| importableCount === 0 \|\| \(source\?\.type === 'excel' && \(sourceFileStatus !== 'saved' \|\| !sourceFileId\)\)\}/)
+  assert.match(panel, /disabled=\{busy \|\| hasPendingDrafts \|\| hasAgencySourceConflict \|\| importableCount === 0 \|\| \(source\?\.type === 'excel' && \(sourceFileStatus !== 'saved' \|\| !sourceFileId\)\)\}/)
   assert.match(panel, /ready: importableCount, attention: previewAttention/)
   assert.match(sourceStorage, /form\.set\('batch_id', batchId\)/)
   assert.match(panel, /uploadScheduleSourceFile\(batchId, file\)/)

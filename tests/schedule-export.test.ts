@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import * as XLSX from 'xlsx'
-import { selectExportFields } from '../lib/utils/calendarExport.ts'
+import { selectExportFields, SUPPLEMENTAL_EXPORT_ALL_ID } from '../lib/utils/calendarExport.ts'
 import {
   buildScheduleExportRows,
   buildScheduleExportFilename,
@@ -424,7 +424,7 @@ test('buildScheduleExportRows — exports Execution Source and Agency correctly'
     agency_code: 'live_ai',
   })
   const rows = buildScheduleExportRows([shift], brands, platforms, campaigns, usersMap, [])
-  assert.equal(rows[0]['Execution Source'], 'Agency')
+  assert.equal(rows[0]['Execution Source'], 'External')
   assert.equal(rows[0]['Agency'], 'Live AI')
 })
 
@@ -493,4 +493,12 @@ test('calendar export exposes report KPI fields only to roles with reports.expor
   }
   assert.deepEqual(selectExportFields('member').filter(field => reportKpiFieldIds.includes(field.id)), [])
   assert.throws(() => selectExportFields('member', ['schedule.Target GMV']), /EXPORT_FIELD_DENIED/)
+})
+
+test('calendar export selects supplemental fields only from the authorized Shift scope', () => {
+  const scopedFields = [{ key: 'target', label: 'TARGET' }, { key: 'timeslot', label: 'Timeslot' }]
+  const fields = selectExportFields('admin', [SUPPLEMENTAL_EXPORT_ALL_ID], scopedFields)
+  assert.deepEqual(fields.map(field => field.id), ['schedule.supplemental.target', 'schedule.supplemental.timeslot'])
+  assert.throws(() => selectExportFields('member', [SUPPLEMENTAL_EXPORT_ALL_ID], scopedFields), /EXPORT_FIELD_DENIED/)
+  assert.throws(() => selectExportFields('admin', [SUPPLEMENTAL_EXPORT_ALL_ID]), /EXPORT_FIELD_DENIED/)
 })

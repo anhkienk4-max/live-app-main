@@ -105,7 +105,7 @@ test('imports derive Agency from Studio while rejecting an invalid explicit sour
   assert.doesNotMatch(derived.rows[0].row.warnings.join(' '), /remain unclassified/)
   const invalid = parseScheduleRows([{ ...source, 'Execution Source': 'Vendor' }], maps)
   assert.equal(invalid.invalidRows, 1)
-  assert.match(invalid.rows[0].row.errors.join(' '), /must be Internal or Agency/)
+  assert.match(invalid.rows[0].row.errors.join(' '), /must be Internal or External/)
 })
 
 test('static route configuration validates strictly and resolves exact normalized labels', async () => {

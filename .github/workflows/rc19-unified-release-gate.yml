@@ -61,6 +61,8 @@ jobs:
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_migrations_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_sto01_migrations_disposable IS 'RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE'"
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_unified_import_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_unified_import_disposable IS 'RC19_UNIFIED_IMPORT_DISPOSABLE_TEST_DATABASE'"
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_concurrency_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_concurrency_disposable IS 'RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE'"
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_restore_disposable TEMPLATE template0'
@@ -111,6 +113,15 @@ jobs:
           node --import ./tests/typescript-alias-loader.mjs --test \
             tests/rc19-owner23-segmented-staffing.test.ts \
             tests/rc19-batch01-3-database-identity.test.ts
+
+      - name: PostgreSQL 17 RC19 unified Import agency and supplemental-field migrations
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_unified_import_disposable
+          RC19_UNIFIED_IMPORT_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-unified-import-postgres17.test.ts
 
       - name: PostgreSQL 17 Storage Route Seed (10 real server tests)
         env:

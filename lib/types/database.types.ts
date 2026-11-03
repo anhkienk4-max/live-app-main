@@ -267,6 +267,16 @@ export interface SwapExchangeCandidate {
   full_name: string
 }
 
+export type SupplementalShiftFieldType = 'text' | 'number' | 'boolean' | 'date' | 'time'
+
+export interface SupplementalShiftField {
+  label: string
+  type: SupplementalShiftFieldType
+  value: string | number | boolean
+}
+
+export type SupplementalShiftFields = Record<string, SupplementalShiftField>
+
 export interface Shift extends LifecycleMetadata {
   registration_conflict?: boolean
   id: string
@@ -306,6 +316,7 @@ export interface Shift extends LifecycleMetadata {
   status_mode?: ShiftStatusMode
   live_link?: string
   product_notes?: string
+  supplemental_fields?: SupplementalShiftFields
   updated_by?: string
   created_at: string
   updated_at: string
@@ -941,6 +952,8 @@ export interface ScheduleImportRow {
   notes?: string
   /** Source fields explicitly supplied by the imported row (defaults excluded). */
   source_presence?: Partial<Record<
+    | 'execution_source'
+    | 'agency_code'
     | 'campaign_name'
     | 'studio'
     | 'title'

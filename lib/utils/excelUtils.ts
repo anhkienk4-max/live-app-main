@@ -25,6 +25,7 @@ import {
   resolveExecutionSource,
   agencyDisplayLabel,
   normalizeAgencyCode,
+  executionSourceForAgency,
   type AgencyCode,
 } from '@/lib/utils/executionSource'
 export { agencyDisplayLabel, normalizeAgencyCode, type AgencyCode }
@@ -553,22 +554,28 @@ export function parseScheduleRows(
     const rawStudio = String(valueForNormalized(normalizedRow, normalizedScheduleHeaders.studio) ?? '')
     const studio = rawStudio.trim()
     const rawExecutionSource = textValue(valueForNormalized(normalizedRow, normalizedScheduleHeaders.executionSource)).trim()
+    const executionAgencyCode = normalizeAgencyCode(rawExecutionSource)
     const rawAgencyName = textValue(
       valueForNormalized(normalizedRow, normalizedScheduleHeaders.agencyName)
         ?? customFieldValueFor(normalizedSource, ['agency', 'agency name']),
     ).trim()
-    const parsedAgencyCode = rawAgencyName ? normalizeAgencyCode(rawAgencyName) : (options.batchAgency ?? null)
+    const parsedAgencyCode = rawAgencyName
+      ? normalizeAgencyCode(rawAgencyName)
+      : executionAgencyCode ?? (options.batchAgency ?? null)
     const agencyCode: AgencyCode | null = parsedAgencyCode
-    const agencyExecutionSource = (agencyCode || rawAgencyName)
-      ? /^(internal|noi bo)$/i.test(rawAgencyName)
+    const agencyExecutionSource = agencyCode
+      ? executionSourceForAgency(agencyCode)
+      : /^(internal|noi bo)$/i.test(rawAgencyName)
         ? resolveExecutionSource({ explicit: rawAgencyName })
-        : 'agency'
-      : undefined
-    const executionSource = rawExecutionSource
-      ? /^(internal|agency|noi bo)$/i.test(rawExecutionSource)
+        : undefined
+    let executionSource: ReturnType<typeof resolveExecutionSource> | null
+    try {
+      executionSource = rawExecutionSource && !executionAgencyCode
         ? resolveExecutionSource({ explicit: rawExecutionSource })
-        : rawAgencyName && normalizeLookup(rawExecutionSource) === normalizeLookup(rawAgencyName) ? 'agency' : null
-      : agencyExecutionSource ?? resolveExecutionSource({ studio })
+        : agencyExecutionSource ?? resolveExecutionSource({ studio })
+    } catch {
+      executionSource = null
+    }
     const customFields = normalizedSource.custom_fields && typeof normalizedSource.custom_fields === 'object' && !Array.isArray(normalizedSource.custom_fields)
       ? { ...normalizedSource.custom_fields as Record<string, unknown> }
       : {}
@@ -578,9 +585,10 @@ export function parseScheduleRows(
       customFields.Agency = agencyDisplayLabel(agencyCode)
     }
     const notes = String(valueForNormalized(normalizedRow, normalizedScheduleHeaders.notes) ?? '').trim()
-    const sourcePresence = (sourceValues.source_presence as ScheduleImportSourcePresence | undefined) ?? {
-      execution_source: explicitSourceValue(valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.executionSource)) || Boolean(rawAgencyName),
-      agency_code: Boolean(rawAgencyName) || Boolean(options.batchAgency),
+    const sourcePresence = {
+      ...((sourceValues.source_presence as ScheduleImportSourcePresence | undefined) ?? {
+      execution_source: Boolean(rawExecutionSource && !executionAgencyCode) || Boolean(rawAgencyName && !normalizeAgencyCode(rawAgencyName) && /^(internal|noi bo)$/i.test(rawAgencyName)),
+      agency_code: Boolean(rawAgencyName) || Boolean(executionAgencyCode) || Boolean(options.batchAgency),
       campaign_name: explicitSourceValue(valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.campaign)),
       studio: explicitSourceValue(valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.studio)),
       title: explicitSourceValue(valueForNormalized(normalizedSourceValues, normalizedScheduleHeaders.title)),
@@ -591,6 +599,8 @@ export function parseScheduleRows(
       host_names: staffingFieldProvided(sourceValues, 'host_names'),
       assistant_names: staffingFieldProvided(sourceValues, 'assistant_names'),
       technical_names: staffingFieldProvided(sourceValues, 'technical_names'),
+      }),
+      ...(executionAgencyCode ? { execution_source: false, agency_code: true } : {}),
     }
     const staffingValues = {
       required_host_count: normalizedSource.required_host_count,
@@ -608,9 +618,13 @@ export function parseScheduleRows(
     if (rawAgencyName && !parsedAgencyCode) {
       rowErrors.push(`Agency "${rawAgencyName}" không hợp lệ. Chỉ chấp nhận: ADA, SNAP, Live AI.`)
     }
-    if (rawExecutionSource && !executionSource) rowErrors.push('Execution Source must be Internal or Agency.')
-    if (agencyCode && executionSource === 'internal') {
-      rowErrors.push('Agency không thể đi cùng Execution Source là Nội bộ (Internal).')
+    const rawAgencyCode = normalizeAgencyCode(rawAgencyName)
+    if (rawAgencyCode && executionAgencyCode && rawAgencyCode !== executionAgencyCode) {
+      rowErrors.push(`Agency ${agencyDisplayLabel(rawAgencyCode)} conflicts with the Agency value in Execution Source.`)
+    }
+    if (rawExecutionSource && !executionSource && !executionAgencyCode) rowErrors.push('Execution Source must be Internal or External.')
+    if (agencyCode && executionSource && executionSource !== executionSourceForAgency(agencyCode)) {
+      rowErrors.push(`Agency ${agencyDisplayLabel(agencyCode)} conflicts with Execution Source. Select ${executionSourceForAgency(agencyCode) === 'internal' ? 'Internal' : 'External'} or change Agency.`)
     }
 
     if (!date) rowErrors.push('Date is required.')
@@ -1146,7 +1160,7 @@ export function buildScheduleImportTemplateSheets() {
         { Field: 'Date', Format: 'YYYY-MM-DD or DD/MM/YYYY', Required: 'Yes' },
         { Field: 'Start time / End time', Format: 'HH:MM (24 hour)', Required: 'Yes' },
         { Field: 'Brand / Platform', Format: 'Existing name', Required: 'Yes' },
-        { Field: 'Execution Source', Format: 'Internal or Agency; blank legacy imports remain unclassified', Required: 'For new files' },
+        { Field: 'Execution Source', Format: 'Internal or External; blank legacy imports remain unclassified', Required: 'For new files' },
         { Field: 'Campaign', Format: 'Existing name', Required: 'No' },
         { Field: 'Shift title', Format: 'Text', Required: 'Yes' },
         { Field: 'Studio', Format: 'Text', Required: 'No' },

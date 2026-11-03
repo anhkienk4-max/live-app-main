@@ -6,6 +6,8 @@ export type ExportSheet = 'schedule' | 'registrations'
 type Value = string | number | boolean | null
 export type ExportRecord = Record<string, Value>
 export interface CalendarExportField { id: string; label: string; group: ExportSheet; permission: Permission; order: number; transformer: (row: ExportRecord) => Value }
+export interface SupplementalExportColumn { key: string; label: string }
+export const SUPPLEMENTAL_EXPORT_ALL_ID = 'schedule.supplemental.*'
 const labels: Partial<Record<keyof ScheduleExportRow, string>> = {
   'Shift ID': 'Mã ca', Date: 'Ngày', 'Start Time': 'Bắt đầu', 'End Time': 'Kết thúc', 'End Date': 'Ngày kết thúc',
   'Crosses Midnight': 'Qua ngày', 'Duration (min)': 'Thời lượng (phút)', Brand: 'Thương hiệu', Platform: 'Nền tảng', Campaign: 'Chiến dịch',
@@ -29,11 +31,29 @@ export const CALENDAR_EXPORT_FIELDS: readonly CalendarExportField[] = [
 export function authorizedExportFields(permission: SystemPermission) {
   return CALENDAR_EXPORT_FIELDS.filter(item => permissionMatrix[permission].has(item.permission))
 }
-export function selectExportFields(permission: SystemPermission, ids?: string[]) {
-  const allowed = authorizedExportFields(permission)
+export function selectExportFields(permission: SystemPermission, ids?: string[], supplemental: SupplementalExportColumn[] = []) {
+  const allowed = [
+    ...authorizedExportFields(permission),
+    ...(permissionMatrix[permission].has('shifts.export') ? supplemental : []).map((item, index) => field(
+      `schedule.supplemental.${item.key}`,
+      `Supplemental: ${item.label}`,
+      'schedule',
+      'shifts.export',
+      75 + index,
+      `Supplemental: ${item.label}`,
+    )),
+  ]
   if (!ids) return allowed
-  if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !allowed.some(field => field.id === id))) throw new Error('EXPORT_FIELD_DENIED')
-  return allowed.filter(field => ids.includes(field.id)).sort((a, b) => a.order - b.order)
+  if (!ids.length || new Set(ids).size !== ids.length) throw new Error('EXPORT_FIELD_DENIED')
+  const selectedIds = new Set(ids)
+  if (selectedIds.has(SUPPLEMENTAL_EXPORT_ALL_ID)) {
+    if (!permissionMatrix[permission].has('shifts.export')) throw new Error('EXPORT_FIELD_DENIED')
+    allowed.filter(item => item.id.startsWith('schedule.supplemental.')).forEach(item => selectedIds.add(item.id))
+    selectedIds.delete(SUPPLEMENTAL_EXPORT_ALL_ID)
+  }
+  if (!selectedIds.size) throw new Error('EXPORT_FIELD_DENIED')
+  if ([...selectedIds].some(id => !allowed.some(item => item.id === id))) throw new Error('EXPORT_FIELD_DENIED')
+  return allowed.filter(item => selectedIds.has(item.id)).sort((a, b) => a.order - b.order)
 }
 
 export function safeSpreadsheetValue(value: Value): Value {

@@ -6,7 +6,7 @@ import { requireRole, isAuthorizationError, authorizationErrorResponse, type Ser
 import { readJsonBody, RequestBodyError } from './apiSecurity'
 import { createOperationsCollectionHandler, listFiltersSchema } from './operationsCollectionHandler'
 import { buildScheduleExportRows } from '@/lib/utils/scheduleExportUtils'
-import { selectExportFields, type ExportRecord, type ExportSheet } from '@/lib/utils/calendarExport'
+import { authorizedExportFields, selectExportFields, SUPPLEMENTAL_EXPORT_ALL_ID, type ExportRecord, type ExportSheet } from '@/lib/utils/calendarExport'
 import { registrationFromRow } from '@/lib/services/supabaseShiftRegistrationService'
 import { buildCalendarExport } from '@/lib/utils/calendarExportWorkbook'
 import type { Shift, ShiftRegistration } from '@/lib/types/database.types'
@@ -24,8 +24,14 @@ export function createCalendarExportHandler(deps: Depends = {}) {
     try {
       const user = await requireRole(request, ['admin', 'leader'], deps.resolveUser)
       const input = inputSchema.parse(await readJsonBody(request, 16 * 1024))
-      const fields = selectExportFields(user.systemPermission, input.fields)
-      if (input.format === 'csv' && fields.some(field => field.group !== 'schedule')) return fail('EXPORT_CSV_FLAT_FIELDS_REQUIRED', 400)
+      if (input.fields) {
+        const staticFields = input.fields.filter(id => id !== SUPPLEMENTAL_EXPORT_ALL_ID)
+        if (staticFields.length) selectExportFields(user.systemPermission, staticFields)
+        if (input.fields.includes(SUPPLEMENTAL_EXPORT_ALL_ID)
+          && !authorizedExportFields(user.systemPermission).some(field => field.permission === 'shifts.export')) {
+          return fail('EXPORT_FIELD_DENIED', 403)
+        }
+      }
       const client = deps.createClient ? await deps.createClient() : await (await import('@/lib/supabase/server')).createClient()
       const collection = createOperationsCollectionHandler({ resolveUser: async () => user, createClient: async () => client })
       const filters = input.scope === 'filtered' ? input.filters : { shiftIds: input.shiftIds }
@@ -52,6 +58,9 @@ export function createCalendarExportHandler(deps: Depends = {}) {
         if (result.items.length !== 50) return fail('EXPORT_READ_INCOMPLETE', 409)
       }
       if (shifts.length !== total || input.scope !== 'filtered' && (ids.size !== new Set(input.shiftIds).size || input.shiftIds!.some(id => !ids.has(id)))) return fail('EXPORT_SCOPE_CHANGED', 409)
+      const supplemental = [...new Map(shifts.flatMap(shift => Object.entries(shift.supplemental_fields ?? {}).map(([key, field]) => [key, field.label] as const)))].map(([key, label]) => ({ key, label }))
+      const fields = selectExportFields(user.systemPermission, input.fields, supplemental)
+      if (input.format === 'csv' && fields.some(field => field.group !== 'schedule')) return fail('EXPORT_CSV_FLAT_FIELDS_REQUIRED', 400)
       const data: Record<ExportSheet, ExportRecord[]> = { schedule: [], registrations: [] }
       const registrations: ShiftRegistration[] = []
       const registrationIds = new Set<string>()

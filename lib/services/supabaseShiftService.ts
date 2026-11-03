@@ -11,7 +11,7 @@ import type {
   ShiftStatusMode,
 } from '@/lib/types/database.types'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE } from '@/lib/utils/shiftUtils'
-import { resolveExecutionSource } from '@/lib/utils/executionSource'
+import { executionSourceForAgency, resolveExecutionSource } from '@/lib/utils/executionSource'
 
 const shiftColumns = [
   'id',
@@ -48,6 +48,7 @@ const shiftColumns = [
   'status_mode',
   'live_link',
   'product_notes',
+  'supplemental_fields',
   'updated_by',
   'created_at',
   'updated_at',
@@ -62,7 +63,7 @@ const shiftColumns = [
 type ShiftSchemaMode = 'database' | 'compat'
 
 function selectedShiftColumns(mode: ShiftSchemaMode): string {
-  return shiftColumns.filter(column => mode === 'database' || (column !== 'execution_source' && column !== 'agency_code')).join(',')
+  return shiftColumns.filter(column => mode === 'database' || !['execution_source', 'agency_code', 'supplemental_fields'].includes(column)).join(',')
 }
 
 const SUPABASE_PAGE_SIZE = 1000
@@ -211,6 +212,7 @@ export function shiftFromRow(row: ShiftRow, mode: ShiftSchemaMode, explicitExecu
     status_mode: (row.status_mode as ShiftStatusMode | null) ?? 'auto',
     live_link: row.live_link ?? undefined,
     product_notes: row.product_notes ?? undefined,
+    supplemental_fields: row.supplemental_fields ?? {},
     updated_by: row.updated_by ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -250,6 +252,7 @@ function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>, mo
     status: data.status,
     live_link: data.live_link,
     product_notes: data.product_notes,
+    ...(mode === 'database' ? { supplemental_fields: data.supplemental_fields } : {}),
   }
   return Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== undefined),
@@ -277,6 +280,7 @@ function updatePayload(data: Partial<Shift>, mode: ShiftSchemaMode): Record<stri
     status: data.status,
     live_link: data.live_link,
     product_notes: data.product_notes,
+    ...(mode === 'database' ? { supplemental_fields: data.supplemental_fields } : {}),
     registration_cutoff_at: data.registration_cutoff_at,
     allow_multi_role: data.allow_multi_role,
   }
@@ -458,20 +462,16 @@ export function createSupabaseShiftRepository(
     },
 
     async create(data) {
-      if (data.agency_code && data.execution_source === 'internal') {
-        throw new Error('Agency cannot have execution_source = internal. Agency shifts must have execution_source = agency.')
+      const agencySource = executionSourceForAgency(data.agency_code)
+      if (data.agency_code && data.execution_source && data.execution_source !== agencySource) {
+        throw new ShiftRequestError('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT', 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT')
       }
       const effectiveData = {
         ...data,
-        execution_source: data.agency_code && !data.execution_source ? 'agency' : data.execution_source,
+        execution_source: data.execution_source ?? agencySource,
       }
       const payload = createPayload(effectiveData, routingMode)
-      let result = await client.rpc('create_shift', { p_data: payload }).single()
-      if (result.error && !result.error.message?.includes('CONFLICT') && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
-        const fallbackPayload = { ...payload }
-        delete fallbackPayload.agency_code
-        result = await client.rpc('create_shift', { p_data: fallbackPayload }).single()
-      }
+      const result = await client.rpc('create_shift', { p_data: payload }).single()
       return shiftFromRow(
         requiredRow('shift create', result) as unknown as ShiftRow,
         routingMode,
@@ -480,30 +480,21 @@ export function createSupabaseShiftRepository(
     },
 
     async update(id, data, confirmImpact = false, expectedVersion) {
-      if (data.agency_code && data.execution_source === 'internal') {
-        throw new Error('Agency cannot have execution_source = internal. Agency shifts must have execution_source = agency.')
+      const agencySource = executionSourceForAgency(data.agency_code)
+      if (data.agency_code && data.execution_source && data.execution_source !== agencySource) {
+        throw new ShiftRequestError('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT', 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT')
       }
       const effectiveData = {
         ...data,
-        execution_source: data.agency_code && !data.execution_source ? 'agency' : data.execution_source,
+        execution_source: data.execution_source ?? agencySource,
       }
       const patch = updatePayload(effectiveData, routingMode)
-      let result = await client.rpc('update_shift', {
+      const result = await client.rpc('update_shift', {
         p_shift_id: id,
         p_patch: patch,
         p_confirm_impact: confirmImpact,
         p_expected_version: expectedVersion ?? null,
       }).single()
-      if (result.error && !result.error.message?.includes('CONFLICT') && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
-        const fallbackPatch = { ...patch }
-        delete fallbackPatch.agency_code
-        result = await client.rpc('update_shift', {
-          p_shift_id: id,
-          p_patch: fallbackPatch,
-          p_confirm_impact: confirmImpact,
-          p_expected_version: expectedVersion ?? null,
-        }).single()
-      }
       if (result.error) throw requestError('shift update', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode, effectiveData.execution_source) : null
     },

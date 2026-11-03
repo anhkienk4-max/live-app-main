@@ -20,7 +20,7 @@ import * as XLSX from 'xlsx'
 import { format } from 'date-fns'
 import type { Shift, Brand, Platform, Campaign, User, ShiftRegistration } from '@/lib/types/database.types'
 import { resolveShiftDateTime } from '@/lib/utils/shiftUtils'
-import { agencyDisplayLabel } from '@/lib/utils/executionSource'
+import { agencyDisplayLabel, executionSourceDisplayLabel } from '@/lib/utils/executionSource'
 import { safeSpreadsheetValue } from './calendarExport'
 
 // --- Row shape ---------------------------------------------------------------
@@ -47,7 +47,7 @@ export {
 
 export interface BuildScheduleExportOptions {
   includeKpi?: boolean
-  columns?: ReadonlyArray<keyof ScheduleExportRow>
+  columns?: ReadonlyArray<string>
 }
 
 export type ReportKpiRecord = {
@@ -137,7 +137,7 @@ export function buildScheduleExportRows(
       'Campaign': shift.campaign_id ? (campaigns.get(shift.campaign_id) ?? shift.campaign_id) : '',
       'Title': shift.title ?? '',
       'Studio': shift.studio ?? '',
-      'Execution Source': shift.execution_source ? (shift.execution_source === 'agency' ? 'Agency' : 'Internal') : '',
+      'Execution Source': executionSourceDisplayLabel(shift.execution_source),
       'Agency': shift.agency_code ? agencyDisplayLabel(shift.agency_code) : '',
       'Assigned Host Names': getAssignedNames(shift, 'host', shift.host_id),
       'Assigned Support Names': getAssignedNames(shift, 'support', shift.support_id),
@@ -165,6 +165,11 @@ export function buildScheduleExportRows(
       baseRow['Actual GMV'] = actualGmv
       baseRow['Total Orders'] = totalOrders
       baseRow['Peak Viewers'] = peakViewers
+    }
+
+    for (const field of Object.values(shift.supplemental_fields ?? {})) {
+      const label = `Supplemental: ${field.label}`
+      ;(baseRow as unknown as Record<string, string | number | boolean | undefined>)[label] = field.value
     }
 
     return baseRow
@@ -212,7 +217,7 @@ export function buildScheduleExportFilename(
 // --- XLSX download ----------------------------------------------------------
 
 /** Columns that must be written as explicit text to prevent Excel serial conversion. */
-const EXCEL_TEXT_COLUMNS: ReadonlySet<keyof ScheduleExportRow> = new Set([
+const EXCEL_TEXT_COLUMNS: ReadonlySet<string> = new Set([
   'Date', 'Start Time', 'End Time', 'End Date',
   'Shift ID', 'Import Batch ID',
 ])
@@ -227,18 +232,18 @@ const EXCEL_TEXT_COLUMNS: ReadonlySet<keyof ScheduleExportRow> = new Set([
 export function downloadScheduleExportXlsx(
   rows: ScheduleExportRow[],
   filename: string,
-  columns?: ReadonlyArray<keyof ScheduleExportRow>,
+  columns?: ReadonlyArray<string>,
 ): void {
-  const activeColumns = columns ?? (
-    rows.length > 0 && 'Target GMV' in rows[0]
-      ? SCHEDULE_EXPORT_EXTENDED_COLUMN_ORDER
-      : SCHEDULE_EXPORT_COLUMN_ORDER
-  )
+  const extendedColumns = new Set<string>(SCHEDULE_EXPORT_EXTENDED_COLUMN_ORDER)
+  const activeColumns = columns ?? [
+    ...(rows.length > 0 && 'Target GMV' in rows[0] ? SCHEDULE_EXPORT_EXTENDED_COLUMN_ORDER : SCHEDULE_EXPORT_COLUMN_ORDER),
+    ...[...new Set(rows.flatMap(row => Object.keys(row).filter(key => !extendedColumns.has(key))))],
+  ]
   const workbook = XLSX.utils.book_new()
 
   const headerRow = [...activeColumns]
   const dataRows = rows.map(row =>
-    activeColumns.map(col => safeSpreadsheetValue(row[col] ?? '')),
+    activeColumns.map(col => safeSpreadsheetValue((row as unknown as Record<string, string | number | boolean | undefined>)[col] ?? '')),
   )
 
   const aoa = [headerRow, ...dataRows]
@@ -252,7 +257,7 @@ export function downloadScheduleExportXlsx(
       const cell = worksheet[cellRef]
       if (cell) {
         cell.t = 's'
-        cell.v = String(row[col] ?? '')
+        cell.v = String((row as unknown as Record<string, string | number | boolean | undefined>)[col] ?? '')
         delete cell.z
         delete cell.w
       }
@@ -265,7 +270,7 @@ export function downloadScheduleExportXlsx(
       50,
       Math.max(
         col.length,
-        ...rows.map(row => String(row[col] ?? '').length),
+        ...rows.map(row => String((row as unknown as Record<string, string | number | boolean | undefined>)[col] ?? '').length),
       ),
     ),
   }))
@@ -286,13 +291,13 @@ export function downloadScheduleExportXlsx(
 export function downloadScheduleExportCsv(
   rows: ScheduleExportRow[],
   filename: string,
-  columns?: ReadonlyArray<keyof ScheduleExportRow>,
+  columns?: ReadonlyArray<string>,
 ): void {
-  const activeColumns = columns ?? (
-    rows.length > 0 && 'Target GMV' in rows[0]
-      ? SCHEDULE_EXPORT_EXTENDED_COLUMN_ORDER
-      : SCHEDULE_EXPORT_COLUMN_ORDER
-  )
+  const extendedColumns = new Set<string>(SCHEDULE_EXPORT_EXTENDED_COLUMN_ORDER)
+  const activeColumns = columns ?? [
+    ...(rows.length > 0 && 'Target GMV' in rows[0] ? SCHEDULE_EXPORT_EXTENDED_COLUMN_ORDER : SCHEDULE_EXPORT_COLUMN_ORDER),
+    ...[...new Set(rows.flatMap(row => Object.keys(row).filter(key => !extendedColumns.has(key))))],
+  ]
   const csvCell = (value: unknown): string => {
     const str = String(safeSpreadsheetValue((value ?? '') as string | number | boolean))
     if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -303,7 +308,7 @@ export function downloadScheduleExportCsv(
 
   const lines: string[] = [
     activeColumns.map(h => csvCell(h)).join(','),
-    ...rows.map(row => activeColumns.map(col => csvCell(row[col])).join(',')),
+    ...rows.map(row => activeColumns.map(col => csvCell((row as unknown as Record<string, string | number | boolean | undefined>)[col])).join(',')),
   ]
 
   // UTF-8 BOM ensures Excel opens without mis-encoding Vietnamese characters

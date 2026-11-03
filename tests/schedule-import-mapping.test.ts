@@ -6,6 +6,8 @@ import {
   parseScheduleRows,
   parseScheduleTabularData,
 } from '../lib/utils/excelUtils.ts'
+import { applyImportColumnMappings } from '../lib/utils/scheduleImportColumnMapping.ts'
+import { processScheduleImportRows } from '../lib/utils/scheduleImportRecovery.ts'
 
 const maps: EntityMaps = {
   brands: new Map([['Mars Wrigley', 'brand-1'], ['Snickers', 'brand-2']]),
@@ -89,8 +91,8 @@ test('Google Sheets Agency partner column is retained separately from execution 
   const result = parseScheduleTabularData([headers, row].map(csvRow).join('\n'), 'string', maps)
 
   assert.equal(result.validRows, 1)
-  assert.equal(result.rows[0].row.execution_source, 'agency')
-  assert.equal(result.validShifts[0].execution_source, 'agency')
+  assert.equal(result.rows[0].row.execution_source, 'internal')
+  assert.equal(result.validShifts[0].execution_source, 'internal')
   assert.equal(result.rows[0].row.custom_fields?.Agency, 'ADA')
 })
 
@@ -104,7 +106,7 @@ test('schedule import classifies an Agency partner repeated in the execution-sou
   const result = parseScheduleTabularData([headers, ...rows].map(csvRow).join('\n'), 'string', maps)
 
   assert.equal(result.validRows, 3)
-  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['agency', 'agency', 'agency'])
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['internal', 'agency', 'agency'])
 })
 
 test('Google Sheets combined Agency / execution-source header classifies partner rows', () => {
@@ -118,7 +120,7 @@ test('Google Sheets combined Agency / execution-source header classifies partner
 
   assert.equal(result.validRows, 3)
   assert.equal(result.invalidRows, 0)
-  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['agency', 'agency', 'agency'])
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['internal', 'agency', 'agency'])
   assert.deepEqual(result.rows.map(({ row }) => row.custom_fields?.Agency), ['ADA', 'AI', 'SNAP'])
 })
 
@@ -134,7 +136,7 @@ test('Google Sheets calendar format with Agency but no execution-source column i
 
   assert.equal(result.validRows, 3)
   assert.equal(result.invalidRows, 0)
-  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['agency', 'agency', 'agency'])
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['internal', 'agency', 'agency'])
   assert.deepEqual(result.rows.map(({ row }) => row.custom_fields?.Agency), ['ADA', 'AI', 'SNAP'])
 })
 
@@ -144,7 +146,7 @@ test('an invalid explicit execution-source value stays invalid even when an Agen
   const result = parseScheduleTabularData([headers, row].map(csvRow).join('\n'), 'string', maps)
 
   assert.equal(result.validRows, 0)
-  assert.match(result.rows[0].row.errors.join(' '), /Execution Source must be Internal or Agency/)
+  assert.match(result.rows[0].row.errors.join(' '), /Execution Source must be Internal or External/)
 })
 
 test('Google Sheets staffing display aliases normalize names without resolving users', () => {
@@ -842,5 +844,86 @@ test('Agency header aliases correctly map operating partners to custom fields an
   assert.equal(result.validRows, 1)
   assert.equal(result.rows[0].row.execution_source, 'agency')
   assert.equal(result.rows[0].row.custom_fields?.Agency, 'Live AI')
+})
+
+test('typed import mappings separate source-only, supplemental, and operational values', () => {
+  const headers = ['Date', 'Start time', 'End time', 'Brand', 'Platform', 'Agency', 'Execution Source', 'TARGET']
+  const sourceOnly = parseScheduleTabularData([headers, ['2026-11-10', '09:00', '11:00', 'Mars Wrigley', 'Shopee Live', 'ADA', '', '100']].map(csvRow).join('\n'), 'string', maps)
+  const untouched = applyImportColumnMappings(sourceOnly, { TARGET: { destination: 'source_only' } })
+  assert.equal(untouched.validShifts[0].execution_source, 'internal')
+  assert.deepEqual(untouched.validShifts[0].supplemental_fields, undefined)
+  assert.equal(untouched.rows[0].row.custom_fields?.TARGET, '100')
+
+  const supplemental = applyImportColumnMappings(sourceOnly, { TARGET: { destination: 'supplemental', type: 'number' } })
+  assert.equal(supplemental.validRows, 1)
+  assert.deepEqual(supplemental.validShifts[0].supplemental_fields?.target, { label: 'TARGET', type: 'number', value: 100 })
+
+  const invalid = parseScheduleTabularData([headers, ['2026-11-11', '09:00', '11:00', 'Mars Wrigley', 'Shopee Live', 'SNAP', 'Internal', 'not-a-number']].map(csvRow).join('\n'), 'string', maps)
+  const blocked = applyImportColumnMappings(invalid, { TARGET: { destination: 'supplemental', type: 'number' } })
+  assert.equal(blocked.validRows, 0)
+  assert.match(blocked.rows[0].row.errors.join(' '), /conflicts with Execution Source|valid number/i)
+})
+
+test('670-row import keeps agency mappings, 561 ready rows, 109 overnight warnings, and tail supplemental data', () => {
+  const headers = ['Date', 'Start time', 'End time', 'Brand', 'Platform', 'Shift name', 'Agency', 'Execution Source', 'TARGET']
+  const rows: unknown[][] = [headers]
+  const firstDate = new Date('2026-01-01T00:00:00Z')
+  for (let index = 0; index < 670; index += 1) {
+    const date = new Date(firstDate.getTime() + index * 86400000).toISOString().slice(0, 10)
+    const agency = ['ADA', 'SNAP', 'Live AI'][index % 3]
+    const overnight = index >= 561
+    rows.push([date, overnight ? '22:00' : '09:00', overnight ? '02:00' : '11:00', 'Mars Wrigley', 'Shopee Live', `Shift ${index + 1}`, agency, '', `TARGET-${index + 1}`])
+  }
+  const parsed = parseScheduleTabularData(rows.map(csvRow).join('\n'), 'string', maps)
+  const mapped = applyImportColumnMappings(parsed, { TARGET: { destination: 'supplemental', type: 'text' } })
+
+  assert.equal(mapped.totalRows, 670)
+  assert.equal(mapped.validRows, 670)
+  assert.equal(mapped.warningRows, 109)
+  assert.equal(mapped.validShifts.length, 670)
+  assert.deepEqual(mapped.rows.slice(650).map(row => row.shift?.supplemental_fields?.target.value), Array.from({ length: 20 }, (_, index) => `TARGET-${index + 651}`))
+  assert.deepEqual(mapped.rows.slice(0, 3).map(row => row.shift?.execution_source), ['internal', 'agency', 'agency'])
+  assert.deepEqual(mapped.rows[0].row.custom_fields?.Agency, 'ADA')
+})
+
+test('mapped supplemental values enrich a duplicate Shift on retry without erasing existing fields', async () => {
+  const base = parseScheduleTabularData([englishHeader, scheduleRow].map(csvRow).join('\n'), 'string', maps).validShifts[0]
+  const existing = { ...base, id: 'existing-shift', version: 1, supplemental_fields: { owner_note: { label: 'Owner note', type: 'text' as const, value: 'Keep me' } } }
+  const headers = [...englishHeader, 'TARGET']
+  const imported = parseScheduleTabularData([headers, [...scheduleRow, '2750']].map(csvRow).join('\n'), 'string', maps, [existing])
+  const mapped = applyImportColumnMappings(imported, { TARGET: { destination: 'supplemental', type: 'number' } })
+  assert.equal(mapped.rows[0].shift, undefined)
+  assert.equal(mapped.rows[0].duplicateCandidate?.supplemental_fields?.target.value, 2750, JSON.stringify({ source: imported.rows[0], mapped: mapped.rows[0] }))
+
+  let saved: Record<string, unknown> | undefined
+  const outcomes: Array<{ outcome: string }> = []
+  const result = await processScheduleImportRows({
+    batchId: 'retry-batch',
+    previews: mapped.rows,
+    batchRows: mapped.rows.map(preview => ({
+      id: `retry-batch:${preview.row.row_number}`,
+      batch_id: 'retry-batch',
+      source_row_number: preview.row.row_number,
+      original_values: {},
+      normalized_values: preview.row,
+      status: 'pending' as const,
+      validation_issues: [],
+      created_at: '2026-11-03T00:00:00Z',
+    })),
+    initialShifts: [existing],
+    createShift: async () => { throw new Error('duplicate must not create a new Shift') },
+    refreshShifts: async () => [existing],
+    updateShift: async (_id, patch) => {
+      saved = patch as Record<string, unknown>
+      return { ...existing, ...patch, version: 2 }
+    },
+    recordOutcome: async ({ outcome }) => { outcomes.push({ outcome }) },
+  })
+  assert.equal(result.recovered, 1)
+  assert.equal(outcomes[0].outcome, 'imported')
+  assert.deepEqual(saved?.supplemental_fields, {
+    owner_note: { label: 'Owner note', type: 'text', value: 'Keep me' },
+    target: { label: 'TARGET', type: 'number', value: 2750 },
+  })
 })
 

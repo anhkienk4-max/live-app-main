@@ -29,6 +29,7 @@ type ScheduleImportEnrichmentShape = Pick<Shift,
   | 'required_host_count'
   | 'required_support_count'
   | 'required_technical_count'
+  | 'supplemental_fields'
   | 'host_names'
   | 'assistant_names'
   | 'technical_names'
@@ -64,6 +65,7 @@ export function buildScheduleImportEnrichmentPatch(
   | 'required_host_count'
   | 'required_support_count'
   | 'required_technical_count'
+  | 'supplemental_fields'
 >> {
   const patch: Partial<Pick<Shift,
     | 'execution_source'
@@ -75,6 +77,7 @@ export function buildScheduleImportEnrichmentPatch(
     | 'required_host_count'
     | 'required_support_count'
     | 'required_technical_count'
+    | 'supplemental_fields'
   >> = {}
   if (sourcePresence.execution_source && imported.execution_source && existing.execution_source !== imported.execution_source) {
     patch.execution_source = imported.execution_source
@@ -100,6 +103,10 @@ export function buildScheduleImportEnrichmentPatch(
       patch[field] = imported[field]
     }
   })
+  const supplemental = imported.supplemental_fields ?? {}
+  if (Object.entries(supplemental).some(([key, value]) => JSON.stringify(existing.supplemental_fields?.[key]) !== JSON.stringify(value))) {
+    patch.supplemental_fields = { ...existing.supplemental_fields, ...supplemental }
+  }
   return patch
 }
 

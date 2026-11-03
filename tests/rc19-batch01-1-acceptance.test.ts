@@ -307,9 +307,9 @@ test('SCENARIO 4: Agency mapping & persistence contract (#133)', async () => {
   assert.equal(parsed.validShifts[1].agency_code, 'snap')
   assert.equal(parsed.validShifts[1].execution_source, 'agency')
 
-  // Row 2: ADA -> agency_code = 'ada', execution_source = 'agency'
+  // Row 2: ADA -> agency_code = 'ada', execution_source = 'internal'
   assert.equal(parsed.validShifts[2].agency_code, 'ada')
-  assert.equal(parsed.validShifts[2].execution_source, 'agency')
+  assert.equal(parsed.validShifts[2].execution_source, 'internal')
 
   // Row 3: defaulted from batchAgency
   assert.equal(parsed.validShifts[3].agency_code, 'live_ai')
@@ -388,7 +388,7 @@ test('SCENARIO 5: Export round-trip includes Execution Source and Agency', () =>
   assert.equal(exportRows.length, 2)
   // Verify deterministic column order
   assert.deepEqual(Object.keys(exportRows[0]), [...SCHEDULE_EXPORT_COLUMN_ORDER])
-  assert.equal(exportRows[0]['Execution Source'], 'Agency')
+  assert.equal(exportRows[0]['Execution Source'], 'External')
   assert.equal(exportRows[0]['Agency'], 'Live AI')
 
   assert.equal(exportRows[1]['Execution Source'], 'Internal')
@@ -718,7 +718,7 @@ test('SCENARIO 10: Agency = Live AI with Execution Source = Internal rejected at
   const parsed = normalizeScheduleImportResult(parseScheduleRows(sourceRows, baseMaps, []))
   assert.equal(parsed.validRows, 0)
   assert.equal(parsed.invalidRows, 1)
-  assert.ok(parsed.rows[0].row.errors.some(e => e.includes('Agency không thể đi cùng Execution Source là Nội bộ')))
+  assert.ok(parsed.rows[0].row.errors.some(e => e.includes('conflicts with Execution Source')))
 })
 
 test('SCENARIO 11: Service layer rejects createShift with agency_code and execution_source = internal', async () => {
@@ -745,6 +745,6 @@ test('SCENARIO 11: Service layer rejects createShift with agency_code and execut
         execution_source: 'internal',
       })
     },
-    (err: unknown) => err instanceof Error && err.message.includes('Agency cannot have execution_source = internal'),
+    (err: unknown) => err instanceof Error && err.message.includes('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT'),
   )
 })

@@ -17,6 +17,8 @@ import type {
   Platform,
   Shift,
   ShiftRegistration,
+  SupplementalShiftField,
+  SupplementalShiftFields,
   ShiftStaffIdentityMatchMethod,
   ShiftStatus,
   User,
@@ -31,6 +33,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -61,7 +64,7 @@ import { SelfAttendancePanel } from '@/components/features/attendance/SelfAttend
 import type { ListFilters } from '@/lib/services/operationsPageService'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
 import { getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
-import { agencyDisplayLabel } from '@/lib/utils/executionSource'
+import { agencyDisplayLabel, executionSourceDisplayLabel } from '@/lib/utils/executionSource'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview'
@@ -519,6 +522,7 @@ export function ShiftDetailModal({
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
   const [showSwapDialog, setShowSwapDialog] = React.useState(false)
+  const [supplementalDraft, setSupplementalDraft] = React.useState<Record<string, string>>({})
   const canDeleteShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
   const canEditStaffingLabels = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canAssignStaff = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
@@ -571,6 +575,10 @@ export function ShiftDetailModal({
     setRegistrationPage(1)
     setIsLocked(Boolean(shift.registration_locked))
   }, [shift.id, shift.registration_locked])
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate the editor when the persisted Shift revision changes
+    setSupplementalDraft(Object.fromEntries(Object.entries(shift.supplemental_fields ?? {}).map(([key, field]) => [key, String(field.value)])))
+  }, [shift.id, shift.updated_at, shift.supplemental_fields])
 
 
   const myRegistration = staffingActorId === currentUser?.id && currentUser
@@ -682,6 +690,41 @@ export function ShiftDetailModal({
         variant: 'destructive',
       })
       throw error
+    }
+  }
+
+  const saveSupplementalFields = async () => {
+    if (!currentUser || !hasPermission(currentUser, 'shifts.edit')) return
+    const next: SupplementalShiftFields = {}
+    for (const [key, field] of Object.entries(shift.supplemental_fields ?? {}) as Array<[string, SupplementalShiftField]>) {
+      const raw = supplementalDraft[key] ?? ''
+      if (!raw.trim()) continue
+      let value: string | number | boolean = raw
+      if (field.type === 'number') {
+        if (!/^-?(?:\d+|\d*\.\d+)$/.test(raw.trim()) || !Number.isFinite(Number(raw))) {
+          toast({ title: t('error'), description: `${field.label}: enter a valid number.`, variant: 'destructive' })
+          return
+        }
+        value = Number(raw)
+      } else if (field.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        toast({ title: t('error'), description: `${field.label}: use YYYY-MM-DD.`, variant: 'destructive' })
+        return
+      } else if (field.type === 'time' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(raw)) {
+        toast({ title: t('error'), description: `${field.label}: use HH:MM.`, variant: 'destructive' })
+        return
+      } else if (field.type === 'boolean') value = raw === 'true'
+      next[key] = { ...field, value }
+    }
+    setBusy(true)
+    try {
+      const saved = await shiftService.update(shift.id, { supplemental_fields: next, version: shift.version }, currentUser.id)
+      if (!saved) throw new Error(t('validationError'))
+      toast({ title: t('success'), description: t('shiftUpdated'), variant: 'success' })
+      onUpdate()
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -818,7 +861,7 @@ export function ShiftDetailModal({
                         <div>
                           <dt className="text-xs text-muted-foreground">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}</dt>
                           <dd className="mt-1 font-medium">
-                            {shift.execution_source === 'agency' ? 'Agency' : shift.execution_source === 'internal' ? (language === 'vi' ? 'Nội bộ' : 'Internal') : fallback}
+                            {executionSourceDisplayLabel(shift.execution_source, language) || fallback}
                           </dd>
                         </div>
                         <div>
@@ -987,7 +1030,7 @@ export function ShiftDetailModal({
               <TabsContent value="details" className="space-y-4 p-4 sm:p-6">
                 <dl className="grid gap-3 rounded-lg border bg-white p-4 text-xs sm:grid-cols-3" data-testid="shift-production-provenance">{[
                   ['Mã ca', shift.id], ['Múi giờ', shift.timezone], ['Ngày kết thúc', shift.end_date],
-                  ['Nguồn thực hiện', shift.execution_source ? (shift.execution_source === 'agency' ? 'Agency' : 'Nội bộ') : undefined],
+                  ['Nguồn thực hiện', executionSourceDisplayLabel(shift.execution_source, 'vi') || undefined],
                   ['Agency', shift.agency_code ? agencyDisplayLabel(shift.agency_code) : undefined],
                   ['Thời lượng', dateTime?.valid ? dateTime.durationMinutes + ' phút' : undefined],
                   ['Chế độ trạng thái', shift.status_mode], ['Lô nhập', shift.import_batch_id],
@@ -1036,6 +1079,28 @@ export function ShiftDetailModal({
                       </div>
                    </div>
                   </section>
+                  {Object.keys(shift.supplemental_fields ?? {}).length > 0 && (
+                    <section className="rounded-lg border bg-card p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{language === 'vi' ? 'Thông tin bổ sung từ nguồn nhập' : 'Imported supplemental fields'}</h3>
+                        {currentUser && hasPermission(currentUser, 'shifts.edit') && <Button size="sm" disabled={busy} onClick={() => void saveSupplementalFields()}>{language === 'vi' ? 'Lưu' : 'Save'}</Button>}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {Object.entries(shift.supplemental_fields ?? {}).map(([key, field]) => (
+                          <label key={key} className="space-y-1 text-sm">
+                            <span className="text-muted-foreground">{field.label} <span className="text-xs">({field.type})</span></span>
+                            {currentUser && hasPermission(currentUser, 'shifts.edit') ? field.type === 'boolean' ? (
+                              <Select value={supplementalDraft[key] ?? ''} onValueChange={value => setSupplementalDraft(current => ({ ...current, [key]: value }))}>
+                                <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="true">Yes</SelectItem><SelectItem value="false">No</SelectItem></SelectContent>
+                              </Select>
+                            ) : <Input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'time' ? 'time' : 'text'} value={supplementalDraft[key] ?? ''} onChange={event => setSupplementalDraft(current => ({ ...current, [key]: event.target.value }))} />
+                              : <span className="block break-words font-medium">{String(field.value)}</span>}
+                          </label>
+                        ))}
+                      </div>
+                      {currentUser && hasPermission(currentUser, 'shifts.edit') && <p className="mt-2 text-xs text-muted-foreground">{language === 'vi' ? 'Để trống để xóa giá trị.' : 'Leave a field blank to remove it.'}</p>}
+                    </section>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="staffing" className="space-y-6 p-4 sm:p-6">

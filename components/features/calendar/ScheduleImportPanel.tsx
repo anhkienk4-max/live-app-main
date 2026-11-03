@@ -11,8 +11,8 @@ import {
   shiftService,
   userService,
 } from '@/lib/services/dataService'
-import { Brand, Campaign, DeletionImpact, Platform, ScheduleImportBatch, Shift, User } from '@/lib/types/database.types'
-import { hasPermission } from '@/lib/permissions'
+import { Brand, Campaign, DeletionImpact, Platform, ScheduleImportBatch, Shift, User, type SupplementalShiftFieldType } from '@/lib/types/database.types'
+import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import {
@@ -26,6 +26,13 @@ import {
   agencyDisplayLabel,
   parseScheduleRows,
 } from '@/lib/utils/excelUtils'
+import { executionSourceDisplayLabel, executionSourceForAgency } from '@/lib/utils/executionSource'
+import {
+  applyImportColumnMappings,
+  operationalImportFields,
+  type ImportColumnMapping,
+  type OperationalImportField,
+} from '@/lib/utils/scheduleImportColumnMapping'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -181,6 +188,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [previewMaxHeight, setPreviewMaxHeight] = React.useState(560)
   const [previewMinWidth, setPreviewMinWidth] = React.useState(1780)
   const [customHeaderDrafts, setCustomHeaderDrafts] = React.useState<Record<string, string>>({})
+  const [columnMappings, setColumnMappings] = React.useState<Record<string, ImportColumnMapping>>({})
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [draftRows, setDraftRows] = React.useState<DraftRows>({})
   const [batchAgency, setBatchAgency] = React.useState<AgencyCode | null>(null)
@@ -277,6 +285,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     setBatch(null)
     setSourceFileStatus('not_required')
     setSourceFileId(null)
+    setColumnMappings({})
     originalImportFileRef.current = null
   }
 
@@ -449,6 +458,12 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       delete next[oldName]
       return next
     })
+    setColumnMappings(current => {
+      const next = { ...current }
+      if (next[oldName]) next[newName] = next[oldName]
+      delete next[oldName]
+      return next
+    })
   }
 
   const removePreviewRow = (rowNumber: number) => {
@@ -510,6 +525,11 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       delete next[columnName]
       return next
     })
+    setColumnMappings(current => {
+      const next = { ...current }
+      delete next[columnName]
+      return next
+    })
   }
 
   const bulkUpdateSelected = (updates: Partial<{ execution_source: string; brand_name: string; platform_name: string; studio: string; agency: string; agency_code: string }>) => {
@@ -540,8 +560,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           const customFields = { ...((row.custom_fields as Record<string, string> | undefined) ?? {}) }
           customFields.Agency = agencyLabel
           row = { ...row, Agency: agencyLabel, custom_fields: customFields }
-          if (agencyLabel.trim() && !row['Execution Source']) {
-            row['Execution Source'] = 'Agency'
+          if (updates.execution_source === undefined && updates.agency_code) {
+            row['Execution Source'] = executionSourceForAgency(updates.agency_code as AgencyCode)
           }
           changed = true
         }
@@ -651,7 +671,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   }
 
   const confirmImport = async () => {
-    if (!result || !batch || !source || importableCount === 0
+    if (!result || !batch || !source || hasPendingDrafts || hasAgencySourceConflict || importableCount === 0
       || (source.type === 'excel' && (sourceFileStatus !== 'saved' || !sourceFileId))) return
     const completedSource = source
     setBusy(true)
@@ -661,9 +681,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         await verifyScheduleSourceFile(sourceFileId)
       }
       const batchRows = await scheduleImportBatchPort.listBatchRows(batch.id)
+      const mappedImport = applyImportColumnMappings(result, columnMappings)
       const importResult = await processScheduleImportRows({
         batchId: batch.id,
-        previews: result.rows,
+        previews: mappedImport.rows,
         batchRows,
         initialShifts: existingShifts,
         createShift: shiftService.create,
@@ -694,7 +715,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       if (importResult.retryable > 0) {
         completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed')
         const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
-        const archive = await archiveCompletedSchedule(completedSource.type, batch.id, result.rows, importedCount)
+        const archive = await archiveCompletedSchedule(completedSource.type, batch.id, mappedImport.rows, importedCount)
         setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'failed' }, rows: finalRows, ...archive })
         setResult(null)
         setBatch(null)
@@ -713,7 +734,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       }
       completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'confirmed')
       const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
-      const archive = await archiveCompletedSchedule(completedSource.type, batch.id, result.rows, importedCount)
+      const archive = await archiveCompletedSchedule(completedSource.type, batch.id, mappedImport.rows, importedCount)
       setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'confirmed' }, rows: finalRows, ...archive })
       const finalCounts = batchPresentationCounts(finalRows)
       const attention = finalCounts.warning + finalCounts.invalid + finalCounts.duplicate + finalCounts.retryable
@@ -782,10 +803,19 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     }
   }
 
-  const previewCounts = React.useMemo(() => (result ? previewPresentationCounts(result) : null), [result])
   const customColumnNames = React.useMemo(
-    () => [...new Set((result?.rows ?? []).flatMap(preview => Object.keys(preview.row.custom_fields ?? {})))],
+    () => [...new Set((result?.rows ?? []).flatMap(preview => Object.keys(preview.row.custom_fields ?? {})))].filter(name =>
+      !['agency', 'agency name', 'execution source'].includes(normalizeLookup(name)),
+    ),
     [result],
+  )
+  const mappedResult = React.useMemo(
+    () => result ? applyImportColumnMappings(result, columnMappings) : null,
+    [result, columnMappings],
+  )
+  const mappedPreviewCounts = React.useMemo(
+    () => mappedResult ? previewPresentationCounts(mappedResult) : null,
+    [mappedResult],
   )
   const uniquePreviewBrands = React.useMemo(() => {
     if (!result) return []
@@ -803,8 +833,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   }, [result])
 
   const visiblePreviews = React.useMemo(() => {
-    if (!result) return []
-    return result.rows.filter(preview => {
+    if (!mappedResult) return []
+    return mappedResult.rows.filter(preview => {
       const status = previewStatusForRow(preview)
       if (previewFilter !== 'all' && previewFilter !== status) return false
 
@@ -833,12 +863,16 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         String(preview.row.row_number),
       ].some(value => String(value ?? '').toLocaleLowerCase().includes(query))
     })
-  }, [result, previewFilter, previewSearch, filterBrand, filterPlatform, filterStudio, filterDate, filterValidation])
+  }, [mappedResult, previewFilter, previewSearch, filterBrand, filterPlatform, filterStudio, filterDate, filterValidation])
   const completedCounts = completedImport ? batchPresentationCounts(completedImport.rows) : null
-  const importableCount = previewCounts ? previewCounts.ready + previewCounts.warning : 0
-  const previewAttention = previewCounts
-    ? previewCounts.warning + previewCounts.invalid + previewCounts.duplicate + previewCounts.retryable
+  const importableCount = mappedPreviewCounts ? mappedPreviewCounts.ready + mappedPreviewCounts.warning : 0
+  const hasAgencySourceConflict = Boolean(mappedResult?.rows.some(preview =>
+    preview.row.errors.some(error => /conflicts with (?:Execution Source|Agency)/i.test(error)),
+  ))
+  const previewAttention = mappedPreviewCounts
+    ? mappedPreviewCounts.warning + mappedPreviewCounts.invalid + mappedPreviewCounts.duplicate + mappedPreviewCounts.retryable
     : 0
+  const hasPendingDrafts = Object.keys(draftRows).length > 0
 
   const paginatedPreviews = React.useMemo(() => {
     const start = (previewPage - 1) * previewPageSize
@@ -924,7 +958,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><CardTitle>{t('reviewBeforeImport')}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{t('importSourceSelected')}: <span className="font-medium text-foreground">{source.name}</span></p><p className="mt-1 text-xs text-muted-foreground">{t('batchPreviewState')}</p></div>
-              {previewCounts && <ImportSummary counts={previewCounts} t={t} />}
+              {mappedPreviewCounts && <ImportSummary counts={mappedPreviewCounts} t={t} />}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -934,7 +968,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 {(['all', 'ready', 'warning', 'invalid', 'duplicate', 'retryable'] as const).map(filter => (
                   <Button key={filter} size="sm" variant={previewFilter === filter ? 'default' : 'outline'} onClick={() => setPreviewFilter(filter)} aria-pressed={previewFilter === filter}>
                     {filter === 'all' ? t('importStatusAll') : filter === 'ready' ? t('importStatusReady') : filter === 'warning' ? t('importStatusWarning') : filter === 'invalid' ? t('importStatusInvalid') : filter === 'duplicate' ? t('importStatusDuplicate') : t('importStatusRetryable')}
-                    {previewCounts && <span className="ml-1">({filter === 'all' ? previewCounts.total : previewCounts[filter]})</span>}
+                    {mappedPreviewCounts && <span className="ml-1">({filter === 'all' ? mappedPreviewCounts.total : mappedPreviewCounts[filter]})</span>}
                   </Button>
                 ))}
               </div>
@@ -1033,8 +1067,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 <div className="ml-auto flex items-center gap-2">
                   <span className="text-[11px] text-slate-500 font-medium">
                     {language === 'vi'
-                      ? `Hiển thị ${visiblePreviews.length}/${result.rows.length} dòng`
-                      : `Showing ${visiblePreviews.length}/${result.rows.length} rows`}
+                      ? `Hiển thị ${visiblePreviews.length}/${mappedResult?.rows.length ?? 0} dòng`
+                      : `Showing ${visiblePreviews.length}/${mappedResult?.rows.length ?? 0} rows`}
                   </span>
                   <select
                     aria-label="Rows per page"
@@ -1090,7 +1124,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                   >
                     <option value="" disabled>{language === 'vi' ? 'Gán nguồn thực hiện...' : 'Set Execution Source...'}</option>
                     <option value="internal">{language === 'vi' ? 'Nội bộ' : 'Internal'}</option>
-                    <option value="agency">Agency</option>
+                    <option value="agency">{language === 'vi' ? 'Bên ngoài' : 'External'}</option>
                   </select>
                   <select
                     aria-label="Bulk Agency"
@@ -1098,7 +1132,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     defaultValue=""
                     onChange={e => {
                       if (e.target.value) {
-                        bulkUpdateSelected({ agency_code: e.target.value, execution_source: 'agency' })
+                        bulkUpdateSelected({ agency_code: e.target.value, execution_source: executionSourceForAgency(e.target.value as AgencyCode) })
                         e.target.value = ''
                       }
                     }}
@@ -1173,6 +1207,89 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               </div>
             )}
 
+            {customColumnNames.length > 0 && (
+              <section className="space-y-3 rounded-lg border bg-white p-3" aria-labelledby="schedule-import-column-mapping-title" data-testid="schedule-import-column-mapping">
+                <div>
+                  <h3 id="schedule-import-column-mapping-title" className="text-sm font-semibold">
+                    {language === 'vi' ? 'Ánh xạ cột Excel' : 'Excel column mapping'}
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {language === 'vi'
+                      ? 'Chỉ Admin được chọn đích. Source Only chỉ lưu trong lô nhập; Supplemental lưu cùng ca; Operational ghi vào trường ca được hỗ trợ.'
+                      : 'Only Admin can choose destinations. Source Only stays with the import batch; Supplemental is stored on the Shift; Operational writes to a supported Shift field.'}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {customColumnNames.map(name => {
+                    const mapping = columnMappings[name] ?? { destination: 'source_only' as const }
+                    const sample = result?.rows.map(preview => preview.row.custom_fields?.[name]).find(value => Boolean(value?.trim())) || '—'
+                    const invalidValues = mappedResult?.rows.filter(preview => preview.row.errors.some(error => error.startsWith(`${name}:`))).length ?? 0
+                    return (
+                      <div key={name} className="grid gap-2 rounded-md border p-2 md:grid-cols-[minmax(9rem,1fr)_minmax(10rem,1fr)_minmax(11rem,1fr)_minmax(7rem,auto)_minmax(10rem,1fr)] md:items-center">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium" title={name}>{name}</p>
+                          <p className="text-[11px] text-muted-foreground">{language === 'vi' ? 'Có thể sửa trong bản xem trước' : 'Editable in preview'}</p>
+                        </div>
+                        <select
+                          aria-label={`${name} destination type`}
+                          className="h-8 min-w-0 rounded border bg-background px-2 text-xs"
+                          disabled={resolveSystemPermission(currentUser) !== 'admin'}
+                          value={mapping.destination}
+                          onChange={event => {
+                            const destination = event.target.value
+                            setColumnMappings(current => ({
+                              ...current,
+                              [name]: destination === 'supplemental'
+                                ? { destination: 'supplemental', type: 'text' }
+                                : destination === 'operational'
+                                  ? { destination: 'operational', field: 'title' }
+                                  : { destination: 'source_only' },
+                            }))
+                          }}
+                        >
+                          <option value="source_only">{language === 'vi' ? 'Chỉ lưu nguồn' : 'Source Only'}</option>
+                          <option value="supplemental">{language === 'vi' ? 'Trường bổ sung của ca' : 'Supplemental Shift Field'}</option>
+                          <option value="operational">{language === 'vi' ? 'Trường vận hành' : 'Operational Field'}</option>
+                        </select>
+                        {mapping.destination === 'supplemental' ? (
+                          <select
+                            aria-label={`${name} data type`}
+                            className="h-8 min-w-0 rounded border bg-background px-2 text-xs"
+                            disabled={resolveSystemPermission(currentUser) !== 'admin'}
+                            value={mapping.type}
+                            onChange={event => setColumnMappings(current => ({ ...current, [name]: { destination: 'supplemental', type: event.target.value as SupplementalShiftFieldType } }))}
+                          >
+                            <option value="text">Text</option><option value="number">Number</option><option value="boolean">Boolean</option><option value="date">Date</option><option value="time">Time</option>
+                          </select>
+                        ) : mapping.destination === 'operational' ? (
+                          <select
+                            aria-label={`${name} operational field`}
+                            className="h-8 min-w-0 rounded border bg-background px-2 text-xs"
+                            disabled={resolveSystemPermission(currentUser) !== 'admin'}
+                            value={mapping.field}
+                            onChange={event => setColumnMappings(current => ({ ...current, [name]: { destination: 'operational', field: event.target.value as OperationalImportField } }))}
+                          >
+                            {operationalImportFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
+                          </select>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{language === 'vi' ? 'Chưa ghi vào ca' : 'Not written to Shift'}</span>
+                        )}
+                        <span className="text-xs text-muted-foreground">{language === 'vi' ? 'Có thể sửa' : 'Editable'}</span>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs" title={sample}>{language === 'vi' ? 'Mẫu: ' : 'Sample: '}{sample}</p>
+                          <p className={`text-[11px] ${invalidValues ? 'text-red-700' : 'text-emerald-700'}`}>
+                            {invalidValues
+                              ? (language === 'vi' ? `${invalidValues} dòng không hợp lệ` : `${invalidValues} invalid row(s)`)
+                              : (language === 'vi' ? 'Kiểm tra hợp lệ' : 'Validation passed')}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
             <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
               <label htmlFor="schedule-import-preview-height" className="font-medium text-foreground">{language === 'vi' ? 'Chiều cao bảng xem trước' : 'Preview table height'}</label>
               <input id="schedule-import-preview-height" type="range" min={320} max={920} step={40} value={previewMaxHeight} onChange={event => setPreviewMaxHeight(Number(event.target.value))} className="w-40 accent-primary" />
@@ -1180,9 +1297,9 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               <label htmlFor="schedule-import-preview-width" className="ml-2 font-medium text-foreground">{language === 'vi' ? 'Chiều rộng bảng' : 'Preview table width'}</label>
               <input id="schedule-import-preview-width" type="range" min={1400} max={3000} step={100} value={previewMinWidth} onChange={event => setPreviewMinWidth(Number(event.target.value))} className="w-40 accent-primary" />
               <span>{previewMinWidth}px</span>
-              <span>{language === 'vi' ? 'Cột tùy chỉnh chỉ được lưu cùng dữ liệu nguồn của lô import.' : 'Custom columns are retained as import batch source metadata.'}</span>
+              <span>{language === 'vi' ? 'Cột chưa ánh xạ mặc định chỉ lưu trong nguồn của lô import.' : 'Unmapped columns stay with import batch source metadata by default.'}</span>
             </div>
-            {visiblePreviews.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" role="status">{result.rows.length === 0 ? t('importNoRows') : t('importNoMatchingRows')}</p>}
+            {visiblePreviews.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" role="status">{mappedResult?.rows.length === 0 ? t('importNoRows') : t('importNoMatchingRows')}</p>}
             <div className="hidden overflow-auto rounded-lg border md:block" style={{ maxHeight: `${previewMaxHeight}px` }}>
               <table className="w-full text-sm" style={{ minWidth: `${previewMinWidth}px` }}>
                 <thead className="sticky top-0 z-10 bg-background">
@@ -1315,7 +1432,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                         <td className="p-2"><div className="flex gap-1"><Input aria-label={`Row ${rowNumber} start time`} className="w-24" value={cellValue('start_time')} onChange={changeField('start_time')} onKeyDown={handleCellKeyDown} /><Input aria-label={`Row ${rowNumber} end time`} className="w-24" value={cellValue('end_time')} onChange={changeField('end_time')} onKeyDown={handleCellKeyDown} /></div>{preview.row.crosses_midnight && <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-xs text-indigo-700"><Moon className="h-3 w-3" />{t('endsNextDay')}: {displayDate(preview.row.end_date)}</p>}</td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} brand`} value={entityValue('brand_name', preview.row.brand_name)} onChange={value => draftChange(rowNumber, 'brand_name', value)} options={brands} /></td>
                         <td className="p-2"><PreviewEntitySelect ariaLabel={`Row ${rowNumber} platform`} value={entityValue('platform_name', preview.row.platform_name)} onChange={value => draftChange(rowNumber, 'platform_name', value)} options={platforms} /></td>
-                        <td className="p-2"><select aria-label={`Row ${rowNumber} Agency / execution source`} className="h-9 rounded-md border bg-background px-2" value={cellValue('execution_source')} onChange={event => draftChange(rowNumber, 'execution_source', event.target.value)}><option value="">{language === 'vi' ? 'Chưa phân loại' : 'Unclassified'}</option><option value="internal">{language === 'vi' ? 'Nội bộ' : 'Internal'}</option><option value="agency">Agency</option></select></td>
+                        <td className="p-2"><select aria-label={`Row ${rowNumber} Agency / execution source`} className="h-9 rounded-md border bg-background px-2" value={cellValue('execution_source')} onChange={event => draftChange(rowNumber, 'execution_source', event.target.value)}><option value="">{language === 'vi' ? 'Chưa phân loại' : 'Unclassified'}</option><option value="internal">{language === 'vi' ? 'Nội bộ' : 'Internal'}</option><option value="agency">{language === 'vi' ? 'Bên ngoài' : 'External'}</option></select></td>
                         <td className="p-2">
                           <select
                             aria-label={`Row ${rowNumber} Agency`}
@@ -1325,7 +1442,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                               const code = event.target.value
                               draftChange(rowNumber, 'agency_code', code)
                               if (code) {
-                                draftChange(rowNumber, 'execution_source', 'agency')
+                                draftChange(rowNumber, 'execution_source', executionSourceForAgency(code as AgencyCode) ?? '')
                               }
                             }}
                           >
@@ -1429,7 +1546,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     </div>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{preview.row.brand_name} · {preview.row.platform_name}{preview.row.campaign_name ? ` · ${preview.row.campaign_name}` : ''}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}: {preview.row.execution_source === 'agency' ? 'Agency' : preview.row.execution_source === 'internal' ? (language === 'vi' ? 'Nội bộ' : 'Internal') : (language === 'vi' ? 'Chưa phân loại' : 'Unclassified')}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}: {executionSourceDisplayLabel(preview.row.execution_source, language) || (language === 'vi' ? 'Chưa phân loại' : 'Unclassified')}</p>
                   {Object.entries(preview.row.custom_fields ?? {}).map(([name, value]) => <p key={name} className="mt-1 break-words text-xs text-muted-foreground"><span className="font-medium text-foreground">{name}:</span> {value || '—'}</p>)}
                   {preview.row.errors.map(message => <p key={message} className="mt-1 text-xs text-red-700">{message}</p>)}
                   {preview.row.warnings.map(message => <p key={message} className="mt-1 text-xs text-amber-700">{message}</p>)}
@@ -1453,8 +1570,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               </div>
             )}
 
-            {result.invalidRows > 0 && <p className="text-sm text-red-700">{t('correctRows')}</p>}
-            {previewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: importableCount, attention: previewAttention })}</p>}
+            {(mappedResult?.invalidRows ?? 0) > 0 && <p className="text-sm text-red-700">{t('correctRows')}</p>}
+            {mappedPreviewCounts && <p className="text-sm text-muted-foreground" data-testid="schedule-import-confirm-summary">{t('confirmImportSummary', { ready: importableCount, attention: previewAttention })}</p>}
             {source?.type === 'excel' && sourceFileStatus !== 'not_required' && <div className="flex flex-wrap items-center gap-2 text-sm" role="status">
               <span className={sourceFileStatus === 'saved' ? 'text-emerald-700' : 'text-amber-700'}>
                 {sourceFileStatus === 'saved' ? t('importSourceSaved') : sourceFileStatus === 'saving' ? t('importSourceSaving') : t('importSourceRequired')}
@@ -1465,7 +1582,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             </div>}
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
-              <Button onClick={confirmImport} disabled={busy || importableCount === 0 || (source?.type === 'excel' && (sourceFileStatus !== 'saved' || !sourceFileId))} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
+              <Button onClick={confirmImport} disabled={busy || hasPendingDrafts || hasAgencySourceConflict || importableCount === 0 || (source?.type === 'excel' && (sourceFileStatus !== 'saved' || !sourceFileId))} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
             </div>
           </CardContent>
         </Card>
@@ -1511,7 +1628,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 >
                   <option value="">{language === 'vi' ? '— Không đổi —' : '— No change —'}</option>
                   <option value="internal">{language === 'vi' ? 'Nội bộ' : 'Internal'}</option>
-                  <option value="agency">Agency</option>
+                    <option value="agency">{language === 'vi' ? 'Bên ngoài' : 'External'}</option>
                 </select>
               </div>
 
@@ -1571,7 +1688,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               </span>
               <ul className="list-disc pl-4 text-blue-800 space-y-0.5">
                 <li>{language === 'vi' ? `Số dòng bị ảnh hưởng: ${selectedRowNumbers.size} dòng` : `Rows affected: ${selectedRowNumbers.size}`}</li>
-                {bulkExecutionSource && <li>{language === 'vi' ? `Nguồn thực hiện: ${bulkExecutionSource === 'agency' ? 'Agency' : 'Nội bộ'}` : `Execution Source: ${bulkExecutionSource}`}</li>}
+                {bulkExecutionSource && <li>{language === 'vi' ? `Nguồn thực hiện: ${executionSourceDisplayLabel(bulkExecutionSource as 'internal' | 'agency', language)}` : `Execution Source: ${executionSourceDisplayLabel(bulkExecutionSource as 'internal' | 'agency', language)}`}</li>}
                 {bulkAgencyCode && <li>Agency: {bulkAgencyCode.toUpperCase()}</li>}
                 {bulkBrandName && <li>Brand: {bulkBrandName}</li>}
                 {bulkPlatformName && <li>Platform: {bulkPlatformName}</li>}

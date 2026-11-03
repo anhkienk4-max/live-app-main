@@ -19,6 +19,17 @@ export function agencyDisplayLabel(code?: AgencyCode | null): string {
   }
 }
 
+export function executionSourceForAgency(code?: AgencyCode | null): ExecutionSource | undefined {
+  if (!code) return undefined
+  return code === 'ada' ? 'internal' : 'agency'
+}
+
+export function executionSourceDisplayLabel(source: ExecutionSource | null | undefined, language: 'en' | 'vi' = 'en'): string {
+  if (source === 'internal') return language === 'vi' ? 'Nội bộ' : 'Internal'
+  if (source === 'agency') return language === 'vi' ? 'Bên ngoài' : 'External'
+  return ''
+}
+
 export function normalizeAgencyCode(value: unknown): AgencyCode | null {
   if (!value) return null
   const text = String(value)
@@ -49,8 +60,14 @@ export function resolveExecutionSource(input: {
   studio?: unknown
 }): ExecutionSource {
   if (typeof input.explicit === 'string' && input.explicit.trim()) {
-    const explicit = input.explicit.trim().toLocaleLowerCase('en-US')
-    if (explicit === 'internal' || explicit === 'agency') return explicit
+    const explicit = input.explicit
+      .normalize('NFKC')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLocaleLowerCase('en-US')
+    if (['internal', 'noi bo'].includes(explicit)) return 'internal'
+    if (['agency', 'external', 'ben ngoai'].includes(explicit)) return 'agency'
     throw new ExecutionSourceError()
   }
   if (input.explicit !== undefined && input.explicit !== null && typeof input.explicit !== 'string') {
