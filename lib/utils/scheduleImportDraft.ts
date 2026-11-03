@@ -2,6 +2,7 @@ import type { ScheduleImportRow } from '@/lib/types/database.types'
 import {
   normalizeAgencyCode,
   agencyDisplayLabel,
+  executionSourceForAgency,
 } from '@/lib/utils/executionSource'
 import {
   getScheduleImportSourceField,
@@ -113,6 +114,11 @@ export function commitRowDraftToSource<T extends Record<string, unknown>>(
     if (field === 'agency_code') {
       const normalized = normalizeAgencyCode(value)
       next.agency_code = normalized
+      const mappedSource = executionSourceForAgency(normalized)
+      if (mappedSource) {
+        next['Execution Source'] = mappedSource
+        sourcePresence.execution_source = true
+      }
       const customFields = (next.custom_fields as Record<string, string> | undefined) ?? {}
       if (normalized) {
         customFields.Agency = agencyDisplayLabel(normalized)

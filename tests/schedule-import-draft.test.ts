@@ -79,6 +79,24 @@ test('an unconfirmed draft is not persisted and leaves committed counts unchange
   assert.equal(rowDraftValue(draft, rowNumber, 'end_time', row.end_time), '14:00')
 })
 
+test('editing Agency synchronizes Execution Source and preserves custom fields', () => {
+  for (const [code, expectedSource, expectedLabel] of [
+    ['ada', 'internal', 'ADA'],
+    ['snap', 'agency', 'SNAP'],
+    ['live_ai', 'agency', 'Live AI'],
+  ] as const) {
+    const committed = parseSourceRows([sourceRow({ 'Execution Source': '' })])
+    const row = committed.rows[0].row
+    const draft = updateRowDraft({}, row.row_number, row, 'agency_code', code)
+    const nextSource = commitRowDraftToSource(buildScheduleImportPreviewSourceRow(row), draft[row.row_number])
+    const parsed = parseSourceRows([nextSource])
+
+    assert.equal(parsed.rows[0].row.execution_source, expectedSource)
+    assert.equal(parsed.rows[0].row.agency_code, code)
+    assert.equal(parsed.rows[0].row.custom_fields?.Agency, expectedLabel)
+  }
+})
+
 test('confirming a draft commits it once and revalidates the row', () => {
   const committed = parseSourceRows([sourceRow()])
   const row = committed.rows[0].row
