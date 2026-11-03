@@ -11,7 +11,7 @@ import type {
   ShiftStatusMode,
 } from '@/lib/types/database.types'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE } from '@/lib/utils/shiftUtils'
-import { resolveExecutionSource } from '@/lib/utils/executionSource'
+import { executionSourceForAgency, resolveExecutionSource } from '@/lib/utils/executionSource'
 
 const shiftColumns = [
   'id',
@@ -458,12 +458,13 @@ export function createSupabaseShiftRepository(
     },
 
     async create(data) {
-      if (data.agency_code && data.execution_source === 'internal') {
-        throw new Error('Agency cannot have execution_source = internal. Agency shifts must have execution_source = agency.')
+      const agencySource = executionSourceForAgency(data.agency_code)
+      if (agencySource && data.execution_source && data.execution_source !== agencySource) {
+        throw new Error('Execution Source conflicts with the operating unit: ADA is Internal; SNAP and AI are External.')
       }
       const effectiveData = {
         ...data,
-        execution_source: data.agency_code && !data.execution_source ? 'agency' : data.execution_source,
+        execution_source: agencySource ?? data.execution_source,
       }
       const payload = createPayload(effectiveData, routingMode)
       let result = await client.rpc('create_shift', { p_data: payload }).single()
@@ -480,12 +481,13 @@ export function createSupabaseShiftRepository(
     },
 
     async update(id, data, confirmImpact = false, expectedVersion) {
-      if (data.agency_code && data.execution_source === 'internal') {
-        throw new Error('Agency cannot have execution_source = internal. Agency shifts must have execution_source = agency.')
+      const agencySource = executionSourceForAgency(data.agency_code)
+      if (agencySource && data.execution_source && data.execution_source !== agencySource) {
+        throw new Error('Execution Source conflicts with the operating unit: ADA is Internal; SNAP and AI are External.')
       }
       const effectiveData = {
         ...data,
-        execution_source: data.agency_code && !data.execution_source ? 'agency' : data.execution_source,
+        execution_source: agencySource ?? data.execution_source,
       }
       const patch = updatePayload(effectiveData, routingMode)
       let result = await client.rpc('update_shift', {
