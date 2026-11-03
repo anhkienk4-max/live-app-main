@@ -764,7 +764,7 @@ export function ShiftDetailModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           size="xl"
-          className="h-auto grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden max-w-5xl gap-0 p-0"
+          className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-5xl h-auto grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden gap-0 p-0"
           data-testid="shift-detail-modal"
         >
           {/* A. COMMAND HEADER */}

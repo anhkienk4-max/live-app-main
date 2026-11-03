@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, type ReactElement } from 'react'
+import { useRef, useCallback, useSyncExternalStore, type ReactElement } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -11,25 +11,58 @@ import { cn } from '@/lib/utils'
 export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile' }: { items: NavItem[]; activeHref?: string; trigger: ReactElement; menuId?: 'mobile' | 'tablet' }) {
   const search = useSearchParams()
   const pushed = useRef(false)
-  const open = search.get('nav_menu') === menuId
   const { t } = useTranslation()
-  const removeMarker = () => {
-    const url = new URL(window.location.href)
-    url.searchParams.delete('nav_menu')
-    window.history.replaceState(null, '', url)
-    pushed.current = false
-  }
-  const changeOpen = (next: boolean) => {
-    if (next) {
+
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    window.addEventListener('popstate', onStoreChange)
+    return () => window.removeEventListener('popstate', onStoreChange)
+  }, [])
+
+  const getSnapshot = useCallback(() => {
+    if (typeof window === 'undefined') return search?.get('nav_menu') || ''
+    return new URLSearchParams(window.location.search).get('nav_menu') || ''
+  }, [search])
+
+  const getServerSnapshot = useCallback(() => {
+    return search?.get('nav_menu') || ''
+  }, [search])
+
+  const currentMenu = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+  const open = currentMenu === menuId
+
+  const removeMarker = useCallback(() => {
+    if (typeof window !== 'undefined') {
       const url = new URL(window.location.href)
-      url.searchParams.set('nav_menu', menuId)
-      window.history.pushState(null, '', url)
+      if (url.searchParams.has('nav_menu')) {
+        url.searchParams.delete('nav_menu')
+        window.history.replaceState(null, '', url)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }
+    }
+    pushed.current = false
+  }, [])
+
+  const changeOpen = useCallback((next: boolean) => {
+    if (next) {
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href)
+        url.searchParams.set('nav_menu', menuId)
+        window.history.pushState(null, '', url)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }
       pushed.current = true
-    } else if (pushed.current) {
-      pushed.current = false
-      window.history.back()
-    } else removeMarker()
-  }
+    } else {
+      if (pushed.current) {
+        pushed.current = false
+        if (typeof window !== 'undefined') {
+          window.history.back()
+        }
+      } else {
+        removeMarker()
+      }
+    }
+  }, [menuId, removeMarker])
+
   return <Dialog open={open} onOpenChange={changeOpen}>
     <DialogTrigger render={trigger} />
     <DialogContent data-testid="grouped-navigation-drawer" className="top-0 right-0 bottom-0 left-auto flex h-dvh max-h-dvh w-[min(24rem,100vw)] max-w-full translate-x-0 translate-y-0 flex-col gap-4 overflow-y-auto rounded-none sm:h-dvh sm:max-h-dvh sm:w-96 sm:max-w-full">

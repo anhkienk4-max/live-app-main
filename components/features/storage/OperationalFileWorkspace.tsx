@@ -899,7 +899,7 @@ export function OperationalFileWorkspace() {
         </aside>
 
         {/* Right Column: File Browser / Explorer Table & Cards */}
-        <main className="lg:col-span-8 xl:col-span-9 space-y-4">
+        <div className="lg:col-span-8 xl:col-span-9 space-y-4">
           <section className="space-y-3 rounded-xl border bg-card p-4 shadow-sm" aria-label={translate("File đã lưu")}>
             <CommandToolbar label="Tìm và lọc file" className="flex flex-col gap-3">
               {/* Toolbar Top Row */}
@@ -1204,7 +1204,7 @@ export function OperationalFileWorkspace() {
             )}
             {listReady && <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />}
           </section>
-        </main>
+        </div>
       </div>
 
       {/* 4. MODALS / DRAWERS */}
