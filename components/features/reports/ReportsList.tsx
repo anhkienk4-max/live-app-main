@@ -482,7 +482,9 @@ export function ReportsList() {
   const queueNotStartedCount = React.useMemo(() => pagedQueue.filter(s => reportQueueDisplayState(reportByShift.get(s.id)) === 'not_started').length, [pagedQueue, reportByShift])
   const queueDraftCount = React.useMemo(() => pagedQueue.filter(s => ['draft', 'reopened'].includes(reportQueueDisplayState(reportByShift.get(s.id)))).length, [pagedQueue, reportByShift])
   const queueNeedsReviewCount = React.useMemo(() => pagedQueue.filter(s => ['in_review', 'unconfirmed'].includes(reportQueueDisplayState(reportByShift.get(s.id)))).length, [pagedQueue, reportByShift])
-  const queueConfirmedCount = React.useMemo(() => filteredReports.filter(r => r.status === 'confirmed' || r.metrics_confirmed === true).length, [filteredReports])
+  const queueConfirmedCount = React.useMemo(() => pagedQueue.filter(s => reportQueueDisplayState(reportByShift.get(s.id)) === 'confirmed').length, [pagedQueue, reportByShift])
+  const reportsConfirmedPageCount = React.useMemo(() => filteredReports.filter(isConfirmedReportForKpi).length, [filteredReports])
+  const reportsUnconfirmedPageCount = React.useMemo(() => filteredReports.filter(report => !isConfirmedReportForKpi(report)).length, [filteredReports])
   const queueScope = [
     filters.start || filters.end ? `Ngày ca: ${filters.start || 'không giới hạn'} đến ${filters.end || 'không giới hạn'}` : 'Ngày ca: toàn bộ thời gian',
     currentUser?.system_permission === 'member' ? 'Phạm vi: ca được phân công hoặc báo cáo do bạn gửi' : 'Phạm vi: theo quyền tài khoản',
@@ -530,16 +532,16 @@ export function ReportsList() {
           <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
         </div>
       )}
-      <p className="text-xs text-muted-foreground">KPI tài chính và báo cáo chưa xác nhận: trang Báo cáo hiện tại · {queueScope}. Tổng báo cáo và tổng ca chờ xử lý: mọi trang theo bộ lọc.</p>
+      <p className="text-xs text-muted-foreground">KPI tài chính và báo cáo chưa xác nhận: trang Báo cáo hiện tại ({filteredReports.length} báo cáo, {reportsConfirmedPageCount} đã xác nhận) · {queueScope}. Tổng báo cáo sau bộ lọc: {reportTotal} · Tổng ca chờ xử lý mọi trang: {queueTotal}.</p>
       <div data-testid="reports-mobile-metrics" className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric title="Tổng báo cáo theo bộ lọc" value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
         <Metric title="Doanh thu đã xác nhận · trang này" value={confirmed.length ? formatCurrency(totalRevenue) : '—'} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
         <Metric title="Giá trị đơn trung bình · trang này" value={averageOrderValue === null ? '—' : formatCurrency(averageOrderValue)} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
-        <Metric title="Báo cáo chưa xác nhận · trang này" value={filteredReports.filter(report => !isConfirmedReportForKpi(report)).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
+        <Metric title="Báo cáo chưa xác nhận · trang này" value={reportsUnconfirmedPageCount.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 text-xs" data-testid="reports-queue-breakdown">
-        <span className="font-semibold text-muted-foreground">Trạng thái xử lý ({pagedQueue.length} ca trên trang này):</span>
+        <span className="font-semibold text-muted-foreground">Trạng thái hàng đợi ({pagedQueue.length} ca trên trang này):</span>
         <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-800 font-medium">
           Chưa có report: {loading ? '—' : queueNotStartedCount}
         </Badge>
@@ -550,7 +552,7 @@ export function ReportsList() {
           Cần review: {loading ? '—' : queueNeedsReviewCount}
         </Badge>
         <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 font-medium">
-          Hoàn tất (trang này): {loading ? '—' : queueConfirmedCount}
+          Đã hoàn tất: {loading ? '—' : queueConfirmedCount}
         </Badge>
         <span className="text-[11px] text-muted-foreground ml-auto">
           Tổng ca chờ xử lý mọi trang: {loading ? '—' : queueTotal}
@@ -691,7 +693,7 @@ export function ReportsList() {
           <div>
             <div className="flex items-center gap-2">
               <h2 id="created-reports-heading" className="text-lg font-semibold tracking-tight">{t('createdReports')}</h2>
-              <Badge variant="secondary" className="font-semibold">{reportTotal} báo cáo</Badge>
+              <Badge variant="secondary" className="font-semibold">{reportTotal} báo cáo sau bộ lọc ({filteredReports.length} trang này)</Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">Danh sách các báo cáo livestream đã lập, cập nhật chỉ số hoặc lưu trữ theo quyền phân cấp.</p>
           </div>

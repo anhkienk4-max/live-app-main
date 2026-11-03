@@ -117,7 +117,10 @@ export function resolveLiveReportPhotoGroup(
   if (title.includes('tổng hợp') || title.includes('tong hop') || title.includes('summary') || title.includes('[dashboard tổng hợp]')) {
     return 'dashboard_summary'
   }
-  if (title.includes('30') || title.includes('chu kỳ') || title.includes('chu ky') || title.includes('periodic') || title.includes('[dashboard 30m]') || Boolean(image.captured_at)) {
+  if (title.includes('30') || title.includes('chu kỳ') || title.includes('chu ky') || title.includes('periodic') || title.includes('[dashboard 30m]')) {
+    return 'dashboard_periodic'
+  }
+  if (image.captured_at && (title.includes('dashboard') || title.includes('số liệu') || title.includes('so lieu') || title.includes('metrics'))) {
     return 'dashboard_periodic'
   }
   return 'other'
