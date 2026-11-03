@@ -430,7 +430,7 @@ export function EnterpriseDataTable<T extends { id?: string | number }>({
                   position: 'relative',
                 }}
               >
-                {virtualizer.getVirtualItems().map((virtualRow) => {
+                {virtualizer.getVirtualItems().map((virtualRow: any) => {
                   const row = displayData[virtualRow.index]
                   if (!row) return null
                   const rowKey = row.id ?? virtualRow.index

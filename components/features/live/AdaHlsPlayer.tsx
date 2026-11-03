@@ -125,7 +125,7 @@ export function AdaHlsPlayer({shiftId,isLive}:{shiftId:string;isLive:boolean}){
       video.muted=true
       const hls=new Hls({
         lowLatencyMode:false,liveSyncDurationCount:3,maxBufferLength:12,backBufferLength:6,
-        xhrSetup:(xhr,url)=>{
+        xhrSetup:(xhr: XMLHttpRequest, url: string)=>{
           const grant=grantRef.current
           if(!current()||!grant)throw new Error('MEDIA_GRANT_EXPIRED')
           const bearer=mediaAuthorizationHeader(url,grant)
@@ -147,7 +147,7 @@ export function AdaHlsPlayer({shiftId,isLive}:{shiftId:string;isLive:boolean}){
           if(current())setStatus('buffering')
         })
       })
-      hls.on(Hls.Events.ERROR,(_event,data)=>{
+      hls.on(Hls.Events.ERROR,(_event: unknown, data: any)=>{
         if(!current())return
         if(data.response?.code===401||data.response?.code===403){
           stop('denied')

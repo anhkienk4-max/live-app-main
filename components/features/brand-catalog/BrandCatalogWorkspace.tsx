@@ -20,7 +20,6 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
-  ShieldCheck,
   X,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -216,6 +215,16 @@ function getProductStatusVariant(status: string): 'success' | 'secondary' | 'out
   }
 }
 
+export function sanitizeCsvValue(val: unknown): string {
+  if (val === null || val === undefined) return '""'
+  let str = String(val)
+  // Prevent CSV formula injection in spreadsheet software (=, +, -, @, tab, CR, pipe)
+  if (/^[=+\-@|\t\r]/.test(str)) {
+    str = `'` + str
+  }
+  return `"${str.replace(/"/g, '""')}"`
+}
+
 export function BrandCatalogWorkspace() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -357,13 +366,14 @@ export function BrandCatalogWorkspace() {
   const totalActiveProducts = products.filter(p => p.lifecycle_status === 'active').length
   const totalProducts = products.length
   const totalSkus = catalog?.skus.length ?? 0
-  const mappedSkus = catalog?.skuPlatforms.length ?? 0
-  const mappingPercentage = totalSkus > 0 ? Math.round((mappedSkus / totalSkus) * 100) : 0
+  const mappedSkuIds = new Set((catalog?.skuPlatforms ?? []).map(sp => sp.sku_id))
+  const mappedSkus = catalog?.skus.filter(s => mappedSkuIds.has(s.id)).length ?? 0
+  const mappingPercentage = totalSkus > 0 ? Math.min(100, Math.max(0, Math.round((mappedSkus / totalSkus) * 100))) : 0
   const activeCampaigns = campaigns.filter(c => c.status === 'active')
   const activeCampaignsCount = activeCampaigns.length
   const activeCampaignsSummary = activeCampaigns.map(c => c.name).slice(0, 3).join(' · ') || (campaigns.length ? `${campaigns.length} chiến dịch` : 'Chưa có chiến dịch')
   const productsWithMedia = products.filter(p => productHasResourceType(catalog, p.id, 'image')).length
-  const standardizedPercentage = totalProducts > 0 ? Math.round((productsWithMedia / totalProducts) * 100) : 0
+  const standardizedPercentage = totalProducts > 0 ? Math.min(100, Math.max(0, Math.round((productsWithMedia / totalProducts) * 100))) : 0
 
   // Filter products
   const filteredProducts = products.filter(product => {
@@ -435,8 +445,10 @@ export function BrandCatalogWorkspace() {
   }
 
   const exportFilteredCatalog = () => {
-    if (!filteredProducts.length) return
-    const rows = filteredProducts.map(p => {
+    // Strictly restrict export to products within user-authorized brand scope
+    const exportableProducts = filteredProducts.filter(p => scopedProductIds.has(p.id))
+    if (!exportableProducts.length) return
+    const rows = exportableProducts.map(p => {
       const skus = catalog?.skus.filter(s => s.product_id === p.id) ?? []
       return {
         product_code: p.product_code,
@@ -448,8 +460,8 @@ export function BrandCatalogWorkspace() {
         sku_codes: skus.map(s => s.sku_code).join('; '),
       }
     })
-    const header = Object.keys(rows[0]).join(',')
-    const csv = [header, ...rows.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n')
+    const header = Object.keys(rows[0]).map(h => sanitizeCsvValue(h)).join(',')
+    const csv = [header, ...rows.map(r => Object.values(r).map(v => sanitizeCsvValue(v)).join(','))].join('\r\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -508,7 +520,7 @@ export function BrandCatalogWorkspace() {
             <Download className="h-3.5 w-3.5" /> Xuất Danh Mục
           </Button>
           <Button variant="outline" size="sm" onClick={() => void load()} className="h-9 gap-1.5 text-xs font-semibold">
-            <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} /> Đồng Bộ Sàn (Auto-sync)
+            <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} /> Làm mới dữ liệu
           </Button>
           {isAdmin && (
             <Button
@@ -578,12 +590,12 @@ export function BrandCatalogWorkspace() {
         <Card className="border border-border/80 shadow-xs">
           <CardContent className="p-3.5 space-y-1">
             <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              <span>Chuẩn hóa Media &amp; Claims</span>
-              <ShieldCheck className="h-4 w-4 text-blue-500" />
+              <span>Tỷ lệ có ảnh / Key Visual</span>
+              <ImageIcon className="h-4 w-4 text-blue-500" />
             </div>
             <div className="text-2xl font-black text-foreground">{standardizedPercentage}%</div>
-            <p className="text-[11px] font-medium text-emerald-600">
-              Đạt chuẩn duyệt kịch bản live
+            <p className="text-[11px] font-medium text-blue-600">
+              {productsWithMedia} / {totalProducts} sản phẩm có tài nguyên hình ảnh
             </p>
           </CardContent>
         </Card>
@@ -1379,8 +1391,13 @@ export function BrandCatalogWorkspace() {
                           <span>Bắt Buộc Nhắc Đến (Mandatory Claims):</span>
                         </div>
                         <p className="text-amber-800 leading-relaxed">
-                          {(selectedProductBrand?.mandatory_claims ?? []).join('. ') ||
-                            'Vui lòng tuân thủ đúng tên gọi và công dụng chính hãng đã được cấp phép.'}
+                          {selectedProductBrand?.mandatory_claims?.length ? (
+                            selectedProductBrand.mandatory_claims.join('. ')
+                          ) : (
+                            <span className="text-amber-800/70 italic">
+                              Chưa có thông điệp bắt buộc được phê duyệt cho thương hiệu này.
+                            </span>
+                          )}
                         </p>
                       </div>
 
@@ -1391,8 +1408,13 @@ export function BrandCatalogWorkspace() {
                           <span>Nghiêm Cấm Phát Ngôn (Restricted):</span>
                         </div>
                         <p className="text-red-800 leading-relaxed">
-                          {(selectedProductBrand?.restricted_claims ?? []).join('. ') ||
-                            'Tuyệt đối không so sánh tiêu cực nhãn hàng khác, không cam kết quá mức công dụng.'}
+                          {selectedProductBrand?.restricted_claims?.length ? (
+                            selectedProductBrand.restricted_claims.join('. ')
+                          ) : (
+                            <span className="text-red-800/70 italic">
+                              Chưa ghi nhận thông điệp hạn chế hoặc cấm phát ngôn.
+                            </span>
+                          )}
                         </p>
                       </div>
 
