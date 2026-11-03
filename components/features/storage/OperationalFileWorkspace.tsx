@@ -482,7 +482,7 @@ export function OperationalFileWorkspace() {
           </div>
         </div>
 
-        <Link href="/storage/resources" className="rounded-md border px-3 py-2 text-sm">Resource registry</Link>
+        <Link href="/storage/resources" className="inline-flex min-h-11 items-center rounded-md border px-3 py-2 text-sm">Resource registry</Link>
 
         {/* Provider Connectivity Status Pills & Actions */}
         <div className="flex flex-wrap items-center gap-2">

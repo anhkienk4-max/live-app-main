@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440, language: 'en' }]) {
-  test(`Storage Explorer interactive features at ${width}px (${language})`, async ({ page }) => {
+  test(`Storage workspace stays fail-closed without active routes at ${width}px (${language})`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.addInitScript(lang => {
       localStorage.setItem('livestream-ops-current-user', '1')
@@ -13,9 +13,9 @@ for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440
     const workspace = page.getByTestId('operational-file-workspace')
     await expect(workspace).toBeVisible({ timeout: 25_000 })
 
-    // 2. Directory Tree & Breadcrumb
-    const tree = page.locator('[role="tree"]')
-    await expect(tree).toBeVisible()
+    // No physical tree is shown until the backend confirms an active Storage route.
+    await expect(page.getByTestId('storage-physical-tree-unavailable')).toBeVisible()
+    await expect(page.locator('[role="tree"]')).toHaveCount(0)
 
     const breadcrumb = page.locator('nav[aria-label="Breadcrumb"]')
     await expect(breadcrumb).toBeVisible()
@@ -73,7 +73,10 @@ test('Storage RBAC: Member user (id: 3) is denied access with alert', async ({ p
 
 test('Storage resource registry: duplicate attach preserves existing access and metadata', async ({ page }) => {
   const actions: Array<Record<string, unknown>> = []
-  await page.addInitScript(() => localStorage.setItem('livestream-ops-current-user', '1'))
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user', '1')
+    localStorage.setItem('livestream-ops-language', 'en')
+  })
   await page.route('**/api/storage-resources', async route => {
     if (route.request().method() === 'GET') {
       await route.fulfill({ json: { ok: true, resources: [{
@@ -90,7 +93,7 @@ test('Storage resource registry: duplicate attach preserves existing access and 
     else await route.fulfill({ status: 201, json: { ok: true, note: 'Scope attached.' } })
   })
   await page.goto('/storage/resources')
-  await expect(page.getByRole('heading', { name: 'Storage resources' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resources and links' })).toBeVisible()
   await expect(page.getByText('Campaign root')).toBeVisible()
   await page.screenshot({ path: 'docs/handoffs/evidence/rc19-sto02-resource-registry.png', fullPage: true })
   await page.getByLabel('Display title').fill('Campaign root')
@@ -98,28 +101,34 @@ test('Storage resource registry: duplicate attach preserves existing access and 
   await page.getByLabel('Canonical provider URL').fill('https://drive.google.com/drive/folders/existing123')
   await page.getByLabel('Brand ID').fill('brand-1')
   await page.getByRole('button', { name: 'Add link metadata' }).click()
-  await expect(page.getByText(/already registered/u)).toBeVisible()
+  await expect(page.getByText(/already in the registry/u)).toBeVisible()
   await page.getByRole('button', { name: 'Attach current scope' }).click()
   await expect.poll(() => actions.map(action => action.action)).toEqual(['create', 'attach_scope'])
 })
 
 test('Storage resource registry hides Admin controls for Member and rejects forged unauthenticated writes', async ({ page, request }) => {
-  await page.addInitScript(() => localStorage.setItem('livestream-ops-current-user', '3'))
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user', '3')
+    localStorage.setItem('livestream-ops-language', 'en')
+  })
   await page.route('**/api/storage-resources', route => route.fulfill({ json: { ok: true, resources: [] } }))
   await page.goto('/storage/resources')
-  await expect(page.getByRole('heading', { name: 'Storage resources' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resources and links' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add link metadata' })).toHaveCount(0)
   const forged = await request.post('/api/storage-resources', { data: { action: 'create' } })
   expect(forged.status()).toBe(401)
 })
 
 test('Storage resource registry reports an uninstalled schema without showing an empty success state', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('livestream-ops-current-user', '1'))
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user', '1')
+    localStorage.setItem('livestream-ops-language', 'en')
+  })
   await page.route('**/api/storage-resources', route => route.fulfill({
     status: 503,
     json: { ok: false, error: 'STORAGE_RESOURCE_REGISTRY_NOT_INSTALLED' },
   }))
   await page.goto('/storage/resources')
-  await expect(page.getByText('STORAGE_RESOURCE_REGISTRY_NOT_INSTALLED', { exact: true })).toBeVisible()
+  await expect(page.getByText('Could not load the resource registry.', { exact: true })).toBeVisible()
   await expect(page.getByText('No resources match these filters.')).toHaveCount(0)
 })
