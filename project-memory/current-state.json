@@ -9,7 +9,7 @@
     "sha": "73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5"
   },
   "repository": {
-    "branch": "feat/ops-full-app-upgrade-rc19",
+    "branch": "main",
     "head": "78a70b1f6b34003f38041a044a25f1b68ba126a2",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
