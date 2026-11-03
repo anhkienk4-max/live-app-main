@@ -160,6 +160,11 @@ jobs:
             tests/rc19-sequential-migration-runner.test.ts \
             tests/rc19-batch05a41-sequential-migrations.test.ts
 
+      - name: Isolated UI functional tests and full TypeScript type-check
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test tests/rc19-ui-functional-integration.test.tsx
+          pnpm run type-check
+
       - name: Full canonical Node regression (PostgreSQL 17 suites are gated separately)
         run: node scripts/run-final-regression.mjs --exclude-postgres17
 
