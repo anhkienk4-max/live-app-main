@@ -3,6 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { sanitizeFileName } from '@/lib/files/fileValidation'
+import { agencyReportFolderSegments } from '@/lib/files/operationalAgencyStorage'
 import type { OperationalFileCategory } from '@/lib/files/operationalFileCatalog'
 import {
   ADA_OPS_REPORT_ROOT_ID,
@@ -48,6 +49,9 @@ export interface OperationalStorageDomainRouteRepository {
     shiftDate: string
     brandId: string
     platformId: string | null
+    /** Trusted persisted Shift agency; never selected by the upload caller. */
+    agencyCode: string | null
+    executionSource: 'internal' | 'agency' | null
     fileName: string
   }): Promise<OperationalStoragePlacement>
 }
@@ -208,9 +212,11 @@ export function createOperationalStorageDomainRouteRepository(
       if (folder.folderId !== ADA_OPS_REPORT_ROOT_ID || !input.platformId) {
         throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
       }
+      const agencySegments = agencyReportFolderSegments(input.agencyCode, input.executionSource)
       const { year, month, compactDate } = dateParts(input.shiftDate)
       const shiftFolder = 'SHIFT_' + compactDate + '__' + safeScopeSegment(input.shiftId)
       const folderSegments = [
+        ...agencySegments,
         safeScopeSegment(input.brandId),
         safeScopeSegment(input.platformId),
         year,

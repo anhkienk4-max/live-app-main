@@ -261,8 +261,8 @@ test('DATA/SOURCE upload resolves canonical folder, writes provider bytes, and s
   assert.equal(Object.hasOwn(db.rows[0], 'base64'), false)
 })
 
-test('domain-first report artifact upload uses the selected group without requiring execution_source', async () => {
-  const db = fakeClient({ shift: { ...shift, execution_source: null } })
+test('domain-first report artifact upload uses the persisted ADA/internal Shift agency', async () => {
+  const db = fakeClient({ shift: { ...shift, agency_code: 'ada', execution_source: 'internal' } })
   const placements: OperationalStoragePlacement[] = []
   let uploadedParent = ''
   const storage = {
@@ -293,6 +293,8 @@ test('domain-first report artifact upload uses the selected group without requir
       async resolveDomainCategoryPlacement() { throw new Error('category route must not be used') },
       async resolveReportArtifactGroupPlacement(input) {
         group = input.group
+        assert.equal(input.agencyCode, 'ada')
+        assert.equal(input.executionSource, 'internal')
         const placement: OperationalStoragePlacement = {
           provider: 'google_drive', storageProfile: 'REPORT_ARTIFACT_GROUP',
           rootFolderId: 'app-root', baseFolderId: 'report-root',

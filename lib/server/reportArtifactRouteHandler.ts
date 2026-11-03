@@ -393,6 +393,8 @@ async function persistUploadedArtifact(input: {
       shiftDate: input.shift.date,
       brandId: input.shift.brand_id,
       platformId: input.shift.platform_id,
+      agencyCode: input.shift.agency_code ?? null,
+      executionSource: input.shift.execution_source ?? null,
       fileName: storageName,
     })
     : await input.routeResolver.resolvePlacement(routedPlacementInput(

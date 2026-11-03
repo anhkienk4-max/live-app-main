@@ -205,16 +205,21 @@ test('RC1.2 report and live uploads use the selected provider once and persist i
   }
 })
 
-test('domain-first report image routes the selected artifact group for NULL execution_source', async () => {
+test('domain-first report image routes using the persisted SNAP agency and selected artifact group', async () => {
   const calls: string[] = []
   const client = fakeClient({
     calls,
-    shift: { date: '2026-10-01', brand_id: 'stg-b1', platform_id: 'stg-p1', execution_source: null },
+    shift: {
+      date: '2026-10-01', brand_id: 'stg-b1', platform_id: 'stg-p1',
+      agency_code: 'snap', execution_source: 'agency',
+    },
     rpcData: { id: 'report-image', provider: 'google_drive', external_file_id: 'google_drive-file' },
   })
   const storage = fakeStorage({ calls })
   const placements: OperationalStoragePlacement[] = []
   let selectedGroup = ''
+  let routedAgency = ''
+  let routedSource = ''
   const handler = createReportImageRouteHandler({
     resolveUser: async () => user,
     createClient: async () => client as never,
@@ -224,6 +229,8 @@ test('domain-first report image routes the selected artifact group for NULL exec
       async resolveDomainCategoryPlacement() { throw new Error('category route must not be used') },
       async resolveReportArtifactGroupPlacement(input) {
         selectedGroup = input.group
+        routedAgency = input.agencyCode ?? ''
+        routedSource = input.executionSource ?? ''
         const placement: OperationalStoragePlacement = {
           provider: 'google_drive', storageProfile: 'REPORT_ARTIFACT_GROUP',
           rootFolderId: 'app-root', baseFolderId: 'report-root',
@@ -244,6 +251,8 @@ test('domain-first report image routes the selected artifact group for NULL exec
   }))
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()))
   assert.equal(selectedGroup, 'dashboard_30min')
+  assert.equal(routedAgency, 'snap')
+  assert.equal(routedSource, 'agency')
   assert.equal(placements.length, 1)
   assert.equal(calls.some(call => call.startsWith('upload_report_image_with_storage_metadata:')), true)
 })
