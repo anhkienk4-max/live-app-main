@@ -88,6 +88,21 @@ type Filters = { date: string; brandIds: string[]; platformIds: string[]; campai
 const todayValue = () => getCurrentBusinessDate()
 const initialFilters = (): Filters => ({ date: todayValue(), brandIds: [], platformIds: [], campaignIds: [], hostIds: [], supportIds: [], technicalIds: [], statuses: [] })
 
+function subscribeOnline(callback: () => void) {
+  window.addEventListener('online', callback)
+  window.addEventListener('offline', callback)
+  return () => {
+    window.removeEventListener('online', callback)
+    window.removeEventListener('offline', callback)
+  }
+}
+function getOnlineSnapshot() {
+  return typeof navigator !== 'undefined' ? navigator.onLine : true
+}
+function getServerOnlineSnapshot() {
+  return true
+}
+
 export function LiveMonitoringDashboard() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
@@ -108,7 +123,7 @@ export function LiveMonitoringDashboard() {
   const [loading, setLoading] = React.useState(true)
   const [isRevalidating, setIsRevalidating] = React.useState(false)
   const [loadError, setLoadError] = React.useState<unknown>(null)
-  const [isOnline, setIsOnline] = React.useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
+  const isOnline = React.useSyncExternalStore(subscribeOnline, getOnlineSnapshot, getServerOnlineSnapshot)
   const [lastSuccessTime, setLastSuccessTime] = React.useState<number | null>(null)
   const [isStale, setIsStale] = React.useState(false)
 
@@ -209,17 +224,11 @@ export function LiveMonitoringDashboard() {
 
   React.useEffect(() => {
     const handleOnline = () => {
-      setIsOnline(true)
       void loadData()
     }
-    const handleOffline = () => {
-      setIsOnline(false)
-    }
     window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
     return () => {
       window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
     }
   }, [loadData])
 
