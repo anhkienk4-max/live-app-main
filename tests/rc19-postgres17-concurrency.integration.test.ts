@@ -3,16 +3,116 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { Client } from 'pg'
 
-const DATABASE_URL = process.env.DATABASE_URL
+const DATABASE_NAME = 'rc19_concurrency_disposable'
+const DATABASE_MARKER = 'RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE'
 
-function getDatabaseConfig() {
-  if (!DATABASE_URL) {
-    if (process.env.CI || process.env.STRICT_CONCURRENCY_GATE === 'true') {
+function getDatabaseConfig(env: NodeJS.ProcessEnv = process.env) {
+  if (!env.DATABASE_URL) {
+    if (env.CI || env.STRICT_CONCURRENCY_GATE === 'true') {
       throw new Error('[POSTGRES-17 CONCURRENCY GATE] DATABASE_URL is required in CI/Release Gate')
     }
     return null
   }
-  return { connectionString: DATABASE_URL }
+
+  let url: URL
+  try {
+    url = new URL(env.DATABASE_URL)
+  } catch {
+    throw new Error('[POSTGRES-17 CONCURRENCY GATE] DATABASE_URL must target the disposable PostgreSQL service')
+  }
+
+  const host = url.hostname.toLowerCase()
+  const isLoopback = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)
+  const isDisposable =
+    env.CI === 'true' &&
+    env.STRICT_CONCURRENCY_GATE === 'true' &&
+    env.RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE === 'I_UNDERSTAND' &&
+    !env.VERCEL &&
+    !env.VERCEL_ENV &&
+    isLoopback &&
+    url.port === '5432' &&
+    url.pathname === `/${DATABASE_NAME}` &&
+    url.username === 'rc19_ci' &&
+    url.protocol === 'postgresql:'
+
+  if (!isDisposable) {
+    throw new Error('[POSTGRES-17 CONCURRENCY GATE] Refusing non-disposable database target')
+  }
+
+  return { connectionString: env.DATABASE_URL }
+}
+
+function assertDisposableDatabaseIdentity(identity: {
+  database_name: string
+  session_user: string
+  server_version_num: string
+  database_comment: string | null
+}) {
+  if (
+    identity.database_name !== DATABASE_NAME ||
+    identity.session_user !== 'rc19_ci' ||
+    !identity.server_version_num.startsWith('17') ||
+    identity.database_comment !== DATABASE_MARKER
+  ) {
+    throw new Error('[POSTGRES-17 CONCURRENCY GATE] Connected server identity is not the marked disposable PostgreSQL 17 database')
+  }
+}
+
+test('Concurrency database URL guard rejects non-disposable targets', () => {
+  const base = {
+    CI: 'true',
+    STRICT_CONCURRENCY_GATE: 'true',
+    RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE: 'I_UNDERSTAND',
+    DATABASE_URL: 'postgresql://rc19_ci:ci@localhost:5432/rc19_concurrency_disposable',
+  }
+
+  assert.ok(getDatabaseConfig(base))
+  for (const override of [
+    { DATABASE_URL: 'postgresql://rc19_ci:ci@db.supabase.co:5432/rc19_concurrency_disposable' },
+    { DATABASE_URL: 'postgresql://rc19_ci:ci@localhost:5432/postgres' },
+    { RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE: undefined },
+    { VERCEL: '1' },
+    { CI: 'false' },
+  ]) {
+    assert.throws(() => getDatabaseConfig({ ...base, ...override } as NodeJS.ProcessEnv), /Refusing non-disposable database target/)
+  }
+})
+
+test('Concurrency server identity guard requires the marked PostgreSQL 17 CI database', () => {
+  const identity = {
+    database_name: DATABASE_NAME,
+    session_user: 'rc19_ci',
+    server_version_num: '170006',
+    database_comment: DATABASE_MARKER,
+  }
+
+  assert.doesNotThrow(() => assertDisposableDatabaseIdentity(identity))
+  for (const override of [
+    { database_name: 'postgres' },
+    { session_user: 'postgres' },
+    { server_version_num: '160009' },
+    { database_comment: null },
+  ]) {
+    assert.throws(() => assertDisposableDatabaseIdentity({ ...identity, ...override }), /not the marked disposable/)
+  }
+})
+
+async function assertFreshPublicNamespace(client: Client) {
+  const existing = await client.query<{ object_name: string }>(`
+    select c.relname as object_name
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm', 'S')
+    union all
+    select p.proname as object_name
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prokind in ('f', 'p')
+  `)
+
+  if (existing.rowCount) {
+    throw new Error('[POSTGRES-17 CONCURRENCY GATE] Disposable database public namespace is not empty')
+  }
 }
 
 test('PostgreSQL 17 Multi-Connection Concurrency & Parallel Session Gate', async (t) => {
@@ -22,21 +122,36 @@ test('PostgreSQL 17 Multi-Connection Concurrency & Parallel Session Gate', async
     return
   }
 
-  // Create two truly independent TCP socket connections
   const client1 = new Client(config)
   const client2 = new Client(config)
 
-  await client1.connect()
-  await client2.connect()
-
+  let client1Connected = false
+  let client2Connected = false
   try {
-    // 1. Setup disposable test schema with matching production constraints
-    await client1.query(`
-      drop table if exists public.shift_registrations cascade;
-      drop table if exists public.reports cascade;
-      drop table if exists public.workforce_actual_segments cascade;
-      drop table if exists public.shifts cascade;
+    await client1.connect()
+    client1Connected = true
+    const server = await client1.query<{
+      database_name: string
+      session_user: string
+      server_version_num: string
+      database_comment: string | null
+    }>(`
+      select current_database() as database_name,
+             session_user,
+             current_setting('server_version_num') as server_version_num,
+             shobj_description(d.oid, 'pg_database') as database_comment
+      from pg_database d
+      where d.datname = current_database()
+    `)
+    assert.equal(server.rowCount, 1)
+    assertDisposableDatabaseIdentity(server.rows[0])
+    await assertFreshPublicNamespace(client1)
 
+    await client2.connect()
+    client2Connected = true
+
+    // Setup only in the verified, empty disposable database.
+    await client1.query(`
       create table public.shifts (
         id text primary key default gen_random_uuid()::text,
         brand_id text not null,
@@ -278,7 +393,9 @@ test('PostgreSQL 17 Multi-Connection Concurrency & Parallel Session Gate', async
       assert.equal(retryRes.rows.length, 1)
     })
   } finally {
-    await client1.end()
-    await client2.end()
+    await Promise.allSettled([
+      ...(client2Connected ? [client2.end()] : []),
+      ...(client1Connected ? [client1.end()] : []),
+    ])
   }
 })

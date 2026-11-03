@@ -59,6 +59,13 @@ jobs:
           esac
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_migrations_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_sto01_migrations_disposable IS 'RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE'"
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_concurrency_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_concurrency_disposable IS 'RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE'"
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_restore_disposable TEMPLATE template0'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_restore_disposable IS 'RC19_RESTORE_DISPOSABLE_TEST_DATABASE'"
+          marker="$(psql -h localhost -U rc19_ci -d postgres -Atqc "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = 'rc19_concurrency_disposable'")"
+          test "$marker" = 'RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE'
 
       - name: Set up Node.js 24 (matches Vercel Production runtime)
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -88,8 +95,9 @@ jobs:
       - name: PostgreSQL 17 Multi-Connection Concurrency Gate
         env:
           CI: 'true'
-          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/postgres
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_concurrency_disposable
           STRICT_CONCURRENCY_GATE: 'true'
+          RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
             tests/rc19-postgres17-concurrency.integration.test.ts
@@ -120,6 +128,16 @@ jobs:
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
             tests/rc19-batch05a-storage-migrations-postgres17.test.ts
+
+      - name: PostgreSQL 17 synthetic fixture backup and isolated restore parity
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_sto01_migrations_disposable
+          RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+          RC19_RESTORE_REHEARSAL_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-postgres17-fixture-restore.integration.test.ts
 
       - name: Storage Runtime & Sequential Migration Verification
         run: |

@@ -22,7 +22,7 @@ const baseMaps: EntityMaps = {
   campaigns: new Map([['Mega Sale', 'camp-mega']]),
 }
 
-test('Owner ID 23: Complete Segmented Staffing Specification (KAO November Final Spec)', async (t) => {
+test('Owner ID 23: KAO November parser and in-memory semantics (persisted workflow pending)', async (t) => {
   // =========================================================================
   // SPEC REQUIREMENT 1:
   // 1 physical Excel row = 1 Parent Livestream
