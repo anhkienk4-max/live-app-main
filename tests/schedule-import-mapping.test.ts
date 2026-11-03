@@ -89,8 +89,9 @@ test('Google Sheets Agency partner column is retained separately from execution 
   const result = parseScheduleTabularData([headers, row].map(csvRow).join('\n'), 'string', maps)
 
   assert.equal(result.validRows, 1)
-  assert.equal(result.rows[0].row.execution_source, 'agency')
-  assert.equal(result.validShifts[0].execution_source, 'agency')
+  assert.equal(result.rows[0].row.execution_source, 'internal')
+  assert.equal(result.validShifts[0].execution_source, 'internal')
+  assert.equal(result.rows[0].row.agency_code, 'ada')
   assert.equal(result.rows[0].row.custom_fields?.Agency, 'ADA')
 })
 
@@ -104,7 +105,7 @@ test('schedule import classifies an Agency partner repeated in the execution-sou
   const result = parseScheduleTabularData([headers, ...rows].map(csvRow).join('\n'), 'string', maps)
 
   assert.equal(result.validRows, 3)
-  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['agency', 'agency', 'agency'])
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['internal', 'agency', 'agency'])
 })
 
 test('Google Sheets combined Agency / execution-source header classifies partner rows', () => {
@@ -118,7 +119,7 @@ test('Google Sheets combined Agency / execution-source header classifies partner
 
   assert.equal(result.validRows, 3)
   assert.equal(result.invalidRows, 0)
-  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['agency', 'agency', 'agency'])
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['internal', 'agency', 'agency'])
   assert.deepEqual(result.rows.map(({ row }) => row.custom_fields?.Agency), ['ADA', 'AI', 'SNAP'])
 })
 
@@ -134,8 +135,24 @@ test('Google Sheets calendar format with Agency but no execution-source column i
 
   assert.equal(result.validRows, 3)
   assert.equal(result.invalidRows, 0)
-  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['agency', 'agency', 'agency'])
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['internal', 'agency', 'agency'])
   assert.deepEqual(result.rows.map(({ row }) => row.custom_fields?.Agency), ['ADA', 'AI', 'SNAP'])
+})
+
+test('ADA is Internal while SNAP and AI are External, even when execution-source cells disagree', () => {
+  const headers = ['Date', 'Start time', 'End time', 'Brand', 'Platform', 'Agency', 'Execution Source']
+  const rows = [
+    ['2026-11-01', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'ADA', 'Agency'],
+    ['2026-11-02', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'SNAP', 'Internal'],
+    ['2026-11-03', '09:00', '13:00', 'Mars Wrigley', 'Shopee Live', 'AI', 'Internal'],
+  ]
+  const result = parseScheduleTabularData([headers, ...rows].map(csvRow).join('\n'), 'string', maps)
+
+  assert.equal(result.validRows, 3)
+  assert.deepEqual(result.rows.map(({ row }) => row.agency_code), ['ada', 'snap', 'live_ai'])
+  assert.deepEqual(result.rows.map(({ row }) => row.execution_source), ['internal', 'agency', 'agency'])
+  assert.deepEqual(result.validShifts.map(shift => shift.execution_source), ['internal', 'agency', 'agency'])
+  assert.equal(result.warningRows, 3, 'Conflicting source labels must be visible before confirmation')
 })
 
 test('an invalid explicit execution-source value stays invalid even when an Agency partner is present', () => {
