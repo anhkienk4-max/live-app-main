@@ -307,9 +307,9 @@ test('SCENARIO 4: Agency mapping & persistence contract (#133)', async () => {
   assert.equal(parsed.validShifts[1].agency_code, 'snap')
   assert.equal(parsed.validShifts[1].execution_source, 'agency')
 
-  // Row 2: ADA -> agency_code = 'ada', execution_source = 'agency'
+  // Row 2: ADA is operated internally, not by an external agency
   assert.equal(parsed.validShifts[2].agency_code, 'ada')
-  assert.equal(parsed.validShifts[2].execution_source, 'agency')
+  assert.equal(parsed.validShifts[2].execution_source, 'internal')
 
   // Row 3: defaulted from batchAgency
   assert.equal(parsed.validShifts[3].agency_code, 'live_ai')
