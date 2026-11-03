@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import * as XLSX from 'xlsx'
+import { selectExportFields } from '../lib/utils/calendarExport.ts'
 import {
   buildScheduleExportRows,
   buildScheduleExportFilename,
@@ -477,4 +478,19 @@ test('KAO header aliases dictionary maps all operational and KPI fields', async 
   assert.ok(KAO_SCHEDULE_HEADER_ALIASES['Actual GMV'].includes('doanh thu thực tế'))
 })
 
-
+test('calendar export exposes report KPI fields only to roles with reports.export', () => {
+  const reportKpiFieldIds = [
+    'schedule.Target GMV',
+    'schedule.Actual GMV',
+    'schedule.Total Orders',
+    'schedule.Peak Viewers',
+  ]
+  for (const permission of ['leader', 'admin'] as const) {
+    assert.deepEqual(
+      selectExportFields(permission).filter(field => reportKpiFieldIds.includes(field.id)).map(field => field.id),
+      reportKpiFieldIds,
+    )
+  }
+  assert.deepEqual(selectExportFields('member').filter(field => reportKpiFieldIds.includes(field.id)), [])
+  assert.throws(() => selectExportFields('member', ['schedule.Target GMV']), /EXPORT_FIELD_DENIED/)
+})

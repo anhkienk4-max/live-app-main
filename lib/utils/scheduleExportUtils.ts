@@ -238,7 +238,7 @@ export function downloadScheduleExportXlsx(
 
   const headerRow = [...activeColumns]
   const dataRows = rows.map(row =>
-    activeColumns.map(col => safeSpreadsheetValue(row[col])),
+    activeColumns.map(col => safeSpreadsheetValue(row[col] ?? '')),
   )
 
   const aoa = [headerRow, ...dataRows]

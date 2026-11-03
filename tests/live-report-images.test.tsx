@@ -401,4 +401,3 @@ test('Issue #164: supports all 6 Owner photo groups in exact order with receipt 
   assert.match(editorMarkup, /data-testid="image-status-persisted"/)
   assert.match(editorMarkup, /Đã lưu trên hệ thống/)
 })
-
