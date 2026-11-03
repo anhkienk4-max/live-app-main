@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADA OPS LIVESTREAM - Product &amp; SKU Catalog (Production Shell)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Windows Header Bar (Matches Windows PWA Frame) */
+    .window-header {
+      height: 36px;
+      background: #090e1f;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      color: #94a3b8;
+      font-size: 11.5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      user-select: none;
+      z-index: 50;
+    }
+    .window-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #e2e8f0;
+      font-weight: 500;
+    }
+    .window-logo-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #1d4ed8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .window-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: #cbd5e1;
+    }
+    .window-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: 8px;
+    }
+
+    .app-shell {
+      display: flex;
+      min-height: calc(100vh - 36px);
+      position: relative;
+    }
+
+    /* EXACT PRODUCTION SIDEBAR (Dark Navy Slate #0f172a) */
+    .sidebar {
+      width: 240px;
+      background: #0f172a;
+      color: #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+      position: sticky;
+      top: 36px;
+      height: calc(100vh - 36px);
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      height: 56px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      flex-shrink: 0;
+    }
+    .sidebar-logo-icon {
+      width: 32px;
+      height: 32px;
+      background: #2563eb;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+    }
+    .sidebar-app-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.2px;
+    }
+
+    /* Production Navigation Groups */
+    .nav-container {
+      flex: 1;
+      padding: 10px 8px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .nav-group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px 4px;
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #64748b;
+      cursor: pointer;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: #94a3b8;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: #f1f5f9;
+    }
+    .nav-item.active {
+      background: #2563eb;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .nav-item svg { width: 16px; height: 16px; stroke-width: 2; flex-shrink: 0; opacity: 0.85; }
+    .nav-item.active svg { opacity: 1; color: #ffffff; }
+
+    /* Production Sidebar User Box at bottom */
+    .sidebar-user-box {
+      padding: 10px 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(0, 0, 0, 0.2);
+      flex-shrink: 0;
+    }
+    .user-avatar-round {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #3b82f6;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .user-info-text {
+      flex: 1;
+      margin-left: 10px;
+      line-height: 1.25;
+    }
+    .user-name-white { font-size: 12px; font-weight: 700; color: #f8fafc; }
+    .user-role-gray { font-size: 10px; color: #94a3b8; }
+    .sidebar-user-more { color: #94a3b8; font-size: 14px; cursor: pointer; }
+
+    /* Main Viewport */
+    .main-viewport {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: #f8fafc;
+    }
+
+    /* EXACT PRODUCTION TOPBAR */
+    .topbar {
+      height: 54px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 36px;
+      z-index: 20;
+    }
+    .topbar-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 6px 12px;
+      width: 260px;
+      font-size: 12.5px;
+      color: #94a3b8;
+    }
+    .topbar-search kbd {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-family: monospace;
+      color: #64748b;
+      margin-left: auto;
+    }
+    .topbar-right-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .topbar-bell {
+      color: #64748b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      position: relative;
+    }
+    .topbar-bell-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 6px;
+      height: 6px;
+      background: #ef4444;
+      border-radius: 50%;
+    }
+    .topbar-lang {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #475569;
+      cursor: pointer;
+    }
+    .topbar-user-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .topbar-user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #2563eb;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .topbar-user-meta { line-height: 1.2; text-align: left; }
+    .topbar-user-name { font-size: 12px; font-weight: 700; color: #0f172a; }
+    .topbar-user-role { font-size: 10px; color: #64748b; }
+
+    /* Content Area */
+    .content-body {
+      padding: 20px 24px 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Context Header with Brand Switcher INSIDE Content */
+    .catalog-header-bar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .catalog-title-box h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mock-tag {
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+    .catalog-title-box p { font-size: 12.5px; color: #64748b; margin-top: 3px; }
+
+    .brand-context-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 13px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .btn-secondary { background: #ffffff; border-color: #cbd5e1; color: #334155; }
+    .btn-secondary:hover { background: #f8fafc; border-color: #94a3b8; }
+    .btn-primary { background: #0f172a; color: #ffffff; }
+    .btn-primary:hover { background: #1e293b; }
+
+    /* 4 KPI CARDS (With explicit MOCK badges) */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .kpi-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      position: relative;
+    }
+    .kpi-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .kpi-mock-pill {
+      font-size: 9px;
+      background: #fffbeb;
+      color: #d97706;
+      border: 1px solid #fef3c7;
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-weight: 700;
+    }
+    .kpi-val { font-size: 22px; font-weight: 800; color: #0f172a; line-height: 1.1; }
+    .kpi-sub { font-size: 11px; color: #059669; font-weight: 500; }
+    .kpi-sub.neutral { color: #64748b; }
+
+    /* Search & Filter Toolbar */
+    .filter-toolbar {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .filter-row-primary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .search-input-box {
+      flex: 1;
+      min-width: 220px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 6px 10px;
+      background: #f8fafc;
+    }
+    .search-input-box input {
+      border: none;
+      background: transparent;
+      outline: none;
+      font-size: 12.5px;
+      width: 100%;
+      color: #0f172a;
+    }
+    .filter-select {
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12px;
+      background: #ffffff;
+      color: #334155;
+      cursor: pointer;
+    }
+    .view-switchers { display: flex; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; margin-left: auto; }
+    .view-btn {
+      padding: 6px 10px;
+      font-size: 11.5px;
+      background: #ffffff;
+      border: none;
+      cursor: pointer;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .view-btn.active { background: #f1f5f9; color: #0f172a; font-weight: 600; }
+
+    .active-chips-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+    .chip {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      padding: 2px 7px;
+      color: #1e293b;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Dual-Pane Layout */
+    .workspace-split {
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    /* Product Grid */
+    .product-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .product-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 9px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+      cursor: pointer;
+      position: relative;
+    }
+    .product-card.selected { border: 2px solid #2563eb; }
+    .product-card.selected::before {
+      content: "ĐANG CHỌN";
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: #2563eb;
+      color: white;
+      font-size: 8.5px;
+      font-weight: 800;
+      padding: 2px 5px;
+      border-radius: 3px;
+      z-index: 10;
+    }
+
+    .card-thumb-wrap {
+      height: 125px;
+      background: #f8fafc;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      padding: 8px;
+    }
+    .packshot-mock {
+      width: 80px;
+      height: 98px;
+      border-radius: 5px;
+      background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      text-align: center;
+      padding: 5px;
+      box-shadow: 0 3px 8px rgba(30,58,138,0.2);
+    }
+    .packshot-mock.gold { background: linear-gradient(180deg, #b45309 0%, #d97706 100%); }
+    .packshot-mock.green { background: linear-gradient(180deg, #065f46 0%, #059669 100%); }
+    .packshot-mock.purple { background: linear-gradient(180deg, #4c1d95 0%, #6d28d9 100%); }
+
+    .brand-tag {
+      position: absolute;
+      bottom: 6px;
+      left: 8px;
+      background: rgba(15,23,42,0.85);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .channel-badges { position: absolute; top: 8px; left: 8px; display: flex; gap: 3px; }
+    .badge-ch {
+      font-size: 8px;
+      font-weight: 800;
+      padding: 2px 4px;
+      border-radius: 3px;
+      color: white;
+    }
+    .badge-shopee { background: #ee4d2d; }
+    .badge-tiktok { background: #000000; }
+    .badge-lazada { background: #0f146d; }
+
+    .card-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+    .card-sku-meta { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #64748b; }
+    .card-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-height: 34px;
+    }
+    .card-price-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+    .price-main { font-size: 13.5px; font-weight: 800; color: #0f172a; }
+    .variant-count { font-size: 10px; color: #2563eb; background: #eff6ff; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+
+    /* Product Detail Inspector (Right Drawer) */
+    .detail-inspector {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 9px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+    .inspector-header {
+      background: #0f172a;
+      color: #ffffff;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .inspector-title { font-size: 13px; font-weight: 700; }
+    .inspector-badge { font-size: 9.5px; background: rgba(255,255,255,0.15); padding: 2px 6px; border-radius: 4px; }
+
+    .inspector-tabs {
+      display: flex;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+      padding: 0 8px;
+    }
+    .insp-tab {
+      padding: 8px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    .insp-tab.active { color: #2563eb; border-bottom-color: #2563eb; background: #ffffff; }
+
+    .inspector-body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+    .insp-kv-banner {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .kv-box {
+      width: 48px;
+      height: 48px;
+      background: #2563eb;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 10px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+    .kv-meta { font-size: 11px; color: #1e40af; line-height: 1.35; }
+
+    .sku-list { display: flex; flex-direction: column; gap: 8px; }
+    .sku-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: #ffffff;
+    }
+    .sku-top { display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 700; color: #0f172a; }
+    .sku-mid { display: flex; justify-content: space-between; font-size: 10px; color: #64748b; margin-top: 2px; }
+
+    .guardrail-alert {
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .guardrail-mandatory { background: #fefce8; border: 1px solid #fef08a; color: #854d0e; }
+    .guardrail-restricted { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+    /* Floating Action Pills on Far Right */
+    .floating-tools-bar {
+      position: fixed;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 40;
+    }
+    .tool-circle-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #334155;
+      cursor: pointer;
+      position: relative;
+    }
+    .tool-badge-count {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 15px;
+      height: 15px;
+      background: #ef4444;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      font-size: 8.5px;
+      font-weight: 800;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Responsive Adaptations */
+    @media (max-width: 1024px) {
+      .sidebar { display: none !important; }
+      .app-shell { flex-direction: column; }
+      .workspace-split { grid-template-columns: 1fr !important; }
+      .product-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      .detail-inspector { margin-top: 16px; }
+      .floating-tools-bar { display: none !important; }
+    }
+    @media (max-width: 640px) {
+      .product-grid { grid-template-columns: 1fr !important; }
+      .kpi-grid { grid-template-columns: 1fr !important; }
+      .catalog-header-bar { flex-direction: column; align-items: stretch; }
+      .header-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+      .filter-row-primary { flex-direction: column; align-items: stretch; }
+      .search-input-box { width: 100%; }
+      .topbar-search { display: none; }
+      .topbar-user-meta { display: none; }
+      .topbar { padding: 0 12px; }
+      .content-body { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Windows Frame Bar -->
+  <div class="window-header">
+    <div class="window-title">
+      <div class="window-logo-dot">ada</div>
+      <span>ADA OPS LIVESTREAM - ADA OPS Livestream</span>
+    </div>
+    <div class="window-controls">
+      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35"/></svg>
+      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 8v6m-3-3h6"/></svg>
+      <span>•••</span>
+      <div class="window-actions">
+        <svg width="10" height="10" viewBox="0 0 10 2" fill="currentColor"><rect width="10" height="1.5"/></svg>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"><rect x="1" y="1" width="8" height="8" stroke-width="1.2"/></svg>
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor"><path d="M1 1L9 9M9 1L1 9" stroke-width="1.2"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <!-- EXACT PRODUCTION SIDEBAR (Dark Navy #0f172a) -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo-icon">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        </div>
+        <div class="sidebar-app-name">LiveStream Ops</div>
+      </div>
+
+      <!-- Navigation with Exact 5 Production Groups & Items -->
+      <nav class="nav-container">
+        <!-- 1. TỔNG QUAN -->
+        <div class="nav-group-header">
+          <span>TỔNG QUAN</span>
+          <span>▾</span>
+        </div>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          Tổng quan
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          Hồ sơ
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+          Thông báo
+        </a>
+
+        <!-- 2. VẬN HÀNH LIVESTREAM -->
+        <div class="nav-group-header">
+          <span>VẬN HÀNH LIVESTREAM</span>
+          <span>▾</span>
+        </div>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          Lịch
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z"/></svg>
+          Trực tiếp
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Ca trực
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          Điều phối ca
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+          Đăng ký ca
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Đổi ca
+        </a>
+
+        <!-- 3. DỮ LIỆU & BÁO CÁO -->
+        <div class="nav-group-header">
+          <span>DỮ LIỆU &amp; BÁO CÁO</span>
+          <span>▾</span>
+        </div>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
+          Kho file
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Báo cáo
+        </a>
+        <!-- ACTIVE MENU: Danh mục sản phẩm -->
+        <a href="#" class="nav-item active">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          Danh mục sản phẩm
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          Hiệu suất nhân sự
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          Phân tích
+        </a>
+
+        <!-- 4. NHÂN SỰ & TÀI CHÍNH -->
+        <div class="nav-group-header">
+          <span>NHÂN SỰ &amp; TÀI CHÍNH</span>
+          <span>▾</span>
+        </div>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          Bảng lương
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          Nhân sự
+        </a>
+
+        <!-- 5. QUẢN TRỊ HỆ THỐNG -->
+        <div class="nav-group-header">
+          <span>QUẢN TRỊ HỆ THỐNG</span>
+          <span>▾</span>
+        </div>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          Không gian quản trị
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+          Thương hiệu
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          Nền tảng
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
+          Chiến dịch
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Lịch sử kiểm toán
+        </a>
+        <a href="#" class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
+          Cài đặt
+        </a>
+      </nav>
+
+      <!-- Sidebar User Box (Exact match to Production Screenshot) -->
+      <div class="sidebar-user-box">
+        <div class="user-avatar-round">KN</div>
+        <div class="user-info-text">
+          <div class="user-name-white">Nguyễn Trung Kiên</div>
+          <div class="user-role-gray">Admin</div>
+        </div>
+        <div class="sidebar-user-more">•••</div>
+      </div>
+    </aside>
+
+    <!-- Main Viewport -->
+    <div class="main-viewport">
+      <!-- EXACT PRODUCTION TOPBAR -->
+      <header class="topbar">
+        <div class="topbar-search">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35"/></svg>
+          <span>Tìm kiếm...</span>
+          <kbd>⌘K</kbd>
+        </div>
+
+        <div class="topbar-right-controls">
+          <div class="topbar-bell">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            <div class="topbar-bell-badge"></div>
+          </div>
+          <div class="topbar-lang">EN</div>
+          <div class="topbar-user-badge">
+            <div class="topbar-user-avatar">KN</div>
+            <div class="topbar-user-meta">
+              <div class="topbar-user-name">Nguyễn Trung Kiên</div>
+              <div class="topbar-user-role">Admin</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Content Body: Product & SKU Catalog -->
+      <main class="content-body">
+        <!-- Header Bar with Brand Context Selector INSIDE Content -->
+        <div class="catalog-header-bar">
+          <div class="catalog-title-box">
+            <h1>Product &amp; SKU Catalog <span class="mock-tag">MOCK DATA</span></h1>
+            <p>Quản lý tập trung danh mục sản phẩm, biến thể SKU, sơ đồ mapping sàn (Shopee, TikTok, Lazada) và pháp lý kịch bản live.</p>
+            <div class="brand-context-pill">
+              <span style="color:#2563eb;">●</span> Thương hiệu áp dụng: <strong>Anlene Vietnam Official</strong> ▾
+            </div>
+          </div>
+
+          <div class="header-actions">
+            <button class="btn btn-secondary">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+              Xuất Danh Mục
+            </button>
+            <button class="btn btn-secondary">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              Đồng Bộ Sàn (Auto-sync)
+            </button>
+            <button class="btn btn-primary">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              + Thêm Sản Phẩm Mới
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 KPI Cards with MOCK Labels -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-top-row">
+              <span>SẢN PHẨM HOẠT ĐỘNG</span>
+              <span class="kpi-mock-pill">MOCK</span>
+            </div>
+            <div class="kpi-val">142</div>
+            <div class="kpi-sub">↑ 8 sản phẩm mới tuần này</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top-row">
+              <span>SKU ĐÃ MAPPING SÀN</span>
+              <span class="kpi-mock-pill">MOCK</span>
+            </div>
+            <div class="kpi-val">418 / 418</div>
+            <div class="kpi-sub">100% khớp Shopee &amp; TikTok</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top-row">
+              <span>CHIẾN DỊCH LIVESTREAM</span>
+              <span class="kpi-mock-pill">MOCK</span>
+            </div>
+            <div class="kpi-val">3 Chiến Dịch</div>
+            <div class="kpi-sub neutral">Mega 11.11 · Brand Day · Daily Live</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top-row">
+              <span>CHUẨN HÓA MEDIA &amp; CLAIMS</span>
+              <span class="kpi-mock-pill">MOCK</span>
+            </div>
+            <div class="kpi-val">98.6%</div>
+            <div class="kpi-sub">Đạt chuẩn kiểm duyệt kịch bản</div>
+          </div>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="filter-toolbar">
+          <div class="filter-row-primary">
+            <div class="search-input-box">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35"/></svg>
+              <input type="text" value="Anlene Total 10" placeholder="Tìm theo tên sản phẩm, SKU, mã vạch...">
+            </div>
+            <select class="filter-select">
+              <option>Ngành hàng: Sữa dinh dưỡng (48)</option>
+            </select>
+            <select class="filter-select">
+              <option>Kênh bán: Tất cả sàn (Shopee, TikTok, Lazada)</option>
+            </select>
+            <select class="filter-select">
+              <option>Trạng thái: Hoạt động (Active)</option>
+            </select>
+            <select class="filter-select">
+              <option>Chiến dịch: Super Mega Live 11.11</option>
+            </select>
+            <div class="view-switchers">
+              <button class="view-btn active">Lưới (Grid)</button>
+              <button class="view-btn">Bảng (List)</button>
+            </div>
+          </div>
+          <div class="active-chips-row">
+            <span style="color:#64748b; font-weight:600;">Bộ lọc hiệu lực:</span>
+            <div class="chip">Thương hiệu: Anlene ✕</div>
+            <div class="chip">Từ khóa: "Anlene Total 10" ✕</div>
+            <div class="chip">Kênh: Shopee + TikTok Shop ✕</div>
+            <div class="chip">Trạng thái: Active ✕</div>
+            <a href="#" style="color:#2563eb; text-decoration:none; margin-left:6px; font-weight:600;">Xóa tất cả bộ lọc</a>
+            <span style="margin-left:auto; color:#64748b;">Hiển thị 6 trên 142 sản phẩm</span>
+          </div>
+        </div>
+
+        <!-- Split Workspace: Grid + Right Inspector -->
+        <div class="workspace-split">
+          <!-- 6 Product Cards Grid -->
+          <div class="product-grid">
+            <!-- Card 1 (Selected) -->
+            <div class="product-card selected">
+              <div class="card-thumb-wrap">
+                <div class="channel-badges">
+                  <span class="badge-ch badge-shopee">Shopee Live</span>
+                  <span class="badge-ch badge-tiktok">TikTok Shop</span>
+                </div>
+                <div class="packshot-mock">
+                  <span style="font-size:7px; opacity:0.8; letter-spacing:0.5px;">ANLENE</span>
+                  <strong style="font-size:10px; margin:2px 0;">TOTAL 10</strong>
+                  <span style="font-size:7px; opacity:0.8;">Lon 800g Vani</span>
+                </div>
+                <span class="brand-tag">ANLENE</span>
+              </div>
+              <div class="card-body">
+                <div class="card-sku-meta">
+                  <span>PROD-ALN-001</span>
+                  <span style="color:#16a34a; font-weight:700;">ACTIVE (v2.4)</span>
+                </div>
+                <div class="card-title">Sữa Bột Anlene Total 10 Hương Vani 800g Chăm Sóc Toàn Diện</div>
+                <div class="card-price-row">
+                  <span class="price-main">485.000₫ – 520.000₫</span>
+                  <span class="variant-count">4 Biến thể SKU</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="product-card">
+              <div class="card-thumb-wrap">
+                <div class="channel-badges">
+                  <span class="badge-ch badge-shopee">Shopee</span>
+                  <span class="badge-ch badge-tiktok">TikTok</span>
+                  <span class="badge-ch badge-lazada">Lazada</span>
+                </div>
+                <div class="packshot-mock gold">
+                  <span style="font-size:7px; opacity:0.8; letter-spacing:0.5px;">ANLENE</span>
+                  <strong style="font-size:10px; margin:2px 0;">GOLD 5X</strong>
+                  <span style="font-size:7px; opacity:0.8;">Hộp 800g</span>
+                </div>
+                <span class="brand-tag">ANLENE</span>
+              </div>
+              <div class="card-body">
+                <div class="card-sku-meta">
+                  <span>PROD-ALN-002</span>
+                  <span style="color:#16a34a; font-weight:700;">ACTIVE (v2.1)</span>
+                </div>
+                <div class="card-title">Sữa Bột Anlene Vàng Đậm Đặc Pha Sẵn 180ml (Lốc 4 hộp / Thùng 48)</div>
+                <div class="card-price-row">
+                  <span class="price-main">64.000₫ – 420.000₫</span>
+                  <span class="variant-count">2 Biến thể SKU</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="product-card">
+              <div class="card-thumb-wrap">
+                <div class="channel-badges">
+                  <span class="badge-ch badge-shopee">Shopee Live</span>
+                </div>
+                <div class="packshot-mock green">
+                  <span style="font-size:7px; opacity:0.8; letter-spacing:0.5px;">ANLENE</span>
+                  <strong style="font-size:9px; margin:2px 0;">PLANT-BASED</strong>
+                  <span style="font-size:7px; opacity:0.8;">Hạt 400g</span>
+                </div>
+                <span class="brand-tag">ANLENE</span>
+              </div>
+              <div class="card-body">
+                <div class="card-sku-meta">
+                  <span>PROD-ALN-003</span>
+                  <span style="color:#d97706; font-weight:700;">DRAFT (v1.0)</span>
+                </div>
+                <div class="card-title">Sữa Hạt Thực Vật Anlene 3 Khỏe Hương Hạnh Nhân &amp; Đậu Nành 400g</div>
+                <div class="card-price-row">
+                  <span class="price-main">285.000₫</span>
+                  <span class="variant-count">1 Biến thể SKU</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 4 -->
+            <div class="product-card">
+              <div class="card-thumb-wrap">
+                <div class="channel-badges">
+                  <span class="badge-ch badge-shopee">Shopee Exclusive</span>
+                  <span class="badge-ch" style="background:#7c3aed;">Mega Live</span>
+                </div>
+                <div class="packshot-mock purple">
+                  <span style="font-size:7px; opacity:0.8; letter-spacing:0.5px;">COMBO 2 LON</span>
+                  <strong style="font-size:9px; margin:2px 0;">+ BÌNH GIỮ NHIỆT</strong>
+                  <span style="font-size:7px; opacity:0.8;">Deal Quà 11.11</span>
+                </div>
+                <span class="brand-tag">EXCLUSIVE</span>
+              </div>
+              <div class="card-body">
+                <div class="card-sku-meta">
+                  <span>COMBO-ALN-1111</span>
+                  <span style="color:#2563eb; font-weight:700;">CAMPAIGN</span>
+                </div>
+                <div class="card-title">Combo 2 Lon Anlene Total 10 800g Tặng Bình Giữ Nhiệt Lock&amp;Lock Cao Cấp</div>
+                <div class="card-price-row">
+                  <span class="price-main">899.000₫ <s style="font-size:11px; color:#94a3b8; font-weight:500;">990.000₫</s></span>
+                  <span class="variant-count">1 Combo SKU</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 5 -->
+            <div class="product-card">
+              <div class="card-thumb-wrap">
+                <div class="channel-badges">
+                  <span class="badge-ch badge-tiktok">TikTok Shop</span>
+                </div>
+                <div class="packshot-mock" style="background: linear-gradient(180deg, #1e3a8a 0%, #172554 100%);">
+                  <span style="font-size:7px; opacity:0.8; letter-spacing:0.5px;">MOVEPRO</span>
+                  <strong style="font-size:9.5px; margin:2px 0;">CHOCO</strong>
+                  <span style="font-size:7px; opacity:0.8;">Socola 800g</span>
+                </div>
+                <span class="brand-tag">ANLENE</span>
+              </div>
+              <div class="card-body">
+                <div class="card-sku-meta">
+                  <span>PROD-ALN-005</span>
+                  <span style="color:#16a34a; font-weight:700;">ACTIVE (v1.9)</span>
+                </div>
+                <div class="card-title">Sữa Bột Anlene MovePro Canxi &amp; Collagen Hương Socola Ít Béo 800g</div>
+                <div class="card-price-row">
+                  <span class="price-main">395.000₫ – 430.000₫</span>
+                  <span class="variant-count">2 Biến thể SKU</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 6 -->
+            <div class="product-card">
+              <div class="card-thumb-wrap">
+                <div class="channel-badges">
+                  <span class="badge-ch badge-shopee">Shopee</span>
+                  <span class="badge-ch badge-tiktok">TikTok</span>
+                </div>
+                <div class="packshot-mock gold">
+                  <span style="font-size:7px; opacity:0.8; letter-spacing:0.5px;">QUÀ TẾT</span>
+                  <strong style="font-size:9px; margin:2px 0;">AN KHANG</strong>
+                  <span style="font-size:7px; opacity:0.8;">Limited 2026</span>
+                </div>
+                <span class="brand-tag">SEASONAL</span>
+              </div>
+              <div class="card-body">
+                <div class="card-sku-meta">
+                  <span>SET-TET-2026</span>
+                  <span style="color:#d97706; font-weight:700;">UPCOMING</span>
+                </div>
+                <div class="card-title">Hộp Quà Tết Anlene Sức Khỏe Vàng 2026 (2 Hộp 800g + Bộ Ly Thủy Tinh)</div>
+                <div class="card-price-row">
+                  <span class="price-main">1.150.000₫</span>
+                  <span class="variant-count">1 Set SKU</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Product Detail Inspector (Right Drawer) -->
+          <div class="detail-inspector">
+            <div class="inspector-header">
+              <div>
+                <div class="inspector-title">Chi Tiết Sản Phẩm</div>
+                <div style="font-size:10px; opacity:0.75; margin-top:2px;">MÃ: PROD-ALN-001 · v2.4</div>
+              </div>
+              <span class="inspector-badge">MOCK</span>
+            </div>
+
+            <div class="inspector-tabs">
+              <div class="insp-tab active">Biến thể SKU (4)</div>
+              <div class="insp-tab">Kênh Mapping</div>
+              <div class="insp-tab">Claims &amp; Pháp Lý</div>
+              <div class="insp-tab">Audit Log</div>
+            </div>
+
+            <div class="inspector-body">
+              <div class="insp-kv-banner">
+                <div class="kv-box">KV LIVE</div>
+                <div class="kv-meta">
+                  <strong>Key Visual Ca Live · Anlene Total 10</strong><br>
+                  Kích thước: 1080x1920 (TikTok) &amp; 1:1 (Shopee)<br>
+                  <span style="font-size:10px; color:#64748b;">Tải lên bởi: Marketing Brand Team (2 giờ trước)</span>
+                </div>
+              </div>
+
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">Danh Sách Mã Biến Thể (SKU)</span>
+                  <a href="#" style="font-size:11px; color:#2563eb; font-weight:600; text-decoration:none;">+ Thêm SKU</a>
+                </div>
+                <div class="sku-list">
+                  <div class="sku-item">
+                    <div class="sku-top">
+                      <span>Lon 800g Hương Vani Tiêu Chuẩn</span>
+                      <span style="color:#2563eb;">495.000₫</span>
+                    </div>
+                    <div class="sku-mid">
+                      <span>SKU: ALN-T10-800-VN · Barcode: 8934678120012</span>
+                      <span style="color:#059669; font-weight:600;">Kho: 1.450 lon</span>
+                    </div>
+                  </div>
+                  <div class="sku-item">
+                    <div class="sku-top">
+                      <span>Lon Nhỏ 400g Dùng Thử</span>
+                      <span style="color:#2563eb;">265.000₫</span>
+                    </div>
+                    <div class="sku-mid">
+                      <span>SKU: ALN-T10-400-VN · Barcode: 8934678120029</span>
+                      <span style="color:#059669; font-weight:600;">Kho: 820 lon</span>
+                    </div>
+                  </div>
+                  <div class="sku-item">
+                    <div class="sku-top">
+                      <span>Thùng Tiết Kiệm (6 Lon x 800g)</span>
+                      <span style="color:#2563eb;">2.850.000₫</span>
+                    </div>
+                    <div class="sku-mid">
+                      <span>SKU: ALN-T10-CASE-6X800 · Barcode: 8934678120036</span>
+                      <span style="color:#059669; font-weight:600;">Kho: 260 thùng</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:6px;">
+                  Hướng Dẫn Kịch Bản (Claims &amp; Guardrails)
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  <div class="guardrail-alert guardrail-mandatory">
+                    <strong>⚠ Bắt Buộc Nhắc Đến (Mandatory Claim):</strong><br>
+                    "Anlene Total 10 bổ sung 10 dưỡng chất thiết yếu hỗ trợ Cơ - Xương - Khớp và đề kháng vững vàng."
+                  </div>
+                  <div class="guardrail-alert guardrail-restricted">
+                    <strong>🚫 Nghiêm Cấm Phát Ngôn (Restricted):</strong><br>
+                    Tuyệt đối không nói "chữa dứt điểm thoái hóa", không so sánh dìm hàng nhãn khác.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mock Disclaimer Footer -->
+        <div style="text-align:center; padding:16px; font-size:11px; color:#94a3b8; border-top:1px solid #e2e8f0; margin-top:10px;">
+          * Dữ liệu minh họa (MOCK) cho quy trình kiểm thử giao diện theo yêu cầu OWNER. Không ghi nhận hoặc phát sinh dữ liệu vào cơ sở dữ liệu thực tế.
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Floating Action Pills on Far Right (Matching Production Desktop App Frame) -->
+  <div class="floating-tools-bar">
+    <div class="tool-circle-btn" style="background: #fdf2f8; color: #db2777;">
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+      <div class="tool-badge-count">1</div>
+    </div>
+    <div class="tool-circle-btn" style="background: #0f172a; color: #ffffff;">
+      <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
+    </div>
+    <div class="tool-circle-btn">
+      <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="#2563eb"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+    </div>
+    <div class="tool-circle-btn">
+      <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="#64748b"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879a3 3 0 11-4.242-4.242 3 3 0 014.242 0z"/></svg>
+    </div>
+    <div class="tool-circle-btn">
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#2563eb"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+    </div>
+  </div>
+</body>
+</html>

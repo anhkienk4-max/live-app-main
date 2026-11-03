@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADA OPS LIVESTREAM - ADA OPS Livestream</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #0a1128;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Windows Header Bar (Matches Windows PWA Frame) */
+    .window-header {
+      height: 36px;
+      background: #090e1f;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      color: #94a3b8;
+      font-size: 11.5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      user-select: none;
+      z-index: 50;
+    }
+    .window-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #e2e8f0;
+      font-weight: 500;
+    }
+    .window-logo-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #1d4ed8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .window-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: #cbd5e1;
+    }
+    .window-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: 8px;
+    }
+
+    /* Main Viewport Background */
+    .viewport-canvas {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* Rich royal blue gradient matching reference */
+      background: radial-gradient(ellipse at 15% 25%, #1d72fe 0%, #1055db 35%, #08389e 70%, #031e5c 100%);
+      overflow: hidden;
+    }
+
+    /* Sweeping light wave ribbons */
+    .light-ribbon-1 {
+      position: absolute;
+      top: -25%;
+      left: -20%;
+      width: 140%;
+      height: 110%;
+      background: radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, 0.38) 0%, rgba(96, 165, 250, 0.22) 30%, transparent 65%);
+      transform: rotate(-15deg);
+      pointer-events: none;
+    }
+    .light-ribbon-2 {
+      position: absolute;
+      bottom: -35%;
+      right: -20%;
+      width: 130%;
+      height: 100%;
+      background: radial-gradient(ellipse at 70% 80%, rgba(56, 189, 248, 0.28) 0%, rgba(30, 64, 175, 0.35) 45%, transparent 70%);
+      transform: rotate(-25deg);
+      pointer-events: none;
+    }
+    .curved-wave-1 {
+      position: absolute;
+      top: 8%;
+      left: -10%;
+      width: 900px;
+      height: 600px;
+      border-radius: 50%;
+      border-top: 2px solid rgba(255, 255, 255, 0.3);
+      filter: blur(1px);
+      transform: rotate(-30deg);
+      pointer-events: none;
+    }
+    .curved-wave-2 {
+      position: absolute;
+      bottom: 5%;
+      right: -10%;
+      width: 1100px;
+      height: 800px;
+      border-radius: 50%;
+      border-top: 2px solid rgba(255, 255, 255, 0.25);
+      filter: blur(1px);
+      transform: rotate(-20deg);
+      pointer-events: none;
+    }
+
+    /* Floating Action Sidebar on Far Right (Matches Reference) */
+    .floating-tools-bar {
+      position: absolute;
+      right: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      z-index: 30;
+    }
+    .tool-circle-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #334155;
+      cursor: pointer;
+      position: relative;
+    }
+    .tool-badge-count {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 16px;
+      height: 16px;
+      background: #ef4444;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      font-size: 9px;
+      font-weight: 800;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Centered Frosted Glass Card - PROPORTIONALLY MATCHED TO REFERENCE */
+    .login-card {
+      width: 470px;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1.5px solid rgba(255, 255, 255, 0.95);
+      border-radius: 28px;
+      padding: 38px 42px 34px;
+      box-shadow: 0 24px 60px rgba(7, 24, 68, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      z-index: 20;
+    }
+
+    /* Logo Lockup (ada | ada OPS LIVESTREAM) */
+    .logo-lockup {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      margin-bottom: 12px;
+    }
+    .ada-squircle {
+      width: 52px;
+      height: 52px;
+      background: #0d2144;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 22px;
+      letter-spacing: -0.5px;
+      box-shadow: 0 4px 12px rgba(13, 33, 68, 0.3);
+    }
+    .ada-logo-divider {
+      width: 1.5px;
+      height: 40px;
+      background: #0d2144;
+      opacity: 0.28;
+    }
+    .ada-logo-text {
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+    }
+    .ada-logo-top {
+      font-size: 22px;
+      font-weight: 900;
+      color: #0d2144;
+      line-height: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+    .ada-logo-ops {
+      font-size: 14.5px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+    .ada-logo-bottom {
+      font-size: 9.5px;
+      font-weight: 800;
+      color: #0d2144;
+      letter-spacing: 2.8px;
+      margin-top: 4px;
+    }
+
+    /* Horizontal Accent Pill */
+    .accent-pill {
+      width: 48px;
+      height: 4px;
+      background: linear-gradient(90deg, #1e40af 0%, #06b6d4 100%);
+      border-radius: 4px;
+      margin-bottom: 22px;
+    }
+
+    /* Heading */
+    .card-title {
+      font-size: 26px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.4px;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    /* Form Body */
+    .form-wrap {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+    }
+    .input-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .forgot-link {
+      font-size: 12px;
+      font-weight: 600;
+      color: #2563eb;
+      text-decoration: none;
+    }
+    .forgot-link:hover { text-decoration: underline; }
+
+    .input-box {
+      width: 100%;
+      height: 46px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 10px;
+      transition: all 0.15s ease;
+    }
+    .input-box:focus-within {
+      background: #ffffff;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    .input-icon {
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .text-input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      outline: none;
+      font-size: 14px;
+      color: #0f172a;
+      font-family: inherit;
+    }
+    .text-input::placeholder { color: #94a3b8; }
+    .eye-toggle-btn {
+      background: transparent;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      padding: 0;
+    }
+
+    /* Big Blue Gradient Login Button */
+    .btn-login {
+      width: 100%;
+      height: 46px;
+      background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: 9px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(29, 78, 216, 0.35);
+      margin-top: 4px;
+      transition: all 0.15s ease;
+    }
+    .btn-login:hover {
+      background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+      transform: translateY(-1px);
+    }
+
+    /* Card Footer Items */
+    .card-footer {
+      width: 100%;
+      margin-top: 22px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      text-align: center;
+    }
+    .no-account-row {
+      font-size: 12.5px;
+      color: #475569;
+    }
+    .request-access-link {
+      font-weight: 700;
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+    .request-access-link:hover { text-decoration: underline; }
+
+    .google-unavailable-note {
+      font-size: 11.5px;
+      color: #64748b;
+      line-height: 1.4;
+      max-width: 380px;
+    }
+
+    /* PWA Installed Machine Button */
+    .pwa-device-btn {
+      width: 100%;
+      height: 40px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e40af;
+      cursor: pointer;
+      margin-top: 2px;
+    }
+    .pwa-checkbox-icon {
+      width: 14px;
+      height: 14px;
+      border: 1.5px solid #2563eb;
+      border-radius: 3px;
+    }
+
+    .lang-center-row {
+      font-size: 12.5px;
+      color: #475569;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Windows Frame Top Bar -->
+  <div class="window-header">
+    <div class="window-title">
+      <div class="window-logo-dot">ada</div>
+      <span>ADA OPS LIVESTREAM - ADA OPS Livestream</span>
+    </div>
+    <div class="window-controls">
+      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35"/></svg>
+      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 8v6m-3-3h6"/></svg>
+      <span>•••</span>
+      <div class="window-actions">
+        <svg width="10" height="10" viewBox="0 0 10 2" fill="currentColor"><rect width="10" height="1.5"/></svg>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"><rect x="1" y="1" width="8" height="8" stroke-width="1.2"/></svg>
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor"><path d="M1 1L9 9M9 1L1 9" stroke-width="1.2"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="viewport-canvas">
+    <!-- Light Ribbons & Waves -->
+    <div class="light-ribbon-1"></div>
+    <div class="light-ribbon-2"></div>
+    <div class="curved-wave-1"></div>
+    <div class="curved-wave-2"></div>
+
+    <!-- Centered Frosted Glass Card -->
+    <div class="login-card">
+      <!-- Logo Lockup -->
+      <div class="logo-lockup">
+        <div class="ada-squircle">ada</div>
+        <div class="ada-logo-divider"></div>
+        <div class="ada-logo-text">
+          <div class="ada-logo-top">
+            ada <span class="ada-logo-ops">OPS</span>
+          </div>
+          <div class="ada-logo-bottom">LIVESTREAM</div>
+        </div>
+      </div>
+
+      <!-- Accent gradient bar -->
+      <div class="accent-pill"></div>
+
+      <!-- Heading -->
+      <h1 class="card-title">Chào mừng trở lại!</h1>
+
+      <!-- Clean Form (No fake logout banner, no hardcoded personal email) -->
+      <div class="form-wrap">
+        <div class="input-group">
+          <div class="input-label-row">
+            <span>Email</span>
+          </div>
+          <div class="input-box">
+            <span class="input-icon">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            </span>
+            <input type="email" class="text-input" placeholder="admin@adaglobal.com" autocomplete="username">
+          </div>
+        </div>
+
+        <div class="input-group">
+          <div class="input-label-row">
+            <span>Mật khẩu</span>
+            <a href="#" class="forgot-link">Quên mật khẩu?</a>
+          </div>
+          <div class="input-box">
+            <span class="input-icon">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            </span>
+            <input type="password" class="text-input" placeholder="••••••••••••" autocomplete="current-password">
+            <button class="eye-toggle-btn" type="button" title="Hiện mật khẩu">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button class="btn-login" type="button">Đăng nhập</button>
+      </div>
+
+      <!-- Card Footer -->
+      <div class="card-footer">
+        <div class="no-account-row">
+          Chưa có tài khoản? <a href="#" class="request-access-link">Yêu cầu truy cập</a>
+        </div>
+        <div class="google-unavailable-note">
+          Đăng nhập Google chưa khả dụng. Vui lòng dùng email hoặc yêu cầu cấp tài khoản.
+        </div>
+        <div class="pwa-device-btn">
+          <div class="pwa-checkbox-icon"></div>
+          <span>ADA OPS đã được cài trên máy</span>
+        </div>
+        <div class="lang-center-row">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="1.8"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+          <span>English</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Action Pills on Far Right -->
+    <div class="floating-tools-bar">
+      <div class="tool-circle-btn" style="background: #fdf2f8; color: #db2777;">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        <div class="tool-badge-count">1</div>
+      </div>
+      <div class="tool-circle-btn" style="background: #0f172a; color: #ffffff;">
+        <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
+      </div>
+      <div class="tool-circle-btn">
+        <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="#2563eb"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+      </div>
+      <div class="tool-circle-btn">
+        <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="#64748b"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879a3 3 0 11-4.242-4.242 3 3 0 014.242 0z"/></svg>
+      </div>
+      <div class="tool-circle-btn">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#2563eb"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

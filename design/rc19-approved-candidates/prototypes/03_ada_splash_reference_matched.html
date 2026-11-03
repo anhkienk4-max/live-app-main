@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADA OPS LIVESTREAM - ADA OPS Livestream</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Windows Header Bar (Matches Windows Frame Reference) */
+    .window-header {
+      height: 36px;
+      background: #090e1f;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      color: #94a3b8;
+      font-size: 11.5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      user-select: none;
+      z-index: 50;
+    }
+    .window-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #e2e8f0;
+      font-weight: 500;
+    }
+    .window-logo-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #1d4ed8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .window-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: #cbd5e1;
+    }
+    .window-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: 8px;
+    }
+
+    /* Luminous White-Blue Canvas (Exact match to Reference) */
+    .viewport-canvas {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f4f8fd 55%, #e3effa 100%);
+      overflow: hidden;
+    }
+
+    /* Elegant Curved Wave Ribbons in Corners */
+    .corner-wave-tl-1 {
+      position: absolute;
+      top: -20%;
+      left: -15%;
+      width: 850px;
+      height: 700px;
+      border-radius: 48%;
+      background: linear-gradient(135deg, rgba(191, 219, 254, 0.45) 0%, rgba(224, 242, 254, 0.15) 60%, transparent 80%);
+      filter: blur(2px);
+      pointer-events: none;
+      transform: rotate(-10deg);
+    }
+    .corner-wave-tl-2 {
+      position: absolute;
+      top: -10%;
+      left: -10%;
+      width: 750px;
+      height: 500px;
+      border-radius: 50%;
+      border-bottom: 2px solid rgba(147, 197, 253, 0.45);
+      filter: blur(1px);
+      pointer-events: none;
+      transform: rotate(-18deg);
+    }
+
+    .corner-wave-br-1 {
+      position: absolute;
+      bottom: -25%;
+      right: -15%;
+      width: 950px;
+      height: 750px;
+      border-radius: 46%;
+      background: linear-gradient(315deg, rgba(186, 230, 253, 0.45) 0%, rgba(219, 234, 254, 0.15) 55%, transparent 75%);
+      filter: blur(2px);
+      pointer-events: none;
+      transform: rotate(-8deg);
+    }
+    .corner-wave-br-2 {
+      position: absolute;
+      bottom: -10%;
+      right: -8%;
+      width: 800px;
+      height: 550px;
+      border-radius: 50%;
+      border-top: 2px solid rgba(147, 197, 253, 0.45);
+      filter: blur(1px);
+      pointer-events: none;
+      transform: rotate(-15deg);
+    }
+
+    /* Central Orbital Container - HUGE SCALE (~80% of screen height) */
+    .orbit-system-wrapper {
+      position: relative;
+      width: 700px;
+      height: 700px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Concentric Circular Orbital Rings */
+    .orbit-ring-outer {
+      position: absolute;
+      width: 680px;
+      height: 680px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(147, 197, 253, 0.65);
+      pointer-events: none;
+    }
+    .orbit-ring-inner {
+      position: absolute;
+      width: 520px;
+      height: 520px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(191, 219, 254, 0.7);
+      pointer-events: none;
+    }
+
+    /* Luminous Glowing Arcs on the Rings */
+    .glow-arc-1 {
+      position: absolute;
+      width: 680px;
+      height: 680px;
+      border-radius: 50%;
+      border: 2.5px solid transparent;
+      border-top-color: #38bdf8;
+      border-right-color: #38bdf8;
+      filter: drop-shadow(0 0 10px #38bdf8);
+      transform: rotate(20deg);
+      pointer-events: none;
+    }
+    .glow-arc-2 {
+      position: absolute;
+      width: 680px;
+      height: 680px;
+      border-radius: 50%;
+      border: 2.5px solid transparent;
+      border-bottom-color: #38bdf8;
+      border-left-color: #38bdf8;
+      filter: drop-shadow(0 0 10px #38bdf8);
+      transform: rotate(15deg);
+      pointer-events: none;
+    }
+
+    /* Soft Neomorphic Center Embossed Circle */
+    .center-embossed-disc {
+      position: absolute;
+      width: 480px;
+      height: 480px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 45% 40%, #ffffff 0%, #f9fbfe 60%, #e8f2fc 100%);
+      box-shadow:
+        0 20px 50px rgba(37, 99, 235, 0.12),
+        0 4px 14px rgba(0, 0, 0, 0.04),
+        inset 0 2px 6px rgba(255, 255, 255, 0.9),
+        inset 0 -4px 10px rgba(219, 234, 254, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    /* Recessed Inner Circle */
+    .center-inner-recessed {
+      width: 340px;
+      height: 340px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f4f8fe 80%, #ebf4fd 100%);
+      box-shadow: inset 0 2px 8px rgba(37, 99, 235, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Center Logo Lockup (ada | ada OPS LIVESTREAM) */
+    .center-logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      z-index: 20;
+    }
+    .ada-splash-squircle {
+      width: 92px;
+      height: 92px;
+      background: #0d2144;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 38px;
+      letter-spacing: -1px;
+      box-shadow: 0 8px 24px rgba(13, 33, 68, 0.28);
+    }
+    .ada-splash-divider {
+      width: 2px;
+      height: 64px;
+      background: #0d2144;
+      opacity: 0.35;
+    }
+    .ada-splash-text-col {
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+    }
+    .ada-splash-top-row {
+      font-size: 42px;
+      font-weight: 900;
+      color: #0d2144;
+      line-height: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+    }
+    .ada-splash-ops {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+    }
+    .ada-splash-bottom-row {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0d2144;
+      letter-spacing: 5.5px;
+      margin-top: 6px;
+    }
+
+    /* 3D Glowing Cyan Spheres on the Orbit */
+    .orbit-sphere {
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 15;
+    }
+    /* Large Top-Right Sphere (~55 deg) */
+    .sphere-large-tr {
+      width: 34px;
+      height: 34px;
+      top: 60px;
+      right: 125px;
+      background: radial-gradient(circle at 35% 35%, #67e8f9 0%, #06b6d4 40%, #0284c7 80%, #0369a1 100%);
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.75), 0 4px 10px rgba(2, 132, 199, 0.4);
+    }
+    /* Large Bottom-Left Sphere (~220 deg) */
+    .sphere-large-bl {
+      width: 34px;
+      height: 34px;
+      bottom: 120px;
+      left: 70px;
+      background: radial-gradient(circle at 35% 35%, #67e8f9 0%, #06b6d4 40%, #0284c7 80%, #0369a1 100%);
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.75), 0 4px 10px rgba(2, 132, 199, 0.4);
+    }
+    /* Medium Top-Left Sphere (~140 deg) */
+    .sphere-med-tl {
+      width: 20px;
+      height: 20px;
+      top: 180px;
+      left: 75px;
+      background: radial-gradient(circle at 35% 35%, #7dd3fc 0%, #38bdf8 50%, #0284c7 100%);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+    }
+    /* Medium Bottom-Right Sphere (~325 deg) */
+    .sphere-med-br {
+      width: 18px;
+      height: 18px;
+      bottom: 190px;
+      right: 90px;
+      background: radial-gradient(circle at 35% 35%, #7dd3fc 0%, #38bdf8 50%, #0284c7 100%);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+    }
+    /* Medium Top Sphere (~85 deg) */
+    .sphere-med-top {
+      width: 15px;
+      height: 15px;
+      top: 100px;
+      right: 275px;
+      background: radial-gradient(circle at 35% 35%, #bae6fd 0%, #38bdf8 60%, #0284c7 100%);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+    }
+    /* Small Spheres */
+    .sphere-small-r {
+      width: 12px;
+      height: 12px;
+      top: 220px;
+      right: 50px;
+      background: #0284c7;
+      box-shadow: 0 0 8px rgba(2, 132, 199, 0.6);
+    }
+    .sphere-small-b {
+      width: 11px;
+      height: 11px;
+      bottom: 60px;
+      left: 310px;
+      background: #0284c7;
+      box-shadow: 0 0 8px rgba(2, 132, 199, 0.6);
+    }
+  </style>
+</head>
+<body>
+  <!-- Windows Frame Top Bar -->
+  <div class="window-header">
+    <div class="window-title">
+      <div class="window-logo-dot">ada</div>
+      <span>ADA OPS LIVESTREAM - ADA OPS Livestream</span>
+    </div>
+    <div class="window-controls">
+      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35"/></svg>
+      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 8v6m-3-3h6"/></svg>
+      <span>•••</span>
+      <div class="window-actions">
+        <svg width="10" height="10" viewBox="0 0 10 2" fill="currentColor"><rect width="10" height="1.5"/></svg>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"><rect x="1" y="1" width="8" height="8" stroke-width="1.2"/></svg>
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor"><path d="M1 1L9 9M9 1L1 9" stroke-width="1.2"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="viewport-canvas">
+    <!-- Corner Curved Waves -->
+    <div class="corner-wave-tl-1"></div>
+    <div class="corner-wave-tl-2"></div>
+    <div class="corner-wave-br-1"></div>
+    <div class="corner-wave-br-2"></div>
+
+    <!-- Central Orbital System (Scaled to ~80% height matching reference) -->
+    <div class="orbit-system-wrapper">
+      <div class="orbit-ring-outer"></div>
+      <div class="orbit-ring-inner"></div>
+
+      <!-- Glowing Arc Highlights -->
+      <div class="glow-arc-1"></div>
+      <div class="glow-arc-2"></div>
+
+      <!-- 3D Glowing Spheres -->
+      <div class="orbit-sphere sphere-large-tr"></div>
+      <div class="orbit-sphere sphere-large-bl"></div>
+      <div class="orbit-sphere sphere-med-tl"></div>
+      <div class="orbit-sphere sphere-med-br"></div>
+      <div class="orbit-sphere sphere-med-top"></div>
+      <div class="orbit-sphere sphere-small-r"></div>
+      <div class="orbit-sphere sphere-small-b"></div>
+
+      <!-- Neomorphic Center Embossed Circle -->
+      <div class="center-embossed-disc">
+        <div class="center-inner-recessed">
+          <div class="center-logo-wrap">
+            <div class="ada-splash-squircle">ada</div>
+            <div class="ada-splash-divider"></div>
+            <div class="ada-splash-text-col">
+              <div class="ada-splash-top-row">
+                ada <span class="ada-splash-ops">OPS</span>
+              </div>
+              <div class="ada-splash-bottom-row">LIVESTREAM</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
