@@ -577,8 +577,6 @@ export function ShiftDetailModal({
     ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id && isStaffedRegistration(r)) : undefined
   const myAttendanceRegistration = myRegistration ?? (staffingActorId === currentUser?.id && currentUser
     ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id) : undefined)
-  const visibleShiftTabCount = 3 + Number(Boolean(myAttendanceRegistration))
-    + Number(Boolean(capabilities?.actual_staffing)) + Number(Boolean(capabilities?.self_attendance_review))
   const attendanceShiftEligible = !shift.deleted_at && !shift.archived_at && ['scheduled', 'preparing', 'live', 'paused', 'completed'].includes(shift.status)
   const registrationContext = allRegistrations ?? registrations
   const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
@@ -798,13 +796,13 @@ export function ShiftDetailModal({
 
           <DialogBody className="mx-0 pb-1 bg-muted/5 p-0 overflow-y-auto">
             <Tabs key={`${shift.id}:${currentUser?.id ?? ''}`} defaultValue="overview" className="min-w-0">
-              <TabsList className={`mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-2 sm:mx-6 ${visibleShiftTabCount >= 6 ? 'sm:grid-cols-6' : visibleShiftTabCount === 5 ? 'sm:grid-cols-5' : visibleShiftTabCount === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
+              <TabsList className="mx-4 mt-4 grid w-auto grid-cols-4 sm:mx-6" data-testid="shift-detail-permanent-tabs">
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
-                {myAttendanceRegistration && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="self-attendance">Check-in / Check-out</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
-                {capabilities?.actual_staffing && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="actual">{language === 'en' ? 'Actual staffing' : 'Chấm công thực tế'}</TabsTrigger>}
-                {capabilities?.self_attendance_review && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="attendance-review">{language === 'en' ? 'Photo review' : 'Đối soát ảnh'}</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="attendance" data-testid="tab-attendance">
+                  {language === 'en' ? 'Attendance' : 'Chấm công thực tế'}
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="overview" className="space-y-6 p-4 sm:p-6">
@@ -864,29 +862,127 @@ export function ShiftDetailModal({
                 </div>
               </TabsContent>
 
-              {myAttendanceRegistration && <TabsContent value="self-attendance" className="min-w-0 p-4 sm:p-6">
+              {/* TAB 4: UNIFIED ATTENDANCE (Permanent 4-tab architecture, Issue #163) */}
+              <TabsContent value="attendance" className="min-w-0 p-4 sm:p-6 space-y-6">
+                {/* 1. Self Attendance for assigned personnel */}
                 {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && attendanceShiftEligible ? (
-                  <SelfAttendancePanel key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
-                    actorId={currentUser!.id} shiftId={shift.id} role={myRegistration.operational_role}
-                    shiftContext={{
-                      date:shift.date,start_time:shift.start_time,end_time:shift.end_time,
-                      brand:brand?.name??shift.brand_id,platform:platform?.name??shift.platform_id,
-                      title:shift.title,studio:shift.studio,crossesMidnight:dateTime?.valid && dateTime.crossesMidnight,
-                    }} />
-                ) : <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
-                  {!myRegistration ? (language === 'en' ? 'Check-in / Check-out is unavailable until your shift assignment is approved.' : 'Chưa thể check-in / check-out khi ca chưa được phân công chính thức.')
-                    : !attendanceShiftEligible ? (language === 'en' ? 'This shift is not eligible for check-in / check-out.' : 'Ca này không đủ điều kiện check-in / check-out.')
-                    : (language === 'en' ? 'Check-in / Check-out is not available in this environment.' : 'Check-in / Check-out chưa khả dụng trong môi trường này.')}
-                </div>}
-              </TabsContent>}
+                  <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        {language === 'en' ? 'Personal Check-in / Check-out' : 'Chấm công cá nhân (Check-in / Check-out)'}
+                      </h3>
+                      <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-[10px] text-emerald-800 uppercase font-bold">
+                        {myRegistration.operational_role}
+                      </Badge>
+                    </div>
+                    <SelfAttendancePanel
+                      key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
+                      actorId={currentUser!.id}
+                      shiftId={shift.id}
+                      role={myRegistration.operational_role}
+                      shiftContext={{
+                        date: shift.date,
+                        start_time: shift.start_time,
+                        end_time: shift.end_time,
+                        brand: brand?.name ?? shift.brand_id,
+                        platform: platform?.name ?? shift.platform_id,
+                        title: shift.title,
+                        studio: shift.studio,
+                        crossesMidnight: dateTime?.valid && dateTime.crossesMidnight,
+                      }}
+                    />
+                  </section>
+                ) : myAttendanceRegistration && !myRegistration ? (
+                  <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
+                    {language === 'en'
+                      ? 'Check-in / Check-out is unavailable until your shift assignment is approved.'
+                      : 'Chưa thể check-in / check-out khi ca chưa được phân công chính thức.'}
+                  </div>
+                ) : null}
 
-              {capabilities?.actual_staffing && <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
-                <ActualStaffingPanel shift={shift} currentUser={currentUser} />
-              </TabsContent>}
+                {/* 2. Photo Review for Admin/Leader */}
+                {capabilities?.self_attendance_review && (
+                  <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        {language === 'en' ? 'Evidence Photo Review (Check-in / Check-out)' : 'Đối soát minh chứng ảnh (Check-in / Check-out)'}
+                      </h3>
+                      <Badge variant="outline" className="text-[10px] text-slate-500">
+                        Photo Review
+                      </Badge>
+                    </div>
+                    <AttendancePhotoReviewPanel key={`${shift.id}:${currentUser?.id ?? ''}`} shiftId={shift.id} />
+                  </section>
+                )}
 
-              {capabilities?.self_attendance_review && <TabsContent value="attendance-review" className="min-w-0 p-4 sm:p-6">
-                <AttendancePhotoReviewPanel key={`${shift.id}:${currentUser?.id ?? ''}`} shiftId={shift.id} />
-              </TabsContent>}
+                {/* 3. Actual Staffing / Final Approved Hours for Admin/Leader */}
+                {capabilities?.actual_staffing && (
+                  <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        {language === 'en' ? 'Approved Actual Hours & Attendance' : 'Chấm công thực tế & Phê duyệt giờ'}
+                      </h3>
+                      <Badge variant="outline" className="text-[10px] text-slate-500">
+                        Final Approved Hours
+                      </Badge>
+                    </div>
+                    <ActualStaffingPanel shift={shift} currentUser={currentUser} />
+                  </section>
+                )}
+
+                {/* Non-assigned member fallback */}
+                {!myAttendanceRegistration && !capabilities?.actual_staffing && !capabilities?.self_attendance_review && (
+                  <div role="status" className="rounded-md border bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+                    {language === 'en'
+                      ? 'No attendance actions required for your account on this shift.'
+                      : 'Bạn không được phân công trên ca trực này nên không cần chấm công hoặc đối soát.'}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Legacy Tab Fallbacks for contract parity */}
+              {myAttendanceRegistration && (
+                <TabsContent value="self-attendance" className="min-w-0 p-4 sm:p-6">
+                  {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && attendanceShiftEligible ? (
+                    <SelfAttendancePanel
+                      key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
+                      actorId={currentUser!.id}
+                      shiftId={shift.id}
+                      role={myRegistration.operational_role}
+                      shiftContext={{
+                        date: shift.date,
+                        start_time: shift.start_time,
+                        end_time: shift.end_time,
+                        brand: brand?.name ?? shift.brand_id,
+                        platform: platform?.name ?? shift.platform_id,
+                        title: shift.title,
+                        studio: shift.studio,
+                        crossesMidnight: dateTime?.valid && dateTime.crossesMidnight,
+                      }}
+                    />
+                  ) : (
+                    <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
+                      {!myRegistration
+                        ? (language === 'en' ? 'Check-in / Check-out is unavailable until your shift assignment is approved.' : 'Chưa thể check-in / check-out khi ca chưa được phân công chính thức.')
+                        : !attendanceShiftEligible
+                        ? (language === 'en' ? 'This shift is not eligible for check-in / check-out.' : 'Ca này không đủ điều kiện check-in / check-out.')
+                        : (language === 'en' ? 'Check-in / Check-out is not available in this environment.' : 'Check-in / Check-out chưa khả dụng trong môi trường này.')}
+                    </div>
+                  )}
+                </TabsContent>
+              )}
+
+              {capabilities?.actual_staffing && (
+                <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
+                  <ActualStaffingPanel shift={shift} currentUser={currentUser} />
+                </TabsContent>
+              )}
+
+              {capabilities?.self_attendance_review && (
+                <TabsContent value="attendance-review" className="min-w-0 p-4 sm:p-6">
+                  <AttendancePhotoReviewPanel key={`${shift.id}:${currentUser?.id ?? ''}`} shiftId={shift.id} />
+                </TabsContent>
+              )}
 
               <TabsContent value="details" className="space-y-4 p-4 sm:p-6">
                 <dl className="grid gap-3 rounded-lg border bg-white p-4 text-xs sm:grid-cols-3" data-testid="shift-production-provenance">{[

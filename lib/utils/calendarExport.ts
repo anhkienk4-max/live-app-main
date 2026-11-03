@@ -14,10 +14,15 @@ const labels: Partial<Record<keyof ScheduleExportRow, string>> = {
   'Scheduled Host Names': 'Host theo lịch', 'Scheduled Support Names': 'Trợ live theo lịch', 'Scheduled Technical Names': 'Kỹ thuật theo lịch',
   'Required Host Count': 'Số Host cần', 'Required Support Count': 'Số Trợ live cần', 'Required Technical Count': 'Số Kỹ thuật cần', 'Registration Locked': 'Khóa đăng ký',
   'Import Batch ID': 'Mã batch import',
+  'Target GMV': 'Chỉ tiêu GMV',
+  'Actual GMV': 'Doanh thu thực tế (Actual GMV)',
+  'Total Orders': 'Tổng đơn hàng',
+  'Peak Viewers': 'Lượt xem đỉnh (Peak Viewers)',
 }
 const field = (id: string, label: string, group: ExportSheet, permission: Permission, order: number, key = id): CalendarExportField => ({ id, label, group, permission, order, transformer: row => row[key] ?? '' })
 export const CALENDAR_EXPORT_FIELDS: readonly CalendarExportField[] = [
   ...SCHEDULE_EXPORT_COLUMN_ORDER.map((key, order) => field('schedule.' + key, labels[key] ?? key, 'schedule', 'shifts.export', order, key)),
+  ...['Target GMV', 'Actual GMV', 'Total Orders', 'Peak Viewers'].map((key, order) => field('schedule.' + key, labels[key as keyof ScheduleExportRow] ?? key, 'schedule', 'reports.view', 50 + order, key)),
   ...[['id', 'Mã đăng ký'], ['shift_id', 'Mã ca'], ['staff_name', 'Nhân sự'], ['operational_role', 'Vai trò'], ['status', 'Trạng thái'], ['source', 'Nguồn']].map(([key, label], i) => field('registrations.' + key, label, 'registrations', 'shifts.export', 100 + i, key)),
 ]
 

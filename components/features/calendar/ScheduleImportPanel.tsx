@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { AlertTriangle, Check, Download, FileSpreadsheet, Link2, Moon, Plus, Trash2, Upload, X } from 'lucide-react'
+import { AlertTriangle, Check, Download, Edit3, FileSpreadsheet, Filter, Link2, Moon, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react'
 import {
   brandService,
   campaignService,
@@ -33,6 +33,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { PageLoadError } from '@/components/ui/page-load-error'
@@ -175,7 +176,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [previewFilter, setPreviewFilter] = React.useState<PreviewFilter>('all')
   const [previewSearch, setPreviewSearch] = React.useState('')
   const [previewPage, setPreviewPage] = React.useState(1)
-  const previewPageSize = 50
+  const [previewPageSize, setPreviewPageSize] = React.useState(50)
   const [selectedRowNumbers, setSelectedRowNumbers] = React.useState<Set<number>>(new Set())
   const [previewMaxHeight, setPreviewMaxHeight] = React.useState(560)
   const [previewMinWidth, setPreviewMinWidth] = React.useState(1780)
@@ -186,9 +187,33 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [completedImport, setCompletedImport] = React.useState<CompletedImport | null>(null)
   const [retryingArchive, setRetryingArchive] = React.useState(false)
 
+  // Column filters state (Task 1: Issue #161)
+  const [filterBrand, setFilterBrand] = React.useState<string>('all')
+  const [filterPlatform, setFilterPlatform] = React.useState<string>('all')
+  const [filterStudio, setFilterStudio] = React.useState<string>('all')
+  const [filterDate, setFilterDate] = React.useState<string>('')
+  const [filterValidation, setFilterValidation] = React.useState<'all' | 'valid' | 'has_errors' | 'has_warnings'>('all')
+
+  // Undo delete stack (Task 1: Issue #161)
+  type DeletedRowEntry = {
+    row: Record<string, unknown>
+    index: number
+    rowNumber: number
+    draft?: Record<string, string>
+  }
+  const [undoStack, setUndoStack] = React.useState<DeletedRowEntry[]>([])
+
+  // Bulk Edit modal state (Task 1: Issue #161)
+  const [bulkModalOpen, setBulkModalOpen] = React.useState(false)
+  const [bulkExecutionSource, setBulkExecutionSource] = React.useState<string>('')
+  const [bulkAgencyCode, setBulkAgencyCode] = React.useState<string>('')
+  const [bulkBrandName, setBulkBrandName] = React.useState<string>('')
+  const [bulkPlatformName, setBulkPlatformName] = React.useState<string>('')
+  const [bulkStudio, setBulkStudio] = React.useState<string>('')
+
   React.useEffect(() => {
     setPreviewPage(1)
-  }, [previewFilter, previewSearch])
+  }, [previewFilter, previewSearch, filterBrand, filterPlatform, filterStudio, filterDate, filterValidation])
 
   React.useEffect(() => {
     if (completedImport) completedImportRef.current?.focus()
@@ -429,7 +454,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const removePreviewRow = (rowNumber: number) => {
     const sourceRows = sourceRowsFromPreview()
     const index = result?.rows.findIndex(preview => preview.row.row_number === rowNumber) ?? -1
-    if (index >= 0) {
+    if (index >= 0 && sourceRows[index]) {
+      const removedRow = sourceRows[index]
+      const existingDraft = draftRows[rowNumber]
+      setUndoStack(prev => [...prev, { row: removedRow, index, rowNumber, draft: existingDraft }])
       sourceRows.splice(index, 1)
       applySourceRows(sourceRows)
       setDraftRows(prev => removeRowDraft(prev, rowNumber))
@@ -442,7 +470,29 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       if (previewPage > maxPage) {
         setPreviewPage(maxPage)
       }
+      toast({
+        title: language === 'vi' ? 'Đã xóa dòng' : 'Row deleted',
+        description: language === 'vi' ? `Đã xóa dòng ${rowNumber}. Nhấn Hoàn tác để khôi phục.` : `Deleted row ${rowNumber}. Click Undo to restore.`,
+      })
     }
+  }
+
+  const undoLastDelete = () => {
+    if (undoStack.length === 0) return
+    const last = undoStack[undoStack.length - 1]
+    const sourceRows = sourceRowsFromPreview()
+    const insertIdx = Math.min(last.index, sourceRows.length)
+    sourceRows.splice(insertIdx, 0, last.row)
+    applySourceRows(sourceRows)
+    if (last.draft) {
+      setDraftRows(prev => ({ ...prev, [last.rowNumber]: last.draft! }))
+    }
+    setUndoStack(prev => prev.slice(0, prev.length - 1))
+    toast({
+      title: language === 'vi' ? 'Đã hoàn tác' : 'Action undone',
+      description: language === 'vi' ? `Đã khôi phục dòng ${last.rowNumber}.` : `Restored row ${last.rowNumber}.`,
+      variant: 'success',
+    })
   }
 
   const removeCustomColumn = (columnName: string) => {
@@ -462,7 +512,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     })
   }
 
-  const bulkUpdateSelected = (updates: Partial<{ execution_source: string; brand_name: string; platform_name: string; agency: string; agency_code: string }>) => {
+  const bulkUpdateSelected = (updates: Partial<{ execution_source: string; brand_name: string; platform_name: string; studio: string; agency: string; agency_code: string }>) => {
     if (selectedRowNumbers.size === 0) return
     const sourceRows = sourceRowsFromPreview()
     let changed = false
@@ -481,6 +531,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           row = { ...row, Platform: updates.platform_name }
           changed = true
         }
+        if (updates.studio !== undefined) {
+          row = { ...row, Studio: updates.studio }
+          changed = true
+        }
         if (updates.agency_code !== undefined || updates.agency !== undefined) {
           const agencyLabel = updates.agency || (updates.agency_code ? agencyDisplayLabel(updates.agency_code as AgencyCode) : '')
           const customFields = { ...((row.custom_fields as Record<string, string> | undefined) ?? {}) }
@@ -497,29 +551,48 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     if (changed) {
       applySourceRows(sourceRows)
       setDraftRows({})
+      toast({
+        title: language === 'vi' ? 'Cập nhật hàng loạt thành công' : 'Bulk update successful',
+        description: language === 'vi' ? `Đã áp dụng thay đổi cho ${selectedRowNumbers.size} dòng.` : `Applied updates to ${selectedRowNumbers.size} rows.`,
+        variant: 'success',
+      })
     }
   }
 
   const bulkDeleteSelected = () => {
     if (selectedRowNumbers.size === 0) return
     const sourceRows = sourceRowsFromPreview()
+    const deletedEntries: DeletedRowEntry[] = []
     const keptRows: Record<string, unknown>[] = []
     result?.rows.forEach((preview, index) => {
-      if (!selectedRowNumbers.has(preview.row.row_number) && sourceRows[index]) {
-        const rowNum = preview.row.row_number
+      const rowNum = preview.row.row_number
+      if (selectedRowNumbers.has(rowNum) && sourceRows[index]) {
+        deletedEntries.push({
+          row: sourceRows[index],
+          index,
+          rowNumber: rowNum,
+          draft: draftRows[rowNum],
+        })
+      } else if (sourceRows[index]) {
         const committedRow = draftRows[rowNum]
           ? commitRowDraftToSource(sourceRows[index], draftRows[rowNum])
           : sourceRows[index]
         keptRows.push(committedRow)
       }
     })
+    setUndoStack(prev => [...prev, ...deletedEntries])
     applySourceRows(keptRows)
+    const count = selectedRowNumbers.size
     setSelectedRowNumbers(new Set())
     setDraftRows({})
     const maxPage = Math.max(1, Math.ceil(keptRows.length / previewPageSize))
     if (previewPage > maxPage) {
       setPreviewPage(maxPage)
     }
+    toast({
+      title: language === 'vi' ? 'Đã xóa hàng loạt' : 'Bulk deleted',
+      description: language === 'vi' ? `Đã xóa ${count} dòng. Bạn có thể nhấn Hoàn tác.` : `Deleted ${count} rows. You can click Undo.`,
+    })
   }
 
   // This archive is deliberately isolated from import-batch state transitions.
@@ -714,11 +787,36 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     () => [...new Set((result?.rows ?? []).flatMap(preview => Object.keys(preview.row.custom_fields ?? {})))],
     [result],
   )
+  const uniquePreviewBrands = React.useMemo(() => {
+    if (!result) return []
+    return [...new Set(result.rows.map(p => p.row.brand_name).filter(Boolean))].sort()
+  }, [result])
+
+  const uniquePreviewPlatforms = React.useMemo(() => {
+    if (!result) return []
+    return [...new Set(result.rows.map(p => p.row.platform_name).filter(Boolean))].sort()
+  }, [result])
+
+  const uniquePreviewStudios = React.useMemo(() => {
+    if (!result) return []
+    return [...new Set(result.rows.map(p => p.row.studio).filter(Boolean))].sort()
+  }, [result])
+
   const visiblePreviews = React.useMemo(() => {
     if (!result) return []
     return result.rows.filter(preview => {
       const status = previewStatusForRow(preview)
       if (previewFilter !== 'all' && previewFilter !== status) return false
+
+      // Column filters (Task 1: Issue #161)
+      if (filterBrand !== 'all' && preview.row.brand_name !== filterBrand) return false
+      if (filterPlatform !== 'all' && preview.row.platform_name !== filterPlatform) return false
+      if (filterStudio !== 'all' && (preview.row.studio || '') !== filterStudio) return false
+      if (filterDate.trim() && !preview.row.date.includes(filterDate.trim())) return false
+      if (filterValidation === 'valid' && (preview.row.errors.length > 0 || preview.row.warnings.length > 0)) return false
+      if (filterValidation === 'has_errors' && preview.row.errors.length === 0) return false
+      if (filterValidation === 'has_warnings' && preview.row.warnings.length === 0) return false
+
       const query = previewSearch.trim().toLocaleLowerCase()
       if (!query) return true
       return [
@@ -735,7 +833,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         String(preview.row.row_number),
       ].some(value => String(value ?? '').toLocaleLowerCase().includes(query))
     })
-  }, [result, previewFilter, previewSearch])
+  }, [result, previewFilter, previewSearch, filterBrand, filterPlatform, filterStudio, filterDate, filterValidation])
   const completedCounts = completedImport ? batchPresentationCounts(completedImport.rows) : null
   const importableCount = previewCounts ? previewCounts.ready + previewCounts.warning : 0
   const previewAttention = previewCounts
@@ -848,12 +946,137 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               </div>
             </div>
 
+            {/* Column Filters Strip (Task 1: Issue #161) */}
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 text-xs text-slate-700" data-testid="schedule-import-column-filters">
+              <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                <Filter className="h-3.5 w-3.5 text-slate-500" />
+                <span>{language === 'vi' ? 'Lọc theo cột:' : 'Column filters:'}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  placeholder={language === 'vi' ? 'Ngày (YYYY-MM-DD)...' : 'Filter Date...'}
+                  value={filterDate}
+                  onChange={e => setFilterDate(e.target.value)}
+                  className="h-8 w-32 bg-white text-xs"
+                />
+                <select
+                  aria-label="Filter Brand"
+                  className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                  value={filterBrand}
+                  onChange={e => setFilterBrand(e.target.value)}
+                >
+                  <option value="all">{language === 'vi' ? 'Tất cả Brand' : 'All Brands'}</option>
+                  {uniquePreviewBrands.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+                <select
+                  aria-label="Filter Platform"
+                  className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                  value={filterPlatform}
+                  onChange={e => setFilterPlatform(e.target.value)}
+                >
+                  <option value="all">{language === 'vi' ? 'Tất cả Platform' : 'All Platforms'}</option>
+                  {uniquePreviewPlatforms.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <select
+                  aria-label="Filter Studio"
+                  className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                  value={filterStudio}
+                  onChange={e => setFilterStudio(e.target.value)}
+                >
+                  <option value="all">{language === 'vi' ? 'Tất cả Studio' : 'All Studios'}</option>
+                  {uniquePreviewStudios.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select
+                  aria-label="Filter Validation"
+                  className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                  value={filterValidation}
+                  onChange={e => setFilterValidation(e.target.value as typeof filterValidation)}
+                >
+                  <option value="all">{language === 'vi' ? 'Tất cả tính hợp lệ' : 'All Validation'}</option>
+                  <option value="valid">{language === 'vi' ? 'Hợp lệ' : 'Valid'}</option>
+                  <option value="has_errors">{language === 'vi' ? 'Có lỗi' : 'Has Errors'}</option>
+                  <option value="has_warnings">{language === 'vi' ? 'Có cảnh báo' : 'Has Warnings'}</option>
+                </select>
+
+                {(filterBrand !== 'all' || filterPlatform !== 'all' || filterStudio !== 'all' || filterDate.trim() || filterValidation !== 'all') && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-blue-600 hover:text-blue-800"
+                    onClick={() => {
+                      setFilterBrand('all')
+                      setFilterPlatform('all')
+                      setFilterStudio('all')
+                      setFilterDate('')
+                      setFilterValidation('all')
+                    }}
+                  >
+                    {language === 'vi' ? 'Xóa lọc' : 'Reset filters'}
+                  </Button>
+                )}
+
+                {undoStack.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100"
+                    onClick={undoLastDelete}
+                    data-testid="schedule-import-undo-button"
+                  >
+                    <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                    {language === 'vi' ? `Hoàn tác xóa (${undoStack.length})` : `Undo Delete (${undoStack.length})`}
+                  </Button>
+                )}
+
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    {language === 'vi'
+                      ? `Hiển thị ${visiblePreviews.length}/${result.rows.length} dòng`
+                      : `Showing ${visiblePreviews.length}/${result.rows.length} rows`}
+                  </span>
+                  <select
+                    aria-label="Rows per page"
+                    className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                    value={previewPageSize}
+                    onChange={e => {
+                      setPreviewPageSize(Number(e.target.value))
+                      setPreviewPage(1)
+                    }}
+                  >
+                    <option value={25}>25 / trang</option>
+                    <option value={50}>50 / trang</option>
+                    <option value={100}>100 / trang</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             {selectedRowNumbers.size > 0 && (
               <div className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-sm text-blue-950" data-testid="schedule-import-bulk-bar">
                 <span className="font-semibold">
                   {language === 'vi' ? `Đã chọn ${selectedRowNumbers.size} dòng:` : `${selectedRowNumbers.size} rows selected:`}
                 </span>
                 <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    className="h-8 text-xs bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
+                    onClick={() => {
+                      setBulkExecutionSource('')
+                      setBulkAgencyCode('')
+                      setBulkBrandName('')
+                      setBulkPlatformName('')
+                      setBulkStudio('')
+                      setBulkModalOpen(true)
+                    }}
+                    data-testid="schedule-import-open-bulk-modal"
+                  >
+                    <Edit3 className="mr-1 h-3.5 w-3.5" />
+                    {language === 'vi' ? 'Hộp thoại sửa hàng loạt' : 'Bulk Edit Dialog'}
+                  </Button>
                   <select
                     aria-label="Bulk Execution Source"
                     className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
@@ -912,22 +1135,6 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                   >
                     <option value="" disabled>{language === 'vi' ? 'Gán Platform...' : 'Set Platform...'}</option>
                     {platforms.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                  </select>
-                  <select
-                    aria-label="Bulk Agency"
-                    className="h-8 rounded border border-slate-300 bg-white px-2 text-xs"
-                    defaultValue=""
-                    onChange={e => {
-                      if (e.target.value) {
-                        bulkUpdateSelected({ agency: e.target.value })
-                        e.target.value = ''
-                      }
-                    }}
-                  >
-                    <option value="" disabled>{language === 'vi' ? 'Gán Agency...' : 'Set Agency...'}</option>
-                    <option value="ADA">ADA</option>
-                    <option value="SNAP">SNAP</option>
-                    <option value="Live AI">Live AI</option>
                   </select>
                   {visiblePreviews.length > paginatedPreviews.length && selectedRowNumbers.size < visiblePreviews.length && (
                     <Button
@@ -1276,6 +1483,131 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           </div>
         )}
       </div>}
+      {/* Bulk Edit Modal with Confirmation and Preview (Task 1: Issue #161) */}
+      <Dialog open={bulkModalOpen} onOpenChange={setBulkModalOpen}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit3 className="h-5 w-5 text-blue-600" />
+              {language === 'vi' ? 'Chỉnh sửa hàng loạt các dòng đã chọn' : 'Bulk Edit Selected Rows'}
+            </DialogTitle>
+            <DialogDescription>
+              {language === 'vi'
+                ? `Bạn đang chuẩn bị áp dụng thay đổi cho ${selectedRowNumbers.size} dòng đã chọn.`
+                : `You are about to apply updates to ${selectedRowNumbers.size} selected rows.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Nguồn thực hiện (Execution Source):' : 'Execution Source:'}
+                </label>
+                <select
+                  className="w-full h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                  value={bulkExecutionSource}
+                  onChange={e => setBulkExecutionSource(e.target.value)}
+                >
+                  <option value="">{language === 'vi' ? '— Không đổi —' : '— No change —'}</option>
+                  <option value="internal">{language === 'vi' ? 'Nội bộ' : 'Internal'}</option>
+                  <option value="agency">Agency</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Agency:</label>
+                <select
+                  className="w-full h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                  value={bulkAgencyCode}
+                  onChange={e => setBulkAgencyCode(e.target.value)}
+                >
+                  <option value="">{language === 'vi' ? '— Không đổi —' : '— No change —'}</option>
+                  <option value="ada">ADA</option>
+                  <option value="snap">SNAP</option>
+                  <option value="live_ai">Live AI</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Brand:</label>
+                <select
+                  className="w-full h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                  value={bulkBrandName}
+                  onChange={e => setBulkBrandName(e.target.value)}
+                >
+                  <option value="">{language === 'vi' ? '— Không đổi —' : '— No change —'}</option>
+                  {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Platform:</label>
+                <select
+                  className="w-full h-8 rounded border border-slate-300 bg-white px-2 text-xs"
+                  value={bulkPlatformName}
+                  onChange={e => setBulkPlatformName(e.target.value)}
+                >
+                  <option value="">{language === 'vi' ? '— Không đổi —' : '— No change —'}</option>
+                  {platforms.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="font-semibold text-slate-700 block mb-1">Studio:</label>
+                <Input
+                  placeholder={language === 'vi' ? 'Nhập tên Studio cần gán...' : 'Enter studio...'}
+                  value={bulkStudio}
+                  onChange={e => setBulkStudio(e.target.value)}
+                  className="h-8 text-xs bg-white"
+                />
+              </div>
+            </div>
+
+            {/* Preview of changes */}
+            <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3 space-y-1">
+              <span className="font-bold text-blue-900 block">
+                {language === 'vi' ? 'Xem trước thay đổi (Change Preview):' : 'Change Preview:'}
+              </span>
+              <ul className="list-disc pl-4 text-blue-800 space-y-0.5">
+                <li>{language === 'vi' ? `Số dòng bị ảnh hưởng: ${selectedRowNumbers.size} dòng` : `Rows affected: ${selectedRowNumbers.size}`}</li>
+                {bulkExecutionSource && <li>{language === 'vi' ? `Nguồn thực hiện: ${bulkExecutionSource === 'agency' ? 'Agency' : 'Nội bộ'}` : `Execution Source: ${bulkExecutionSource}`}</li>}
+                {bulkAgencyCode && <li>Agency: {bulkAgencyCode.toUpperCase()}</li>}
+                {bulkBrandName && <li>Brand: {bulkBrandName}</li>}
+                {bulkPlatformName && <li>Platform: {bulkPlatformName}</li>}
+                {bulkStudio.trim() && <li>Studio: {bulkStudio.trim()}</li>}
+                {!bulkExecutionSource && !bulkAgencyCode && !bulkBrandName && !bulkPlatformName && !bulkStudio.trim() && (
+                  <li className="italic text-slate-500">{language === 'vi' ? 'Chưa chọn trường nào để thay đổi.' : 'No fields selected.'}</li>
+                )}
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setBulkModalOpen(false)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              size="sm"
+              disabled={!bulkExecutionSource && !bulkAgencyCode && !bulkBrandName && !bulkPlatformName && !bulkStudio.trim()}
+              onClick={() => {
+                const updates: Parameters<typeof bulkUpdateSelected>[0] = {}
+                if (bulkExecutionSource) updates.execution_source = bulkExecutionSource
+                if (bulkAgencyCode) updates.agency_code = bulkAgencyCode
+                if (bulkBrandName) updates.brand_name = bulkBrandName
+                if (bulkPlatformName) updates.platform_name = bulkPlatformName
+                if (bulkStudio.trim()) updates.studio = bulkStudio.trim()
+                bulkUpdateSelected(updates)
+                setBulkModalOpen(false)
+              }}
+              data-testid="schedule-import-confirm-bulk-apply"
+            >
+              {language === 'vi' ? `Xác nhận áp dụng (${selectedRowNumbers.size} dòng)` : `Confirm Apply (${selectedRowNumbers.size} rows)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <LifecycleActionDialog open={cancelOpen} onOpenChange={setCancelOpen} title="Remove import preview" impact={cancelImpact} confirmText="Remove preview" onConfirm={removePreview} />
     </div>
   )

@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
-import type { Shift, ShiftRegistration, User } from '@/lib/types/database.types'
+import type { Brand, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { shiftRegistrationService, type ShiftRoleCapacity } from '@/lib/services/dataService'
 import {
   Dialog,
@@ -22,6 +22,8 @@ interface RegistrationApproveDialogProps {
   registration: ShiftRegistration | null
   applicant?: User
   shift?: Shift
+  brand?: Brand
+  platform?: Platform
   capacity?: ShiftRoleCapacity
   reviewerId: string
   onSuccess: () => Promise<void>
@@ -33,6 +35,8 @@ export function RegistrationApproveDialog({
   registration,
   applicant,
   shift,
+  brand,
+  platform,
   capacity,
   reviewerId,
   onSuccess,
@@ -125,13 +129,36 @@ export function RegistrationApproveDialog({
           </div>
 
           {shift && (
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 space-y-1 text-slate-700">
-              <div className="font-semibold text-slate-900">{shift.title}</div>
-              <div className="text-[11px] text-slate-500 flex flex-wrap gap-2">
-                <span>Ngày: {shift.date}</span>
-                <span>Giờ: {shift.start_time} – {shift.end_time}</span>
-                {shift.studio && <span>Studio: {shift.studio}</span>}
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2 text-slate-700">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-900 text-xs">{shift.title || `Ca #${shift.id}`}</span>
+                <Badge variant="outline" className="border-blue-200 bg-blue-50/70 text-[10px] text-blue-800 font-semibold">
+                  {brand?.name || 'Đang tải nhãn hàng...'}
+                </Badge>
               </div>
+              <div className="text-[11px] text-slate-600 grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-200/60">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Nền tảng:</span>
+                  <span className="font-medium text-slate-800">{platform?.name || 'Chưa phân loại'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Vai trò duyệt:</span>
+                  <span className="font-bold uppercase text-emerald-700">{registration.operational_role}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Ngày phát sóng:</span>
+                  <span className="font-medium text-slate-800">{shift.date}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Khung giờ:</span>
+                  <span className="font-medium text-slate-800">{shift.start_time} – {shift.end_time}</span>
+                </div>
+              </div>
+              {shift.studio && (
+                <div className="text-[10px] text-slate-500 pt-0.5">
+                  Studio: <span className="font-medium text-slate-700">{shift.studio}</span>
+                </div>
+              )}
             </div>
           )}
 
