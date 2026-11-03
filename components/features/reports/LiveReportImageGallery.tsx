@@ -254,11 +254,7 @@ function LiveReportImageEditorCard({
     captured_at: image.captured_at || '',
   })
 
-  const currentGroup = resolveLiveReportPhotoGroup({
-    category: metadata.category,
-    title: metadata.title,
-    captured_at: metadata.captured_at,
-  })
+  const currentGroup = photoGroup
   const groupMeta = LIVE_REPORT_PHOTO_GROUPS.find(g => g.id === currentGroup) || LIVE_REPORT_PHOTO_GROUPS[5]
   const isPendingDraft = image.file_url.startsWith('blob:') || image.file_url.startsWith('data:') || !image.report_id
 
@@ -270,6 +266,16 @@ function LiveReportImageEditorCard({
       category: mapped.category,
       title: mapped.title || current.title,
     }))
+  }
+
+  const handleSaveMetadata = () => {
+    const mapped = photoGroupToCategoryAndTitle(photoGroup, metadata.title)
+    const payload = {
+      ...metadata,
+      category: mapped.category,
+      title: mapped.title || metadata.title,
+    }
+    void onUpdate(image, payload)
   }
 
   return (
@@ -344,7 +350,7 @@ function LiveReportImageEditorCard({
               onChange={event => setMetadata(current => ({ ...current, captured_at: event.target.value }))}
             />
           </label>
-          <Button type="button" size="sm" variant="outline" onClick={() => void onUpdate(image, metadata)}>
+          <Button type="button" size="sm" variant="outline" onClick={() => void handleSaveMetadata()}>
             <Save className="mr-1 h-4 w-4" />{t('saveMetadata')}
           </Button>
         </>

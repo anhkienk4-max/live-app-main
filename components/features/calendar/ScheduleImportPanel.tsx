@@ -196,10 +196,10 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
 
   // Undo delete stack (Task 1: Issue #161)
   type DeletedRowEntry = {
-    row: Record<string, unknown>
+    row: ReturnType<typeof sourceRowsFromPreview>[number]
     index: number
     rowNumber: number
-    draft?: Record<string, string>
+    draft?: Partial<Record<DraftField, string>>
   }
   const [undoStack, setUndoStack] = React.useState<DeletedRowEntry[]>([])
 
@@ -563,7 +563,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     if (selectedRowNumbers.size === 0) return
     const sourceRows = sourceRowsFromPreview()
     const deletedEntries: DeletedRowEntry[] = []
-    const keptRows: Record<string, unknown>[] = []
+    const keptRows: ReturnType<typeof sourceRowsFromPreview> = []
     result?.rows.forEach((preview, index) => {
       const rowNum = preview.row.row_number
       if (selectedRowNumbers.has(rowNum) && sourceRows[index]) {
