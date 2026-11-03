@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "1205c057bb2ad58781162abcec4d862cb0407076",
+    "head": "9bc918d2218e3d158f27a01cee7f0298f4ff5b23",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -119,9 +119,9 @@
         "lib": 274,
         "scripts": 35,
         "supabase": 127,
-        "tests": 322
+        "tests": 323
       },
-      "total": 1035
+      "total": 1036
     },
     "tests": {
       "files": [
@@ -296,6 +296,7 @@
         "tests/rc19-my-payslip.test.ts",
         "tests/rc19-owner23-segmented-staffing.test.ts",
         "tests/rc19-postgres17-concurrency.integration.test.ts",
+        "tests/rc19-postgres17-fixture-restore.integration.test.ts",
         "tests/rc19-production-uat-host-policy.test.ts",
         "tests/rc19-rbac01-security.test.ts",
         "tests/rc19-rbac01b-audit-slice.test.ts",
@@ -382,7 +383,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 256
+      "count": 257
     },
     "migrations": {
       "files": [
@@ -500,5 +501,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-03T02:25:31+07:00"
+  "synced_at": "2026-11-03T12:12:40+07:00"
 }
