@@ -19,6 +19,13 @@ export function agencyDisplayLabel(code?: AgencyCode | null): string {
   }
 }
 
+/** Operating-unit semantics supplied by Owner: ADA runs internally; SNAP and AI are external. */
+export function executionSourceForAgency(code?: AgencyCode | null): ExecutionSource | null {
+  if (code === 'ada') return 'internal'
+  if (code === 'snap' || code === 'live_ai') return 'agency'
+  return null
+}
+
 export function normalizeAgencyCode(value: unknown): AgencyCode | null {
   if (!value) return null
   const text = String(value)
