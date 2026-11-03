@@ -15,6 +15,7 @@ import {
 } from '@/lib/services/supabaseSelfAttendanceService'
 import type { AttendanceRole, AttendanceEventKind, SelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
 import { AttendanceCorrectionPanel } from './AttendanceCorrectionPanel'
+import { AttendanceCameraCapture } from './AttendanceCameraCapture'
 
 export interface SelfAttendanceShiftContext {
   date: string
@@ -59,6 +60,7 @@ export function SelfAttendancePanel({
   const [photo, setPhoto] = React.useState<File | null>(null)
   const [photoSource, setPhotoSource] = React.useState<'camera' | 'file_picker'>('camera')
   const [photoPreview, setPhotoPreview] = React.useState<string | null>(null)
+  const [cameraCaptureOpen, setCameraCaptureOpen] = React.useState(false)
   const [photoFeatureReady] = React.useState(() => {
     return process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO==='true'
   })
@@ -74,6 +76,7 @@ export function SelfAttendancePanel({
     setPhoto(null)
     setPhotoPreview(null)
     setWriteError(null)
+    setCameraCaptureOpen(false)
   }
 
   React.useEffect(() => {
@@ -164,7 +167,7 @@ export function SelfAttendancePanel({
             : 'Cần chụp hoặc chọn ảnh check-in trước khi xác nhận.'
           : en
           ? 'Take or choose a check-out photo first.'
-          : 'Cần chụp hoặc chọn ảnh check-out trước khi xác nhận.'
+            : 'Cần chụp hoặc chọn ảnh check-out trước khi xác nhận.'
       )
       return
     }
@@ -401,8 +404,24 @@ export function SelfAttendancePanel({
         </p>
       ) : null}
 
-      {reviewFeatureReady && checkedIn ? <AttendanceCorrectionForm eventId={checkedIn.event_id} event="check_in" enabled={photoFeatureReady} /> : null}
-      {reviewFeatureReady && checkedOut ? <AttendanceCorrectionForm eventId={checkedOut.event_id} event="check_out" enabled={photoFeatureReady} /> : null}
+      {reviewFeatureReady && checkedIn ? (
+        <AttendanceCorrectionForm
+          eventId={checkedIn.event_id}
+          event="check_in"
+          enabled={photoFeatureReady}
+          shiftContext={shiftContext}
+          role={role}
+        />
+      ) : null}
+      {reviewFeatureReady && checkedOut ? (
+        <AttendanceCorrectionForm
+          eventId={checkedOut.event_id}
+          event="check_out"
+          enabled={photoFeatureReady}
+          shiftContext={shiftContext}
+          role={role}
+        />
+      ) : null}
 
       {/* Gated message when photo feature is OFF */}
       {nextAction && !photoFeatureReady ? (
@@ -439,7 +458,7 @@ export function SelfAttendancePanel({
                 : 'Chụp ảnh tại phòng live để xác nhận có mặt. Ảnh sẽ được lưu tại Drive CHECK IN/OUT đúng tháng và vai trò.'
               : en
               ? 'Take a photo at shift completion. It will be stored in the role and month folder in Drive CHECK IN/OUT.'
-                : 'Chụp ảnh tại phòng live lúc kết thúc ca để xác nhận rời ca. Ảnh sẽ được lưu tại Drive CHECK IN/OUT đúng tháng và vai trò.'}
+              : 'Chụp ảnh tại phòng live lúc kết thúc ca để xác nhận rời ca. Ảnh sẽ được lưu tại Drive CHECK IN/OUT đúng tháng và vai trò.'}
           </p>
           <input ref={cameraRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
             className="sr-only"
@@ -454,7 +473,10 @@ export function SelfAttendancePanel({
             }
             onChange={e => selectPhoto(e.target.files?.[0], 'camera')}
           />
-          <input ref={pickerRef} type="file" accept="image/jpeg,image/png,image/webp"
+          <input
+            ref={pickerRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
             className="sr-only"
             aria-label={
               nextAction === 'check_in'
@@ -473,7 +495,14 @@ export function SelfAttendancePanel({
               variant="secondary"
               size="sm"
               disabled={busy}
-              onClick={() => cameraRef.current?.click()}
+              data-testid="attendance-open-camera-btn"
+              onClick={() => {
+                if (typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
+                  setCameraCaptureOpen(true)
+                } else {
+                  cameraRef.current?.click()
+                }
+              }}
             >
               {en ? 'Take photo' : 'Chụp ảnh'}
             </Button>
@@ -499,9 +528,20 @@ export function SelfAttendancePanel({
                   : 'Khôi phục check-in đã gửi ảnh'
                 : en
                 ? 'Recover uploaded check-out'
-                  : 'Khôi phục check-out đã gửi ảnh'}
+                : 'Khôi phục check-out đã gửi ảnh'}
             </Button>
           </div>
+
+          <AttendanceCameraCapture
+            open={cameraCaptureOpen}
+            onOpenChange={setCameraCaptureOpen}
+            onCapture={(capturedFile, src) => selectPhoto(capturedFile, src)}
+            shiftContext={shiftContext}
+            role={role}
+            eventKind={nextAction}
+            onFallbackToPicker={() => cameraRef.current?.click()}
+          />
+
           {photoPreview ? (
             <div className="space-y-1">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -529,7 +569,7 @@ export function SelfAttendancePanel({
       ) : null}
 
       {writeError ? <p role="alert" className="text-xs text-red-600">{writeError}</p> : null}
-      {photoFeatureReady&&<AttendanceCorrectionPanel key={`${actorId}:${shiftId}`} shiftId={shiftId} />}
+      {photoFeatureReady && <AttendanceCorrectionPanel key={`${actorId}:${shiftId}`} shiftId={shiftId} />}
 
       <div className="flex flex-wrap gap-2">
         <Button
@@ -569,26 +609,160 @@ export function SelfAttendancePanel({
   )
 }
 
+function AttendanceCorrectionForm({
+  eventId,
+  event,
+  enabled,
+  shiftContext,
+  role,
+}: {
+  eventId: string
+  event: AttendanceEventKind
+  enabled: boolean
+  shiftContext: SelfAttendanceShiftContext
+  role: AttendanceRole
+}) {
+  const { language } = useTranslation()
+  const en = language === 'en'
+  const [context, setContext] = React.useState<Awaited<ReturnType<typeof readSelfAttendancePhotoReviewContext>> | null>(null)
+  const [file, setFile] = React.useState<File | null>(null)
+  const [source, setSource] = React.useState<'camera' | 'file_picker'>('camera')
+  const [preview, setPreview] = React.useState<string | null>(null)
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [cameraOpen, setCameraOpen] = React.useState(false)
+  const cameraInputRef = React.useRef<HTMLInputElement>(null)
+  const pickerInputRef = React.useRef<HTMLInputElement>(null)
 
-function AttendanceCorrectionForm({eventId,event,enabled}:{eventId:string;event:AttendanceEventKind;enabled:boolean}) {
-  const [context,setContext]=React.useState<Awaited<ReturnType<typeof readSelfAttendancePhotoReviewContext>>|null>(null)
-  const [file,setFile]=React.useState<File|null>(null)
-  const [source,setSource]=React.useState<'camera'|'file_picker'>('camera')
-  const [preview,setPreview]=React.useState<string|null>(null)
-  const [busy,setBusy]=React.useState(false)
-  const [error,setError]=React.useState<string|null>(null)
-  React.useEffect(()=>{let active=true;void readSelfAttendancePhotoReviewContext(eventId).then(value=>{if(active)setContext(value)}).catch(reason=>{if(active)setError(reason instanceof Error?reason.message:'ATTENDANCE_REVIEW_CONTEXT_UNAVAILABLE')});return()=>{active=false}},[eventId])
-  if(!context?.can_submit_correction)return error?<p role="alert" className="text-xs text-red-600">{error}</p>:null
-  const choose=(next:File|undefined,capture:'camera'|'file_picker')=>{if(!next)return;setError(null);if(next.size<1||next.size>4*1024*1024||!['image/jpeg','image/png','image/webp'].includes(next.type)){setError('Choose a JPG, PNG or WebP image up to 4 MB.');return}setFile(next);setSource(capture);setPreview(URL.createObjectURL(next))}
-  return <section className="space-y-2 rounded-md border border-amber-300 p-3" data-testid={`attendance-correction-${event}`}>
-    <p className="text-sm font-medium">Supplement {event==='check_in'?'check-in':'check-out'} evidence</p>
-    <p className="text-xs text-muted-foreground">Requested correction: {context.reason}</p>
-    {error&&<p role="alert" className="text-xs text-red-600">{error}</p>}
-    <div className="flex flex-wrap gap-2">
-      <label className="cursor-pointer rounded-md border px-3 py-2 text-sm">Take correction photo<input className="sr-only" aria-label="Take a correction photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e=>choose(e.target.files?.[0],'camera')} /></label>
-      <label className="cursor-pointer rounded-md border px-3 py-2 text-sm">Choose correction photo<input className="sr-only" aria-label="Choose a correction photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>choose(e.target.files?.[0],'file_picker')} /></label>
-      <Button disabled={!enabled||busy||!file} onClick={()=>{if(!file)return;setBusy(true);const requestId=crypto.randomUUID();void submitSelfAttendancePhotoCorrection(eventId,requestId,file,source).then(()=>{setFile(null);setPreview(null);return readSelfAttendancePhotoReviewContext(eventId)}).then(setContext).catch(reason=>setError(reason instanceof Error?reason.message:'ATTENDANCE_PHOTO_CORRECTION_FAILED')).finally(()=>setBusy(false))}}>Submit correction photo</Button>
-    </div>
-    {preview&&<Image className="max-h-48 rounded-md border object-contain" src={preview} alt="Photo to upload for correction" width={640} height={480} unoptimized />}
-  </section>
+  React.useEffect(() => {
+    let active = true
+    void readSelfAttendancePhotoReviewContext(eventId)
+      .then(value => {
+        if (active) setContext(value)
+      })
+      .catch(reason => {
+        if (active) setError(reason instanceof Error ? reason.message : 'ATTENDANCE_REVIEW_CONTEXT_UNAVAILABLE')
+      })
+    return () => {
+      active = false
+    }
+  }, [eventId])
+
+  if (!context?.can_submit_correction) return error ? <p role="alert" className="text-xs text-red-600">{error}</p> : null
+
+  const choose = (next: File | undefined, capture: 'camera' | 'file_picker') => {
+    if (!next) return
+    setError(null)
+    if (next.size < 1 || next.size > 4 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(next.type)) {
+      setError(en ? 'Choose a JPG, PNG or WebP image up to 4 MB.' : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB.')
+      return
+    }
+    setFile(next)
+    setSource(capture)
+    setPreview(URL.createObjectURL(next))
+  }
+
+  const handleCameraCapture = (capturedFile: File, src: 'camera') => {
+    choose(capturedFile, src)
+    setCameraOpen(false)
+  }
+
+  return (
+    <section className="space-y-2 rounded-md border border-amber-300 p-3" data-testid={`attendance-correction-${event}`}>
+      <p className="text-sm font-medium">
+        {en ? `Supplement ${event === 'check_in' ? 'check-in' : 'check-out'} evidence` : `Bổ sung minh chứng ${event === 'check_in' ? 'check-in' : 'check-out'}`}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {en ? 'Requested correction: ' : 'Lý do yêu cầu sửa: '}{context.reason}
+      </p>
+      {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+
+      <input
+        ref={cameraInputRef}
+        className="sr-only"
+        aria-label="Take a correction photo"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        capture="environment"
+        onChange={e => choose(e.target.files?.[0], 'camera')}
+      />
+      <input
+        ref={pickerInputRef}
+        className="sr-only"
+        aria-label="Choose a correction photo"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={e => choose(e.target.files?.[0], 'file_picker')}
+      />
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={busy}
+          onClick={() => {
+            if (typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
+              setCameraOpen(true)
+            } else {
+              cameraInputRef.current?.click()
+            }
+          }}
+        >
+          {en ? 'Take correction photo' : 'Chụp ảnh bổ sung'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => pickerInputRef.current?.click()}
+        >
+          {en ? 'Choose correction photo' : 'Chọn ảnh bổ sung'}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={!enabled || busy || !file}
+          onClick={() => {
+            if (!file) return
+            setBusy(true)
+            const requestId = crypto.randomUUID()
+            void submitSelfAttendancePhotoCorrection(eventId, requestId, file, source)
+              .then(() => {
+                setFile(null)
+                setPreview(null)
+                return readSelfAttendancePhotoReviewContext(eventId)
+              })
+              .then(setContext)
+              .catch(reason => setError(reason instanceof Error ? reason.message : 'ATTENDANCE_PHOTO_CORRECTION_FAILED'))
+              .finally(() => setBusy(false))
+          }}
+        >
+          {busy ? (en ? 'Submitting…' : 'Đang gửi…') : (en ? 'Submit correction photo' : 'Gửi ảnh bổ sung')}
+        </Button>
+      </div>
+
+      <AttendanceCameraCapture
+        open={cameraOpen}
+        onOpenChange={setCameraOpen}
+        onCapture={handleCameraCapture}
+        shiftContext={shiftContext}
+        role={role}
+        eventKind={event}
+        onFallbackToPicker={() => cameraInputRef.current?.click()}
+      />
+
+      {preview && (
+        <Image
+          className="max-h-48 rounded-md border object-contain"
+          src={preview}
+          alt="Photo to upload for correction"
+          width={640}
+          height={480}
+          unoptimized
+        />
+      )}
+    </section>
+  )
 }
