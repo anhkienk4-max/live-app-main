@@ -15,42 +15,22 @@ export function AuthLayout({ children, title, subtitle, variant = 'default' }: {
   const { t } = useTranslation()
 
   if (variant === 'login') return (
-    <div data-testid="ada-reference-login" className="ada-login-reference relative isolate flex min-h-dvh flex-col overflow-y-auto overflow-x-hidden bg-white">
-      <svg className="ada-login-reference__top" viewBox="0 0 390 200" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-          <linearGradient id="ada-login-top-gradient" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#075EF4" />
-            <stop offset="55%" stopColor="#114EDC" />
-            <stop offset="100%" stopColor="#8656F2" />
-          </linearGradient>
-        </defs>
-        <path d="M0 0 H390 V76 C329 61 311 135 237 116 C150 89 128 163 0 119 Z" fill="url(#ada-login-top-gradient)" />
-        <path d="M0 0 H390 V40 C311 40 254 94 176 82 C99 68 40 104 0 96 Z" fill="#6DC6FF" opacity=".32" />
-        <path d="M296 0 H390 V58 C360 71 349 109 297 118 C338 70 340 38 296 0 Z" fill="#C6BBFF" opacity=".55" />
-      </svg>
+    <div data-testid="ada-reference-login" className="ada-login-reference relative isolate flex min-h-dvh flex-col items-center justify-center overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+      {/* Sweeping Luminous Waves & Curved Ribbons */}
+      <div className="ada-login-ribbon-1" aria-hidden="true" />
+      <div className="ada-login-ribbon-2" aria-hidden="true" />
+      <div className="ada-login-wave-1" aria-hidden="true" />
+      <div className="ada-login-wave-2" aria-hidden="true" />
 
-      <svg className="ada-login-reference__bottom" viewBox="0 0 390 200" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-          <linearGradient id="ada-login-bottom-gradient" x1="0" y1="0" x2="1" y2=".72">
-            <stop offset="0%" stopColor="#0756DF" />
-            <stop offset="55%" stopColor="#3383F6" />
-            <stop offset="100%" stopColor="#8260EF" />
-          </linearGradient>
-        </defs>
-        <path d="M0 83 C100 22 158 146 274 56 C338 7 372 52 390 64 V200 H0 Z" fill="#E1EAFF" />
-        <path d="M0 128 C102 41 192 156 291 111 C331 94 365 74 390 98 V200 H0 Z" fill="url(#ada-login-bottom-gradient)" />
-        <path d="M0 168 C96 121 153 160 226 154 C291 147 339 129 390 146 V200 H0 Z" fill="#143C98" opacity=".42" />
-      </svg>
-
-      <main className="ada-login-reference__content relative z-10 mx-auto flex w-full flex-1 flex-col">
-        <div className="ada-login-reference__identity flex flex-col items-center">
+      {/* Centered Frosted Glass Card */}
+      <main className="ada-login-reference__content relative z-10 mx-auto flex w-full max-w-[460px] flex-col rounded-[28px] border border-white/60 bg-white/95 p-6 shadow-2xl backdrop-blur-xl sm:p-9">
+        <div className="ada-login-reference__identity flex flex-col items-center text-center">
           <AdaBrand className="ada-login-reference__logo" />
-        </div>
-        <section className="ada-login-reference__form w-full">
-          <h1 className="text-center font-extrabold tracking-tight text-[#07183B]">{title}</h1>
+          <div className="mt-3.5 mb-4 h-1 w-12 rounded-full bg-blue-600" aria-hidden="true" />
+          <h1 className="text-center text-2xl font-extrabold tracking-tight text-[#0f172a] sm:text-[26px]">{title}</h1>
           <p className="sr-only">{subtitle}</p>
-          <div className="ada-login-reference__fields">{children}</div>
-        </section>
+        </div>
+        <div className="ada-login-reference__fields mt-4 w-full">{children}</div>
       </main>
     </div>
   )
