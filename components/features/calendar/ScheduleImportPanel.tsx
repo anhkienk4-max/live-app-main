@@ -24,6 +24,7 @@ import {
   type ImportResult,
   type AgencyCode,
   agencyDisplayLabel,
+  normalizeAgencyCode,
   parseScheduleRows,
 } from '@/lib/utils/excelUtils'
 import { Badge } from '@/components/ui/badge'
@@ -39,6 +40,7 @@ import { HistoryPagination } from '@/components/ui/history-pagination'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { DEFAULT_SHIFT_STAFFING } from '@/lib/utils/shiftUtils'
+import { executionSourceForAgency } from '@/lib/utils/executionSource'
 import {
   buildScheduleImportPreviewSourceRow,
   normalizeScheduleImportResult,
@@ -540,9 +542,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           const customFields = { ...((row.custom_fields as Record<string, string> | undefined) ?? {}) }
           customFields.Agency = agencyLabel
           row = { ...row, Agency: agencyLabel, custom_fields: customFields }
-          if (agencyLabel.trim() && !row['Execution Source']) {
-            row['Execution Source'] = 'Agency'
-          }
+          const mappedSource = executionSourceForAgency(normalizeAgencyCode(agencyLabel))
+          if (mappedSource) row['Execution Source'] = mappedSource
           changed = true
         }
         sourceRows[index] = row
@@ -887,6 +888,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 <option value="snap">SNAP</option>
                 <option value="live_ai">Live AI</option>
               </select>
+              <span className="text-[11px] text-slate-600">{language === 'vi' ? 'ADA = Nội bộ; SNAP / AI = Bên ngoài. Có thể sửa từng dòng.' : 'ADA = Internal; SNAP / AI = External. Edit per row.'}</span>
             </div>
           </CardContent>
         </Card>
@@ -1098,7 +1100,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     defaultValue=""
                     onChange={e => {
                       if (e.target.value) {
-                        bulkUpdateSelected({ agency_code: e.target.value, execution_source: 'agency' })
+                        bulkUpdateSelected({ agency_code: e.target.value, execution_source: executionSourceForAgency(e.target.value as AgencyCode) ?? '' })
                         e.target.value = ''
                       }
                     }}
@@ -1324,9 +1326,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                             onChange={event => {
                               const code = event.target.value
                               draftChange(rowNumber, 'agency_code', code)
-                              if (code) {
-                                draftChange(rowNumber, 'execution_source', 'agency')
-                              }
+                              const mappedSource = executionSourceForAgency(code as AgencyCode)
+                              if (mappedSource) draftChange(rowNumber, 'execution_source', mappedSource)
                             }}
                           >
                             <option value="">{language === 'vi' ? '— Không —' : '— None —'}</option>
