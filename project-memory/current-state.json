@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "a50dc6f5aff9b785c708fc432eef9e8b75e83ba3",
+    "head": "077e4a1acba75424b295cca928af27d42368e7bc",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -119,9 +119,9 @@
         "lib": 276,
         "scripts": 35,
         "supabase": 128,
-        "tests": 330
+        "tests": 331
       },
-      "total": 1046
+      "total": 1047
     },
     "tests": {
       "files": [
@@ -329,6 +329,7 @@
         "tests/rc19-u12-settings-contract.test.ts",
         "tests/rc19-u13-navigation-account-menu.test.ts",
         "tests/rc19-u15-ux-quality.test.ts",
+        "tests/rc19-ui-functional-integration.test.tsx",
         "tests/rc19-unified-import-postgres17.test.ts",
         "tests/rc19-wave3-verification.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
@@ -389,7 +390,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 263
+      "count": 264
     },
     "migrations": {
       "files": [
@@ -508,5 +509,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-03T23:35:42+07:00"
+  "synced_at": "2026-11-03T23:48:09+07:00"
 }
