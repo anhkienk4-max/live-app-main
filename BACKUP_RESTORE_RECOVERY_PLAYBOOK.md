@@ -1,8 +1,8 @@
 # RC19 Unified Release — Backup, Restore & Recovery Playbook
 
-**Version:** 1.0.0  
-**Target Architecture:** Supabase / PostgreSQL 17  
-**Production Host:** `https://ops5729.top`  
+**Version:** 1.0.0<br>
+**Target Architecture:** Supabase / PostgreSQL 17<br>
+**Production Host:** `https://ops5729.top`<br>
 **Safety Classification:** MISSION CRITICAL — DATA LOSS PREVENTION
 
 ---

@@ -1,10 +1,10 @@
 # ADA OPS RC19 — U08 STORAGE / FILE MANAGEMENT HANDOFF (REFINED)
 
-**Module**: U08 Storage & File Management  
-**Route**: `/storage`  
-**Worktree**: `live-app-full-upgrade`  
-**Branch**: `feat/ops-full-app-upgrade-rc19`  
-**Author**: Gemini Agent  
+**Module**: U08 Storage & File Management<br>
+**Route**: `/storage`<br>
+**Worktree**: `live-app-full-upgrade`<br>
+**Branch**: `feat/ops-full-app-upgrade-rc19`<br>
+**Author**: Gemini Agent<br>
 **Status**: **GO** (U08 Storage Refined & Verified; External Provider UAT on HOLD pending live credentials)
 
 ---

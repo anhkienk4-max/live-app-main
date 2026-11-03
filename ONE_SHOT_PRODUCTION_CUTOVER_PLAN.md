@@ -1,9 +1,9 @@
 # RC19 Unified Production Release — One-Shot Cutover Plan
 
-**Release Candidate:** `gemini/rc19-batch01.3.1-unified-release`  
-**Target URL:** `https://ops5729.top`  
-**Target Environment:** PRODUCTION (`egdjnpmoasarrttvhgds`)  
-**Deployment Tooling:** Supabase CLI / Vercel CLI / GitHub Actions  
+**Release Candidate:** `gemini/rc19-batch01.3.1-unified-release`<br>
+**Target URL:** `https://ops5729.top`<br>
+**Target Environment:** PRODUCTION (`egdjnpmoasarrttvhgds`)<br>
+**Deployment Tooling:** Supabase CLI / Vercel CLI / GitHub Actions<br>
 **Cutover Window:** Off-peak operations window (15 minutes maintenance allowance)
 
 ---

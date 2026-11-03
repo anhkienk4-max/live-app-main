@@ -108,4 +108,3 @@ commit;
 --    Step 2 above enforces that no existing active shifts in the database violate
 --    shifts_active_identity_uidx before creating the index.
 -- ==============================================================================
-

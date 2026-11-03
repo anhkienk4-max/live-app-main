@@ -249,4 +249,3 @@ test('bulk updates apply to selected rows while preserving unselected rows and u
   assert.equal(updated.rows[2].row.custom_fields?.Agency, 'SNAP')
   assert.equal(updated.rows[2].row.title, 'Shift 3')
 })
-

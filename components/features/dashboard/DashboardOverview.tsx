@@ -225,7 +225,7 @@ export function DashboardOverview() {
         const upcoming = resolveSystemPermission(currentUser)==='member'
           ? shiftService.getRegistrationPage('mine',{page:1,pageSize:10,filters:{from:today,registrationStatuses:['approved','manually_assigned']}})
           : shiftService.getCalendarPage({page:1,pageSize:10,filters:{from:today,statuses:['scheduled','preparing','live','paused']}})
-        
+
         void upcoming.then(visible => {
           if (request === sequence.current) setEarly({key:viewKey, items:visible.items})
         }).catch(() => { /* The full read handles errors authoritatively. */ })

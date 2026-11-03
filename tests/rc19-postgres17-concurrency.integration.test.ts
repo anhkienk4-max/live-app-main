@@ -260,7 +260,7 @@ test('PostgreSQL 17 Multi-Connection Concurrency & Parallel Session Gate', async
 
       // Concurrently execute insert on Client 2 with lock timeout
       await client2.query("SET statement_timeout = '3000ms'")
-      
+
       let client2Error: any = null
       const client2Promise = (async () => {
         try {

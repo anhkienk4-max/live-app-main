@@ -1,8 +1,8 @@
 # RC19 Unified Release — Migration Dependency Manifest
 
-**Document Version:** 1.0.0  
-**Target Architecture:** PostgreSQL 17 / Supabase  
-**Environment Targets:** LOCAL / STAGING / PRODUCTION (One-Shot Cutover Only)  
+**Document Version:** 1.0.0<br>
+**Target Architecture:** PostgreSQL 17 / Supabase<br>
+**Environment Targets:** LOCAL / STAGING / PRODUCTION (One-Shot Cutover Only)<br>
 **Safety Protocol:** Forward-Fix Disaster Recovery Only (Zero Blanket Archiving)
 
 ---
@@ -26,10 +26,10 @@
 > [!CAUTION]
 > **IRREVERSIBLE COMPATIBILITY BOUNDARY:**
 > Once parallel livestreams (identical date/time slot, distinct physical studios or campaigns) are created under `shifts_active_identity_uidx`, restoring the legacy slot-only index `shifts_active_slot_uidx` is physically impossible without dropping or altering active business shifts.
-> 
+>
 > **FORBIDDEN PRACTICE:**
 > Never attempt to soft-archive active parallel shifts (`UPDATE shifts SET archived_at = now()`) to force a legacy index restoration. Soft-archived shifts disappear from all operational active queries (`where deleted_at is null and archived_at is null`), causing severe silent business data loss across Calendar, Staffing, Attendance, Reports, and Payroll.
-> 
+>
 > **APPROVED DISASTER RECOVERY:**
 > Follow the **Forward-Fix / Application Rollback Protocol** (roll back the frontend/API container to a compatible release; retain `shifts_active_identity_uidx` in the database).
 
