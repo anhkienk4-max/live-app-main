@@ -191,7 +191,9 @@ type Catalog = {
 type SortField = 'name_asc' | 'name_desc' | 'code_asc' | 'status' | 'version_desc'
 type InspectorTab = 'skus' | 'platforms' | 'claims' | 'audit'
 
-function productHasResourceType(catalog: Catalog | null, productId: string, kind: string) {
+type ResourceCatalog = Pick<Catalog, 'skus' | 'campaignSkus' | 'resourceLinks' | 'resources'>
+
+function productHasResourceType(catalog: ResourceCatalog | null, productId: string, kind: string) {
   if (!catalog || kind === 'all') return true
   const skuIds = new Set(catalog.skus.filter(sku => sku.product_id === productId).map(sku => sku.id))
   const campaignIds = new Set(catalog.campaignSkus.filter(link => skuIds.has(link.sku_id)).map(link => link.campaign_id))
@@ -199,6 +201,12 @@ function productHasResourceType(catalog: Catalog | null, productId: string, kind
     (link.product_id === productId || (link.sku_id != null && skuIds.has(link.sku_id)) || (link.campaign_id != null && campaignIds.has(link.campaign_id)))
     && catalog.resources.some(resource => resource.id === link.resource_id && resource.resource_type === kind)
   )
+}
+
+export function countProductsWithMedia(products: readonly Pick<ProductRow, 'id'>[], catalog: ResourceCatalog | null) {
+  return products.filter(product =>
+    productHasResourceType(catalog, product.id, 'image') || productHasResourceType(catalog, product.id, 'kv')
+  ).length
 }
 
 function getProductStatusVariant(status: string): 'success' | 'secondary' | 'outline' | 'destructive' {
@@ -372,7 +380,7 @@ export function BrandCatalogWorkspace() {
   const activeCampaigns = campaigns.filter(c => c.status === 'active')
   const activeCampaignsCount = activeCampaigns.length
   const activeCampaignsSummary = activeCampaigns.map(c => c.name).slice(0, 3).join(' · ') || (campaigns.length ? `${campaigns.length} chiến dịch` : 'Chưa có chiến dịch')
-  const productsWithMedia = products.filter(p => productHasResourceType(catalog, p.id, 'image') || productHasResourceType(catalog, p.id, 'kv')).length
+  const productsWithMedia = countProductsWithMedia(products, catalog)
   const standardizedPercentage = totalProducts > 0 ? Math.min(100, Math.max(0, Math.round((productsWithMedia / totalProducts) * 100))) : 0
 
   // Filter products

@@ -93,6 +93,10 @@ test('Live Hydration: Online and offline event subscriptions and cleanup', () =>
   // Verify reconnect trigger calls loadData
   const effectBlock = source.match(/React\.useEffect\(\(\) => \{[\s\S]*?handleOnline[\s\S]*?loadData\(\)[\s\S]*?\}, \[loadData\]\)/)
   assert.ok(effectBlock, 'Must trigger loadData when reconnecting via online event listener')
+  const onlineHandler = effectBlock[0].match(/const handleOnline = \(\) => \{([\s\S]*?)\}/)?.[1]
+  assert.ok(onlineHandler, 'Must keep a single online refresh handler')
+  assert.equal([...onlineHandler.matchAll(/loadData\(\)/g)].length, 1, 'Reconnect must trigger exactly one logical refresh')
+  assert.doesNotMatch(onlineHandler, /setIsOnline/, 'Connectivity rendering must not create a second refresh path')
 })
 
 test('Live Hydration: Offline indicator is properly guarded and styled', () => {

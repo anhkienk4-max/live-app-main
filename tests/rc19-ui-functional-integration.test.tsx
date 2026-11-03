@@ -185,7 +185,7 @@ test('CATALOG: BrandCatalogWorkspace preserves production shell, calculated KPIs
   assert.match(catalogSrc, /mappedSkus = catalog\?\.skus\.filter\(s => mappedSkuIds\.has\(s\.id\)\)\.length/)
   assert.match(catalogSrc, /mappingPercentage = totalSkus > 0/)
   assert.match(catalogSrc, /activeCampaignsCount = activeCampaigns\.length/)
-  assert.match(catalogSrc, /productsWithMedia = products\.filter/)
+  assert.match(catalogSrc, /productsWithMedia = countProductsWithMedia\(products, catalog\)/)
   assert.match(catalogSrc, /standardizedPercentage = totalProducts > 0/)
   assert.doesNotMatch(catalogSrc, /<div className="[^"]*">142<\/div>/)
   assert.doesNotMatch(catalogSrc, /<div className="[^"]*">418 \/ 418<\/div>/)
