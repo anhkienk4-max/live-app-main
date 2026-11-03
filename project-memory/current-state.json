@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "794ad1b0685e4624e6beaa01afd5b82d20d11541",
+    "head": "606f3732fdd396809cca3b71ddd02eacbe9e204f",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -116,12 +116,12 @@
       "roots": {
         "app": 90,
         "components": 187,
-        "lib": 274,
+        "lib": 275,
         "scripts": 35,
-        "supabase": 127,
-        "tests": 328
+        "supabase": 128,
+        "tests": 330
       },
-      "total": 1041
+      "total": 1045
     },
     "tests": {
       "files": [
@@ -329,6 +329,7 @@
         "tests/rc19-u12-settings-contract.test.ts",
         "tests/rc19-u13-navigation-account-menu.test.ts",
         "tests/rc19-u15-ux-quality.test.ts",
+        "tests/rc19-unified-import-postgres17.test.ts",
         "tests/rc19-wave3-verification.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
@@ -388,7 +389,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 262
+      "count": 263
     },
     "migrations": {
       "files": [
@@ -490,9 +491,10 @@
         "supabase/migrations/20261102160334_rc19_batch05a41_storage_release_blockers.sql",
         "supabase/migrations/20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
         "supabase/migrations/20261102190000_rc19_batch01_1_agency_code.sql",
-        "supabase/migrations/20261102200000_rc19_batch01_3_shift_identity_index.sql"
+        "supabase/migrations/20261102200000_rc19_batch01_3_shift_identity_index.sql",
+        "supabase/migrations/20261103093137_rc19_unified_import_agency_supplemental_fields.sql"
       ],
-      "count": 99
+      "count": 100
     }
   },
   "verification": {
@@ -506,5 +508,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-03T15:32:02+07:00"
+  "synced_at": "2026-11-03T17:30:28+07:00"
 }
