@@ -467,12 +467,8 @@ export function createSupabaseShiftRepository(
         execution_source: agencySource ?? data.execution_source,
       }
       const payload = createPayload(effectiveData, routingMode)
-      let result = await client.rpc('create_shift', { p_data: payload }).single()
-      if (result.error && !result.error.message?.includes('CONFLICT') && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
-        const fallbackPayload = { ...payload }
-        delete fallbackPayload.agency_code
-        result = await client.rpc('create_shift', { p_data: fallbackPayload }).single()
-      }
+      const result = await client.rpc('create_shift', { p_data: payload }).single()
+      // Never retry without agency_code: silently stripping the operating unit corrupts imported data.
       return shiftFromRow(
         requiredRow('shift create', result) as unknown as ShiftRow,
         routingMode,
@@ -490,22 +486,13 @@ export function createSupabaseShiftRepository(
         execution_source: agencySource ?? data.execution_source,
       }
       const patch = updatePayload(effectiveData, routingMode)
-      let result = await client.rpc('update_shift', {
+      const result = await client.rpc('update_shift', {
         p_shift_id: id,
         p_patch: patch,
         p_confirm_impact: confirmImpact,
         p_expected_version: expectedVersion ?? null,
       }).single()
-      if (result.error && !result.error.message?.includes('CONFLICT') && (result.error.message?.includes('agency_code') || result.error.message?.includes('SHIFT_FIELD_NOT_ALLOWED'))) {
-        const fallbackPatch = { ...patch }
-        delete fallbackPatch.agency_code
-        result = await client.rpc('update_shift', {
-          p_shift_id: id,
-          p_patch: fallbackPatch,
-          p_confirm_impact: confirmImpact,
-          p_expected_version: expectedVersion ?? null,
-        }).single()
-      }
+      // Missing agency_code schema must fail closed instead of dropping the field on retry.
       if (result.error) throw requestError('shift update', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode, effectiveData.execution_source) : null
     },
