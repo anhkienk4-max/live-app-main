@@ -19,12 +19,16 @@ import type {
   LiveReportImageCategory,
 } from '@/lib/types/database.types'
 import {
+  LIVE_REPORT_PHOTO_GROUPS,
+  type LiveReportPhotoGroup,
   createLiveReportImageDrafts,
   filterLiveReportImagesByCategories,
   liveReportImageCategories,
   maximumLiveReportImageDescriptionLength,
   maximumLiveReportImages,
   maximumLiveReportImageTitleLength,
+  photoGroupToCategoryAndTitle,
+  resolveLiveReportPhotoGroup,
   revokeLiveReportImageObjectUrl,
   sortedLiveReportImages,
   type LiveReportImageValidationCode,
@@ -84,7 +88,7 @@ export function LiveReportImageEditor({
 }) {
   const { t } = useTranslation()
   const inputRef = React.useRef<HTMLInputElement>(null)
-  const [uploadCategory, setUploadCategory] = React.useState<LiveReportImageCategory>('live_session')
+  const [uploadGroup, setUploadGroup] = React.useState<LiveReportPhotoGroup>('live_session')
   const [dragging, setDragging] = React.useState(false)
   const [validationErrors, setValidationErrors] = React.useState<Array<{
     code: LiveReportImageValidationCode
@@ -96,7 +100,7 @@ export function LiveReportImageEditor({
     const result = createLiveReportImageDrafts({
       files,
       currentImages: images,
-      category: uploadCategory,
+      photoGroup: uploadGroup,
       uploadedBy,
     })
     setValidationErrors(result.errors)
@@ -113,6 +117,8 @@ export function LiveReportImageEditor({
     void addFiles(files)
     event.target.value = ''
   }
+
+  const activeGroupMeta = LIVE_REPORT_PHOTO_GROUPS.find(g => g.id === uploadGroup) || LIVE_REPORT_PHOTO_GROUPS[4]
 
   return (
     <section className="space-y-4 rounded-lg border p-4" data-testid="live-report-image-editor">
@@ -131,15 +137,19 @@ export function LiveReportImageEditor({
 
       {editable && (
         <div className="space-y-3">
-          <div className="max-w-xs">
-            <Select value={uploadCategory} onValueChange={value => setUploadCategory(value as LiveReportImageCategory)}>
+          <div className="flex flex-col gap-1 max-w-md">
+            <label className="text-xs font-semibold text-muted-foreground">Chọn nhóm ảnh để tải lên (6 nhóm Owner)</label>
+            <Select value={uploadGroup} onValueChange={value => setUploadGroup(value as LiveReportPhotoGroup)}>
               <SelectTrigger data-testid="live-image-upload-category"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {liveReportImageCategories.map(category => (
-                  <SelectItem value={category} key={category}>{t(liveReportImageCategoryTranslationKeys[category])}</SelectItem>
+                {LIVE_REPORT_PHOTO_GROUPS.map(group => (
+                  <SelectItem value={group.id} key={group.id}>
+                    {group.labelVi}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-[11px] text-muted-foreground">{activeGroupMeta.descriptionVi}</p>
           </div>
           <div
             className={`flex min-h-28 flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-colors ${dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/30'}`}
@@ -236,12 +246,31 @@ function LiveReportImageEditorCard({
   onSetCover: (image: LiveReportImage) => void | Promise<void>
 }) {
   const { t } = useTranslation()
+  const [photoGroup, setPhotoGroup] = React.useState<LiveReportPhotoGroup>(() => resolveLiveReportPhotoGroup(image))
   const [metadata, setMetadata] = React.useState({
     category: image.category,
     title: image.title || '',
     description: image.description || '',
     captured_at: image.captured_at || '',
   })
+
+  const currentGroup = resolveLiveReportPhotoGroup({
+    category: metadata.category,
+    title: metadata.title,
+    captured_at: metadata.captured_at,
+  })
+  const groupMeta = LIVE_REPORT_PHOTO_GROUPS.find(g => g.id === currentGroup) || LIVE_REPORT_PHOTO_GROUPS[5]
+  const isPendingDraft = image.file_url.startsWith('blob:') || image.file_url.startsWith('data:') || !image.report_id
+
+  const handleGroupChange = (newGroup: LiveReportPhotoGroup) => {
+    setPhotoGroup(newGroup)
+    const mapped = photoGroupToCategoryAndTitle(newGroup, metadata.title)
+    setMetadata(current => ({
+      ...current,
+      category: mapped.category,
+      title: mapped.title || current.title,
+    }))
+  }
 
   return (
     <article className="space-y-3 rounded-lg border p-3" data-testid={`live-image-card-${image.id}`}>
@@ -261,20 +290,40 @@ function LiveReportImageEditorCard({
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Badge variant="outline">{t(liveReportImageCategoryTranslationKeys[image.category])}</Badge>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className="font-semibold text-xs border-primary/40 bg-primary/5 text-primary">
+            {groupMeta.labelVi}
+          </Badge>
+          <span className="sr-only">{t(liveReportImageCategoryTranslationKeys[image.category])}</span>
+        </div>
+        {isPendingDraft ? (
+          <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800 text-[10px] font-medium" data-testid="image-status-draft">
+            Chờ lưu (Bản nháp)
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="border-emerald-500 bg-emerald-50 text-emerald-800 text-[10px] font-medium" data-testid="image-status-persisted">
+            ✓ Đã lưu trên hệ thống
+          </Badge>
+        )}
         <p className="text-xs text-muted-foreground">{formatImageSize(image.size_bytes)}</p>
       </div>
       <p className="truncate text-xs text-muted-foreground" title={image.file_name}>{image.file_name}</p>
       {editable ? (
         <>
-          <Select value={metadata.category} onValueChange={value => setMetadata(current => ({ ...current, category: value as LiveReportImageCategory }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {liveReportImageCategories.map(category => (
-                <SelectItem value={category} key={category}>{t(liveReportImageCategoryTranslationKeys[category])}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-muted-foreground">Nhóm ảnh (6 nhóm Owner):</label>
+            <Select value={photoGroup} onValueChange={value => handleGroupChange(value as LiveReportPhotoGroup)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {LIVE_REPORT_PHOTO_GROUPS.map(group => (
+                  <SelectItem value={group.id} key={group.id}>{group.labelVi}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {groupMeta.requiresTimestamp && (
+              <p className="text-[11px] text-amber-700">Lưu ý: Chu kỳ 30 phút yêu cầu nhập mốc thời gian chụp (timestamp).</p>
+            )}
+          </div>
           <Input
             value={metadata.title}
             maxLength={maximumLiveReportImageTitleLength}
@@ -357,7 +406,10 @@ export function LiveReportImageGallery({
             label={t('category')}
             value={selectedCategories}
             onChange={setSelectedCategories}
-            options={liveReportImageCategories.map(category => ({ value: category, label: t(liveReportImageCategoryTranslationKeys[category]) }))}
+            options={[
+              ...LIVE_REPORT_PHOTO_GROUPS.map(group => ({ value: group.id, label: group.labelVi })),
+              ...liveReportImageCategories.map(category => ({ value: category, label: t(liveReportImageCategoryTranslationKeys[category]) })),
+            ]}
             placeholder={t('allImageCategories')}
             className="w-64"
             testId="live-image-category-filter"

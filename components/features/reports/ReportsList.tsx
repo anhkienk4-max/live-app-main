@@ -479,6 +479,10 @@ export function ReportsList() {
   const confirmedOrders = confirmed.reduce((sum, report) => sum + (report.orders ?? 0), 0)
   const averageOrderValue = confirmedOrders > 0 ? totalRevenue / confirmedOrders : null
   const queueRange = reportQueuePageRange(queueTotal, queuePage, queuePageSize, pagedQueue.length)
+  const queueNotStartedCount = React.useMemo(() => pagedQueue.filter(s => reportQueueDisplayState(reportByShift.get(s.id)) === 'not_started').length, [pagedQueue, reportByShift])
+  const queueDraftCount = React.useMemo(() => pagedQueue.filter(s => ['draft', 'reopened'].includes(reportQueueDisplayState(reportByShift.get(s.id)))).length, [pagedQueue, reportByShift])
+  const queueNeedsReviewCount = React.useMemo(() => pagedQueue.filter(s => ['in_review', 'unconfirmed'].includes(reportQueueDisplayState(reportByShift.get(s.id)))).length, [pagedQueue, reportByShift])
+  const queueConfirmedCount = React.useMemo(() => filteredReports.filter(r => r.status === 'confirmed' || r.metrics_confirmed === true).length, [filteredReports])
   const queueScope = [
     filters.start || filters.end ? `Ngày ca: ${filters.start || 'không giới hạn'} đến ${filters.end || 'không giới hạn'}` : 'Ngày ca: toàn bộ thời gian',
     currentUser?.system_permission === 'member' ? 'Phạm vi: ca được phân công hoặc báo cáo do bạn gửi' : 'Phạm vi: theo quyền tài khoản',
@@ -532,6 +536,25 @@ export function ReportsList() {
         <Metric title="Doanh thu đã xác nhận · trang này" value={confirmed.length ? formatCurrency(totalRevenue) : '—'} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
         <Metric title="Giá trị đơn trung bình · trang này" value={averageOrderValue === null ? '—' : formatCurrency(averageOrderValue)} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
         <Metric title="Báo cáo chưa xác nhận · trang này" value={filteredReports.filter(report => !isConfirmedReportForKpi(report)).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 text-xs" data-testid="reports-queue-breakdown">
+        <span className="font-semibold text-muted-foreground">Trạng thái xử lý ({pagedQueue.length} ca trên trang này):</span>
+        <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-800 font-medium">
+          Chưa có report: {loading ? '—' : queueNotStartedCount}
+        </Badge>
+        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 font-medium">
+          Đang draft: {loading ? '—' : queueDraftCount}
+        </Badge>
+        <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800 font-medium">
+          Cần review: {loading ? '—' : queueNeedsReviewCount}
+        </Badge>
+        <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 font-medium">
+          Hoàn tất (trang này): {loading ? '—' : queueConfirmedCount}
+        </Badge>
+        <span className="text-[11px] text-muted-foreground ml-auto">
+          Tổng ca chờ xử lý mọi trang: {loading ? '—' : queueTotal}
+        </span>
       </div>
 
       {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">Đang hiển thị {completedShifts.length} ca trong trang hàng đợi, không phải toàn bộ ca chưa có báo cáo</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}

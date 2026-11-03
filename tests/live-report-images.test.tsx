@@ -317,3 +317,88 @@ test('live gallery renders the original filename and never the provider storage 
   assert.match(markup, /original\.png/u)
   assert.doesNotMatch(markup, /20260914_live-session/u)
 })
+
+test('Issue #164: supports all 6 Owner photo groups in exact order with receipt status', async () => {
+  const {
+    LIVE_REPORT_PHOTO_GROUPS,
+    resolveLiveReportPhotoGroup,
+    photoGroupToCategoryAndTitle,
+    createLiveReportImageDrafts,
+  } = await import('../lib/utils/liveReportImages.ts')
+
+  // 1. Verify exact 6 groups and order
+  assert.equal(LIVE_REPORT_PHOTO_GROUPS.length, 6)
+  assert.deepEqual(LIVE_REPORT_PHOTO_GROUPS.map(g => g.id), [
+    'key_visual_before',
+    'key_visual_after',
+    'dashboard_summary',
+    'dashboard_periodic',
+    'live_session',
+    'other',
+  ])
+  assert.deepEqual(LIVE_REPORT_PHOTO_GROUPS.map(g => g.order), [1, 2, 3, 4, 5, 6])
+  assert.equal(LIVE_REPORT_PHOTO_GROUPS[3].requiresTimestamp, true)
+
+  // 2. Resolution logic
+  assert.equal(resolveLiveReportPhotoGroup({ category: 'key_visual', title: '[KV Trước ca] Poster' }), 'key_visual_before')
+  assert.equal(resolveLiveReportPhotoGroup({ category: 'key_visual', title: '[KV Sau ca] Cam on' }), 'key_visual_after')
+  assert.equal(resolveLiveReportPhotoGroup({ category: 'other', title: '[Dashboard Tổng hợp] All metrics' }), 'dashboard_summary')
+  assert.equal(resolveLiveReportPhotoGroup({ category: 'other', title: '[Dashboard 30m]', captured_at: '2026-09-01T10:30' }), 'dashboard_periodic')
+  assert.equal(resolveLiveReportPhotoGroup({ category: 'live_session', title: 'Host live' }), 'live_session')
+  assert.equal(resolveLiveReportPhotoGroup({ category: 'other', title: 'Bang ghi chu' }), 'other')
+
+  // 3. Mapping photoGroup to DB category and title
+  assert.deepEqual(photoGroupToCategoryAndTitle('key_visual_before', 'Poster'), {
+    category: 'key_visual',
+    title: '[KV Trước ca] Poster',
+  })
+  assert.deepEqual(photoGroupToCategoryAndTitle('dashboard_summary', 'Toan ca'), {
+    category: 'other',
+    title: '[Dashboard Tổng hợp] Toan ca',
+  })
+
+  // 4. Draft creation with photoGroup
+  const draftResult = createLiveReportImageDrafts({
+    files: [new File(['data'], 'interval-1.png', { type: 'image/png' })],
+    currentImages: [],
+    photoGroup: 'dashboard_periodic',
+    createObjectUrl: () => 'blob:test/interval-1.png',
+    createId: () => 'draft-30m-1',
+  })
+  assert.equal(draftResult.images.length, 1)
+  assert.equal(draftResult.images[0].category, 'other')
+  assert.equal(draftResult.images[0].title, '[Dashboard 30m]')
+
+  // 4. Receipt badges rendering
+  const pendingImage = makeImage('draft-card', 0, {
+    file_url: 'blob:test/card.png',
+    report_id: undefined,
+  })
+  const persistedImage = makeImage('persisted-card', 1, {
+    file_url: 'https://example.test/persisted.png',
+    report_id: 'report-123',
+    storage_file_name: 'drive-storage-123',
+  })
+
+  const editorMarkup = renderToStaticMarkup(createElement(
+    LanguageProvider,
+    { defaultLanguage: 'vi' },
+    createElement(LiveReportImageEditor, {
+      images: [pendingImage, persistedImage],
+      editable: false,
+      canDelete: false,
+      canReorderAndSetCover: false,
+      onAdd: () => undefined,
+      onUpdate: () => undefined,
+      onDelete: () => undefined,
+      onMove: () => undefined,
+      onSetCover: () => undefined,
+    }),
+  ))
+
+  assert.match(editorMarkup, /data-testid="image-status-draft"/)
+  assert.match(editorMarkup, /Chờ lưu \(Bản nháp\)/)
+  assert.match(editorMarkup, /data-testid="image-status-persisted"/)
+  assert.match(editorMarkup, /Đã lưu trên hệ thống/)
+})
+
