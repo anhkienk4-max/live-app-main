@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-11-03T23:15:59+07:00
+Generated at: 2026-11-03T23:35:42+07:00
 
 ## Repository
 
-- Canonical source branch: `feat/ops-full-app-upgrade-rc19`
-- Snapshot HEAD: `78a70b1f6b34003f38041a044a25f1b68ba126a2`
+- Canonical source branch: `main`
+- Snapshot HEAD: `a50dc6f5aff9b785c708fc432eef9e8b75e83ba3`
 - origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
