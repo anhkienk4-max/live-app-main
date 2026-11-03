@@ -219,7 +219,7 @@ export function sanitizeCsvValue(val: unknown): string {
   if (val === null || val === undefined) return '""'
   let str = String(val)
   // Prevent CSV formula injection in spreadsheet software (=, +, -, @, tab, CR, pipe)
-  if (/^[\u0000-\u0020\uFEFF]*[=+\-@|]/.test(str)) {
+  if (/^[=+\-@|\u0000-\u001F]/.test(str) || /^[\u0000-\u0020\uFEFF]*[=+\-@|]/.test(str)) {
     str = `'` + str
   }
   return `"${str.replace(/"/g, '""')}"`
