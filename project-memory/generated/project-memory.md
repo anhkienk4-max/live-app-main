@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-11-03T15:11:32+07:00
+Generated at: 2026-11-03T15:32:02+07:00
 
 ## Repository
 
 - Canonical source branch: `feat/ops-full-app-upgrade-rc19`
-- Snapshot HEAD: `cc2132a7be8b5997f0a63b13823581c27cd61bf5`
+- Snapshot HEAD: `794ad1b0685e4624e6beaa01afd5b82d20d11541`
 - origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
@@ -21,8 +21,8 @@ Generated at: 2026-11-03T15:11:32+07:00
 ## Inventory
 
 - Routes: 82
-- Source files in tracked inventory roots: 1036
-- Tests: 257
+- Source files in tracked inventory roots: 1041
+- Tests: 262
 - Migrations: 99
 
 ## Modules

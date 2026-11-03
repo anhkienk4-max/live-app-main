@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "feat/ops-full-app-upgrade-rc19",
-    "head": "cc2132a7be8b5997f0a63b13823581c27cd61bf5",
+    "head": "794ad1b0685e4624e6beaa01afd5b82d20d11541",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -119,9 +119,9 @@
         "lib": 274,
         "scripts": 35,
         "supabase": 127,
-        "tests": 323
+        "tests": 328
       },
-      "total": 1036
+      "total": 1041
     },
     "tests": {
       "files": [
@@ -291,6 +291,7 @@
         "tests/rc19-batch05a4-storage-runtime-integration.test.ts",
         "tests/rc19-batch05a4-storage-runtime-migration.test.ts",
         "tests/rc19-batch05a41-sequential-migrations.test.ts",
+        "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-filter01a-shifts.test.ts",
         "tests/rc19-my-payslip.test.ts",
@@ -301,8 +302,11 @@
         "tests/rc19-rbac01-security.test.ts",
         "tests/rc19-rbac01b-audit-slice.test.ts",
         "tests/rc19-report-apply-filters.test.ts",
+        "tests/rc19-report-scopes-101.test.ts",
+        "tests/rc19-report-view-parity-100.test.ts",
         "tests/rc19-report01-multiview.test.ts",
         "tests/rc19-reports-app-router-wiring.test.ts",
+        "tests/rc19-reports-photo-groups-164.test.ts",
         "tests/rc19-self-attendance-contract.test.ts",
         "tests/rc19-staffing-availability-sql.test.ts",
         "tests/rc19-staffing-candidate-contract.test.ts",
@@ -325,6 +329,7 @@
         "tests/rc19-u12-settings-contract.test.ts",
         "tests/rc19-u13-navigation-account-menu.test.ts",
         "tests/rc19-u15-ux-quality.test.ts",
+        "tests/rc19-wave3-verification.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/report-history-access.test.ts",
@@ -383,7 +388,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 257
+      "count": 262
     },
     "migrations": {
       "files": [
@@ -501,5 +506,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-03T15:11:32+07:00"
+  "synced_at": "2026-11-03T15:32:02+07:00"
 }
