@@ -5,19 +5,21 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowUpDown,
   Check,
-  ChevronRight,
+  Download,
+  Edit2,
   ExternalLink,
   Image as ImageIcon,
-  Layers,
   LayoutGrid,
   List,
   Package,
   Plus,
+  Radio,
   RefreshCw,
   Search,
-  Tag,
+  ShieldAlert,
   X,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -187,6 +189,7 @@ type Catalog = {
 }
 
 type SortField = 'name_asc' | 'name_desc' | 'code_asc' | 'status' | 'version_desc'
+type InspectorTab = 'skus' | 'platforms' | 'claims' | 'audit'
 
 function productHasResourceType(catalog: Catalog | null, productId: string, kind: string) {
   if (!catalog || kind === 'all') return true
@@ -212,6 +215,16 @@ function getProductStatusVariant(status: string): 'success' | 'secondary' | 'out
   }
 }
 
+export function sanitizeCsvValue(val: unknown): string {
+  if (val === null || val === undefined) return '""'
+  let str = String(val)
+  // Prevent CSV formula injection in spreadsheet software (=, +, -, @, tab, CR, pipe)
+  if (/^[\u0000-\u0020\uFEFF]*[=+\-@|]/.test(str)) {
+    str = `'` + str
+  }
+  return `"${str.replace(/"/g, '""')}"`
+}
+
 export function BrandCatalogWorkspace() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -223,11 +236,13 @@ export function BrandCatalogWorkspace() {
   const [brandId, setBrandId] = React.useState(() => searchParams.get('brand_id') ?? '')
   const [query, setQuery] = React.useState(() => searchParams.get('q') ?? '')
   const [categoryFilter, setCategoryFilter] = React.useState('')
+  const [statusFilter, setStatusFilter] = React.useState('')
   const [campaignId, setCampaignId] = React.useState(() => searchParams.get('campaign_id') ?? '')
   const [platformId, setPlatformId] = React.useState('')
   const [kind, setKind] = React.useState('all')
   const [sortBy, setSortBy] = React.useState<SortField>('name_asc')
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
+  const [activeInspectorTab, setActiveInspectorTab] = React.useState<InspectorTab>('skus')
 
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
@@ -347,10 +362,24 @@ export function BrandCatalogWorkspace() {
     new Set(products.map(p => p.category?.trim()).filter((c): c is string => Boolean(c)))
   ).sort()
 
+  // Real KPI calculations from catalog
+  const totalActiveProducts = products.filter(p => p.lifecycle_status === 'active').length
+  const totalProducts = products.length
+  const totalSkus = catalog?.skus.length ?? 0
+  const mappedSkuIds = new Set((catalog?.skuPlatforms ?? []).map(sp => sp.sku_id))
+  const mappedSkus = catalog?.skus.filter(s => mappedSkuIds.has(s.id)).length ?? 0
+  const mappingPercentage = totalSkus > 0 ? Math.min(100, Math.max(0, Math.round((mappedSkus / totalSkus) * 100))) : 0
+  const activeCampaigns = campaigns.filter(c => c.status === 'active')
+  const activeCampaignsCount = activeCampaigns.length
+  const activeCampaignsSummary = activeCampaigns.map(c => c.name).slice(0, 3).join(' · ') || (campaigns.length ? `${campaigns.length} chiến dịch` : 'Chưa có chiến dịch')
+  const productsWithMedia = products.filter(p => productHasResourceType(catalog, p.id, 'image') || productHasResourceType(catalog, p.id, 'kv')).length
+  const standardizedPercentage = totalProducts > 0 ? Math.min(100, Math.max(0, Math.round((productsWithMedia / totalProducts) * 100))) : 0
+
   // Filter products
   const filteredProducts = products.filter(product => {
     if (brandId && !scopedProductIds.has(product.id)) return false
     if (categoryFilter && product.category !== categoryFilter) return false
+    if (statusFilter && product.lifecycle_status !== statusFilter) return false
     if (campaignId && !catalog?.campaignSkus.some(link => link.campaign_id === campaignId && catalog.skus.some(sku => sku.id === link.sku_id && sku.product_id === product.id))) return false
     if (platformId && !catalog?.skuPlatforms.some(link => link.platform_id === platformId && catalog.skus.some(sku => sku.id === link.sku_id && sku.product_id === product.id))) return false
     if (!productHasResourceType(catalog, product.id, kind)) return false
@@ -382,6 +411,7 @@ export function BrandCatalogWorkspace() {
   })
 
   const selectedProduct = products.find(product => product.id === productId)
+  const selectedProductBrand = selectedProduct ? brands.find(b => (!brandId || b.id === brandId) && catalog?.productBrands.some(link => link.product_id === selectedProduct.id && link.brand_id === b.id)) : null
   const productSkus = catalog?.skus.filter(sku => sku.product_id === productId) ?? []
   const selectedSku = productSkus.find(sku => sku.id === skuId)
 
@@ -396,34 +426,105 @@ export function BrandCatalogWorkspace() {
     return null
   }
 
+  // Get external platforms for product
+  const getProductPlatforms = (prodId: string) => {
+    if (!catalog) return []
+    const skuIds = new Set(catalog.skus.filter(s => s.product_id === prodId).map(s => s.id))
+    const platformIds = new Set(catalog.skuPlatforms.filter(sp => skuIds.has(sp.sku_id)).map(sp => sp.platform_id))
+    return catalog.platforms.filter(p => platformIds.has(p.id))
+  }
+
   const clearAllFilters = () => {
     setBrandId('')
     setCategoryFilter('')
+    setStatusFilter('')
     setCampaignId('')
     setPlatformId('')
     setKind('all')
     setQuery('')
   }
 
+  const exportFilteredCatalog = () => {
+    // Strictly restrict export to products within user-authorized brand scope
+    const exportableProducts = filteredProducts.filter(p => scopedProductIds.has(p.id))
+    if (!exportableProducts.length) return
+    const rows = exportableProducts.map(p => {
+      const skus = catalog?.skus.filter(s => s.product_id === p.id) ?? []
+      return {
+        product_code: p.product_code,
+        name: p.name,
+        category: p.category ?? '',
+        status: p.lifecycle_status,
+        version: p.version,
+        skus_count: skus.length,
+        sku_codes: skus.map(s => s.sku_code).join('; '),
+      }
+    })
+    const header = Object.keys(rows[0]).map(h => sanitizeCsvValue(h)).join(',')
+    const csv = [header, ...rows.map(r => Object.values(r).map(v => sanitizeCsvValue(v)).join(','))].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `catalog-export-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
-    <main className="mx-auto max-w-7xl space-y-6 p-4 md:p-6" data-testid="brand-catalog">
-      {/* Header Banner */}
-      <header className="flex flex-col gap-4 border-b border-border/60 pb-5 md:flex-row md:items-center md:justify-between">
+    <main className="mx-auto max-w-7xl space-y-5 p-4 md:p-6" data-testid="brand-catalog">
+      {/* Context Path & Brand Selector Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-3 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <span>Dữ liệu &amp; Báo cáo</span>
+          <span>/</span>
+          <span className="font-semibold text-foreground">Danh mục sản phẩm &amp; SKU</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-slate-700">Thương hiệu:</span>
+          <select
+            aria-label="Select Brand Scope"
+            className="h-8 rounded-lg border border-blue-200 bg-blue-50/70 px-2.5 text-xs font-semibold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={brandId}
+            onChange={e => {
+              setBrandId(e.target.value)
+              setCampaignId('')
+              setProductId('')
+            }}
+          >
+            <option value="">Tất cả Brand</option>
+            {brands.map(b => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Main Title & Action Bar */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <Package className="h-4 w-4 text-primary" />
-            <span>Brand / Campaign workspace</span>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
+              Product &amp; SKU Catalog
+            </h1>
+            <Badge variant="outline" className="border-blue-300 bg-blue-50 text-[10px] font-bold tracking-wider text-blue-700">
+              ENTERPRISE SAAS
+            </Badge>
           </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Product &amp; SKU catalog
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Danh mục sản phẩm, biến thể SKU và tài nguyên truyền thông được phân quyền theo Brand.
+          <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+            Quản lý tập trung sản phẩm, biến thể SKU, sơ đồ mapping sàn (Shopee, TikTok, Lazada) và pháp lý kịch bản live.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={exportFilteredCatalog} className="h-9 gap-1.5 text-xs font-semibold">
+            <Download className="h-3.5 w-3.5" /> Xuất Danh Mục
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void load()} className="h-9 gap-1.5 text-xs font-semibold">
+            <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} /> Làm mới dữ liệu
+          </Button>
           {isAdmin && (
             <Button
+              size="sm"
               onClick={() => {
                 setEditingProduct(false)
                 setProductId('new')
@@ -437,25 +538,80 @@ export function BrandCatalogWorkspace() {
                   lifecycle_status: 'draft',
                 })
               }}
-              className="gap-1.5"
+              className="h-9 gap-1.5 bg-[#0f172a] text-xs font-semibold text-white hover:bg-slate-800"
             >
-              <Plus className="h-4 w-4" /> Thêm sản phẩm
+              <Plus className="h-4 w-4" /> Thêm Sản Phẩm Mới
             </Button>
           )}
         </div>
       </header>
 
+      {/* 4 Modern KPI Cards with REAL calculated counts */}
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Card className="border border-border/80 shadow-xs">
+          <CardContent className="p-3.5 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>Tổng sản phẩm hoạt động</span>
+              <Package className="h-4 w-4 text-blue-600" />
+            </div>
+            <div className="text-2xl font-black text-foreground">{totalActiveProducts}</div>
+            <p className="text-[11px] font-medium text-emerald-600">
+              {totalActiveProducts} / {totalProducts} sản phẩm hoạt động
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/80 shadow-xs">
+          <CardContent className="p-3.5 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>Biến thể SKU đã mapping</span>
+              <Check className="h-4 w-4 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-black text-foreground">{mappedSkus} / {totalSkus}</div>
+            <p className="text-[11px] font-medium text-emerald-600">
+              {mappingPercentage}% khớp mã sàn TMĐT
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/80 shadow-xs">
+          <CardContent className="p-3.5 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>Chiến dịch livestream áp dụng</span>
+              <Radio className="h-4 w-4 text-amber-500" />
+            </div>
+            <div className="text-2xl font-black text-foreground">{activeCampaignsCount} Chiến Dịch</div>
+            <p className="truncate text-[11px] font-medium text-muted-foreground" title={activeCampaignsSummary}>
+              {activeCampaignsSummary}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/80 shadow-xs">
+          <CardContent className="p-3.5 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>Tỷ lệ có ảnh / Key Visual</span>
+              <ImageIcon className="h-4 w-4 text-blue-500" />
+            </div>
+            <div className="text-2xl font-black text-foreground">{standardizedPercentage}%</div>
+            <p className="text-[11px] font-medium text-blue-600">
+              {productsWithMedia} / {totalProducts} sản phẩm có tài nguyên hình ảnh
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
       {/* Control Bar: Search, Filters & View Toggle */}
-      <section className="space-y-3 rounded-xl border border-border/80 bg-card p-4 shadow-xs">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="relative flex-1 max-w-md">
+      <section className="space-y-3 rounded-xl border border-border/80 bg-card p-3.5 shadow-xs">
+        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label="Search products and SKUs"
-              placeholder="Tìm theo tên sản phẩm, mã SP, mã SKU..."
+              placeholder="Tìm sản phẩm, SKU, ca live..."
               value={query}
               onChange={e => setQuery(e.target.value)}
-              className="pl-9 pr-8"
+              className="h-9 pl-9 pr-8 text-xs sm:text-sm"
             />
             {query && (
               <button
@@ -470,26 +626,56 @@ export function BrandCatalogWorkspace() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
-              <Button
-                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-8 px-2.5 gap-1.5 text-xs"
-                onClick={() => setViewMode('grid')}
-                aria-label="Grid view"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" /> Lưới
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-8 px-2.5 gap-1.5 text-xs"
-                onClick={() => setViewMode('list')}
-                aria-label="List view"
-              >
-                <List className="h-3.5 w-3.5" /> Danh sách
-              </Button>
-            </div>
+            <select
+              aria-label="Filter category"
+              className="h-9 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-slate-700"
+              value={categoryFilter}
+              onChange={e => setCategoryFilter(e.target.value)}
+            >
+              <option value="">Ngành hàng: Tất cả</option>
+              {availableCategories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Filter platform"
+              className="h-9 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-slate-700"
+              value={platformId}
+              onChange={e => setPlatformId(e.target.value)}
+            >
+              <option value="">Kênh bán: Tất cả sàn</option>
+              {(catalog?.platforms ?? []).map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Filter status"
+              className="h-9 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-slate-700"
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+            >
+              <option value="">Trạng thái: Tất cả</option>
+              <option value="active">Đang hoạt động (Active)</option>
+              <option value="draft">Bản nháp (Draft)</option>
+              <option value="inactive">Không hoạt động (Inactive)</option>
+              <option value="archived">Lưu trữ (Archived)</option>
+            </select>
+
+            <select
+              aria-label="Filter campaign"
+              className="h-9 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-slate-700"
+              value={campaignId}
+              onChange={e => setCampaignId(e.target.value)}
+            >
+              <option value="">Chiến dịch: Tất cả</option>
+              {campaigns
+                .filter(c => !brandId || c.brand_id === brandId)
+                .map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+            </select>
 
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ArrowUpDown className="h-3.5 w-3.5" />
@@ -507,129 +693,80 @@ export function BrandCatalogWorkspace() {
               </select>
             </div>
 
-            {(brandId || categoryFilter || campaignId || platformId || kind !== 'all' || query) && (
-              <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground">
-                <X className="mr-1 h-3.5 w-3.5" /> Đặt lại
+            <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+              <Button
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 px-2.5 gap-1.5 text-xs"
+                onClick={() => setViewMode('grid')}
+                aria-label="Grid view"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" /> Lưới
               </Button>
-            )}
+              <Button
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 px-2.5 gap-1.5 text-xs"
+                onClick={() => setViewMode('list')}
+                aria-label="List view"
+              >
+                <List className="h-3.5 w-3.5" /> Bảng
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Filter Dropdowns Grid */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 pt-2 border-t border-border/40">
-          <label className="text-xs font-medium text-muted-foreground">
-            Thương hiệu
-            <select
-              aria-label="Filter brand"
-              className="mt-1 block w-full rounded-md border border-input bg-background p-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={brandId}
-              onChange={e => {
-                setBrandId(e.target.value)
-                setCampaignId('')
-                setProductId('')
-              }}
-            >
-              <option value="">Tất cả Brand</option>
-              {brands.map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="text-xs font-medium text-muted-foreground">
-            Danh mục SP
-            <select
-              aria-label="Filter category"
-              className="mt-1 block w-full rounded-md border border-input bg-background p-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-            >
-              <option value="">Tất cả danh mục</option>
-              {availableCategories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="text-xs font-medium text-muted-foreground">
-            Chiến dịch
-            <select
-              aria-label="Filter campaign"
-              className="mt-1 block w-full rounded-md border border-input bg-background p-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={campaignId}
-              onChange={e => setCampaignId(e.target.value)}
-            >
-              <option value="">Tất cả chiến dịch</option>
-              {campaigns
-                .filter(c => !brandId || c.brand_id === brandId)
-                .map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-            </select>
-          </label>
-
-          <label className="text-xs font-medium text-muted-foreground">
-            Nền tảng
-            <select
-              aria-label="Filter platform"
-              className="mt-1 block w-full rounded-md border border-input bg-background p-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={platformId}
-              onChange={e => setPlatformId(e.target.value)}
-            >
-              <option value="">Tất cả nền tảng</option>
-              {(catalog?.platforms ?? []).map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="text-xs font-medium text-muted-foreground col-span-2 sm:col-span-1">
-            Loại tài nguyên
-            <select
-              aria-label="Filter resource type"
-              className="mt-1 block w-full rounded-md border border-input bg-background p-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={kind}
-              onChange={e => setKind(e.target.value)}
-            >
-              <option value="all">Tất cả tài nguyên</option>
-              {['image', 'kv', 'livecut', 'marketing_asset', 'campaign_scheme', 'script', 'guideline', 'product_document', 'sku_document', 'google_sheet', 'report_data', 'contract', 'acceptance', 'other'].map(k => (
-                <option key={k} value={k}>{k}</option>
-              ))}
-            </select>
-          </label>
+        {/* Active Filter Chips & Results Count */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2.5 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-muted-foreground font-medium">Bộ lọc:</span>
+            {brandId && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 font-medium">
+                Thương hiệu: {brands.find(b => b.id === brandId)?.name}
+                <button type="button" onClick={() => setBrandId('')} className="hover:text-foreground"><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {categoryFilter && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 font-medium">
+                Ngành: {categoryFilter}
+                <button type="button" onClick={() => setCategoryFilter('')} className="hover:text-foreground"><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {statusFilter && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 font-medium">
+                Trạng thái: {statusFilter}
+                <button type="button" onClick={() => setStatusFilter('')} className="hover:text-foreground"><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {platformId && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 font-medium">
+                Sàn: {(catalog?.platforms ?? []).find(p => p.id === platformId)?.name}
+                <button type="button" onClick={() => setPlatformId('')} className="hover:text-foreground"><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {campaignId && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 font-medium">
+                Chiến dịch: {campaigns.find(c => c.id === campaignId)?.name}
+                <button type="button" onClick={() => setCampaignId('')} className="hover:text-foreground"><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {query && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 font-medium">
+                Từ khóa: &ldquo;{query}&rdquo;
+                <button type="button" onClick={() => setQuery('')} className="hover:text-foreground"><X className="h-3 w-3" /></button>
+              </span>
+            )}
+            {(brandId || categoryFilter || statusFilter || platformId || campaignId || query) && (
+              <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-6 px-1.5 text-xs text-blue-600 hover:text-blue-800">
+                Xóa tất cả bộ lọc
+              </Button>
+            )}
+          </div>
+          <div className="text-muted-foreground font-medium">
+            Hiển thị {filteredProducts.length} trên {products.length} sản phẩm
+          </div>
         </div>
       </section>
-
-      {/* Selected Brand Profile banner */}
-      {catalog && brandId && brands.find(b => b.id === brandId) && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="space-y-3 pt-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-foreground">
-                {brands.find(b => b.id === brandId)?.name} · Thông tin thương hiệu
-              </h2>
-              <Badge variant="outline" className="text-xs">{brands.find(b => b.id === brandId)?.status}</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {brands.find(b => b.id === brandId)?.description || 'Chưa có mô tả thương hiệu.'}
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 text-xs">
-              <div className="rounded-lg border bg-background/80 p-2.5">
-                <b className="text-foreground">Thông điệp bắt buộc (Mandatory claims):</b>
-                <p className="mt-1 text-muted-foreground">
-                  {(brands.find(b => b.id === brandId)?.mandatory_claims ?? []).join(', ') || '—'}
-                </p>
-              </div>
-              <div className="rounded-lg border bg-background/80 p-2.5">
-                <b className="text-foreground">Thông điệp hạn chế (Restricted claims):</b>
-                <p className="mt-1 text-muted-foreground">
-                  {(brands.find(b => b.id === brandId)?.restricted_claims ?? []).join(', ') || '—'}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Feedback Messages */}
       {error && (
@@ -648,11 +785,11 @@ export function BrandCatalogWorkspace() {
         </p>
       )}
 
-      {/* Main Catalog Body */}
+      {/* Main Dual-Pane Catalog Layout */}
       {!catalog ? (
-        <div className="space-y-4 py-8 text-center" aria-live="polite">
-          <RefreshCw className="mx-auto h-6 w-6 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Đang tải danh mục sản phẩm được cấp quyền...</p>
+        <div className="space-y-4 py-12 text-center" aria-live="polite">
+          <RefreshCw className="mx-auto h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm font-medium text-muted-foreground">Đang tải danh mục sản phẩm và SKU...</p>
         </div>
       ) : !brands.length ? (
         <Card>
@@ -665,38 +802,30 @@ export function BrandCatalogWorkspace() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)]">
-          {/* Products List / Grid Column */}
+        <div className="grid gap-5 lg:grid-cols-[1fr_390px] items-start">
+          {/* Left Column: Product Grid / List */}
           <section aria-label="Product catalog" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-foreground">
-                Sản phẩm ({filteredProducts.length})
-              </h2>
-              <span className="text-xs text-muted-foreground">
-                {brands.length} thương hiệu có quyền truy cập
-              </span>
-            </div>
-
             {filteredProducts.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border p-8 text-center">
-                <Package className="mx-auto h-8 w-8 text-muted-foreground/60" />
-                <p className="mt-2 text-sm font-medium text-foreground">Không có sản phẩm phù hợp</p>
+              <div className="rounded-xl border border-dashed border-border p-12 text-center">
+                <Package className="mx-auto h-10 w-10 text-muted-foreground/60" />
+                <p className="mt-2 text-base font-semibold text-foreground">Không tìm thấy sản phẩm phù hợp</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Thử thay đổi từ khóa tìm kiếm hoặc bỏ bớt bộ lọc để xem các sản phẩm khác.
+                  Thử thay đổi từ khóa tìm kiếm hoặc bấm đặt lại bộ lọc để xem toàn bộ danh mục.
                 </p>
-                <Button variant="outline" size="sm" className="mt-3" onClick={clearAllFilters}>
+                <Button variant="outline" size="sm" className="mt-4" onClick={clearAllFilters}>
                   Xóa bộ lọc
                 </Button>
               </div>
             ) : viewMode === 'grid' ? (
-              /* GRID VIEW */
-              <div className="grid gap-3 sm:grid-cols-2">
+              /* MODERN GRID VIEW (Matches approved candidate) */
+              <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredProducts.map(product => {
                   const isSelected = productId === product.id
                   const productBrandLinks = catalog.productBrands.filter(l => l.product_id === product.id)
-                  const productBrandNames = productBrandLinks.map(l => brands.find(b => b.id === l.brand_id)?.name).filter(Boolean)
+                  const productBrand = brands.find(b => productBrandLinks.some(l => l.brand_id === b.id))
                   const skus = catalog.skus.filter(s => s.product_id === product.id)
                   const thumbnail = getProductImage(product.id)
+                  const platforms = getProductPlatforms(product.id)
 
                   return (
                     <div
@@ -707,62 +836,93 @@ export function BrandCatalogWorkspace() {
                         updateCatalogUrl(product.id)
                         setEditingProduct(false)
                       }}
-                      className={`group relative flex flex-col justify-between rounded-xl border p-3.5 text-left transition-all cursor-pointer hover:border-primary/50 hover:shadow-sm ${
-                        isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/40' : 'bg-card border-border/80'
+                      className={`group relative flex flex-col justify-between rounded-xl border bg-card transition-all cursor-pointer overflow-hidden hover:border-blue-400 hover:shadow-md ${
+                        isSelected ? 'border-blue-600 ring-2 ring-blue-500/30' : 'border-border/80'
                       }`}
                     >
-                      <div>
-                        {/* Top info: Thumbnail + Badges */}
-                        <div className="flex items-start gap-3">
-                          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border/60 bg-muted/30 flex items-center justify-center">
-                            {thumbnail ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={thumbnail}
-                                alt={product.name}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <Package className="h-6 w-6 text-muted-foreground/40 group-hover:text-primary/60 transition-colors" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="font-mono text-xs font-semibold text-muted-foreground">
-                                {product.product_code}
-                              </span>
-                              <Badge variant={getProductStatusVariant(product.lifecycle_status)} className="text-[10px] uppercase">
-                                {product.lifecycle_status}
-                              </Badge>
-                            </div>
-                            <h3 className="mt-1 line-clamp-2 text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
-                              {product.name}
-                            </h3>
-                          </div>
-                        </div>
-
-                        {/* Middle info: Brands & Category */}
-                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                          {productBrandNames.map(bName => (
-                            <Badge key={bName} variant="secondary" className="text-[10px] font-medium">
-                              {bName}
-                            </Badge>
-                          ))}
-                          {product.category && (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                              <Tag className="h-3 w-3" /> {product.category}
+                      {/* Top Packshot & Badges Area */}
+                      <div className="relative h-32 w-full bg-slate-50 flex items-center justify-center p-3 overflow-hidden border-b border-border/50">
+                        {/* Channel Badges on Top-Left */}
+                        <div className="absolute top-2 left-2 z-10 flex flex-wrap gap-1">
+                          {platforms.length > 0 ? (
+                            platforms.map(p => {
+                              const isShopee = p.name.toLowerCase().includes('shopee')
+                              const isTiktok = p.name.toLowerCase().includes('tiktok')
+                              const isLazada = p.name.toLowerCase().includes('lazada')
+                              return (
+                                <span
+                                  key={p.id}
+                                  className={`rounded px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase text-white ${
+                                    isShopee ? 'bg-[#ee4d2d]' : isTiktok ? 'bg-black' : isLazada ? 'bg-[#0f146d]' : 'bg-slate-700'
+                                  }`}
+                                >
+                                  {p.name}
+                                </span>
+                              )
+                            })
+                          ) : (
+                            <span className="rounded bg-slate-600 px-1.5 py-0.5 text-[8.5px] font-bold text-white">
+                              Chưa gắn sàn
                             </span>
                           )}
                         </div>
+
+                        {/* Selected Indicator Badge */}
+                        {isSelected && (
+                          <div className="absolute top-2 right-2 z-10 rounded bg-blue-600 px-2 py-0.5 text-[9px] font-extrabold text-white shadow-xs">
+                            ĐANG CHỌN
+                          </div>
+                        )}
+
+                        {/* Product Packshot Graphic */}
+                        {thumbnail ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={thumbnail}
+                            alt={product.name}
+                            className="h-full w-full object-contain"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex h-24 w-20 flex-col items-center justify-center rounded-lg bg-gradient-to-b from-[#1e3a8a] to-[#1e40af] p-1.5 text-center text-white shadow-md">
+                            <span className="text-[7.5px] font-bold uppercase tracking-wider opacity-80">
+                              {productBrand?.name || 'ADA'}
+                            </span>
+                            <span className="my-1 line-clamp-2 text-[9px] font-extrabold leading-tight">
+                              {product.product_code}
+                            </span>
+                            <span className="text-[7px] opacity-75">{skus.length} SKUs</span>
+                          </div>
+                        )}
+
+                        {/* Brand Tag on Bottom-Left of packshot */}
+                        <div className="absolute bottom-2 left-2 rounded bg-slate-900/85 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                          {productBrand?.name || 'BRAND'}
+                        </div>
                       </div>
 
-                      {/* Footer: SKUs count */}
-                      <div className="mt-3.5 flex items-center justify-between border-t border-border/40 pt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1 font-medium">
-                          <Layers className="h-3.5 w-3.5 text-primary" /> {skus.length} biến thể SKU
-                        </span>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground/60 group-hover:translate-x-0.5 transition-transform" />
+                      {/* Card Content Body */}
+                      <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between text-[10.5px]">
+                            <span className="font-mono font-semibold text-slate-500">{product.product_code}</span>
+                            <Badge variant={getProductStatusVariant(product.lifecycle_status)} className="text-[9.5px] font-bold uppercase px-1.5 py-0">
+                              {product.lifecycle_status} (v{product.version})
+                            </Badge>
+                          </div>
+                          <h3 className="mt-1 line-clamp-2 text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                            {product.name}
+                          </h3>
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-border/40 pt-2 text-xs">
+                          <span className="text-[11px] font-medium text-slate-500">
+                            {product.category || 'Chung'}
+                          </span>
+                          <span className="rounded bg-blue-50 px-2 py-0.5 text-[10.5px] font-semibold text-blue-700">
+                            {skus.length} Biến thể SKU
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )
@@ -772,7 +932,7 @@ export function BrandCatalogWorkspace() {
               /* LIST VIEW */
               <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
                 <table className="w-full text-left text-xs">
-                  <thead className="border-b border-border/60 bg-muted/40 font-medium text-muted-foreground">
+                  <thead className="border-b border-border/60 bg-muted/40 font-semibold text-muted-foreground">
                     <tr>
                       <th className="py-2.5 px-3">Mã SP</th>
                       <th className="py-2.5 px-3">Tên sản phẩm</th>
@@ -805,7 +965,7 @@ export function BrandCatalogWorkspace() {
                           <td className="py-2.5 px-3 font-mono font-medium text-primary">
                             {product.product_code}
                           </td>
-                          <td className="py-2.5 px-3 font-medium text-foreground max-w-[180px] truncate">
+                          <td className="py-2.5 px-3 font-medium text-foreground max-w-[200px] truncate">
                             {product.name}
                           </td>
                           <td className="py-2.5 px-3 text-muted-foreground">
@@ -831,46 +991,50 @@ export function BrandCatalogWorkspace() {
             )}
           </section>
 
-          {/* Details / Admin Forms Column */}
-          <section className="space-y-5">
+          {/* Right Column: Sticky Product Detail Inspector (Matches approved candidate) */}
+          <aside className="sticky top-20 space-y-4">
             {productId === 'new' && isAdmin && (
-              <Card className="border-primary/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-semibold">Tạo sản phẩm mới</CardTitle>
+              <Card className="border-primary/40 shadow-sm">
+                <CardHeader className="pb-3 bg-slate-900 text-white rounded-t-xl p-4">
+                  <CardTitle className="text-sm font-bold">Tạo sản phẩm mới</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
+                <CardContent className="space-y-3 p-4">
+                  <div className="grid gap-2">
                     <Input
                       aria-label="Product code"
-                      placeholder="Mã sản phẩm (VD: SP001)"
+                      placeholder="Mã sản phẩm (VD: PROD-ALN-001)"
                       value={form.product_code}
                       onChange={e => setForm({ ...form, product_code: e.target.value })}
+                      className="text-xs"
                     />
                     <Input
                       aria-label="Product name"
-                      placeholder="Tên sản phẩm"
+                      placeholder="Tên sản phẩm đầy đủ"
                       value={form.name}
                       onChange={e => setForm({ ...form, name: e.target.value })}
+                      className="text-xs"
                     />
                     <Input
                       aria-label="Category"
-                      placeholder="Danh mục (VD: Skincare, Chăm sóc tóc)"
+                      placeholder="Ngành hàng / Danh mục"
                       value={form.category}
                       onChange={e => setForm({ ...form, category: e.target.value })}
+                      className="text-xs"
                     />
                     <Input
                       aria-label="Description"
                       placeholder="Mô tả nội bộ"
                       value={form.description}
                       onChange={e => setForm({ ...form, description: e.target.value })}
+                      className="text-xs"
                     />
                   </div>
-                  <label className="block text-xs font-medium text-muted-foreground">
+                  <label className="block text-xs font-semibold text-slate-700">
                     Thương hiệu liên kết *
                     <select
                       multiple
                       aria-label="Product brand associations"
-                      className="mt-1 block min-h-24 w-full rounded-md border border-input bg-background p-2 text-xs"
+                      className="mt-1 block min-h-20 w-full rounded-md border border-input bg-background p-2 text-xs"
                       value={form.product_brand_ids}
                       onChange={e => setForm({ ...form, product_brand_ids: Array.from(e.target.selectedOptions, opt => opt.value) })}
                     >
@@ -895,6 +1059,7 @@ export function BrandCatalogWorkspace() {
                         })
                         if (result?.product?.id) setProductId(result.product.id)
                       }}
+                      className="bg-[#0f172a] text-white hover:bg-slate-800"
                     >
                       Lưu sản phẩm
                     </Button>
@@ -904,330 +1069,120 @@ export function BrandCatalogWorkspace() {
             )}
 
             {!selectedProduct && productId !== 'new' && (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/80 p-12 text-center text-muted-foreground">
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-card p-10 text-center text-muted-foreground shadow-xs">
                 <Package className="h-10 w-10 text-muted-foreground/40 mb-3" />
-                <h3 className="font-semibold text-foreground">Chọn một sản phẩm để xem chi tiết</h3>
-                <p className="mt-1 text-xs max-w-xs">
-                  Xem thông tin chi tiết, các biến thể SKU, tài nguyên hình ảnh và các chiến dịch liên quan.
+                <h3 className="font-bold text-slate-900 text-sm">Chọn sản phẩm để xem chi tiết</h3>
+                <p className="mt-1 text-xs max-w-xs text-slate-500">
+                  Xem thông tin chi tiết, danh sách biến thể SKU, sơ đồ mapping sàn và hướng dẫn kịch bản live.
                 </p>
               </div>
             )}
 
             {selectedProduct && (
-              <>
-                {/* Product Detail Card */}
-                <Card>
-                  <CardContent className="space-y-4 pt-5">
-                    {/* Header */}
-                    <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/60 pb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-semibold text-primary">{selectedProduct.product_code}</span>
-                          <Badge variant={getProductStatusVariant(selectedProduct.lifecycle_status)} className="text-[10px]">
-                            {selectedProduct.lifecycle_status}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">v{selectedProduct.version}</span>
-                        </div>
-                        <h2 className="mt-1 text-xl font-bold text-foreground">{selectedProduct.name}</h2>
-                      </div>
-                      {isAdmin && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setForm({
-                              ...form,
-                              name: selectedProduct.name,
-                              product_code: selectedProduct.product_code,
-                              category: selectedProduct.category ?? '',
-                              description: selectedProduct.description ?? '',
-                              product_brand_ids: catalog?.productBrands.filter(l => l.product_id === selectedProduct.id).map(l => l.brand_id) ?? [],
-                              lifecycle_status: selectedProduct.lifecycle_status,
-                            })
-                            setEditingProduct(true)
-                          }}
-                        >
-                          Sửa thông tin
-                        </Button>
-                      )}
-                    </div>
+              <div className="rounded-xl border border-border/80 bg-card shadow-sm overflow-hidden flex flex-col max-h-[calc(100vh-140px)]">
+                {/* Inspector Header (Dark Navy) */}
+                <div className="bg-[#0f172a] text-white p-3.5 flex items-center justify-between shrink-0">
+                  <div>
+                    <h2 className="text-xs font-bold uppercase tracking-wider">Chi Tiết Sản Phẩm</h2>
+                    <p className="text-[10.5px] text-slate-300 font-mono mt-0.5">
+                      MÃ: {selectedProduct.product_code} · v{selectedProduct.version}
+                    </p>
+                  </div>
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setForm({
+                          ...form,
+                          name: selectedProduct.name,
+                          product_code: selectedProduct.product_code,
+                          category: selectedProduct.category ?? '',
+                          description: selectedProduct.description ?? '',
+                          product_brand_ids: catalog?.productBrands.filter(l => l.product_id === selectedProduct.id).map(l => l.brand_id) ?? [],
+                          lifecycle_status: selectedProduct.lifecycle_status,
+                        })
+                        setEditingProduct(true)
+                      }}
+                      className="h-7 px-2 text-xs text-white hover:bg-slate-800"
+                    >
+                      <Edit2 className="h-3.5 w-3.5 mr-1" /> Sửa
+                    </Button>
+                  )}
+                </div>
 
-                    {/* Metadata attributes */}
-                    <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                      <div>
-                        <span className="text-muted-foreground">Thương hiệu:</span>{' '}
-                        <span className="font-medium text-foreground">
-                          {catalog?.productBrands
-                            .filter(l => l.product_id === selectedProduct.id)
-                            .map(l => brands.find(b => b.id === l.brand_id)?.name)
-                            .filter(Boolean)
-                            .join(', ') || '—'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Danh mục:</span>{' '}
-                        <span className="font-medium text-foreground">{selectedProduct.category || '—'}</span>
-                      </div>
-                    </div>
+                {/* Inspector Tabs */}
+                <div className="flex border-b border-border/60 bg-slate-50/80 px-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveInspectorTab('skus')}
+                    className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors ${
+                      activeInspectorTab === 'skus' ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Biến thể SKU ({productSkus.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveInspectorTab('platforms')}
+                    className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors ${
+                      activeInspectorTab === 'platforms' ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Kênh &amp; Mapping
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveInspectorTab('claims')}
+                    className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors ${
+                      activeInspectorTab === 'claims' ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Pháp Lý &amp; Claims
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveInspectorTab('audit')}
+                    className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors ${
+                      activeInspectorTab === 'audit' ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Audit Log
+                  </button>
+                </div>
 
-                    {/* Description */}
-                    <div>
-                      <p className="text-xs text-muted-foreground font-medium">Mô tả sản phẩm:</p>
-                      <p className="mt-1 text-sm text-foreground bg-muted/20 rounded-lg p-2.5 border border-border/40">
-                        {selectedProduct.description || 'Chưa có mô tả nội bộ cho sản phẩm này.'}
+                {/* Inspector Scrollable Body */}
+                <div className="p-3.5 space-y-4 overflow-y-auto flex-1">
+                  {/* Key Visual / Packshot Banner */}
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-2.5 flex items-center gap-3">
+                    <div className="h-12 w-12 rounded bg-blue-600 flex items-center justify-center text-white text-[10px] font-black shrink-0">
+                      KV LIVE
+                    </div>
+                    <div className="min-w-0 flex-1 text-xs text-blue-950">
+                      <p className="font-bold truncate">{selectedProduct.name}</p>
+                      <p className="text-[10px] text-blue-800">
+                        {selectedProductBrand?.name || 'Brand'} · Ngành: {selectedProduct.category || 'Chung'}
                       </p>
                     </div>
+                  </div>
 
-                    {/* Linked Resources Gallery */}
-                    <div className="space-y-2 pt-2 border-t border-border/60">
+                  {/* TAB 1: BIẾN THỂ SKU */}
+                  {activeInspectorTab === 'skus' && (
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                          <ImageIcon className="h-3.5 w-3.5" /> Tài nguyên &amp; Hình ảnh
-                        </h4>
-                      </div>
-                      {isAdmin && (
-                        <div className="grid gap-2 sm:grid-cols-3 pt-1">
-                          <Input
-                            aria-label="Product resource ID"
-                            placeholder="Mã tài nguyên STO-02"
-                            value={form.resource_id}
-                            onChange={e => setForm({ ...form, resource_id: e.target.value })}
-                            className="text-xs"
-                          />
-                          <select
-                            aria-label="Product resource relation type"
-                            className="rounded-md border border-input bg-background p-1.5 text-xs"
-                            value={form.relation_type}
-                            onChange={e => setForm({ ...form, relation_type: e.target.value })}
-                          >
-                            {['image', 'kv', 'marketing_data', 'guideline', 'training', 'faq', 'document', 'other'].map(v => (
-                              <option key={v} value={v}>{v}</option>
-                            ))}
-                          </select>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={!form.resource_id || busy}
-                            onClick={() => void mutate({
-                              action: 'resource.attach',
-                              resource_id: form.resource_id,
-                              target_type: 'product',
-                              target_id: selectedProduct.id,
-                              relation_type: form.relation_type,
-                            })}
-                          >
-                            Đính kèm
-                          </Button>
-                        </div>
-                      )}
-                      <ResourceList
-                        links={catalog?.resourceLinks.filter(l => l.product_id === selectedProduct.id) ?? []}
-                        resources={catalog?.resources ?? []}
-                      />
-                    </div>
-
-                    {/* SKUs / Variants Section */}
-                    <div className="space-y-2 pt-2 border-t border-border/60">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                          <Layers className="h-3.5 w-3.5" /> Biến thể / SKU ({productSkus.length})
-                        </h4>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                          Danh Sách Mã Biến Thể ({productSkus.length})
+                        </span>
                         {isAdmin && (
-                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSkuId('new')}>
+                          <Button size="sm" variant="outline" className="h-7 text-xs font-semibold" onClick={() => setSkuId('new')}>
                             <Plus className="mr-1 h-3 w-3" /> Thêm SKU
                           </Button>
                         )}
                       </div>
 
-                      {productSkus.length === 0 ? (
-                        <p className="text-xs text-muted-foreground py-2">Sản phẩm này chưa có biến thể SKU nào.</p>
-                      ) : (
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {productSkus.map(sku => (
-                            <button
-                              key={sku.id}
-                              className={`rounded-lg border p-2.5 text-left text-xs transition-colors hover:border-primary/50 ${
-                                skuId === sku.id ? 'border-primary bg-primary/5 ring-1 ring-primary/40' : 'border-border/80 bg-background'
-                              }`}
-                              onClick={() => {
-                                setSkuId(sku.id)
-                                updateCatalogUrl(selectedProduct.id, sku.id)
-                                setForm({
-                                  ...form,
-                                  sku_code: sku.sku_code,
-                                  variant_name: sku.variant_name,
-                                  sku_size_or_package: sku.size_or_package ?? '',
-                                  sku_packaging_type: sku.packaging_type ?? '',
-                                  sku_lifecycle_status: sku.lifecycle_status,
-                                })
-                              }}
-                            >
-                              <div className="flex items-center justify-between">
-                                <b className="font-mono text-primary">{sku.sku_code}</b>
-                                <Badge variant={getProductStatusVariant(sku.lifecycle_status)} className="text-[9px]">
-                                  {sku.lifecycle_status}
-                                </Badge>
-                              </div>
-                              <p className="mt-1 font-medium text-foreground">{sku.variant_name}</p>
-                              <p className="text-[11px] text-muted-foreground">
-                                Quy cách: {sku.size_or_package || '—'} · {sku.packaging_type || '—'}
-                              </p>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Edit Product Form */}
-                {isAdmin && editingProduct && (
-                  <Card className="border-amber-300/80 bg-amber-50/20">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold">Chỉnh sửa sản phẩm: {selectedProduct.name}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <Input
-                          aria-label="Edit product code"
-                          value={form.product_code}
-                          onChange={e => setForm({ ...form, product_code: e.target.value })}
-                          placeholder="Mã sản phẩm"
-                        />
-                        <Input
-                          aria-label="Edit product name"
-                          value={form.name}
-                          onChange={e => setForm({ ...form, name: e.target.value })}
-                          placeholder="Tên sản phẩm"
-                        />
-                        <Input
-                          aria-label="Edit product category"
-                          value={form.category}
-                          onChange={e => setForm({ ...form, category: e.target.value })}
-                          placeholder="Danh mục"
-                        />
-                        <select
-                          aria-label="Product status"
-                          className="rounded-md border border-input bg-background p-2 text-xs"
-                          value={form.lifecycle_status}
-                          onChange={e => setForm({ ...form, lifecycle_status: e.target.value })}
-                        >
-                          {['draft', 'active', 'inactive', 'archived'].map(status => (
-                            <option key={status} value={status}>{status}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <Input
-                        aria-label="Edit product description"
-                        value={form.description}
-                        onChange={e => setForm({ ...form, description: e.target.value })}
-                        placeholder="Mô tả nội bộ"
-                      />
-                      <label className="block text-xs font-medium text-muted-foreground">
-                        Thương hiệu liên kết
-                        <select
-                          multiple
-                          aria-label="Product brand associations"
-                          className="mt-1 block min-h-20 w-full rounded-md border border-input bg-background p-2 text-xs"
-                          value={form.product_brand_ids}
-                          onChange={e => setForm({ ...form, product_brand_ids: Array.from(e.target.selectedOptions, opt => opt.value) })}
-                        >
-                          {brands.map(brand => (
-                            <option key={brand.id} value={brand.id}>{brand.name}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="flex gap-2 justify-end pt-2">
-                        <Button variant="outline" size="sm" onClick={() => setEditingProduct(false)}>Hủy</Button>
-                        <Button
-                          size="sm"
-                          disabled={busy || !form.product_brand_ids.length}
-                          onClick={async () => {
-                            const result = await mutate({
-                              action: 'product.update',
-                              id: selectedProduct.id,
-                              expected_version: selectedProduct.version,
-                              product_code: form.product_code,
-                              name: form.name,
-                              lifecycle_status: form.lifecycle_status,
-                              description: form.description || null,
-                              category: form.category || null,
-                              brand_ids: form.product_brand_ids,
-                            })
-                            if (result) setEditingProduct(false)
-                          }}
-                        >
-                          Lưu thay đổi
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* New SKU Form */}
-                {skuId === 'new' && isAdmin && (
-                  <Card className="border-primary/30">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold">Thêm biến thể SKU mới</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <Input
-                          aria-label="SKU code"
-                          placeholder="Mã SKU (VD: SKU-SP001-50ML)"
-                          value={form.sku_code}
-                          onChange={e => setForm({ ...form, sku_code: e.target.value })}
-                        />
-                        <Input
-                          aria-label="Variant name"
-                          placeholder="Tên biến thể (VD: Chai 50ml)"
-                          value={form.variant_name}
-                          onChange={e => setForm({ ...form, variant_name: e.target.value })}
-                        />
-                      </div>
-                      <div className="flex gap-2 justify-end pt-2">
-                        <Button variant="outline" size="sm" onClick={() => setSkuId('')}>Hủy</Button>
-                        <Button
-                          size="sm"
-                          disabled={busy || !form.sku_code || !form.variant_name}
-                          onClick={async () => {
-                            const result = await mutate({
-                              action: 'sku.create',
-                              product_id: selectedProduct.id,
-                              sku_code: form.sku_code,
-                              variant_name: form.variant_name,
-                            })
-                            if (result?.sku?.id) setSkuId(result.sku.id)
-                          }}
-                        >
-                          Lưu biến thể SKU
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Selected SKU Details */}
-                {selectedSku && (
-                  <Card className="border-border">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm font-semibold">
-                          Chi tiết SKU: {selectedSku.sku_code}
-                        </CardTitle>
-                        <Badge variant={getProductStatusVariant(selectedSku.lifecycle_status)} className="text-[10px]">
-                          {selectedSku.lifecycle_status}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <p className="text-xs text-muted-foreground">
-                        {selectedSku.sku_code} · {selectedSku.variant_name} · Quy cách: {selectedSku.size_or_package ?? '—'} · Loại bao bì: {selectedSku.packaging_type ?? '—'}
-                      </p>
-
-                      {isAdmin && (
+                      {selectedSku && isAdmin && (
                         <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-                          <p className="text-xs font-semibold text-foreground">Sửa thông tin SKU:</p>
+                          <p className="text-xs font-semibold text-foreground">Sửa thông tin SKU ({selectedSku.sku_code}):</p>
                           <div className="grid gap-2 sm:grid-cols-2">
                             <Input
                               aria-label="Edit SKU code"
@@ -1284,18 +1239,107 @@ export function BrandCatalogWorkspace() {
                           </div>
                         </div>
                       )}
+                      {productSkus.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-2 italic">Sản phẩm này chưa có biến thể SKU nào.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {productSkus.map(sku => {
+                            const isSkuSelected = skuId === sku.id
+                            const platformLinks = (catalog?.skuPlatforms ?? []).filter(sp => sp.sku_id === sku.id)
+                            return (
+                              <div
+                                key={sku.id}
+                                onClick={() => {
+                                  setSkuId(sku.id)
+                                  updateCatalogUrl(selectedProduct.id, sku.id)
+                                  setForm({
+                                    ...form,
+                                    sku_code: sku.sku_code,
+                                    variant_name: sku.variant_name,
+                                    sku_size_or_package: sku.size_or_package ?? '',
+                                    sku_packaging_type: sku.packaging_type ?? '',
+                                    sku_lifecycle_status: sku.lifecycle_status,
+                                  })
+                                }}
+                                className={`rounded-lg border p-2.5 text-xs transition-all cursor-pointer ${
+                                  isSkuSelected ? 'border-blue-600 bg-blue-50/40 ring-1 ring-blue-500/40' : 'border-border/80 bg-background hover:border-slate-300'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between font-bold">
+                                  <span className="text-slate-900">{sku.variant_name}</span>
+                                  <Badge variant={getProductStatusVariant(sku.lifecycle_status)} className="text-[9px] uppercase px-1 py-0">
+                                    {sku.lifecycle_status}
+                                  </Badge>
+                                </div>
+                                <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                                  <span className="font-mono text-blue-700 font-semibold">{sku.sku_code}</span>
+                                  <span>{sku.size_or_package || sku.packaging_type || 'Tiêu chuẩn'}</span>
+                                </div>
+                                {platformLinks.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1 border-t border-border/40 pt-1.5 text-[10px]">
+                                    {platformLinks.map(pl => {
+                                      const pName = (catalog?.platforms ?? []).find(p => p.id === pl.platform_id)?.name ?? pl.platform_id
+                                      return (
+                                        <span key={pl.platform_id} className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700 font-medium">
+                                          {pName}: {pl.external_sku_id}
+                                        </span>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                      {/* External Platform SKU mapping */}
-                      <div className="space-y-2 pt-2 border-t border-border/40 text-xs">
-                        <p className="font-medium text-foreground">Mã SKU trên các sàn TMĐT:</p>
-                        <p className="text-muted-foreground">
-                          {(catalog?.skuPlatforms ?? [])
-                            .filter(row => row.sku_id === selectedSku.id)
-                            .map(row => (catalog?.platforms ?? []).find(p => p.id === row.platform_id)?.name + ' (' + row.external_sku_id + ')')
-                            .join(', ') || 'Chưa liên kết sàn nào.'}
-                        </p>
-                        {isAdmin && (
-                          <div className="grid gap-2 sm:grid-cols-3 pt-1">
+                  {/* TAB 2: KÊNH & MAPPING */}
+                  {activeInspectorTab === 'platforms' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                          Sơ Đồ Mapping Sàn TMĐT
+                        </span>
+                      </div>
+
+                      {productSkus.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-2 italic">Cần tạo SKU trước khi map với các sàn TMĐT.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {productSkus.map(sku => {
+                            const platformLinks = (catalog?.skuPlatforms ?? []).filter(sp => sp.sku_id === sku.id)
+                            return (
+                              <div key={sku.id} className="rounded-lg border border-border/80 bg-background p-2.5 text-xs space-y-1.5">
+                                <div className="flex items-center justify-between font-semibold">
+                                  <span className="text-slate-900">{sku.variant_name}</span>
+                                  <span className="font-mono text-blue-700">{sku.sku_code}</span>
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  {platformLinks.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      {platformLinks.map(pl => (
+                                        <Badge key={pl.platform_id} variant="secondary" className="text-[10px]">
+                                          {(catalog?.platforms ?? []).find(p => p.id === pl.platform_id)?.name}: {pl.external_sku_id}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-amber-600 italic">Chưa map mã sàn nào.</p>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Map Platform SKU Form (Admin) */}
+                      {isAdmin && selectedSku && (
+                        <div className="rounded-lg border bg-muted/20 p-2.5 space-y-2 text-xs">
+                          <p className="font-bold text-slate-800">Map mã sàn cho SKU: {selectedSku.sku_code}</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
                             <select
                               aria-label="SKU platform"
                               className="rounded-md border border-input bg-background p-1.5 text-xs"
@@ -1303,281 +1347,305 @@ export function BrandCatalogWorkspace() {
                               onChange={e => setForm({ ...form, sku_platform_id: e.target.value })}
                             >
                               <option value="">Chọn nền tảng</option>
-                              {(catalog?.platforms ?? [])
-                                .filter(p => p.status === 'active')
-                                .map(p => (
-                                  <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
+                              {(catalog?.platforms ?? []).filter(p => p.status === 'active').map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
                             </select>
                             <Input
                               aria-label="External platform SKU"
-                              placeholder="Mã SKU trên sàn"
+                              placeholder="Mã SKU trên sàn (VD: 8931282)"
                               value={form.external_sku_id}
                               onChange={e => setForm({ ...form, external_sku_id: e.target.value })}
                               className="text-xs"
                             />
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={busy || !form.sku_platform_id || !form.external_sku_id}
-                              onClick={() => void mutate({
-                                action: 'sku.platform.set',
-                                sku_id: selectedSku.id,
-                                platform_id: form.sku_platform_id,
-                                external_sku_id: form.external_sku_id,
-                              })}
-                            >
-                              Gắn mã sàn
-                            </Button>
                           </div>
-                        )}
-                      </div>
-
-                      {/* Attach to Campaign & SKU Resources */}
-                      {isAdmin && (
-                        <div className="space-y-2 pt-2 border-t border-border/40 text-xs">
-                          <label className="block text-muted-foreground font-medium">
-                            Gắn vào chiến dịch:
-                            <select
-                              className="mt-1 block w-full rounded-md border border-input bg-background p-1.5 text-xs"
-                              value=""
-                              onChange={e => {
-                                if (e.target.value) {
-                                  void mutate({
-                                    action: 'campaign.attach_sku',
-                                    campaign_id: e.target.value,
-                                    sku_id: selectedSku.id,
-                                  })
-                                }
-                              }}
-                            >
-                              <option value="">Chọn chiến dịch tham gia</option>
-                              {campaigns.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <div className="grid gap-2 sm:grid-cols-3 pt-1">
-                            <Input
-                              aria-label="Resource ID"
-                              placeholder="Mã tài nguyên STO-02"
-                              value={form.resource_id}
-                              onChange={e => setForm({ ...form, resource_id: e.target.value })}
-                              className="text-xs"
-                            />
-                            <select
-                              aria-label="Resource relation type"
-                              className="rounded-md border border-input bg-background p-1.5 text-xs"
-                              value={form.relation_type}
-                              onChange={e => setForm({ ...form, relation_type: e.target.value })}
-                            >
-                              {['image', 'kv', 'guideline', 'script', 'training', 'faq', 'scheme', 'marketing_data', 'document', 'other'].map(v => (
-                                <option key={v} value={v}>{v}</option>
-                              ))}
-                            </select>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={!form.resource_id || busy}
-                              onClick={() => void mutate({
-                                action: 'resource.attach',
-                                resource_id: form.resource_id,
-                                target_type: 'sku',
-                                target_id: selectedSku.id,
-                                relation_type: form.relation_type,
-                              })}
-                            >
-                              Đính kèm tài nguyên
-                            </Button>
-                          </div>
+                          <Button
+                            size="sm"
+                            disabled={busy || !form.sku_platform_id || !form.external_sku_id}
+                            onClick={() => void mutate({
+                              action: 'sku.platform.set',
+                              sku_id: selectedSku.id,
+                              platform_id: form.sku_platform_id,
+                              external_sku_id: form.external_sku_id,
+                            })}
+                            className="w-full text-xs font-semibold"
+                          >
+                            Gắn mã sàn
+                          </Button>
                         </div>
                       )}
-                      <ResourceList
-                        links={catalog?.resourceLinks.filter(l => l.sku_id === selectedSku.id) ?? []}
-                        resources={catalog?.resources ?? []}
-                      />
-                    </CardContent>
-                  </Card>
-                )}
+                    </div>
+                  )}
 
-                {/* Campaigns and Knowledge */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold">Chiến dịch &amp; Thông tin Marketing đã duyệt</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {campaigns
-                      .filter(campaign => !brandId || campaign.brand_id === brandId)
-                      .map(campaign => (
-                        <div key={campaign.id} className="rounded-lg border border-border/80 p-3 space-y-2 text-xs">
-                          <div className="flex items-center justify-between">
-                            <p className="font-semibold text-foreground">{campaign.name}</p>
-                            <Badge variant="outline" className="text-[10px]">{campaign.status}</Badge>
-                          </div>
-                          <p className="text-muted-foreground">
-                            Thời gian: {campaign.start_date} – {campaign.end_date}
-                          </p>
-                          <p className="text-muted-foreground">
-                            Sản phẩm tham gia:{' '}
-                            {catalog?.campaignSkus
-                              .filter(l => l.campaign_id === campaign.id)
-                              .map(l => products.find(p => p.id === catalog.skus.find(s => s.id === l.sku_id)?.product_id)?.name)
-                              .filter(Boolean)
-                              .join(', ') || 'Chưa có'}
-                          </p>
-                          <p className="text-muted-foreground italic">{campaign.notes || 'Không có ghi chú chiến dịch.'}</p>
+                  {/* TAB 3: PHÁP LÝ & CLAIMS */}
+                  {activeInspectorTab === 'claims' && (
+                    <div className="space-y-3 text-xs">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                        Hướng Dẫn Kịch Bản (Claims &amp; Guardrails)
+                      </div>
 
-                          {isAdmin && (
-                            <div className="mt-2 space-y-2 rounded-md border bg-muted/20 p-2.5">
-                              <p className="font-medium text-foreground">Tạo cơ chế / scheme chiến dịch:</p>
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                <Input
-                                  aria-label={'Scheme name ' + campaign.name}
-                                  placeholder="Tên cơ chế"
-                                  value={form.scheme_name}
-                                  onChange={e => setForm({ ...form, scheme_name: e.target.value })}
-                                />
-                                <Input
-                                  aria-label={'Scheme terms ' + campaign.name}
-                                  placeholder="Điều khoản / guideline / script"
-                                  value={form.terms}
-                                  onChange={e => setForm({ ...form, terms: e.target.value })}
-                                />
-                                <Input
-                                  aria-label={'Scheme source URL ' + campaign.name}
-                                  placeholder="Link tài liệu nguồn"
-                                  value={form.scheme_source_url}
-                                  onChange={e => setForm({ ...form, scheme_source_url: e.target.value })}
-                                />
-                                <Button
-                                  size="sm"
-                                  disabled={busy || !form.scheme_name || !form.terms}
-                                  onClick={() => void mutate({
-                                    action: 'scheme.create',
-                                    campaign_id: campaign.id,
-                                    sku_id: null,
-                                    scheme_name: form.scheme_name,
-                                    terms: form.terms,
-                                    source_url: form.scheme_source_url || null,
-                                    valid_from: new Date(campaign.start_date + 'T00:00:00.000Z').toISOString(),
-                                    valid_to: new Date(campaign.end_date + 'T23:59:59.000Z').toISOString(),
-                                  })}
-                                >
-                                  Lưu cơ chế bản nháp
-                                </Button>
-                              </div>
-
-                              <p className="font-medium text-foreground pt-1">Đề xuất kiến thức marketing sản phẩm:</p>
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                <Input
-                                  aria-label="Knowledge content"
-                                  placeholder="Nội dung kiến thức / tính năng"
-                                  value={form.knowledge}
-                                  onChange={e => setForm({ ...form, knowledge: e.target.value })}
-                                />
-                                <Input
-                                  aria-label="Knowledge source"
-                                  placeholder="Nguồn tham chiếu"
-                                  value={form.source_reference}
-                                  onChange={e => setForm({ ...form, source_reference: e.target.value })}
-                                />
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={busy || !form.knowledge || !form.source_reference}
-                                onClick={() => void mutate({
-                                  action: 'knowledge.create',
-                                  product_id: selectedProduct.id,
-                                  knowledge_type: 'feature',
-                                  content: form.knowledge,
-                                  source_reference: form.source_reference,
-                                  effective_from: new Date().toISOString().slice(0, 10),
-                                })}
-                              >
-                                Gửi duyệt kiến thức
-                              </Button>
-                            </div>
+                      {/* Mandatory Claims Banner */}
+                      <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                          <span>Bắt Buộc Nhắc Đến (Mandatory Claims):</span>
+                        </div>
+                        <p className="text-amber-800 leading-relaxed">
+                          {selectedProductBrand?.mandatory_claims?.length ? (
+                            selectedProductBrand.mandatory_claims.join('. ')
+                          ) : (
+                            <span className="text-amber-800/70 italic">
+                              Chưa có thông điệp bắt buộc được phê duyệt cho thương hiệu này.
+                            </span>
                           )}
+                        </p>
+                      </div>
 
-                          {catalog?.schemes.filter(row => row.campaign_id === campaign.id).map(row => (
-                            <div key={row.id} className="rounded-md border bg-background p-2">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium">{row.scheme_name}</span>
-                                <Badge variant={row.status === 'approved' ? 'success' : 'outline'} className="text-[10px]">
-                                  {row.status}
-                                </Badge>
-                              </div>
-                              <p className="text-muted-foreground mt-1">{row.terms}</p>
-                              {isAdmin && row.status === 'draft' && row.created_by !== currentUser?.id && (
-                                <div className="mt-2 flex gap-2">
-                                  <Button size="sm" className="h-7 text-xs" onClick={() => void mutate({ action: 'scheme.review', id: row.id, decision: 'approved' })}>
-                                    Duyệt
-                                  </Button>
-                                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void mutate({ action: 'scheme.review', id: row.id, decision: 'rejected' })}>
-                                    Từ chối
-                                  </Button>
-                                </div>
-                              )}
+                      {/* Restricted Claims Banner */}
+                      <div className="rounded-lg border border-red-200 bg-red-50/70 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold text-red-900">
+                          <ShieldAlert className="h-4 w-4 text-red-600 shrink-0" />
+                          <span>Nghiêm Cấm Phát Ngôn (Restricted):</span>
+                        </div>
+                        <p className="text-red-800 leading-relaxed">
+                          {selectedProductBrand?.restricted_claims?.length ? (
+                            selectedProductBrand.restricted_claims.join('. ')
+                          ) : (
+                            <span className="text-red-800/70 italic">
+                              Chưa ghi nhận thông điệp hạn chế hoặc cấm phát ngôn.
+                            </span>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* Knowledge items */}
+                      <div className="space-y-2 pt-2 border-t border-border/50">
+                        <span className="font-bold text-slate-800">Kiến thức sản phẩm đã duyệt:</span>
+                        {catalog?.knowledge.filter(k => k.product_id === selectedProduct.id).map(k => (
+                          <div key={k.id} className="rounded border bg-muted/20 p-2 text-xs">
+                            <span className="font-semibold text-slate-800">{k.knowledge_type} (v{k.version}):</span>{' '}
+                            <span className="text-muted-foreground">{typeof k.content === 'string' ? k.content : JSON.stringify(k.content)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 4: AUDIT LOG */}
+                  {activeInspectorTab === 'audit' && (
+                    <div className="space-y-2 text-xs">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                        Lịch Sử Thay Đổi Sản Phẩm
+                      </span>
+                      {catalog?.auditEvents.filter(e => e.record_id === selectedProduct.id).length ? (
+                        <div className="divide-y divide-border/40">
+                          {catalog.auditEvents.filter(e => e.record_id === selectedProduct.id).map(e => (
+                            <div key={e.id} className="py-2 flex items-center justify-between">
+                              <span>
+                                <Badge variant="outline" className="text-[9px] uppercase">{e.action}</Badge>{' '}
+                                <span className="font-mono">{e.table_name}</span>
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(e.created_at).toLocaleDateString()}
+                              </span>
                             </div>
                           ))}
-
-                          <ResourceList
-                            links={catalog?.resourceLinks.filter(l => l.campaign_id === campaign.id) ?? []}
-                            resources={catalog?.resources ?? []}
-                          />
                         </div>
-                      ))}
+                      ) : (
+                        <p className="text-muted-foreground italic py-2">Chưa có thay đổi nào được ghi nhận cho sản phẩm này.</p>
+                      )}
+                    </div>
+                  )}
 
-                    {/* Knowledge items for product */}
-                    {catalog?.knowledge.filter(row => row.product_id === selectedProduct.id).map(row => (
-                      <div key={row.id} className="rounded-lg border bg-muted/10 p-2.5 text-xs space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-foreground">{row.knowledge_type} · v{row.version}</span>
-                          <Badge
-                            variant={(catalog?.knowledgeApprovals ?? []).find(item => item.knowledge_version_id === row.id)?.decision === 'approved' ? 'success' : 'outline'}
-                            className="text-[10px]"
+                  {/* Forms for Editing Product / New SKU */}
+                  {isAdmin && editingProduct && (
+                    <Card className="border-amber-300 bg-amber-50/20">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-xs font-bold">Chỉnh sửa sản phẩm</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-xs">
+                        <Input
+                          aria-label="Edit product code"
+                          value={form.product_code}
+                          onChange={e => setForm({ ...form, product_code: e.target.value })}
+                          placeholder="Mã sản phẩm"
+                        />
+                        <Input
+                          aria-label="Edit product name"
+                          value={form.name}
+                          onChange={e => setForm({ ...form, name: e.target.value })}
+                          placeholder="Tên sản phẩm"
+                        />
+                        <Input
+                          aria-label="Edit product category"
+                          value={form.category}
+                          onChange={e => setForm({ ...form, category: e.target.value })}
+                          placeholder="Danh mục"
+                        />
+                        <select
+                          aria-label="Product status"
+                          className="w-full rounded-md border border-input bg-background p-2 text-xs"
+                          value={form.lifecycle_status}
+                          onChange={e => setForm({ ...form, lifecycle_status: e.target.value })}
+                        >
+                          {['draft', 'active', 'inactive', 'archived'].map(status => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                        <Input
+                          aria-label="Edit product description"
+                          value={form.description}
+                          onChange={e => setForm({ ...form, description: e.target.value })}
+                          placeholder="Mô tả nội bộ"
+                        />
+                        <div className="flex gap-2 justify-end pt-1">
+                          <Button variant="outline" size="sm" onClick={() => setEditingProduct(false)}>Hủy</Button>
+                          <Button
+                            size="sm"
+                            disabled={busy || !form.product_brand_ids.length}
+                            onClick={async () => {
+                              const result = await mutate({
+                                action: 'product.update',
+                                id: selectedProduct.id,
+                                expected_version: selectedProduct.version,
+                                product_code: form.product_code,
+                                name: form.name,
+                                lifecycle_status: form.lifecycle_status,
+                                description: form.description || null,
+                                category: form.category || null,
+                                brand_ids: form.product_brand_ids,
+                              })
+                              if (result) setEditingProduct(false)
+                            }}
                           >
-                            {(catalog?.knowledgeApprovals ?? []).find(item => item.knowledge_version_id === row.id)?.decision === 'approved' ? 'approved' : row.status}
-                          </Badge>
+                            Lưu thay đổi
+                          </Button>
                         </div>
-                        <p className="text-muted-foreground">{typeof row.content === 'string' ? row.content : JSON.stringify(row.content)}</p>
-                        {isAdmin && row.status === 'pending_review' && row.created_by !== currentUser?.id && !(catalog?.knowledgeApprovals ?? []).some(item => item.knowledge_version_id === row.id) && (
-                          <div className="mt-2 space-y-1.5">
-                            <Input
-                              aria-label="Review reason"
-                              placeholder="Lý do duyệt / từ chối / yêu cầu chỉnh sửa"
-                              value={form.review_reason}
-                              onChange={e => setForm({ ...form, review_reason: e.target.value })}
-                              className="text-xs"
-                            />
-                            <div className="flex flex-wrap gap-1.5">
-                              <Button size="sm" className="h-7 text-xs" onClick={() => void mutate({ action: 'knowledge.review', knowledge_version_id: row.id, decision: 'approved', reason: form.review_reason || 'Source reviewed' })}>
-                                Duyệt kiến thức
-                              </Button>
-                              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={!form.review_reason} onClick={() => void mutate({ action: 'knowledge.review', knowledge_version_id: row.id, decision: 'rejected', reason: form.review_reason })}>
-                                Từ chối
-                              </Button>
-                              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={!form.review_reason} onClick={() => void mutate({ action: 'knowledge.review', knowledge_version_id: row.id, decision: 'changes_requested', reason: form.review_reason })}>
-                                Yêu cầu sửa
-                              </Button>
-                            </div>
-                          </div>
-                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* New SKU Form */}
+                  {skuId === 'new' && isAdmin && (
+                    <Card className="border-blue-300 bg-blue-50/20">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-xs font-bold">Thêm biến thể SKU mới</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-xs">
+                        <Input
+                          aria-label="SKU code"
+                          placeholder="Mã SKU (VD: SKU-SP001-50ML)"
+                          value={form.sku_code}
+                          onChange={e => setForm({ ...form, sku_code: e.target.value })}
+                        />
+                        <Input
+                          aria-label="Variant name"
+                          placeholder="Tên biến thể (VD: Hộp 800g)"
+                          value={form.variant_name}
+                          onChange={e => setForm({ ...form, variant_name: e.target.value })}
+                        />
+                        <div className="flex gap-2 justify-end pt-1">
+                          <Button variant="outline" size="sm" onClick={() => setSkuId('')}>Hủy</Button>
+                          <Button
+                            size="sm"
+                            disabled={busy || !form.sku_code || !form.variant_name}
+                            onClick={async () => {
+                              const result = await mutate({
+                                action: 'sku.create',
+                                product_id: selectedProduct.id,
+                                sku_code: form.sku_code,
+                                variant_name: form.variant_name,
+                              })
+                              if (result?.sku?.id) setSkuId(result.sku.id)
+                            }}
+                          >
+                            Lưu SKU
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Resource Attachment (Admin) */}
+                  {isAdmin && (
+                    <div className="pt-2 border-t border-border/50 space-y-2 text-xs">
+                      <span className="font-bold text-slate-800">Đính kèm tài nguyên / Hình ảnh:</span>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <Input
+                          aria-label="Product resource ID"
+                          placeholder="Mã STO-02"
+                          value={form.resource_id}
+                          onChange={e => setForm({ ...form, resource_id: e.target.value })}
+                          className="text-xs"
+                        />
+                        <select
+                          aria-label="Product resource relation type"
+                          className="rounded-md border border-input bg-background p-1.5 text-xs"
+                          value={form.relation_type}
+                          onChange={e => setForm({ ...form, relation_type: e.target.value })}
+                        >
+                          {['image', 'kv', 'marketing_data', 'guideline', 'training', 'faq', 'document', 'other'].map(v => (
+                            <option key={v} value={v}>{v}</option>
+                          ))}
+                        </select>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!form.resource_id || busy}
+                          onClick={() => void mutate({
+                            action: 'resource.attach',
+                            resource_id: form.resource_id,
+                            target_type: 'product',
+                            target_id: selectedProduct.id,
+                            relation_type: form.relation_type,
+                          })}
+                        >
+                          Đính kèm
+                        </Button>
                       </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </>
+                      <ResourceList
+                        links={catalog?.resourceLinks.filter(l => l.product_id === selectedProduct.id) ?? []}
+                        resources={catalog?.resources ?? []}
+                      />
+                    </div>
+                  )}
+
+                  {/* Campaign Attachment (Admin) */}
+                  {isAdmin && (
+                    <div className="pt-2 border-t border-border/50 space-y-2 text-xs">
+                      <span className="font-bold text-slate-800">Tham gia chiến dịch:</span>
+                      {selectedSku && (
+                        <select
+                          className="w-full rounded-md border border-input bg-background p-1.5 text-xs"
+                          value=""
+                          onChange={e => {
+                            if (e.target.value) {
+                              void mutate({
+                                action: 'campaign.attach_sku',
+                                campaign_id: e.target.value,
+                                sku_id: selectedSku.id,
+                              })
+                            }
+                          }}
+                        >
+                          <option value="">Chọn chiến dịch tham gia cho SKU: {selectedSku.sku_code}</option>
+                          {campaigns.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
-          </section>
+          </aside>
         </div>
       )}
 
-      {/* Brand Read Access & Audit History (Admin Only) */}
+      {/* Admin: Brand Read Access Scopes & Audit Events */}
       {isAdmin && catalog && (
         <div className="space-y-6 pt-6 border-t border-border">
-          {/* Brand Read Access Management */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold">Phân quyền xem Brand cho nhân sự</CardTitle>
@@ -1654,6 +1722,90 @@ export function BrandCatalogWorkspace() {
             </CardContent>
           </Card>
 
+          {/* Scheme and Knowledge Creation */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Tạo cơ chế chiến dịch (Scheme)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs">
+                <Input
+                  aria-label="Scheme name"
+                  placeholder="Tên cơ chế"
+                  value={form.scheme_name}
+                  onChange={e => setForm({ ...form, scheme_name: e.target.value })}
+                />
+                <Input
+                  aria-label="Scheme terms"
+                  placeholder="Điều khoản / guideline / script"
+                  value={form.terms}
+                  onChange={e => setForm({ ...form, terms: e.target.value })}
+                />
+                <Input
+                  aria-label="Scheme source URL"
+                  placeholder="Link tài liệu nguồn"
+                  value={form.scheme_source_url}
+                  onChange={e => setForm({ ...form, scheme_source_url: e.target.value })}
+                />
+                {campaigns.length > 0 && (
+                  <Button
+                    size="sm"
+                    disabled={busy || !form.scheme_name || !form.terms}
+                    onClick={() => void mutate({
+                      action: 'scheme.create',
+                      campaign_id: campaignId || campaigns[0].id,
+                      sku_id: null,
+                      scheme_name: form.scheme_name,
+                      terms: form.terms,
+                      source_url: form.scheme_source_url || null,
+                      valid_from: new Date().toISOString(),
+                      valid_to: new Date(Date.now() + 30 * 86400000).toISOString(),
+                    })}
+                  >
+                    Lưu cơ chế bản nháp
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Đề xuất kiến thức Marketing sản phẩm</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs">
+                <Input
+                  aria-label="Knowledge content"
+                  placeholder="Nội dung tính năng / công dụng"
+                  value={form.knowledge}
+                  onChange={e => setForm({ ...form, knowledge: e.target.value })}
+                />
+                <Input
+                  aria-label="Knowledge source"
+                  placeholder="Nguồn tham chiếu"
+                  value={form.source_reference}
+                  onChange={e => setForm({ ...form, source_reference: e.target.value })}
+                />
+                {selectedProduct && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || !form.knowledge || !form.source_reference}
+                    onClick={() => void mutate({
+                      action: 'knowledge.create',
+                      product_id: selectedProduct.id,
+                      knowledge_type: 'feature',
+                      content: form.knowledge,
+                      source_reference: form.source_reference,
+                      effective_from: new Date().toISOString().slice(0, 10),
+                    })}
+                  >
+                    Gửi duyệt kiến thức
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Catalog Audit Events */}
           <Card>
             <CardHeader className="pb-3">
@@ -1662,7 +1814,7 @@ export function BrandCatalogWorkspace() {
             <CardContent>
               {catalog.auditEvents.length ? (
                 <div className="divide-y divide-border/40 text-xs">
-                  {catalog.auditEvents.slice(0, 30).map(event => (
+                  {catalog.auditEvents.slice(0, 20).map(event => (
                     <div key={event.id} className="flex flex-wrap justify-between gap-2 py-2">
                       <span>
                         <span className="font-mono font-medium text-foreground">{event.table_name}</span> ·{' '}
