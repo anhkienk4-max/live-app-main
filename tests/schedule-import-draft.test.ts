@@ -48,6 +48,23 @@ const commitDraft = (committed: ReturnType<typeof parseSourceRows>, rowNumber: n
   return parseSourceRows(sourceRows)
 }
 
+test('editing Agency changes the canonical execution source without losing custom fields', () => {
+  for (const [input, code, expected] of [
+    ['ADA', 'ada', 'internal'],
+    ['SNAP', 'snap', 'agency'],
+    ['AI', 'live_ai', 'agency'],
+  ] as const) {
+    const initial = parseSourceRows([sourceRow()])
+    const row = initial.rows[0].row
+    const draft = updateRowDraft({}, row.row_number, row, 'agency_code', code)
+    const nextSource = commitRowDraftToSource(buildScheduleImportPreviewSourceRow(row), draft[row.row_number])
+    const parsed = parseSourceRows([nextSource])
+    assert.equal(parsed.rows[0].row.execution_source, expected, input)
+    assert.equal(parsed.rows[0].row.agency_code, code, input)
+    assert.equal(parsed.rows[0].row.custom_fields?.Agency, input === 'AI' ? 'Live AI' : input)
+  }
+})
+
 test('editing a time does not recompute committed validity mid-type', () => {
   const committed = parseSourceRows([sourceRow()])
   assert.equal(committed.validRows, 1)
