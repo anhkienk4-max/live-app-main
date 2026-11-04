@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "e7ca67968eaf9b4cd46d3375da99d17dff125e0d",
+    "head": "42e26f9b63bb648bdab9606ea919c7b1e2ea6532",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -121,10 +121,10 @@
         "components": 188,
         "lib": 283,
         "scripts": 35,
-        "supabase": 129,
-        "tests": 340
+        "supabase": 131,
+        "tests": 342
       },
-      "total": 1068
+      "total": 1072
     },
     "tests": {
       "files": [
@@ -506,9 +506,11 @@
         "supabase/migrations/20261102190000_rc19_batch01_1_agency_code.sql",
         "supabase/migrations/20261102200000_rc19_batch01_3_shift_identity_index.sql",
         "supabase/migrations/20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
-        "supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql"
+        "supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+        "supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql",
+        "supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql"
       ],
-      "count": 101
+      "count": 103
     }
   },
   "verification": {
@@ -522,5 +524,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-04T14:57:04+07:00"
+  "synced_at": "2026-11-04T16:11:43+07:00"
 }
