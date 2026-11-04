@@ -110,7 +110,10 @@ jobs:
             tests/rc19-rbac01-security.test.ts \
             tests/rc19-rbac01b-audit-slice.test.ts \
             tests/rbac02-account-overrides.test.ts \
-            tests/rbac-capabilities.test.ts
+            tests/rbac-capabilities.test.ts \
+            tests/report-artifact-export-authority.test.ts \
+            tests/rc19-reports-export-authority.test.ts \
+            tests/rc19-workforce-authority.test.ts
 
       - name: Disposable PostgreSQL 17 RBAC catalog and RLS contracts
         env:

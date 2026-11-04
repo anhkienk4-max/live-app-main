@@ -16,6 +16,7 @@ const user = {
   businessUserId: 'business-1',
   systemPermission: 'leader' as const,
 }
+const admin = { ...user, id: 'auth-admin', systemPermission: 'admin' as const }
 
 const report = {
   id: 'report-1',
@@ -411,7 +412,7 @@ test('confirmed report generates XLSX into canonical DATA/REPORT and persists on
   const uploads: FileUploadInput[] = []
   const providerFiles = new Map<string, Uint8Array>()
   const handler = createReportArtifactRouteHandler({
-    resolveUser: async () => user,
+    resolveUser: async () => admin,
     createClient: () => db.client,
     storage: {
       async upload(input: FileUploadInput): Promise<FileUploadResult> {
@@ -489,7 +490,7 @@ test('unconfirmed report cannot generate DATA/REPORT', async () => {
   const db = fakeClient()
   let uploads = 0
   const handler = createReportArtifactRouteHandler({
-    resolveUser: async () => user,
+    resolveUser: async () => admin,
     createClient: () => db.client,
     storage: {
       async upload() { uploads += 1; throw new Error('should not upload') },

@@ -549,6 +549,9 @@ export function createReportArtifactRouteHandler(dependencies: {
         const client = clientFactory()
         const fileId = params.get('file_id')?.trim()
         if (fileId) {
+          if (user.systemPermission === 'leader') {
+            return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
+          }
           const fileResult = await client.from('stored_files')
             .select('*')
             .eq('id', fileId)
@@ -557,6 +560,12 @@ export function createReportArtifactRouteHandler(dependencies: {
           if (fileResult.error) throw fileResult.error
           if (!fileResult.data) return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
           const row = fileResult.data as Record<string, unknown>
+          if (row.logical_category === 'data_report') {
+            const exportUser = await requirePermission(request, 'reports.export', dependencies.resolveUser)
+            if (exportUser.systemPermission !== 'admin' || exportUser.id !== user.id) {
+              return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
+            }
+          }
           await reportContext(client, String(row.report_id), user, routingMode)
           const provider = row.provider
           const externalFileId = row.external_file_id
@@ -587,6 +596,9 @@ export function createReportArtifactRouteHandler(dependencies: {
 
         const reportId = params.get('report_id')?.trim()
         if (!reportId) return errorResponse('REPORT_ARTIFACT_REQUEST_INVALID', 'A report id is required.', 400)
+        if (user.systemPermission === 'leader') {
+          return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
+        }
         await reportContext(client, reportId, user, routingMode)
         const result = await client.from('stored_files')
           .select('*')
@@ -662,6 +674,11 @@ export function createReportArtifactRouteHandler(dependencies: {
         const parsed = generateFields.safeParse(await readJsonBody(request, 16 * 1024))
         if (!parsed.success) {
           return errorResponse('REPORT_ARTIFACT_REQUEST_INVALID', 'The report artifact request is invalid.', 400)
+        }
+
+        const exportUser = await requirePermission(request, 'reports.export', dependencies.resolveUser)
+        if (exportUser.systemPermission !== 'admin' || exportUser.id !== user.id) {
+          return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
         }
 
         const { report, shift } = await reportContext(client, parsed.data.report_id, user, routingMode)

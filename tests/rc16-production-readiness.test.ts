@@ -87,7 +87,7 @@ test('Authenticated capabilities provide only role-filtered booleans; no salary/
       const r=await h.GET(request('capabilities'))
       assert.equal(r.status,200);assert.equal(r.headers.get('Cache-Control'),'no-store')
       assert.deepEqual(await r.json(),{ok:true,capabilities:{
-        actual_staffing:workforce&&role!=='member',self_attendance_review:false,team_performance:workforce&&role!=='member',
+        actual_staffing:workforce&&role!=='member',self_attendance_review:false,team_performance:workforce&&role==='admin',
         own_performance:workforce,payroll:payroll&&role==='admin',
       }})
     }

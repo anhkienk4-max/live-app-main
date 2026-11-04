@@ -15,7 +15,7 @@ import {
   isStaffedRegistration,
 } from '@/lib/services/dataService'
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
-import { hasPermission } from '@/lib/permissions'
+import { canExportReports, hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
@@ -23,10 +23,8 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { reportMetricValue, calculateNullableAnalyticsMetrics } from '@/lib/utils/analytics'
 import {
   downloadReportTemplate,
-  exportReportImageMetadataToExcel,
-  exportReportsToExcel,
-  exportReportDetailToExcel,
 } from '@/lib/utils/excelUtils'
+import { downloadReportExport } from '@/lib/services/reportExportService'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ReportsView } from './ReportsView'
 import { Button } from '@/components/ui/button'
@@ -202,23 +200,16 @@ export function ReportsContainer() {
   const revenueValues = confirmed.map(report => reportMetricValue(report, 'revenue')).filter((value): value is number => value !== null)
   const totalRevenue = revenueValues.length ? revenueValues.reduce((sum, value) => sum + value, 0) : null
   const aov = calculateNullableAnalyticsMetrics(confirmed).averageOrderValue
-  const exportContext = {
-    shifts,
-    campaigns,
-    users,
-    brands: new Map(brands.map(brand => [brand.id, brand.name])),
-    platforms: new Map(platforms.map(platform => [platform.id, platform.name])),
-    registrations,
+  const runReportExport = async (kind: 'reports' | 'report' | 'images', ids: string[]) => {
+    try { await downloadReportExport(kind, ids) }
+    catch (error) { toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' }) }
   }
-
   const exportImages = async () => {
-    if (!currentUser || !hasPermission(currentUser, 'reports.export')) {
+    if (!canExportReports(currentUser)) {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
       return
     }
-    const images = (await Promise.all(filteredReports.map(report => reportImageService.getByReport(report.id)))).flat()
-    exportReportImageMetadataToExcel(images, filteredReports)
-    toast({ title: t('success'), description: t('exportImageMetadata'), variant: 'success' })
+    await runReportExport('images', filteredReports.map(report => report.id))
   }
 
   if (loading || userLoading) return <div className="py-12 text-center">{t('loading')}</div>
@@ -252,7 +243,7 @@ export function ReportsContainer() {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" onClick={() => setFilters(emptyFilters)} title={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
-            {currentUser && hasPermission(currentUser, 'reports.export') && (
+            {canExportReports(currentUser) && (
               <>
                 <div className="hidden md:block">
                   <DropdownMenu>
@@ -260,7 +251,7 @@ export function ReportsContainer() {
                       <Download className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => exportReportsToExcel(filteredReports, exportContext)} disabled={!filteredReports.length}>
+                      <DropdownMenuItem onClick={() => void runReportExport('reports', filteredReports.map(report => report.id))} disabled={!filteredReports.length}>
                         <FileSpreadsheet className="mr-2 h-4 w-4" />{t('exportFilteredReports')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => void exportImages()} disabled={!filteredReports.length}>
@@ -277,7 +268,7 @@ export function ReportsContainer() {
                   <MobileActionMenu
                     breakpoint="md"
                     actions={[
-                      { key: 'export-reports', label: t('exportFilteredReports'), icon: <FileSpreadsheet className="h-4 w-4" />, onClick: () => exportReportsToExcel(filteredReports, exportContext), disabled: !filteredReports.length },
+                      { key: 'export-reports', label: t('exportFilteredReports'), icon: <FileSpreadsheet className="h-4 w-4" />, onClick: () => void runReportExport('reports', filteredReports.map(report => report.id)), disabled: !filteredReports.length },
                       { key: 'export-images', label: t('exportImageMetadata'), icon: <FileImage className="h-4 w-4" />, onClick: () => void exportImages(), disabled: !filteredReports.length },
                       { key: 'download-template', label: t('downloadReportTemplate'), icon: <Download className="h-4 w-4" />, onClick: downloadReportTemplate }
                     ]}
@@ -308,7 +299,7 @@ export function ReportsContainer() {
       </div>
 
       <ReportsView reports={filteredReports} shifts={shifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations}
-        onView={setSelectedReport} onExport={currentUser && hasPermission(currentUser, 'reports.export') ? report => exportReportDetailToExcel(report, exportContext) : undefined}
+        onView={setSelectedReport} onExport={canExportReports(currentUser) ? report => void runReportExport('report', [report.id]) : undefined}
         onRemove={report => { void requestRemove(report) }} currentUser={currentUser} />
 
       {showForm && <ReportFormModal open={showForm} onOpenChange={setShowForm} completedShifts={completedShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); setShowForm(false) }} />}

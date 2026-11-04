@@ -21,17 +21,15 @@ import {
   getReportObligationPage,
 } from '@/lib/services/dataService'
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
-import { hasPermission } from '@/lib/permissions'
+import { canExportReports, hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import {
   downloadReportTemplate,
-  exportReportImageMetadataToExcel,
-  exportReportsToExcel,
-  exportReportDetailToExcel,
 } from '@/lib/utils/excelUtils'
+import { downloadReportExport } from '@/lib/services/reportExportService'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ActionBar } from '@/components/ui/action-bar'
 import { CommandToolbar } from '@/components/ui/command-toolbar'
@@ -490,35 +488,23 @@ export function ReportsList() {
     currentUser?.system_permission === 'member' ? 'Phạm vi: ca được phân công hoặc báo cáo do bạn gửi' : 'Phạm vi: theo quyền tài khoản',
     appliedFilterChips.length ? `${appliedFilterChips.length} bộ lọc đang áp dụng` : 'Không áp dụng bộ lọc bổ sung',
   ].join(' · ')
-  const exportContext = {
-    historicalShiftContexts:historicalContexts,
-    shifts,
-    campaigns,
-    users,
-    brands: new Map(brands.map(brand => [brand.id, brand.name])),
-    platforms: new Map(platforms.map(platform => [platform.id, platform.name])),
-    registrations,
+  const runReportExport = async (kind: 'reports' | 'report' | 'images', ids: string[]) => {
+    try { await downloadReportExport(kind, ids) }
+    catch (error) { toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' }) }
   }
-
   const exportAllReports = async () => {
     try {
       const complete = await reportService.getAllFilteredWithHistoricalContext(JSON.parse(encodedFilters))
-      const exportShifts = await shiftService.getByIds(complete.items.map(report => report.shift_id))
-      const registrations = await shiftRegistrationService.getForShifts(exportShifts.map(shift => shift.id))
-      exportReportsToExcel(complete.items, { ...exportContext, shifts: exportShifts,
-        historicalShiftContexts:complete.historicalShiftContexts, registrations })
+      await downloadReportExport('reports', complete.items.map(report => report.id))
     } catch (error) { toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' }) }
   }
   const exportImages = async () => {
-    if (!currentUser || !hasPermission(currentUser, 'reports.export')) {
+    if (!canExportReports(currentUser)) {
       toast({ title: t('error'), description: t('permissionDenied'), variant: 'destructive' })
       return
     }
     const complete = await reportService.getAllFiltered(JSON.parse(encodedFilters))
-    const images = []
-    for (const report of complete) images.push(...await reportImageService.getByReport(report.id))
-    exportReportImageMetadataToExcel(images, complete)
-    toast({ title: t('success'), description: t('exportImageMetadata'), variant: 'success' })
+    await runReportExport('images', complete.map(report => report.id))
   }
 
   if (loading || userLoading || identity!==loadedIdentity) return <div className="space-y-3 py-3" data-testid="reports-progressive-shell">{firstRows?.key===pageKey && <section className="rounded-lg border bg-card p-4" data-testid="reports-visible-first"><h2 className="text-sm font-semibold">Báo cáo gần đây</h2><p className="my-2 text-xs text-muted-foreground">Đang tải hàng đợi và chi tiết. Thao tác chỉnh sửa chỉ khả dụng sau khi đồng bộ đầy đủ.</p><ul className="divide-y text-sm">{firstRows.rows.slice(0,10).map(report=>{const shift=firstRows.shifts.find(item=>item.id===report.shift_id);return <li key={report.id} className="flex justify-between gap-3 py-2"><span>{shift?.title || 'Báo cáo livestream'}</span><span className="text-muted-foreground">{shift?.date || '—'}</span></li>})}</ul></section>}<div role="status" className="py-8 text-center">{t('loading')}</div></div>
@@ -576,7 +562,7 @@ export function ReportsList() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="default" size="sm" onClick={applyFilters} disabled={!hasUnappliedChanges || invalidDraftDates} data-testid="reports-apply-filters">Áp dụng</Button>
             <Button variant="outline" size="icon" onClick={resetFilters} title={t('resetFilters')} aria-label={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
-            {currentUser && hasPermission(currentUser, 'reports.export') && (
+            {canExportReports(currentUser) && (
               <>
                 <div className="hidden md:block">
                   <DropdownMenu>
@@ -849,14 +835,14 @@ export function ReportsList() {
                           >
                             {isEditableDraft ? t('continueReport') : t('viewDetails')}
                           </Button>
-                          {currentUser && hasPermission(currentUser, 'reports.export') && (
+                          {canExportReports(currentUser) && (
                             <Button
                               type="button"
                               size="sm"
                               variant="ghost"
                               className="h-7 w-7 p-0"
                               title={t('exportExcel')}
-                              onClick={() => exportReportDetailToExcel(report, exportContext)}
+                              onClick={() => void runReportExport('report', [report.id])}
                             >
                               <Download className="h-3.5 w-3.5 text-muted-foreground" />
                             </Button>
@@ -961,14 +947,14 @@ export function ReportsList() {
                       {
                         status: reportStatus,
                         canDelete: Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)),
-                        canExport: currentUser ? hasPermission(currentUser, 'reports.export') : false,
+                        canExport: canExportReports(currentUser),
                       },
                       {
                         onView: () => {
                           if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
                           else setSelectedReport(report)
                         },
-                        onExport: () => exportReportDetailToExcel(report, exportContext),
+                        onExport: () => void runReportExport('report', [report.id]),
                         onDelete: () => void requestRemove(report),
                       },
                       {
@@ -1027,8 +1013,8 @@ export function ReportsList() {
               <h3 className="font-medium">Nội dung tổng kết</h3>
               <pre className="max-h-48 overflow-auto rounded-md bg-muted/30 p-3 text-xs whitespace-pre-wrap break-words">{JSON.stringify(selectedHistoricalReport.final_recap??null,null,2)}</pre>
             </section>
-            {currentUser && hasPermission(currentUser,'reports.export') && <Button type="button" variant="outline"
-              onClick={()=>exportReportDetailToExcel(selectedHistoricalReport,exportContext)}>
+            {canExportReports(currentUser) && <Button type="button" variant="outline"
+              onClick={()=>void runReportExport('report',[selectedHistoricalReport.id])}>
               <Download className="mr-2 h-4 w-4" />Xuất báo cáo lịch sử
             </Button>}
           </div>}

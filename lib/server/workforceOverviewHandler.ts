@@ -40,7 +40,9 @@ function envInt(key:string):number|null{
 export function createWorkforceOverviewHandler(options:Options={}) {
   return {async GET(request:Request):Promise<Response>{
     try{
-      await requireRole(request,['admin','leader'],options.resolveUser)
+      const actor=await requireRole(request,['admin','leader'],options.resolveUser)
+      if(actor.systemPermission==='leader')
+        return fail('WORKFORCE_LEADER_SCOPE_UNAVAILABLE',503)
       if(!(options.isEnabled??(()=>isFeatureEnabled('actual_staffing')))())
         return fail('WORKFORCE_FEATURE_DISABLED',503)
       const input=query.parse(Object.fromEntries(new URL(request.url).searchParams.entries()))

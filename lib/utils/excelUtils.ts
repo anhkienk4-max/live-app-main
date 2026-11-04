@@ -1597,19 +1597,25 @@ export function exportReportImageMetadataToExcel(
 ): void {
   writeWorkbook(`report_images_${format(new Date(), 'yyyy-MM-dd')}.xlsx`, [{
     name: 'Images',
-    rows: images
-      .filter(image => reports.some(report => report.id === image.report_id))
-      .map(image => ({
-        'Report ID': image.report_id,
-        Category: image.image_type,
-        'Original Name': image.original_name || '',
-        'Storage Path': image.storage_path || '',
-        'Mock URL': image.image_url.startsWith('blob:') ? 'Local mock object URL' : image.image_url,
-        'MIME Type': image.mime_type || '',
-        'Size Bytes': image.size_bytes || 0,
-        'Created At': image.created_at,
-      })),
+    rows: buildReportImageMetadataRows(images, reports),
   }])
+}
+
+export function buildReportImageMetadataRows(
+  images: ReportImage[],
+  reports: Report[],
+): Record<string, unknown>[] {
+  const reportIds = new Set(reports.map(report => report.id))
+  return images.filter(image => reportIds.has(image.report_id)).map(image => ({
+    'Report ID': image.report_id,
+    Category: image.image_type,
+    'Original Name': image.original_name || '',
+    'Storage Path': image.storage_path || '',
+    'Mock URL': image.image_url.startsWith('blob:') ? 'Local mock object URL' : image.image_url,
+    'MIME Type': image.mime_type || '',
+    'Size Bytes': image.size_bytes || 0,
+    'Created At': image.created_at,
+  }))
 }
 
 export function downloadReportTemplate(): void {

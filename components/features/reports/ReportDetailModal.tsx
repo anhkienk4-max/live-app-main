@@ -19,7 +19,7 @@ import { formatCurrency } from '@/lib/utils/currency'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useToast } from '@/components/ui/toast'
 import { Textarea } from '@/components/ui/textarea'
-import { exportReportDetailToExcel } from '@/lib/utils/excelUtils'
+import { downloadReportExport } from '@/lib/services/reportExportService'
 import { numericMetric } from '@/lib/utils/ocrMetrics'
 import {
   clearReviewMetric,
@@ -280,7 +280,6 @@ export function ReportDetailModal({
   brands, 
   platforms,
   users,
-  campaigns = [],
   registrations = [],
   onUpdated,
 }: ReportDetailModalProps) {
@@ -490,17 +489,10 @@ export function ReportDetailModal({
     onUpdated?.()
   }
 
-  const exportDetail = () => exportReportDetailToExcel(report, {
-    shifts: [shift],
-    campaigns,
-    users,
-    registrations,
-    brands: new Map(brands.map(brand => [brand.id, brand.name])),
-    platforms: new Map(platforms.map(platform => [platform.id, platform.name])),
+  const exportDetail = () => void downloadReportExport('report', [report.id]).catch(error => {
+    toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
   })
 
-  // Fail closed without an actor. Members may export only reports they submitted;
-  // Leader/Admin use their explicit reports.export permission.
   const canExport = canExportReportDetail(currentUser, report.submitted_by)
 
   const rerunOcr = async () => {

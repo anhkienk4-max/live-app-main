@@ -139,15 +139,15 @@ test('desktop/mobile Calendar and report page wire exact targets without an eage
   assert.match(form, /targetUnavailable && <p role="alert"/)
 })
 
-test('Report detail export is fail-closed and respects Member submitter ownership', () => {
+test('Report detail download stays Admin-only until Leader Brand scope is authoritative', () => {
   const leader = { id: 'leader', role: 'leader', system_permission: 'leader' } as User
   assert.equal(canExportReportDetail(null, 'member'), false)
   assert.equal(canExportReportDetail(undefined, undefined), false)
   assert.equal(canExportReportDetail(member, undefined), false)
   assert.equal(canExportReportDetail(member, null), false)
   assert.equal(canExportReportDetail(member, 'other-member'), false)
-  assert.equal(canExportReportDetail(member, member.id), true)
-  assert.equal(canExportReportDetail(leader, 'other-member'), true)
+  assert.equal(canExportReportDetail(member, member.id), false)
+  assert.equal(canExportReportDetail(leader, 'other-member'), false)
   assert.equal(canExportReportDetail(admin, 'other-member'), true)
 })
 
