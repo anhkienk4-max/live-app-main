@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "754892295e830d400a1fec7375e111a7fc30ca70",
+    "head": "b5dbf197f2c7f710f00a5e79305b3c8bee99fbb6",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -77,11 +77,14 @@
       "app/api/ocr/vision/route.ts",
       "app/api/operational-files/route.ts",
       "app/api/operational-storage-setup/route.ts",
+      "app/api/operational-storage/attendance-folders/route.ts",
       "app/api/operations/analytics-snapshot/route.ts",
       "app/api/operations/calendar-export/route.ts",
       "app/api/operations/collection/route.ts",
       "app/api/operations/registration-context/route.ts",
+      "app/api/public/storage-resources/[id]/route.ts",
       "app/api/rbac/account-overrides/route.ts",
+      "app/api/rbac/capabilities/route.ts",
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
       "app/api/role-defaults/route.ts",
@@ -114,14 +117,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 90,
-        "components": 187,
-        "lib": 276,
+        "app": 93,
+        "components": 188,
+        "lib": 281,
         "scripts": 35,
-        "supabase": 128,
-        "tests": 333
+        "supabase": 129,
+        "tests": 338
       },
-      "total": 1049
+      "total": 1064
     },
     "tests": {
       "files": [
@@ -140,6 +143,7 @@
         "tests/ada-hls-security.test.ts",
         "tests/admin02/api-security.test.ts",
         "tests/analytics-actor-key.test.ts",
+        "tests/attendance-folder-materialization-handler.test.ts",
         "tests/auth-confirm-route.test.ts",
         "tests/auth-identity-bridge.test.tsx",
         "tests/auth-session-foundation.test.ts",
@@ -238,6 +242,8 @@
         "tests/production-auth-uat-contract.test.ts",
         "tests/production-shell-convergence.test.ts",
         "tests/profile-avatar-storage.test.ts",
+        "tests/public-storage-resource-handler.test.ts",
+        "tests/rbac-capabilities.test.ts",
         "tests/rbac02-account-overrides.test.ts",
         "tests/rc12-provider-runtime-diagnostics.test.ts",
         "tests/rc12-report-file-provider.test.ts",
@@ -296,6 +302,8 @@
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-filter01a-shifts.test.ts",
+        "tests/rc19-g2-inapp-camera.test.ts",
+        "tests/rc19-g3-import-bulk-export-registration.test.ts",
         "tests/rc19-my-payslip.test.ts",
         "tests/rc19-owner23-segmented-staffing.test.ts",
         "tests/rc19-postgres17-concurrency.integration.test.ts",
@@ -392,7 +400,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 266
+      "count": 271
     },
     "migrations": {
       "files": [
@@ -495,9 +503,10 @@
         "supabase/migrations/20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
         "supabase/migrations/20261102190000_rc19_batch01_1_agency_code.sql",
         "supabase/migrations/20261102200000_rc19_batch01_3_shift_identity_index.sql",
-        "supabase/migrations/20261103093137_rc19_unified_import_agency_supplemental_fields.sql"
+        "supabase/migrations/20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
+        "supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql"
       ],
-      "count": 100
+      "count": 101
     }
   },
   "verification": {
@@ -511,5 +520,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-04T02:30:48+07:00"
+  "synced_at": "2026-11-04T12:28:39+07:00"
 }
