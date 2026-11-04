@@ -5,6 +5,12 @@ import { ROLE_DEFAULTS_CATALOG } from '@/lib/rbac/roleDefaults'
 /** Permission names accepted by the matching authenticated RPC and RLS policy. */
 export const ACCOUNT_OVERRIDE_GRANTABLE_ROLES = {
   'audit.view_team': ['leader'],
+  'reports.submit': ['leader'],
+  'reports.review': ['leader'],
+  'swaps.request': ['member','leader'],
+  'swaps.approve': ['leader'],
+  'attendance.record_own': ['member','leader'],
+  'storage.upload': ['member','leader'],
 } as const satisfies Partial<Record<Permission, readonly SystemPermission[]>>
 export const ACCOUNT_OVERRIDE_GRANTABLE_PERMISSIONS = Object.keys(ACCOUNT_OVERRIDE_GRANTABLE_ROLES) as [keyof typeof ACCOUNT_OVERRIDE_GRANTABLE_ROLES]
 const grantable = new Set<Permission>(ACCOUNT_OVERRIDE_GRANTABLE_PERMISSIONS)

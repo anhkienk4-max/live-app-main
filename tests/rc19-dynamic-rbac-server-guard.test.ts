@@ -63,6 +63,24 @@ test('dynamic server guard fails closed on RPC failure or identity/policy mismat
   }
 })
 
+test('dynamic server guard accepts a catalog-approved account grant after a role-policy denial', async (t) => {
+  const previous = process.env.FEATURE_RBAC_DYNAMIC_ENFORCEMENT
+  process.env.FEATURE_RBAC_DYNAMIC_ENFORCEMENT = 'true'
+  t.after(() => {
+    if (previous === undefined) delete process.env.FEATURE_RBAC_DYNAMIC_ENFORCEMENT
+    else process.env.FEATURE_RBAC_DYNAMIC_ENFORCEMENT = previous
+  })
+
+  await assert.doesNotReject(() => requirePermission(request(), 'reports.submit', async () => leader, async () => ({
+    rpc: async (name, args) => {
+      assert.equal(name, 'rbac_permission_decision')
+      assert.deepEqual(args, { p_permission: 'reports.submit' })
+      return { data: decision({ permission: 'reports.submit', allowed: true, source: 'account_allow',
+        reason: 'Authenticated, scoped report submission grant.' }), error: null }
+    },
+  })))
+})
+
 test('dynamic database grants cannot override hard finance restrictions', async (t) => {
   const previous = process.env.FEATURE_RBAC_DYNAMIC_ENFORCEMENT
   process.env.FEATURE_RBAC_DYNAMIC_ENFORCEMENT = 'true'

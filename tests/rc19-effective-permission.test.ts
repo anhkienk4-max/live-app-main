@@ -41,6 +41,12 @@ test('account Deny wins; only catalog-approved account Allow exceeds role policy
   assert.equal(extraLeaderAction.allowed, true)
   assert.equal(extraLeaderAction.source, 'account_allow')
 
+  const scopedReportGrant = resolveEffectivePermission({ role: 'leader', permission: 'reports.submit', now: base.now,
+    roleOverride: { ...approvedRoleDeny, decision: 'deny' },
+    accountOverride: { decision: 'allow', version: 1, currentVersion: 1 } })
+  assert.equal(scopedReportGrant.allowed, true)
+  assert.equal(scopedReportGrant.source, 'account_allow')
+
   for (const [override, expectedSource] of [
     [{ decision: 'deny', version: 1, currentVersion: 1, expiresAt: '2026-11-03T00:00:00Z' }, 'expired'],
     [{ decision: 'deny', version: 1, currentVersion: 1, revokedAt: '2026-11-03T00:00:00Z' }, 'revoked'],
@@ -70,7 +76,10 @@ test('hard restrictions, stale versions, self-approval and business scope fail c
 })
 
 test('account override grantability is explicit and excludes hard admin permissions', () => {
-  assert.deepEqual(ACCOUNT_OVERRIDE_GRANTABLE_PERMISSIONS, ['audit.view_team'])
+  assert.deepEqual(ACCOUNT_OVERRIDE_GRANTABLE_PERMISSIONS, [
+    'audit.view_team','reports.submit','reports.review','swaps.request','swaps.approve',
+    'attendance.record_own','storage.upload',
+  ])
   assert.equal(ACCOUNT_OVERRIDE_CATALOG.some(item => item.permission === 'permissions.manage' && item.grantable), false)
   assert.equal(ACCOUNT_OVERRIDE_CATALOG.some(item => item.permission === 'payroll.manage' && item.grantable), false)
   assert.equal(ACCOUNT_OVERRIDE_CATALOG.length, ROLE_DEFAULTS_CATALOG.length)

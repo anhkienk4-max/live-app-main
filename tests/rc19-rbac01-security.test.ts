@@ -43,7 +43,11 @@ test('RBAC-01 rejects escalation, service role injection, admin bootstrap and un
  assert.deepEqual(validateRoleDefaultProposal('admin',{'settings.admin':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
  assert.deepEqual(validateRoleDefaultProposal('leader',{'audit.view_team':'deny'}),{ok:true})
  assert.deepEqual(validateRoleDefaultProposal('admin',{'audit.view_team':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
- assert.deepEqual(validateRoleDefaultProposal('leader',{'shifts.view_assigned':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
+ assert.deepEqual(validateRoleDefaultProposal('leader',{'shifts.assign_staff':'deny'}),{ok:true})
+ assert.deepEqual(validateRoleDefaultProposal('leader',{'shifts.assign_staff':'allow'}),{ok:true})
+ assert.deepEqual(validateRoleDefaultProposal('leader',{'reports.submit':'allow'}),{ok:true})
+ assert.deepEqual(validateRoleDefaultProposal('member',{'shifts.assign_staff':'allow'}),{ok:false,code:'PRIVILEGE_ESCALATION_DENIED'})
+ assert.deepEqual(validateRoleDefaultProposal('leader',{'reports.export':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
 })
 test('RBAC-01 denies unauthenticated and forged Member/Leader API POST before RPC',async()=>{
  let rpcCalls=0
