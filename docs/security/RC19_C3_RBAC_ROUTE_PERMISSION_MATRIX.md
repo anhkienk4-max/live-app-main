@@ -17,6 +17,11 @@ replace the existing shift, submitter, participant, or self-identity checks.
 Finance, Payroll administration, Admin bootstrap, report export, and destructive
 management permissions remain locked.
 
+Migration `20261104113000_rc19_c3_staffing_permission_guard.sql` binds manual
+staffing assignment and removal rows to the authenticated `shifts.assign_staff`
+database decision whenever the RBAC runtime gate is enabled. Registration approval
+remains a locked Leader/Admin action enforced by its existing authoritative RPCs.
+
 | API or operation | Permission | Existing database/business scope | Regression evidence |
 | --- | --- | --- | --- |
 | `GET/POST/DELETE /api/operational-files` | `shifts.view_assigned`, `storage.upload`, `storage.delete` | Shift/Brand/Platform/day/execution-source scope is resolved from stored records; members must be assigned to the shift. | `rc19-c3-mutation-authorization.test.ts`, `rc19-storage-security-patch.test.ts` |
@@ -24,6 +29,8 @@ management permissions remain locked.
 | `POST/GET /api/workforce/self-attendance-photo` and `/correction` | `attendance.record_own` | Session RPCs bind event, actor, approved registration, and shift; photo revisions are immutable. | `rc19-self-attendance-contract.test.ts`, `rc19-g2-inapp-camera.test.ts` |
 | `POST /api/workforce/attendance-evidence-review` | `reports.review` | Reviewer identity is derived from session and `can_read_shift`; payload cannot choose reviewer or another staff member. | `rc19-attendance-evidence-review-api.test.ts` |
 | `/api/workforce/actual` | `shifts.assign_staff` | Parent shift and segment IDs are reloaded server-side; actor and assignment scope are validated before writes. | `rc19-c3-mutation-authorization.test.ts`, `rc19-owner23-segmented-staffing.test.ts` |
+| Staffing assignment and removal RPCs | `shifts.assign_staff` | `shift_registrations` insert/status boundary rechecks the authenticated database permission; existing RPCs retain Leader/Admin role and shift eligibility checks. | `rbac-enforcement/pg17_assertions.sql`, `rc19-wave2-combined-postgres.integration.mjs` |
+| Registration review RPCs | locked `shifts.approve_registration` | Single and bulk approval/rejection RPCs derive the actor from Supabase identity and require verified Leader/Admin; Member and forged-role denial remains covered. | `rc19-wave2-combined-postgres.integration.mjs`, `rc19-reg02-postgres.integration.mjs` |
 | Swap request service RPCs | `swaps.request`, `swaps.approve` | RPCs validate requester-owned source registration, counterpart eligibility, transition, and expected version; an authenticated DB trigger checks the matching permission when the DB runtime gate is on. | `rc19-swap-conflict-preflight.test.ts`, `shift-swap-p0.test.ts`, `rbac-enforcement/pg17_assertions.sql` |
 | `POST/GET /api/report-artifacts`, `/api/report-images` | `reports.submit`; review paths use `reports.review` | Report writes/readbacks bind to stored shift, submitter, Brand, and image authorization RPCs. | `rc19-report-scopes-101.test.ts`, `rc19-attendance-evidence-review-api.test.ts`, `report-storage-security` suite |
 | `GET /api/workforce/overview` | Admin/Leader role guard | Existing role gate and complete staff/period reads remain; this path does not consume the dynamic permission RPC and its Leader team/Brand scope is not represented by the C3 catalog. | `workforce-scope-pagination.test.ts`, `rc19-self-attendance-contract.test.ts` |

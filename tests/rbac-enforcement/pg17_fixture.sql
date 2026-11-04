@@ -58,10 +58,26 @@ GRANT SELECT,INSERT,UPDATE ON public.swap_requests TO authenticated;
 CREATE POLICY swap_requests_disposable_test_scope ON public.swap_requests
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+CREATE TABLE public.shift_registrations (
+  id text PRIMARY KEY,
+  shift_id text NOT NULL,
+  user_id text NOT NULL,
+  source text NOT NULL,
+  status text NOT NULL,
+  reviewed_by text
+);
+ALTER TABLE public.shift_registrations ENABLE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON public.shift_registrations TO authenticated;
+CREATE POLICY shift_registrations_disposable_test_scope ON public.shift_registrations
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+INSERT INTO public.shift_registrations(id,shift_id,user_id,source,status,reviewed_by)
+VALUES ('assignment-removal','shift-rbac','member-a','self_registration','approved','leader-a');
+
 \i supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql
 \i supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql
 \i supabase/migrations/20261104093735_rc19_rbac03_supported_permission_enforcement.sql
 \i supabase/migrations/20261104110000_rc19_c3_scoped_action_catalog.sql
+\i supabase/migrations/20261104113000_rc19_c3_staffing_permission_guard.sql
 
 DO $$
 BEGIN

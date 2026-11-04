@@ -10,6 +10,8 @@ DO $$ BEGIN
   IF (public.rbac_permission_decision('audit.view_team')->>'actor_business_user_id') <> 'leader-a' THEN
     RAISE EXCEPTION 'AUTH_IDENTITY_MAPPING_FAILED';
   END IF;
+  INSERT INTO public.shift_registrations(id,shift_id,user_id,source,status,reviewed_by)
+  VALUES ('legacy-assignment','shift-rbac','member-a','manual_assignment','manually_assigned','leader-a');
 END $$;
 RESET ROLE;
 RESET request.jwt.claim.sub;
@@ -221,6 +223,56 @@ DO $$ BEGIN
     RAISE EXCEPTION 'UNSUPPORTED_ROLE_OVERRIDE_WAS_ACCEPTED';
   EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
   END;
+END $$;
+RESET ROLE;
+
+-- Staffing assignment and removal consult the same active database decision.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT (public.rbac01_propose_role_defaults('leader','{"shifts.assign_staff":"deny"}'::jsonb,
+  'Disable Leader staffing assignments',0)->>'id')::bigint AS assignment_role_proposal_id \gset
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000012';
+SET ROLE authenticated;
+SELECT public.rbac01_approve_role_defaults(:'assignment_role_proposal_id'::bigint);
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.rbac01_activate_role_defaults(:'assignment_role_proposal_id'::bigint,0,NULL);
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF public.rbac01_effective_permission('shifts.assign_staff') IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'STAFF_ASSIGNMENT_ROLE_DENY_NOT_APPLIED';
+  END IF;
+  BEGIN
+    INSERT INTO public.shift_registrations(id,shift_id,user_id,source,status,reviewed_by)
+    VALUES ('denied-assignment','shift-rbac','member-a','manual_assignment','manually_assigned','leader-a');
+    RAISE EXCEPTION 'DENIED_STAFF_ASSIGNMENT_WAS_ACCEPTED';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+  BEGIN
+    UPDATE public.shift_registrations SET status='removed'
+    WHERE id='assignment-removal';
+    RAISE EXCEPTION 'DENIED_STAFF_REMOVAL_WAS_ACCEPTED';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.rbac01_rollback_role_defaults(:'assignment_role_proposal_id'::bigint);
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF public.rbac01_effective_permission('shifts.assign_staff') IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'STAFF_ASSIGNMENT_ROLE_ROLLBACK_FAILED';
+  END IF;
+  UPDATE public.shift_registrations SET status='removed'
+  WHERE id='assignment-removal';
+  IF NOT FOUND THEN RAISE EXCEPTION 'STAFF_REMOVAL_AFTER_POLICY_ROLLBACK_FAILED'; END IF;
 END $$;
 RESET ROLE;
 
