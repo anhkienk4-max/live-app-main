@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   authorizationErrorResponse,
   isAuthorizationError,
-  requireRole,
+  requirePermission,
   resolveServerUser,
   type ServerUserResolver,
 } from '@/lib/server/authGuards'
@@ -49,7 +49,7 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
       const action = url.searchParams.get('action') || 'list_batches'
 
       try {
-        await requireRole(req, ['admin', 'leader'], depends.resolveUser ?? resolveServerUser)
+        await requirePermission(req, 'reports.review', depends.resolveUser ?? resolveServerUser)
 
         const client = getClient()
 
@@ -142,7 +142,7 @@ export function createHistoricalAttendanceHandler(depends: HistoricalAttendanceH
       if (!isEnabled()) return fail('WORKFORCE_FEATURE_DISABLED', 404)
 
       try {
-        const user = await requireRole(req, ['admin', 'leader'], depends.resolveUser ?? resolveServerUser)
+        const user = await requirePermission(req, 'reports.review', depends.resolveUser ?? resolveServerUser)
 
         const body = (await readJsonBody(req, 10 * 1024 * 1024)) as {
           action?: string

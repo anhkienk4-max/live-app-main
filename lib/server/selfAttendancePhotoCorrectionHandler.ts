@@ -1,7 +1,7 @@
 import 'server-only'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { requireUser, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
+import { requirePermission, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { attendancePhotoName } from '@/lib/utils/attendancePhotoNaming'
@@ -15,7 +15,7 @@ const headers={'Cache-Control':'no-store'}
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},{status,headers})
 export async function GET(request:Request) {
   try {
-    const actor=await requireUser(request)
+    const actor=await requirePermission(request,'attendance.record_own')
     if(!actor.businessUserId)return fail('PERMISSION_DENIED',403)
     const eventId=uuid.parse(new URL(request.url).searchParams.get('event_id'))
     const session=await createSessionClient()
@@ -35,7 +35,7 @@ export async function POST(request:Request) {
   let pendingRequestId:string|null=null
   try {
     if(request.headers.get('origin')!==new URL(request.url).origin)return fail('ATTENDANCE_PHOTO_ORIGIN_INVALID',403)
-    const actor=await requireUser(request)
+    const actor=await requirePermission(request,'attendance.record_own')
     if(!actor.businessUserId)return fail('PERMISSION_DENIED',403)
     if(process.env.FEATURE_SELF_ATTENDANCE_REVIEW!=='true'||process.env.FEATURE_SELF_ATTENDANCE_PHOTO!=='true'||process.env.FILE_STORAGE_ENABLED!=='true')return fail('ATTENDANCE_REVIEW_DISABLED',503)
     const rate=consumeRateLimit({key:`attendance-photo-correction:${actor.businessUserId}`,limit:6,windowMs:60*60*1000})

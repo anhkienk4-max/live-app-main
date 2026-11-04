@@ -2,7 +2,7 @@ import 'server-only'
 import { operationsResponseOwnerKey } from '@/lib/server/operationsResponseOwnerKey'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { requireRole, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from './authGuards'
+import { requirePermission, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from './authGuards'
 import { readJsonBody, RequestBodyError } from './apiSecurity'
 import { createOperationsCollectionHandler, listFiltersSchema } from './operationsCollectionHandler'
 import { buildScheduleExportRows } from '@/lib/utils/scheduleExportUtils'
@@ -22,7 +22,7 @@ type Depends = { resolveUser?: ServerUserResolver; createClient?: () => Promise<
 export function createCalendarExportHandler(deps: Depends = {}) {
   return { async POST(request: Request): Promise<Response> {
     try {
-      const user = await requireRole(request, ['admin', 'leader'], deps.resolveUser)
+      const user = await requirePermission(request, 'shifts.export', deps.resolveUser)
       const input = inputSchema.parse(await readJsonBody(request, 16 * 1024))
       if (input.fields) {
         const staticFields = input.fields.filter(id => id !== SUPPLEMENTAL_EXPORT_ALL_ID)
@@ -96,7 +96,7 @@ export function createCalendarExportHandler(deps: Depends = {}) {
       data.schedule = buildScheduleExportRows(shifts, brands, platforms, campaigns, users, registrations) as unknown as ExportRecord[]
       data.registrations = registrations.map(row => ({ id: row.id, shift_id: row.shift_id, staff_name: names.get(row.user_id) ?? row.imported_name ?? '', operational_role: row.operational_role, status: row.status, source: row.source }))
       const finalPage = await readPage(1)
-      const latestUser = await requireRole(request, ['admin', 'leader'], deps.resolveUser)
+      const latestUser = await requirePermission(request, 'shifts.export', deps.resolveUser)
       if (latestUser.id !== user.id || operationsResponseOwnerKey(latestUser) !== operationsResponseOwnerKey(user) || finalPage.total !== total || finalPage.ownerKey !== operationsResponseOwnerKey(user)) return fail('EXPORT_COLLECTION_CHANGED', 409)
       const body = buildCalendarExport(data, fields, input.format)
       return new Response(body, { headers: { 'Content-Type': input.format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv; charset=utf-8',

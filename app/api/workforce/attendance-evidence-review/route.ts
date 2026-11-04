@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { requireRole, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
+import { requirePermission, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 
@@ -18,7 +18,7 @@ const uid = (request: Request) => request.headers.get('origin') === new URL(requ
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireRole(request, ['admin', 'leader'])
+    const actor = await requirePermission(request, 'reports.review')
     if (!actor.businessUserId) return fail('PERMISSION_DENIED', 403)
     if (process.env.FEATURE_SELF_ATTENDANCE_REVIEW !== 'true') return fail('ATTENDANCE_REVIEW_DISABLED', 503)
     const session = await createSessionClient()
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     if (!uid(request)) return fail('ATTENDANCE_REVIEW_ORIGIN_INVALID', 403)
-    const actor = await requireRole(request, ['admin', 'leader'])
+    const actor = await requirePermission(request, 'reports.review')
     if (!actor.businessUserId) return fail('PERMISSION_DENIED', 403)
     if (process.env.FEATURE_SELF_ATTENDANCE_REVIEW !== 'true') return fail('ATTENDANCE_REVIEW_DISABLED', 503)
     const parsed = attendanceReviewBodySchema.safeParse(await request.json())

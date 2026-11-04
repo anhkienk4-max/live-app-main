@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { authorizationErrorResponse, isAuthorizationError, requireRole, type ServerUserResolver } from '@/lib/server/authGuards'
+import { authorizationErrorResponse, isAuthorizationError, requirePermission, type ServerUserResolver } from '@/lib/server/authGuards'
 import { permissionMatrix } from '@/lib/permissions'
 import { ROLE_DEFAULTS_CATALOG, RBAC01_ISOLATED_DOMAINS, validateRoleDefaultProposal } from '@/lib/rbac/roleDefaults'
 import { createClient } from '@/lib/supabase/server'
@@ -36,7 +36,7 @@ export function createRbac01RoleDefaultsHandler(options:Options={}) {
   return {
     GET:async(request:Request)=>{
       try {
-        await requireRole(request,'admin',options.resolveUser)
+        await requirePermission(request,'permissions.manage',options.resolveUser)
         const catalog={
           catalog:ROLE_DEFAULTS_CATALOG,
           legacy:{
@@ -59,7 +59,7 @@ export function createRbac01RoleDefaultsHandler(options:Options={}) {
     },
     POST:async(request:Request)=>{
       try {
-        await requireRole(request,'admin',options.resolveUser)
+        await requirePermission(request,'permissions.manage',options.resolveUser)
         if(!enabled())return json({ok:false,error:{code:'RBAC01_DISABLED'}},503)
         if(Number(request.headers.get('content-length')||0)>16384)return json({ok:false,error:{code:'BODY_TOO_LARGE'}},413)
         let input:unknown

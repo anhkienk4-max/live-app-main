@@ -49,7 +49,7 @@ jobs:
           echo "Verified Head SHA: ${{ github.sha }}"
           git rev-parse HEAD
 
-      - name: Verify PostgreSQL 17 and create isolated Storage test databases
+      - name: Verify PostgreSQL 17 and create isolated test databases
         env:
           PGPASSWORD: rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -65,6 +65,9 @@ jobs:
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_unified_import_disposable IS 'RC19_UNIFIED_IMPORT_DISPOSABLE_TEST_DATABASE'"
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_concurrency_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_concurrency_disposable IS 'RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE'"
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac01_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac01b_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac02_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_restore_disposable TEMPLATE template0'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_restore_disposable IS 'RC19_RESTORE_DISPOSABLE_TEST_DATABASE'"
           marker="$(psql -h localhost -U rc19_ci -d postgres -Atqc "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = 'rc19_concurrency_disposable'")"
@@ -94,6 +97,28 @@ jobs:
 
       - name: Validate canonical project memory
         run: pnpm run memory:validate
+
+      - name: RBAC API negative authorization and resolver tests
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-effective-permission.test.ts \
+            tests/rc19-c3-mutation-authorization.test.ts \
+            tests/rc19-rbac01-security.test.ts \
+            tests/rc19-rbac01b-audit-slice.test.ts \
+            tests/rbac02-account-overrides.test.ts \
+            tests/rbac-capabilities.test.ts
+
+      - name: Disposable PostgreSQL 17 RBAC catalog and RLS contracts
+        env:
+          PGPASSWORD: rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          psql -h localhost -U rc19_ci -d rc19_rbac01_disposable -v ON_ERROR_STOP=1 \
+            -f tests/rbac01/pg17_fixture.sql -f tests/rbac01/pg17_assertions.sql
+          psql -h localhost -U rc19_ci -d rc19_rbac01b_disposable -v ON_ERROR_STOP=1 \
+            -f tests/rbac01b/pg17_fixture.sql -f tests/rbac01b/pg17_assertions.sql
+          psql -h localhost -U rc19_ci -d rc19_rbac02_disposable -v ON_ERROR_STOP=1 \
+            -f tests/rbac02/pg17_fixture.sql -f tests/rbac02/pg17_assertions.sql
+          echo "RBAC SQL fixtures are review-only contracts; no Supabase migration was added or applied." >> "$GITHUB_STEP_SUMMARY"
 
       - name: PostgreSQL 17 Multi-Connection Concurrency Gate
         env:

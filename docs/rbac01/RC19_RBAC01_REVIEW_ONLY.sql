@@ -82,26 +82,35 @@ BEGIN
    'shifts.lock','shifts.import','shifts.export','reports.submit','reports.review',
    'reports.export','swaps.request','swaps.approve','swaps.export','profile.edit_own',
    'brands.manage','platforms.manage','campaigns.manage','campaigns.edit_operational',
-   'settings.member','settings.leader','audit.view','audit.view_team'
+   'settings.member','settings.leader','audit.view','audit.view_team',
+   'attendance.record_own','storage.upload','storage.edit_own','storage.delete',
+   'storage.resource_manage','payroll.view_own','payroll.manage'
   ) THEN RAISE EXCEPTION 'RBAC01_PRIVILEGE_ESCALATION_OR_UNKNOWN' USING ERRCODE='42501'; END IF;
+  IF v_value='deny' AND v_key IN (
+   'attendance.record_own','storage.edit_own','storage.resource_manage','payroll.view_own','payroll.manage'
+  ) THEN RAISE EXCEPTION 'RBAC01_SECURITY_BOUNDARY_LOCKED' USING ERRCODE='42501'; END IF;
   -- Only stage deny of permissions currently held by the target role.
   IF v_value='deny' AND NOT (
    (p_role='member' AND v_key IN (
      'shifts.view_assigned','shifts.view_open','shifts.register','shifts.cancel_registration',
-     'reports.submit','swaps.request','profile.edit_own','settings.member'))
+     'reports.submit','swaps.request','profile.edit_own','settings.member',
+     'attendance.record_own','storage.upload','storage.edit_own','payroll.view_own'))
    OR (p_role='leader' AND v_key IN (
      'shifts.view_assigned','shifts.view_open','shifts.register','shifts.cancel_registration',
      'reports.submit','swaps.request','profile.edit_own','settings.member',
      'shifts.approve_registration','shifts.assign_staff','shifts.edit','shifts.lock',
      'shifts.import','shifts.export','reports.review','reports.export','swaps.approve',
-     'swaps.export','settings.leader','campaigns.edit_operational','audit.view_team'))
+     'swaps.export','settings.leader','campaigns.edit_operational','audit.view_team',
+     'attendance.record_own','storage.upload','storage.edit_own','payroll.view_own','storage.delete'))
    OR (p_role='admin' AND v_key IN (
      'shifts.view_assigned','shifts.view_open','shifts.register','shifts.cancel_registration',
      'reports.submit','swaps.request','profile.edit_own','settings.member',
      'shifts.approve_registration','shifts.assign_staff','shifts.edit','shifts.lock',
      'shifts.import','shifts.export','reports.review','reports.export','swaps.approve',
      'swaps.export','settings.leader','campaigns.edit_operational','audit.view_team',
-     'brands.manage','platforms.manage','campaigns.manage','audit.view'))
+     'brands.manage','platforms.manage','campaigns.manage','audit.view',
+     'attendance.record_own','storage.upload','storage.edit_own','payroll.view_own','storage.delete',
+     'storage.resource_manage','payroll.manage'))
   ) THEN RAISE EXCEPTION 'RBAC01_NOT_A_LEGACY_GRANT' USING ERRCODE='42501'; END IF;
  END LOOP;
  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('rbac01:'||p_role,0));

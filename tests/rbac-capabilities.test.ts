@@ -22,6 +22,8 @@ test('RBAC capability contract requires a mapped business identity and never cac
   assert.equal(response.status, 200)
   assert.match(response.headers.get('cache-control') ?? '', /no-store/)
   assert.equal(body.role, 'member')
+  assert.ok(body.permissions.every((item: { source: string; reason: string; accountOverrideGrantable: boolean }) =>
+    typeof item.source === 'string' && typeof item.reason === 'string' && typeof item.accountOverrideGrantable === 'boolean'))
   assert.deepEqual(
     body.permissions.filter((item: { allowed: boolean }) => item.allowed).map((item: { permission: string }) => item.permission).sort(),
     [...permissionMatrix.member].sort(),

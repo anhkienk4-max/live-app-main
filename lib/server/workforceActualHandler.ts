@@ -4,7 +4,7 @@ import { isFeatureEnabled } from '@/lib/flags'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { authorizationErrorResponse, isAuthorizationError,
-  requireRole, type ServerUserResolver } from '@/lib/server/authGuards'
+  requirePermission, type ServerUserResolver } from '@/lib/server/authGuards'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
@@ -224,7 +224,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
   return {
     GET(request: Request) {
       return guard(async () => {
-        await requireRole(request, ['admin', 'leader'], deps.resolveUser)
+        await requirePermission(request, 'shifts.assign_staff', deps.resolveUser)
         if (!(deps.isEnabled ?? (() => isFeatureEnabled('actual_staffing')))())
           return fail('WORKFORCE_FEATURE_DISABLED', 503)
         const search = new URL(request.url).searchParams
@@ -320,7 +320,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
 
     POST(request: Request) {
       return guard(async () => {
-        const user = await requireRole(request, ['admin', 'leader'], deps.resolveUser)
+        const user = await requirePermission(request, 'shifts.assign_staff', deps.resolveUser)
         if (!(deps.isEnabled ?? (() => isFeatureEnabled('actual_staffing')))())
           return fail('WORKFORCE_FEATURE_DISABLED', 503)
 

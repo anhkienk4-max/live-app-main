@@ -33,6 +33,13 @@ export type Permission =
   | 'audit.restore'
   | 'audit.review'
   | 'data.force_delete'
+  | 'attendance.record_own'
+  | 'storage.upload'
+  | 'storage.edit_own'
+  | 'storage.delete'
+  | 'storage.resource_manage'
+  | 'payroll.view_own'
+  | 'payroll.manage'
 
 const memberPermissions: Permission[] = [
   'shifts.view_assigned',
@@ -43,6 +50,10 @@ const memberPermissions: Permission[] = [
   'swaps.request',
   'profile.edit_own',
   'settings.member',
+  'attendance.record_own',
+  'storage.upload',
+  'storage.edit_own',
+  'payroll.view_own',
 ]
 
 const leaderPermissions: Permission[] = [
@@ -60,6 +71,7 @@ const leaderPermissions: Permission[] = [
   'settings.leader',
   'campaigns.edit_operational',
   'audit.view_team',
+  'storage.delete',
 ]
 
 const adminPermissions: Permission[] = [
@@ -75,6 +87,8 @@ const adminPermissions: Permission[] = [
   'audit.review',
   'data.force_delete',
   'shifts.delete',
+  'storage.resource_manage',
+  'payroll.manage',
 ]
 
 export const permissionMatrix: Record<SystemPermission, ReadonlySet<Permission>> = {

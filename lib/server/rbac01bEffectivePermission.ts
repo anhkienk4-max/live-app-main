@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Permission } from '@/lib/permissions'
-import { permissionMatrix } from '@/lib/permissions'
+import { resolveEffectivePermission } from '@/lib/rbac/effectivePermission'
 import {
   AuthorizationError,
   requireUser,
@@ -24,7 +24,7 @@ export async function requireEffectiveAuditTeamPermission(
 ): Promise<AuthenticatedServerUser> {
   const actor = await requireUser(request, options.resolveUser)
   const permission: Permission = RBAC01B_SLICE_PERMISSION
-  if (!permissionMatrix[actor.systemPermission].has(permission)) {
+  if (!resolveEffectivePermission({ role: actor.systemPermission, permission }).allowed) {
     throw new AuthorizationError(403, 'PERMISSION_DENIED', 'Audit visibility is not granted to this role.')
   }
   // The Admin audit.view path is independent and not subject to Leader-only override.

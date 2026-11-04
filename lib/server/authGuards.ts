@@ -1,10 +1,8 @@
 import type { SystemPermission } from '@/lib/types/database.types'
 import { createAuthIdentity, mapAuthIdentityToBusinessUser } from '@/lib/auth/authIdentity'
 import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
-import {
-  permissionMatrix,
-  type Permission,
-} from '@/lib/permissions'
+import type { Permission } from '@/lib/permissions'
+import { resolveEffectivePermission } from '@/lib/rbac/effectivePermission'
 
 export interface AuthenticatedServerUser {
   id: string
@@ -102,8 +100,14 @@ export async function requirePermission(
   resolveUser: ServerUserResolver = resolveServerUser,
 ): Promise<AuthenticatedServerUser> {
   const user = await requireUser(request, resolveUser)
-  if (!permissionMatrix[user.systemPermission].has(permission)) {
-    console.warn('OPS_PERMISSION_DENIED', { route: new URL(request.url).pathname, requiredPermission: permission, actorPermission: user.systemPermission })
+  const effective = resolveEffectivePermission({ role: user.systemPermission, permission })
+  if (!effective.allowed) {
+    console.warn('OPS_PERMISSION_DENIED', {
+      route: new URL(request.url).pathname,
+      requiredPermission: permission,
+      actorPermission: user.systemPermission,
+      source: effective.source,
+    })
     throw new AuthorizationError(
       403,
       'PERMISSION_DENIED',

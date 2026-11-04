@@ -2,7 +2,7 @@ import 'server-only'
 
 import { z } from 'zod'
 import { isFeatureEnabled } from '@/lib/flags'
-import { authorizationErrorResponse, isAuthorizationError, requireRole, requireUser, type ServerUserResolver } from '@/lib/server/authGuards'
+import { authorizationErrorResponse, isAuthorizationError, requirePermission, requireUser, type ServerUserResolver } from '@/lib/server/authGuards'
 import { createClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
@@ -133,7 +133,7 @@ export function createAttendancePhotoReviewHandler(deps: Dependencies = {}) {
     POST: async (request: Request) => {
       try {
         if (!hasExactOrigin(request)) return fail('ATTENDANCE_REVIEW_ORIGIN_INVALID',403)
-        const actor = await requireRole(request, ['admin', 'leader'], deps.resolveUser)
+        const actor = await requirePermission(request, 'reports.review', deps.resolveUser)
         if (!actor.businessUserId) return fail('ATTENDANCE_REVIEW_ACTOR_REQUIRED', 403)
         if (!enabled()) return fail('ATTENDANCE_REVIEW_DISABLED', 404)
         const body = decisionSchema.parse(await readJsonBody(request, 8_192))

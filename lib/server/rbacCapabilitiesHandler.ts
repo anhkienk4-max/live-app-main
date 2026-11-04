@@ -1,7 +1,8 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ROLE_DEFAULTS_CATALOG } from '@/lib/rbac/roleDefaults'
-import { permissionMatrix } from '@/lib/permissions'
+import { resolveEffectivePermission } from '@/lib/rbac/effectivePermission'
+import { isAccountOverrideGrantable } from '@/lib/rbac/accountOverrideCatalog'
 import {
   AuthorizationError,
   authorizationErrorResponse,
@@ -34,25 +35,32 @@ export function createRbacCapabilitiesHandler(options: Options = {}) {
         throw new AuthorizationError(403, 'PERMISSION_DENIED', 'A verified business account is required.')
       }
 
-      const allowed = new Set(permissionMatrix[actor.systemPermission])
-      let auditTeamSource: 'legacy_matrix' | 'database' = 'legacy_matrix'
+      const effective = new Map(ROLE_DEFAULTS_CATALOG.map(entry => [
+        entry.permission,
+        resolveEffectivePermission({ role: actor.systemPermission, permission: entry.permission }),
+      ]))
+      let auditTeamDatabaseResult: boolean | null = null
       if (actor.systemPermission === 'leader' && auditTeamEnabled()) {
         const result = await (await db()).rpc('rbac01_effective_permission', { p_permission: 'audit.view_team' })
         if (result.error || typeof result.data !== 'boolean') {
           return json({ ok: false, error: { code: 'RBAC_CAPABILITIES_UNAVAILABLE' } }, 503)
         }
-        if (result.data) allowed.add('audit.view_team')
-        else allowed.delete('audit.view_team')
-        auditTeamSource = 'database'
+        auditTeamDatabaseResult = result.data
       }
 
       const permissions = ROLE_DEFAULTS_CATALOG.map(entry => ({
         permission: entry.permission,
         module: entry.module,
         action: entry.action,
-        allowed: allowed.has(entry.permission),
-        source: entry.permission === 'audit.view_team' ? auditTeamSource : 'legacy_matrix',
+        allowed: entry.permission === 'audit.view_team' && auditTeamDatabaseResult !== null
+          ? auditTeamDatabaseResult : effective.get(entry.permission)!.allowed,
+        source: entry.permission === 'audit.view_team' && auditTeamDatabaseResult !== null
+          ? 'database' : effective.get(entry.permission)!.source,
+        reason: entry.permission === 'audit.view_team' && auditTeamDatabaseResult !== null
+          ? 'The signed-user policy RPC returned an effective result; this RPC does not expose the underlying version source.'
+          : effective.get(entry.permission)!.reason,
         locked: entry.locked,
+        accountOverrideGrantable: isAccountOverrideGrantable(entry.permission),
         ...(entry.reason ? { reason: entry.reason } : {}),
       }))
       return json({ ok: true, role: actor.systemPermission, permissions })

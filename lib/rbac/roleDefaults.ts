@@ -2,8 +2,8 @@ import type { SystemPermission } from '@/lib/types/database.types'
 import { permissionMatrix, type Permission } from '@/lib/permissions'
 
 export type RoleDefaultsDecision = 'inherit' | 'allow' | 'deny'
-export type RoleDefaultsDomain = 'shifts' | 'reports' | 'swaps' | 'profile' | 'staff' | 'catalog' | 'settings' | 'audit' | 'data'
-export type RoleDefaultsAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' | 'manage' | 'restore' | 'request' | 'lock'
+export type RoleDefaultsDomain = 'shifts' | 'reports' | 'swaps' | 'profile' | 'staff' | 'catalog' | 'settings' | 'audit' | 'data' | 'attendance' | 'storage' | 'payroll'
+export type RoleDefaultsAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' | 'manage' | 'restore' | 'request' | 'lock' | 'upload'
 export type RoleDefaultsCatalogItem = {
   permission: Permission
   module: RoleDefaultsDomain
@@ -41,6 +41,11 @@ export const ROLE_DEFAULTS_CATALOG: readonly RoleDefaultsCatalogItem[] = [
   item('audit.view', 'audit', 'view'), { ...item('audit.view_team', 'audit', 'view'), locked: false },
   item('audit.restore', 'audit', 'restore', 'Audit integrity boundary locked'), item('audit.review', 'audit', 'approve', 'Audit approval boundary locked'),
   item('data.force_delete', 'data', 'delete', 'Destructive capability locked'),
+  item('attendance.record_own', 'attendance', 'create', 'Self-only check-in/out and correction RPCs remain authoritative'),
+  item('storage.upload', 'storage', 'upload'), item('storage.edit_own', 'storage', 'edit', 'Resource ownership is still checked by the database RPC'),
+  item('storage.delete', 'storage', 'delete'), item('storage.resource_manage', 'storage', 'manage', 'Resource scope and ACL checks remain in the database RPC'),
+  item('payroll.view_own', 'payroll', 'view', 'Self-only locked payslip reads remain authoritative'),
+  item('payroll.manage', 'payroll', 'manage', 'Payroll administration is isolated from account overrides'),
 ] as const
 
 export const RBAC01_ISOLATED_DOMAINS = ['finance', 'payroll', 'provider_credentials', 'private_storage'] as const

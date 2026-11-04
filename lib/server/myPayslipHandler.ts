@@ -1,7 +1,7 @@
 import 'server-only'
 import { isFeatureEnabled } from '@/lib/flags'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
-import { requireUser, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from '@/lib/server/authGuards'
+import { requirePermission, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from '@/lib/server/authGuards'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 type Dependencies = {
@@ -21,7 +21,7 @@ export function createMyPayslipHandler(deps: Dependencies = {}) {
   return {
     async GET(request:Request):Promise<Response>{
       try{
-        const actor=await requireUser(request,resolve)
+        const actor=await requirePermission(request,'payroll.view_own',resolve)
         if (!actor.businessUserId || !idValue(actor.businessUserId) || !idValue(actor.id))
           return failed('MY_PAYSLIP_IDENTITY_REQUIRED',403)
         if (!(deps.isEnabled ?? (()=>isFeatureEnabled('my_payslip')))())

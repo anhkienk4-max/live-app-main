@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { z } from 'zod'
-import { authorizationErrorResponse, isAuthorizationError, requireRole, requireUser, type ServerUserResolver } from '@/lib/server/authGuards'
+import { authorizationErrorResponse, isAuthorizationError, requirePermission, requireUser, type ServerUserResolver } from '@/lib/server/authGuards'
 import { createClient } from '@/lib/supabase/server'
 import { fileStorageService } from '@/lib/services/fileStorageService'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
@@ -78,7 +78,7 @@ export function createStorageResourceRegistryHandler(resolveUser?: ServerUserRes
         if (!parsed.success) return Response.json({ ok: false, error: 'STORAGE_RESOURCE_INPUT_INVALID' }, { status: 400 })
         const input = parsed.data
         if (input.action === 'edit') {
-          const actor = await requireUser(request, resolveUser)
+          const actor = await requirePermission(request, 'storage.edit_own', resolveUser)
           if (!actor.businessUserId) return Response.json({ ok: false, error: 'BUSINESS_USER_REQUIRED' }, { status: 403 })
           const supabase = await createClient()
           const { data, error } = await supabase.rpc('storage_resource_registry_edit', {
@@ -87,7 +87,7 @@ export function createStorageResourceRegistryHandler(resolveUser?: ServerUserRes
           if (error) throw error
           return Response.json({ ok: true, resource: data }, { headers: { 'Cache-Control': 'no-store' } })
         }
-        const actor = await requireRole(request, 'admin', resolveUser)
+        const actor = await requirePermission(request, 'storage.resource_manage', resolveUser)
         const actorId = actor.businessUserId
         if (!actorId) return Response.json({ ok: false, error: 'BUSINESS_USER_REQUIRED' }, { status: 403 })
         const supabase = await createClient()

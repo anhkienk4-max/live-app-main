@@ -454,7 +454,7 @@ export function createOperationalFileRouteHandler(deps: {
     },
     POST(request: Request) {
       return run(async () => {
-        const actor = await requireUser(request, deps.resolveUser)
+        const actor = await requirePermission(request, 'storage.upload', deps.resolveUser)
         const elevated = actor.systemPermission === 'leader' || actor.systemPermission === 'admin'
         const contentType = request.headers.get('content-type') || ''
         if (!elevated && !contentType.includes('multipart/form-data')) return errorResponse('PERMISSION_DENIED', 403)
@@ -732,9 +732,8 @@ export function createOperationalFileRouteHandler(deps: {
     },
     DELETE(request: Request) {
       return run(async () => {
-        const actor = await requireUser(request, deps.resolveUser)
+        const actor = await requirePermission(request, 'storage.delete', deps.resolveUser)
         const parsed = removeFields.parse(await readJsonBody(request, 4096))
-        if (actor.systemPermission !== 'leader' && actor.systemPermission !== 'admin') return errorResponse('PERMISSION_DENIED', 403)
         const client = clientFactory()
         const row = await loadFile(client, parsed.file_id)
         if (!row) return errorResponse('OPERATIONAL_FILE_NOT_FOUND', 404)

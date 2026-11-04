@@ -1,16 +1,17 @@
 import 'server-only'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { ACCOUNT_OVERRIDE_CATALOG, ACCOUNT_OVERRIDE_GRANTABLE_PERMISSIONS } from '@/lib/rbac/accountOverrideCatalog'
 import {
   authorizationErrorResponse,
   AuthorizationError,
   isAuthorizationError,
-  requireRole,
+  requirePermission,
   type ServerUserResolver,
 } from '@/lib/server/authGuards'
 import { createClient } from '@/lib/supabase/server'
 
-const permission = z.literal('audit.view_team')
+const permission = z.enum(ACCOUNT_OVERRIDE_GRANTABLE_PERMISSIONS)
 const setSchema = z.object({
   action: z.literal('set'),
   targetId: z.string().min(1).max(100),
@@ -39,7 +40,7 @@ const response = (body: unknown, status = 200) => Response.json(body, {
   headers: { 'Cache-Control': 'private, no-store, max-age=0' },
 })
 
-/** Only audit.view_team is wired to database/RLS enforcement in RBAC-01B. */
+/** The catalog is broad and typed; only fully wired permissions are accepted by mutations. */
 export function createRbac02AccountOverridesHandler(options: Options = {}) {
   const enabled = options.enabled ?? (() => process.env.FEATURE_RBAC02_ACCOUNT_OVERRIDES === 'true')
   const createDb = options.createClient ?? createClient
@@ -47,11 +48,11 @@ export function createRbac02AccountOverridesHandler(options: Options = {}) {
     GET: async (request: Request) => {
       if (!enabled()) return response({ ok: false, error: { code: 'RBAC02_DISABLED' } }, 404)
       try {
-        const actor = await requireRole(request, 'admin', options.resolveUser)
+        const actor = await requirePermission(request, 'permissions.manage', options.resolveUser)
         if (!actor.businessUserId) throw new AuthorizationError(403, 'PERMISSION_DENIED', 'A verified business account is required.')
         const { data, error } = await (await createDb()).rpc('rbac02_list_account_overrides')
         if (error || !Array.isArray(data)) return response({ ok: false, error: { code: 'RBAC02_SCHEMA_UNAVAILABLE' } }, 503)
-        return response({ ok: true, entries: data, supportedPermissions: ['audit.view_team'] })
+        return response({ ok: true, entries: data, permissionCatalog: ACCOUNT_OVERRIDE_CATALOG })
       } catch (error) {
         if (isAuthorizationError(error)) return authorizationErrorResponse(error)
         return response({ ok: false, error: { code: 'RBAC02_UNAVAILABLE' } }, 503)
@@ -60,7 +61,7 @@ export function createRbac02AccountOverridesHandler(options: Options = {}) {
     POST: async (request: Request) => {
       if (!enabled()) return response({ ok: false, error: { code: 'RBAC02_DISABLED' } }, 404)
       try {
-        const actor = await requireRole(request, 'admin', options.resolveUser)
+        const actor = await requirePermission(request, 'permissions.manage', options.resolveUser)
         if (!actor.businessUserId) throw new AuthorizationError(403, 'PERMISSION_DENIED', 'A verified business account is required.')
         const rawLength = Number(request.headers.get('content-length') || 0)
         if (rawLength > 8192) return response({ ok: false, error: { code: 'BODY_TOO_LARGE' } }, 413)

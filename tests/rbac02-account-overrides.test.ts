@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createRbac02AccountOverridesHandler } from '../lib/server/rbac02AccountOverridesHandler'
+import { ROLE_DEFAULTS_CATALOG } from '../lib/rbac/roleDefaults'
 
 const request = (url='https://local/api/rbac/account-overrides', body?: unknown) => new Request(url, {
   method: body === undefined ? 'GET' : 'POST',
@@ -50,6 +51,22 @@ test('RBAC02 Admin API uses mapped session actor and never accepts actor identit
   }))
   assert.equal(forged.status, 400)
   assert.equal(calls.length, 1)
+})
+
+test('RBAC02 exposes typed grantability and keeps unsupported account permissions locked', async () => {
+  const handler = createRbac02AccountOverridesHandler({
+    enabled: () => true,
+    resolveUser: identity('admin', 'business-admin'),
+    createClient: async () => ({ rpc: async () => ({ data: [], error: null }) }) as never,
+  })
+  const response = await handler.GET(request())
+  const body = await response.json()
+  assert.equal(response.status, 200)
+  const audit = body.permissionCatalog.find((entry: { permission: string }) => entry.permission === 'audit.view_team')
+  const administration = body.permissionCatalog.find((entry: { permission: string }) => entry.permission === 'permissions.manage')
+  assert.equal(audit.grantable, true)
+  assert.equal(administration.grantable, false)
+  assert.equal(body.permissionCatalog.length, ROLE_DEFAULTS_CATALOG.length)
 })
 
 test('RBAC02 denies Member, unauthenticated and unmapped identities before RPC', async () => {

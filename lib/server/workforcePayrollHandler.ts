@@ -2,7 +2,7 @@ import 'server-only'
 import { isFeatureEnabled } from '@/lib/flags'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { authorizationErrorResponse, isAuthorizationError, requireRole,
+import { authorizationErrorResponse, isAuthorizationError, requirePermission,
   type ServerUserResolver } from '@/lib/server/authGuards'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
@@ -177,7 +177,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
   return {
     GET(request:Request){
       return run(async()=>{
-        await requireRole(request,'admin',options.resolveUser)
+        await requirePermission(request,'payroll.manage',options.resolveUser)
         if(!(options.isEnabled??(()=>isFeatureEnabled('payroll')))())
           return failure('WORKFORCE_PAYROLL_FEATURE_DISABLED',503)
         const q=new URL(request.url).searchParams
@@ -285,7 +285,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
     },
     POST(request:Request){
       return run(async()=>{
-        const user=await requireRole(request,'admin',options.resolveUser)
+        const user=await requirePermission(request,'payroll.manage',options.resolveUser)
         if(!(options.isEnabled??(()=>isFeatureEnabled('payroll')))())
           return failure('WORKFORCE_PAYROLL_FEATURE_DISABLED',503)
         const actor=user.businessUserId

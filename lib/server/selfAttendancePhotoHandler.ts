@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { requireUser, requireRole, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
+import { requirePermission, requireRole, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { AttendanceDriveAclError } from '@/lib/utils/attendanceDriveAcl'
@@ -66,7 +66,7 @@ export async function POST(request:Request) {
   let currentEventKind:'check_in'|'check_out'='check_in'
   try {
     if(!hasExactOrigin(request))return failed('ATTENDANCE_PHOTO_ORIGIN_INVALID',403)
-    const actor=await requireUser(request)
+    const actor=await requirePermission(request,'attendance.record_own')
     if(!actor.businessUserId) return failed('ATTENDANCE_BUSINESS_ACTOR_REQUIRED',403)
     if(process.env.FEATURE_SELF_ATTENDANCE_PHOTO!=='true')
       return failed('ATTENDANCE_PHOTO_FEATURE_DISABLED',503)
@@ -342,7 +342,7 @@ export async function POST(request:Request) {
 
 export async function GET(request:Request) {
   try {
-    const actor=await requireUser(request)
+    const actor=await requirePermission(request,'attendance.record_own')
     if(!actor.businessUserId)return failed('ATTENDANCE_BUSINESS_ACTOR_REQUIRED',403)
     // Photo bytes are personal evidence. Check current DB actor activity on
     // every image read, not just the auth cookie's existence.

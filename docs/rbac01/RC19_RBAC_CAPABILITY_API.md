@@ -18,14 +18,16 @@ Success:
       "module": "reports",
       "action": "approve",
       "allowed": true,
-      "source": "legacy_matrix",
-      "locked": true
+      "source": "legacy_default",
+      "reason": "No approved role override; the legacy role matrix applies.",
+      "locked": true,
+      "accountOverrideGrantable": false
     }
   ]
 }
 ```
 
-`source` is `database` only for `audit.view_team` when `FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT=true`; that permission is read from the signed-user `rbac01_effective_permission` RPC on every request. A failed RPC returns `503 RBAC_CAPABILITIES_UNAVAILABLE`; the route never falls back to a cached grant. Other permissions continue to use the legacy `permissionMatrix` until their API and RLS enforcement are attested.
+The API resolves every catalog entry through the shared server permission resolver. It reports `legacy_default`, `hard_restriction`, and the resolver explanation for static decisions. `accountOverrideGrantable` is derived from an explicit catalog; at this SHA only `audit.view_team` has paired RPC/RLS support. For Leaders, `audit.view_team` is read from the signed-user `rbac01_effective_permission` RPC when `FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT=true`. The current RPC returns only a boolean, so its `database` source explanation explicitly does not claim whether a role version, account decision, expiry, or revocation produced it. RPC failure returns `503 RBAC_CAPABILITIES_UNAVAILABLE`; the route does not use a cached result.
 
 Errors: `401 AUTHENTICATION_REQUIRED`, `403 PERMISSION_DENIED` for an unmapped business identity, or `503 RBAC_CAPABILITIES_UNAVAILABLE`.
 
@@ -47,7 +49,7 @@ Approval currently returns `409 RBAC01_ENFORCEMENT_NOT_ATTESTED`; draft decision
 
 ## Account overrides
 
-`GET /api/rbac/account-overrides` returns `{ "ok": true, "entries": [], "supportedPermissions": ["audit.view_team"] }` only when the server feature flag and reviewed database gate are available. The default-off API returns `404 RBAC02_DISABLED`.
+`GET /api/rbac/account-overrides` returns entries plus a typed `permissionCatalog` with explicit `grantable` state only when the server feature flag and reviewed database gate are available. The default-off API returns `404 RBAC02_DISABLED`. Mutation validation is a `z.enum` generated from the finite grantable tuple; unsupported permissions, including Payroll and Admin capabilities, are rejected before RPC.
 
 `POST /api/rbac/account-overrides` accepts:
 
