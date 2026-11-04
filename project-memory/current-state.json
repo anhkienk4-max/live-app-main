@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "7f36166bcfaff9e8a61a28b24ecdaa8193fc693d",
+    "head": "ba117b397f62df918f3f181dc6cef4c349e7c409",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -122,10 +122,10 @@
         "components": 188,
         "lib": 285,
         "scripts": 35,
-        "supabase": 135,
-        "tests": 346
+        "supabase": 136,
+        "tests": 347
       },
-      "total": 1083
+      "total": 1085
     },
     "tests": {
       "files": [
@@ -517,9 +517,10 @@
         "supabase/migrations/20261104093735_rc19_rbac03_supported_permission_enforcement.sql",
         "supabase/migrations/20261104110000_rc19_c3_scoped_action_catalog.sql",
         "supabase/migrations/20261104113000_rc19_c3_staffing_permission_guard.sql",
-        "supabase/migrations/20261104120000_rc19_c3_leader_brand_scope_reports.sql"
+        "supabase/migrations/20261104120000_rc19_c3_leader_brand_scope_reports.sql",
+        "supabase/migrations/20261104174527_rc19_c3_report_artifact_deletion.sql"
       ],
-      "count": 107
+      "count": 108
     }
   },
   "verification": {
@@ -533,5 +534,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-05T00:39:02+07:00"
+  "synced_at": "2026-11-05T01:24:44+07:00"
 }
