@@ -547,23 +547,38 @@ test('artifact delete verifies the recorded parent before deleting the provider 
     updated_at: '2026-10-08T00:00:00.000Z',
     deleted_at: null,
   }
-  const db = fakeClient({ existing })
+  for (const scenario of ['wrong-parent', 'revoked', 'valid'] as const) {
+  const db = fakeClient({ existing: { ...existing } })
   const deletes: string[] = []
-  let providerParent = 'wrong-parent'
   let grantActive = true
-  let revokeDuringMetadata = false
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
-    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
-      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
-      : { data: grantActive ? ['brand-1'] : [], error: null } }) as never,
-    createClient: () => db.client,
+    createScopeClient: async () => ({ rpc: async (name: string, args: Record<string, unknown>) => {
+      if (name === 'rbac_permission_decision') return { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      if (name === 'rc19_claim_report_artifact_deletion') return { data: {
+        status: 'pending', operation_id: 'operation-1', lease_owner: args.p_lease_owner, fencing_version: 1,
+        provider: 'google_drive', external_file_id: 'drive-delete', external_parent_id: 'source-parent',
+      }, error: null }
+      if (name === 'rc19_begin_report_artifact_deletion') return { data: {
+        operation_id: 'operation-1', provider: 'google_drive', external_file_id: 'drive-delete', external_parent_id: 'source-parent',
+      }, error: null }
+      if (name === 'rc19_release_report_artifact_delete_claim') return { data: 'retryable_failure', error: null }
+      return { data: grantActive ? ['brand-1'] : [], error: null }
+    } }) as never,
+    createClient: () => ({ ...(db.client as object), rpc: async (name: string) => {
+      if (name === 'rc19_record_report_artifact_delete_outcome') return { data: 'provider_deleted', error: null }
+      if (name === 'rc19_finalize_report_artifact_deletion') {
+        db.rows[0].deleted_at = '2026-11-05T00:00:00Z'
+        return { data: 'completed', error: null }
+      }
+      return { data: null, error: new Error('unexpected RPC') }
+    } }) as never,
     storage: {
       async upload() { throw new Error('unused') },
       async read() { return new Uint8Array() },
       async getMetadata() {
-        if (revokeDuringMetadata) grantActive = false
-        return { id: 'drive-delete', kind: 'file', parent_ids: [providerParent] }
+        if (scenario === 'revoked') grantActive = false
+        return { id: 'drive-delete', kind: 'file', parent_ids: [scenario === 'wrong-parent' ? 'wrong-parent' : 'source-parent'] }
       },
       async delete(reference: { provider: string; external_file_id: string }) {
         deletes.push(`${reference.provider}:${reference.external_file_id}`)
@@ -580,20 +595,9 @@ test('artifact delete verifies the recorded parent before deleting the provider 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ file_id: 'stored-delete' }),
   })
-  const stale = await handler.DELETE(deleteRequest())
-  assert.equal(stale.status, 409)
-  assert.deepEqual(deletes, [])
-  assert.equal(db.rows[0].deleted_at, null)
-  providerParent = 'source-parent'
-  revokeDuringMetadata = true
-  const revoked = await handler.DELETE(deleteRequest())
-  assert.equal(revoked.status, 404)
-  assert.deepEqual(deletes, [])
-  assert.equal(db.rows[0].deleted_at, null)
-  grantActive = true
-  revokeDuringMetadata = false
   const response = await handler.DELETE(deleteRequest())
-  assert.equal(response.status, 200)
-  assert.deepEqual(deletes, ['google_drive:drive-delete'])
-  assert.equal(typeof db.rows[0].deleted_at, 'string')
+  assert.equal(response.status, scenario === 'valid' ? 200 : scenario === 'revoked' ? 404 : 409)
+  assert.deepEqual(deletes, scenario === 'valid' ? ['google_drive:drive-delete'] : [])
+  assert.equal(typeof db.rows[0].deleted_at, scenario === 'valid' ? 'string' : 'object')
+  }
 })

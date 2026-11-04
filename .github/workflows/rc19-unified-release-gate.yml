@@ -70,6 +70,7 @@ jobs:
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac01b_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac02_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac_enforcement_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_artifact_deletion_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_rbac_enforcement_disposable IS 'RC19_RBAC_ENFORCEMENT_DISPOSABLE_TEST_DATABASE'"
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_restore_disposable TEMPLATE template0'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_restore_disposable IS 'RC19_RESTORE_DISPOSABLE_TEST_DATABASE'"
@@ -127,6 +128,11 @@ jobs:
             -f tests/rbac02/pg17_fixture.sql -f tests/rbac02/pg17_assertions.sql
           psql -h localhost -U rc19_ci -d rc19_rbac_enforcement_disposable -v ON_ERROR_STOP=1 \
             -f tests/rbac-enforcement/pg17_fixture.sql -f tests/rbac-enforcement/pg17_assertions.sql
+          psql -h localhost -U rc19_ci -d rc19_artifact_deletion_disposable -v ON_ERROR_STOP=1 \
+            -f tests/rbac-enforcement/pg17_fixture.sql \
+            -f supabase/migrations/20261007183831_rc14_report_data_artifacts.sql \
+            -f supabase/migrations/20261104174527_rc19_c3_report_artifact_deletion.sql \
+            -f tests/rbac-enforcement/pg17_artifact_deletion.sql
           echo "Deployable RBAC migrations applied and exercised against isolated PostgreSQL 17; legacy review-only contract suites ran separately." >> "$GITHUB_STEP_SUMMARY"
 
       - name: PostgreSQL 17 RBAC account update concurrency
