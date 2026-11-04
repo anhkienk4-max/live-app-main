@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "e7ca67968eaf9b4cd46d3375da99d17dff125e0d",
+    "head": "ac149519bdce685722ecd38bc6e707d120c04cb6",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -122,9 +122,9 @@
         "lib": 283,
         "scripts": 35,
         "supabase": 129,
-        "tests": 340
+        "tests": 341
       },
-      "total": 1068
+      "total": 1069
     },
     "tests": {
       "files": [
@@ -310,6 +310,7 @@
         "tests/rc19-owner23-segmented-staffing.test.ts",
         "tests/rc19-postgres17-concurrency.integration.test.ts",
         "tests/rc19-postgres17-fixture-restore.integration.test.ts",
+        "tests/rc19-production-qa-hotfix.test.ts",
         "tests/rc19-production-uat-host-policy.test.ts",
         "tests/rc19-rbac01-security.test.ts",
         "tests/rc19-rbac01b-audit-slice.test.ts",
@@ -402,7 +403,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 273
+      "count": 274
     },
     "migrations": {
       "files": [
@@ -522,5 +523,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-04T14:57:04+07:00"
+  "synced_at": "2026-11-04T18:41:26+07:00"
 }
