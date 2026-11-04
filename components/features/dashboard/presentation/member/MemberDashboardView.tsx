@@ -221,7 +221,7 @@ export function MemberDashboardView({
               </div>
             </div>
             <div className="w-full flex flex-col items-end justify-center border-t border-slate-100 pt-4 lg:w-[280px] lg:shrink-0 lg:border-t-0 lg:border-l lg:pl-6 lg:pt-0">
-              <button type="button" data-testid="member-next-shift-details" disabled={!onOpenNextShift} onClick={onOpenNextShift} className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-bold rounded-md shadow-sm transition-colors flex items-center justify-center gap-2">
+              <button type="button" data-testid="member-next-shift-details-desktop" disabled={!onOpenNextShift} onClick={onOpenNextShift} className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-bold rounded-md shadow-sm transition-colors flex items-center justify-center gap-2">
                 <ArrowRight className="w-4 h-4" /> {t('viewShiftDetails')}
               </button>
             </div>

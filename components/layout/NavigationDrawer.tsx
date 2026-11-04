@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, type ReactElement } from 'react'
+import { useRef, useEffect, type ReactElement } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile' }: { items: NavItem[]; activeHref?: string; trigger: ReactElement; menuId?: 'mobile' | 'tablet' }) {
   const search = useSearchParams()
   const pushed = useRef(false)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
   const open = search.get('nav_menu') === menuId
   const { t } = useTranslation()
   const removeMarker = () => {
@@ -19,20 +20,48 @@ export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile'
     window.history.replaceState(null, '', url)
     pushed.current = false
   }
+  const restoreFocus = () => {
+    const focusTarget = () => {
+      const el = triggerRef.current ?? (document.querySelector('[data-testid="nav-menu-more"]') as HTMLElement | null)
+      if (el && document.activeElement !== el) {
+        el.focus()
+      }
+    }
+    focusTarget()
+    window.requestAnimationFrame(focusTarget)
+    setTimeout(focusTarget, 50)
+  }
+
+  useEffect(() => {
+    const onPopState = () => {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('nav_menu') !== menuId) {
+        pushed.current = false
+        restoreFocus()
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [menuId])
+
   const changeOpen = (next: boolean) => {
     if (next) {
       const url = new URL(window.location.href)
       url.searchParams.set('nav_menu', menuId)
       window.history.pushState(null, '', url)
       pushed.current = true
-    } else if (pushed.current) {
-      pushed.current = false
-      window.history.back()
-    } else removeMarker()
+    } else {
+      removeMarker()
+      restoreFocus()
+    }
   }
-  return <Dialog open={open} onOpenChange={changeOpen}>
-    <DialogTrigger render={trigger} />
-    <DialogContent data-testid="grouped-navigation-drawer" className="top-0 right-0 bottom-0 left-auto flex h-dvh max-h-dvh w-[min(24rem,100vw)] max-w-full translate-x-0 translate-y-0 flex-col gap-4 overflow-y-auto rounded-none sm:h-dvh sm:max-h-dvh sm:w-96 sm:max-w-full">
+  return <Dialog open={open} onOpenChange={changeOpen} onOpenChangeComplete={isOpen => { if (!isOpen) restoreFocus() }}>
+    <DialogTrigger ref={triggerRef} render={trigger} />
+    <DialogContent
+      data-testid="grouped-navigation-drawer"
+      finalFocus={() => triggerRef.current ?? (document.querySelector('[data-testid="nav-menu-more"]') as HTMLElement | null)}
+      className="top-0 right-0 bottom-0 left-auto flex h-dvh max-h-dvh w-[min(24rem,100vw)] max-w-full translate-x-0 translate-y-0 flex-col gap-4 overflow-y-auto rounded-none sm:h-dvh sm:max-h-dvh sm:w-96 sm:max-w-full"
+    >
       <DialogHeader><DialogTitle>{t('navMain')}</DialogTitle></DialogHeader>
       <nav aria-label={t('navMain')} className="space-y-5 pb-6">
         {groupNavigation(items).map(group => <section key={group.id} aria-label={t(group.labelKey)}>

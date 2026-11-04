@@ -348,7 +348,7 @@ export function StaffList() {
 
 function StaffFilterControls({ filters, onChange }: { filters: StaffFilters; onChange: (filters: StaffFilters) => void }) {
   const { t } = useTranslation()
-  return <div className="grid min-w-0 grid-cols-2 gap-3 md:flex md:flex-wrap md:gap-2">
+  return <div className="grid min-w-0 grid-cols-2 gap-3 md:flex md:flex-wrap md:items-center md:gap-2">
     <Filter value={filters.permissionIds} onChange={value => onChange({ ...filters, permissionIds: value as SystemPermission[] })} label={t('systemPermissions')} options={['admin', 'leader', 'member']} />
     <Filter value={filters.roleIds} onChange={value => onChange({ ...filters, roleIds: value as OperationalRole[] })} label={t('operationalRoles')} options={operationalRoles} />
     <div className="col-span-2 md:col-span-1"><Filter value={filters.statuses} onChange={value => onChange({ ...filters, statuses: value as User['status'][] })} label={t('status')} options={['active', 'inactive']} /></div>
@@ -357,7 +357,7 @@ function StaffFilterControls({ filters, onChange }: { filters: StaffFilters; onC
 
 function Filter({ value, onChange, label, options }: { value: string[]; onChange: (value: string[]) => void; label: string; options: string[] }) {
   const { translate } = useTranslation()
-  return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option, label: translate(option) }))} className="w-full md:w-40" />
+  return <MultiSelectFilter label={label} value={value} onChange={onChange} options={options.map(option => ({ value: option, label: translate(option) }))} className="w-full md:w-36 lg:w-40" />
 }
 
 function StaffDetail({ user, workload, onClose, onEdit, inline = false }: { inline?: boolean; user: User; workload: (role: OperationalRole) => number; onClose: () => void; onEdit?: () => void }) {

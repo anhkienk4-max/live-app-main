@@ -98,7 +98,7 @@ export function OpsMobileHome({
           )}
           <div className="relative mt-3">
             {shift?.onView ? (
-              <button type="button" onClick={shift.onView} className="inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-[#155EF2] px-4 text-[12px] font-bold text-white">
+              <button type="button" data-testid={role === 'member' ? 'member-next-shift-details' : undefined} onClick={shift.onView} className="inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-[#155EF2] px-4 text-[12px] font-bold text-white">
                 {t('viewShiftDetail')} <ArrowRight className="size-4" aria-hidden="true" />
               </button>
             ) : (

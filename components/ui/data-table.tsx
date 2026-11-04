@@ -125,7 +125,7 @@ export function DataTable<T extends { id: string }>({
 
   return (
     <div className="min-w-0 space-y-4" aria-busy={pagination?.loading}>
-      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
         <div className="relative w-full min-w-0 flex-1 md:max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
