@@ -753,7 +753,7 @@ export function createOperationalFileRouteHandler(deps: {
         if ((row.provider !== 'google_drive' && row.provider !== 'onedrive') || typeof row.external_file_id !== 'string') {
           return errorResponse('OPERATIONAL_FILE_PROVIDER_INVALID', 409)
         }
-        await storage.delete({ provider: row.provider as Provider, external_file_id: row.external_file_id })
+        // Keep provider bytes recoverable; physical purge belongs to the retention workflow.
         const result = await client.from('operational_files')
           .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq('id', parsed.file_id).is('deleted_at', null).select('id').maybeSingle()

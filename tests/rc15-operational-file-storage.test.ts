@@ -306,7 +306,7 @@ test('operational file lifecycle uses external object, no duplicate, metadata-on
     body: JSON.stringify({ file_id: 'operational-1' }),
   }))
   assert.equal(deleted.status, 200)
-  assert.deepEqual(providerDeletes, ['drive-id-1'])
+  assert.deepEqual(providerDeletes, [])
   assert.equal(typeof state.rows[0].deleted_at, 'string')
 
   const cat = await admin.GET(new Request('https://example.test/api/operational-files?catalog=1'))
@@ -718,6 +718,48 @@ test('linked dashboard evidence cannot be deleted from operational storage', asy
   assert.equal((await response.json() as { error: { code: string } }).error.code, 'OPERATIONAL_FILE_IN_USE')
   assert.equal(providerDeletes, 0)
   assert.equal(state.rows[0]?.deleted_at, null)
+})
+
+test('operational file delete hides metadata but keeps provider bytes recoverable', async () => {
+  const state = client()
+  state.rows.push({ id: 'file-1', category: 'report_image', provider: 'google_drive',
+    external_file_id: 'drive-file-1', brand_id: 'brand-1', scope_key: 'brand:brand-1', deleted_at: null })
+  let providerDeletes = 0
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+    storage: { async delete() { providerDeletes += 1 } } as never,
+  })
+
+  const response = await handler.DELETE(new Request('https://example.test/api/operational-files', {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id: 'file-1' }),
+  }))
+
+  assert.equal(response.status, 200)
+  assert.equal(providerDeletes, 0)
+  assert.equal(typeof state.rows[0]?.deleted_at, 'string')
+})
+
+test('Member cannot invoke operational file delete directly with a guessed file ID', async () => {
+  const state = client()
+  state.rows.push({ id: 'file-1', category: 'report_image', provider: 'google_drive',
+    external_file_id: 'drive-file-1', brand_id: 'brand-1', scope_key: 'brand:brand-1', deleted_at: null })
+  let providerDeletes = 0
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'member', systemPermission: 'member', businessUserId: 'member' }),
+    storage: { async delete() { providerDeletes += 1 } } as never,
+  })
+
+  const response = await handler.DELETE(new Request('https://example.test/api/operational-files', {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id: 'file-1' }),
+  }))
+
+  assert.equal(response.status, 403)
+  assert.equal(state.rows[0]?.deleted_at, null)
+  assert.equal(providerDeletes, 0)
 })
 
 test('Leader brand-period scope stays denied; Admin filename search is literal, case-insensitive and counted before page limiting', async () => {

@@ -111,6 +111,7 @@
     "tests/production-auth-uat-contract.test.ts",
     "tests/production-shell-convergence.test.ts",
     "tests/profile-avatar-storage.test.ts",
+    "tests/rbac-capabilities.test.ts",
     "tests/rbac02-account-overrides.test.ts",
     "tests/rc12-provider-runtime-diagnostics.test.ts",
     "tests/rc12-report-file-provider.test.ts",
