@@ -20,3 +20,4 @@ VALUES
  ('synthetic-suspended','00000000-0000-0000-0000-000000000004','admin','inactive','active');
 GRANT USAGE ON SCHEMA public,auth TO anon,authenticated;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated,anon;
+\i docs/rbac01/RC19_RBAC01_REVIEW_ONLY.sql
