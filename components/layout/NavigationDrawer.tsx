@@ -12,24 +12,36 @@ export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile'
   const search = useSearchParams()
   const pushed = useRef(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
   const open = search.get('nav_menu') === menuId
   const { t } = useTranslation()
+
   const removeMarker = () => {
     const url = new URL(window.location.href)
     url.searchParams.delete('nav_menu')
     window.history.replaceState(null, '', url)
     pushed.current = false
   }
+
+  const resolveTrigger = () => {
+    if (triggerRef.current) return triggerRef.current
+    if (menuId === 'mobile') {
+      return document.querySelector('[data-testid="nav-menu-more"]') as HTMLElement | null
+    }
+    return document.querySelector('header button[aria-label="' + t('navMain') + '"]') as HTMLElement | null
+  }
+
   const restoreFocus = () => {
+    if (timerRef.current !== null) clearTimeout(timerRef.current)
     const focusTarget = () => {
-      const el = triggerRef.current ?? (document.querySelector('[data-testid="nav-menu-more"]') as HTMLElement | null)
+      const el = resolveTrigger()
       if (el && document.activeElement !== el) {
         el.focus()
       }
     }
     focusTarget()
     window.requestAnimationFrame(focusTarget)
-    setTimeout(focusTarget, 50)
+    timerRef.current = setTimeout(focusTarget, 50)
   }
 
   useEffect(() => {
@@ -41,7 +53,10 @@ export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile'
       }
     }
     window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
+    }
   }, [menuId])
 
   const changeOpen = (next: boolean) => {
@@ -55,11 +70,12 @@ export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile'
       restoreFocus()
     }
   }
+
   return <Dialog open={open} onOpenChange={changeOpen} onOpenChangeComplete={isOpen => { if (!isOpen) restoreFocus() }}>
     <DialogTrigger ref={triggerRef} render={trigger} />
     <DialogContent
       data-testid="grouped-navigation-drawer"
-      finalFocus={() => triggerRef.current ?? (document.querySelector('[data-testid="nav-menu-more"]') as HTMLElement | null)}
+      finalFocus={resolveTrigger}
       className="top-0 right-0 bottom-0 left-auto flex h-dvh max-h-dvh w-[min(24rem,100vw)] max-w-full translate-x-0 translate-y-0 flex-col gap-4 overflow-y-auto rounded-none sm:h-dvh sm:max-h-dvh sm:w-96 sm:max-w-full"
     >
       <DialogHeader><DialogTitle>{t('navMain')}</DialogTitle></DialogHeader>
