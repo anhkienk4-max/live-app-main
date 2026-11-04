@@ -525,7 +525,7 @@ test('unconfirmed report cannot generate DATA/REPORT', async () => {
   assert.equal(uploads, 0)
 })
 
-test('artifact delete removes provider object first and soft-deletes metadata', async () => {
+test('artifact delete verifies the recorded parent before deleting the provider object', async () => {
   const existing = {
     id: 'stored-delete',
     provider: 'google_drive',
@@ -549,15 +549,22 @@ test('artifact delete removes provider object first and soft-deletes metadata', 
   }
   const db = fakeClient({ existing })
   const deletes: string[] = []
+  let providerParent = 'wrong-parent'
+  let grantActive = true
+  let revokeDuringMetadata = false
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
     createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
       ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
-      : { data: ['brand-1'], error: null } }) as never,
+      : { data: grantActive ? ['brand-1'] : [], error: null } }) as never,
     createClient: () => db.client,
     storage: {
       async upload() { throw new Error('unused') },
       async read() { return new Uint8Array() },
+      async getMetadata() {
+        if (revokeDuringMetadata) grantActive = false
+        return { id: 'drive-delete', kind: 'file', parent_ids: [providerParent] }
+      },
       async delete(reference: { provider: string; external_file_id: string }) {
         deletes.push(`${reference.provider}:${reference.external_file_id}`)
       },
@@ -568,11 +575,24 @@ test('artifact delete removes provider object first and soft-deletes metadata', 
     routingMode: 'database',
   })
 
-  const response = await handler.DELETE(new Request('https://example.test/api/report-artifacts', {
+  const deleteRequest = () => new Request('https://example.test/api/report-artifacts', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ file_id: 'stored-delete' }),
-  }))
+  })
+  const stale = await handler.DELETE(deleteRequest())
+  assert.equal(stale.status, 409)
+  assert.deepEqual(deletes, [])
+  assert.equal(db.rows[0].deleted_at, null)
+  providerParent = 'source-parent'
+  revokeDuringMetadata = true
+  const revoked = await handler.DELETE(deleteRequest())
+  assert.equal(revoked.status, 404)
+  assert.deepEqual(deletes, [])
+  assert.equal(db.rows[0].deleted_at, null)
+  grantActive = true
+  revokeDuringMetadata = false
+  const response = await handler.DELETE(deleteRequest())
   assert.equal(response.status, 200)
   assert.deepEqual(deletes, ['google_drive:drive-delete'])
   assert.equal(typeof db.rows[0].deleted_at, 'string')

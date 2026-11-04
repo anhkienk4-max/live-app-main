@@ -769,18 +769,50 @@ export function createReportArtifactRouteHandler(dependencies: {
         if (!result.data) return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
         const row = result.data as Record<string, unknown>
         const { report } = await reportContext(client, String(row.report_id), user, routingMode, createScopeClient)
+        if (row.shift_id !== report.shift_id) {
+          return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
+        }
         if (report.metrics_confirmed || report.status === 'confirmed') {
           return errorResponse('REPORT_CONFIRMED', 'Reopen the confirmed report before deleting report data files.', 409)
         }
         if (user.systemPermission === 'member' && row.uploaded_by !== user.businessUserId) {
           return errorResponse('PERMISSION_DENIED', 'You can only remove files that you uploaded.', 403)
         }
+        const actionUser = await requirePermission(request,
+          user.systemPermission === 'member' ? 'storage.edit_own' : 'storage.delete', dependencies.resolveUser)
+        if (actionUser.id !== user.id || actionUser.businessUserId !== user.businessUserId
+          || actionUser.systemPermission !== user.systemPermission) {
+          return errorResponse('PERMISSION_DENIED', 'You do not have permission to remove this file.', 403)
+        }
         const provider = row.provider
         const externalFileId = row.external_file_id
-        if ((provider !== 'google_drive' && provider !== 'onedrive') || typeof externalFileId !== 'string') {
+        const parentId = row.external_parent_id
+        if ((provider !== 'google_drive' && provider !== 'onedrive') || typeof externalFileId !== 'string'
+          || !externalFileId.trim() || typeof parentId !== 'string' || !parentId.trim()) {
           return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
         }
 
+        const metadata = await storage.getMetadata({ provider, external_file_id: externalFileId })
+        if (metadata.id !== externalFileId || metadata.kind !== 'file' || metadata.trashed === true
+          || !metadata.parent_ids?.includes(parentId)) {
+          return errorResponse('REPORT_ARTIFACT_REFERENCE_STALE', 'The report artifact is no longer in its recorded folder.', 409)
+        }
+        const { report: latestReport } = await reportContext(client, String(row.report_id), user, routingMode, createScopeClient)
+        if (latestReport.shift_id !== row.shift_id) {
+          return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
+        }
+        if (latestReport.metrics_confirmed || latestReport.status === 'confirmed') {
+          return errorResponse('REPORT_CONFIRMED', 'Reopen the confirmed report before deleting report data files.', 409)
+        }
+        const latestSubmit = await requirePermission(request, 'reports.submit', dependencies.resolveUser)
+        const latestUser = await requirePermission(request,
+          user.systemPermission === 'member' ? 'storage.edit_own' : 'storage.delete', dependencies.resolveUser)
+        if (latestSubmit.id !== user.id || latestSubmit.businessUserId !== user.businessUserId
+          || latestSubmit.systemPermission !== user.systemPermission
+          || latestUser.id !== user.id || latestUser.businessUserId !== user.businessUserId
+          || latestUser.systemPermission !== user.systemPermission) {
+          return errorResponse('PERMISSION_DENIED', 'You do not have permission to remove this file.', 403)
+        }
         await storage.delete({ provider, external_file_id: externalFileId })
         const updated = await client.from('stored_files')
           .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
