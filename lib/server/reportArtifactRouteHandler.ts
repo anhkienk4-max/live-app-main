@@ -131,6 +131,7 @@ async function reportContext(
   reportId: string,
   user: AuthenticatedServerUser,
   routingMode: OperationalStorageRoutingMode,
+  createScopeClient: () => Promise<Pick<SupabaseClient, 'rpc'>>,
 ): Promise<{ report: Report; shift: Shift & ReportShiftContext }> {
   const reportResult = await client.from('reports')
     .select('*')
@@ -154,6 +155,23 @@ async function reportContext(
   if (!shiftResult.data) throw new Error('REPORT_SHIFT_CONTEXT_NOT_FOUND')
 
   const rawShift = shiftResult.data as unknown as Shift
+  if (user.systemPermission === 'leader') {
+    if (!user.businessUserId || !rawShift.brand_id) throw new Error('REPORT_PERMISSION_DENIED')
+    const scopeClient = await createScopeClient()
+    const [decision, review, submit] = await Promise.all([
+      scopeClient.rpc('rbac_permission_decision', { p_permission: 'reports.submit' }),
+      scopeClient.rpc('rc19_current_leader_brand_ids', { p_scope_key: 'reports.review' }),
+      scopeClient.rpc('rc19_current_leader_brand_ids', { p_scope_key: 'reports.submit' }),
+    ])
+    const identity = decision.data as { actor_business_user_id?: unknown; role?: unknown; allowed?: unknown } | null
+    if (decision.error || review.error || submit.error || identity?.actor_business_user_id !== user.businessUserId
+      || identity.role !== 'leader' || identity.allowed !== true
+      || !Array.isArray(review.data) || !Array.isArray(submit.data)
+      || !(review.data.includes(rawShift.brand_id)
+        || (report.submitted_by === user.businessUserId && submit.data.includes(rawShift.brand_id)))) {
+      throw new Error('REPORT_PERMISSION_DENIED')
+    }
+  }
   const platformId = rawShift.platform_id || null
   const labels = routingMode === 'compat'
     ? await Promise.all([
@@ -506,6 +524,7 @@ async function persistUploadedArtifact(input: {
 export function createReportArtifactRouteHandler(dependencies: {
   resolveUser?: ServerUserResolver
   createClient?: () => SupabaseClient
+  createScopeClient?: () => Promise<Pick<SupabaseClient, 'rpc'>>
   storage?: StorageGateway
   routeResolver?: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
   domainRouteResolver?: Pick<OperationalStorageDomainRouteRepository, 'resolveDomainCategoryPlacement' | 'resolveReportArtifactGroupPlacement'>
@@ -513,6 +532,7 @@ export function createReportArtifactRouteHandler(dependencies: {
   routingMode?: OperationalStorageRoutingMode
 } = {}) {
   const clientFactory = dependencies.createClient || createSupabaseAdminClient
+  const createScopeClient = dependencies.createScopeClient || (async () => (await import('@/lib/supabase/server')).createClient())
   const storage = dependencies.storage || fileStorageService
   const routingMode = dependencies.routingMode ?? resolveOperationalStorageRoutingMode()
   let defaultRouteResolver: OperationalStorageRouteRepository | undefined
@@ -566,7 +586,7 @@ export function createReportArtifactRouteHandler(dependencies: {
               return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
             }
           }
-          await reportContext(client, String(row.report_id), user, routingMode)
+          await reportContext(client, String(row.report_id), user, routingMode, createScopeClient)
           const provider = row.provider
           const externalFileId = row.external_file_id
           if ((provider !== 'google_drive' && provider !== 'onedrive') || typeof externalFileId !== 'string') {
@@ -599,7 +619,7 @@ export function createReportArtifactRouteHandler(dependencies: {
         if (user.systemPermission === 'leader') {
           return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
         }
-        await reportContext(client, reportId, user, routingMode)
+        await reportContext(client, reportId, user, routingMode, createScopeClient)
         const result = await client.from('stored_files')
           .select('*')
           .eq('report_id', reportId)
@@ -613,8 +633,9 @@ export function createReportArtifactRouteHandler(dependencies: {
       } catch (error) {
         if (isAuthorizationError(error)) return authorizationErrorResponse(error)
         const code = error instanceof Error ? error.message : ''
-        if (code === 'REPORT_PERMISSION_DENIED') return errorResponse('PERMISSION_DENIED', 'You do not have permission to access this report.', 403)
-        if (code === 'REPORT_NOT_FOUND') return errorResponse(code, 'The report was not found.', 404)
+        if (code === 'REPORT_PERMISSION_DENIED' || code === 'REPORT_NOT_FOUND' || code === 'REPORT_SHIFT_CONTEXT_NOT_FOUND') {
+          return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
+        }
         return errorResponse('REPORT_ARTIFACT_READ_FAILED', 'The report artifact could not be read.', 502)
       }
     },
@@ -637,7 +658,7 @@ export function createReportArtifactRouteHandler(dependencies: {
             return errorResponse('REPORT_ARTIFACT_REQUEST_INVALID', 'The source file request is invalid.', 400)
           }
 
-          const { report, shift } = await reportContext(client, parsed.data.report_id, user, routingMode)
+          const { report, shift } = await reportContext(client, parsed.data.report_id, user, routingMode, createScopeClient)
           if (report.metrics_confirmed || report.status === 'confirmed') {
             return errorResponse('REPORT_CONFIRMED', 'Reopen the confirmed report before changing source files.', 409)
           }
@@ -681,7 +702,7 @@ export function createReportArtifactRouteHandler(dependencies: {
           return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
         }
 
-        const { report, shift } = await reportContext(client, parsed.data.report_id, user, routingMode)
+        const { report, shift } = await reportContext(client, parsed.data.report_id, user, routingMode, createScopeClient)
         if (!report.metrics_confirmed || report.status !== 'confirmed') {
           return errorResponse('REPORT_NOT_CONFIRMED', 'Confirm the report before generating its data report file.', 409)
         }
@@ -718,8 +739,9 @@ export function createReportArtifactRouteHandler(dependencies: {
         if (code === 'REPORT_ARTIFACT_CONFIDENTIAL_STORAGE_NOT_APPROVED') {
           return errorResponse(code, 'Report artifacts require a restricted Drive destination.', 423)
         }
-        if (code === 'REPORT_PERMISSION_DENIED') return errorResponse('PERMISSION_DENIED', 'You do not have permission to modify this report.', 403)
-        if (code === 'REPORT_NOT_FOUND') return errorResponse(code, 'The report was not found.', 404)
+        if (code === 'REPORT_PERMISSION_DENIED' || code === 'REPORT_NOT_FOUND' || code === 'REPORT_SHIFT_CONTEXT_NOT_FOUND') {
+          return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
+        }
         if (code === 'REPORT_ARTIFACT_PROVIDER_CONFLICT') {
           return errorResponse(code, 'This report artifact already exists on a different provider.', 409)
         }
@@ -746,7 +768,7 @@ export function createReportArtifactRouteHandler(dependencies: {
         if (result.error) throw result.error
         if (!result.data) return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
         const row = result.data as Record<string, unknown>
-        const { report } = await reportContext(client, String(row.report_id), user, routingMode)
+        const { report } = await reportContext(client, String(row.report_id), user, routingMode, createScopeClient)
         if (report.metrics_confirmed || report.status === 'confirmed') {
           return errorResponse('REPORT_CONFIRMED', 'Reopen the confirmed report before deleting report data files.', 409)
         }
@@ -778,7 +800,9 @@ export function createReportArtifactRouteHandler(dependencies: {
         if (isAuthorizationError(error)) return authorizationErrorResponse(error)
         if (error instanceof RequestBodyError) return errorResponse(error.code, error.message, error.status)
         const code = error instanceof Error ? error.message : ''
-        if (code === 'REPORT_PERMISSION_DENIED') return errorResponse('PERMISSION_DENIED', 'You do not have permission to modify this report.', 403)
+        if (code === 'REPORT_PERMISSION_DENIED' || code === 'REPORT_NOT_FOUND' || code === 'REPORT_SHIFT_CONTEXT_NOT_FOUND') {
+          return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
+        }
         return errorResponse('REPORT_ARTIFACT_DELETE_FAILED', 'The report data file could not be deleted.', 502)
       }
     },

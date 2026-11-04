@@ -229,6 +229,9 @@ test('DATA/SOURCE upload resolves canonical folder, writes provider bytes, and s
 
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-1'], error: null } }) as never,
     createClient: () => db.client,
     storage: storage as never,
     routeResolver: routeResolver(routeInputs),
@@ -287,6 +290,9 @@ test('domain-first report artifact upload uses the persisted ADA/internal Shift 
   let group = ''
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-1'], error: null } }) as never,
     createClient: () => db.client,
     storage: storage as never,
     routeResolver: { async resolvePlacement() { throw new Error('legacy route must not be used') } },
@@ -351,6 +357,9 @@ test('same DATA/SOURCE content is idempotent and skips a second provider upload'
   let uploads = 0
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-1'], error: null } }) as never,
     createClient: () => db.client,
     storage: {
       async upload() { uploads += 1; throw new Error('should not upload') },
@@ -378,6 +387,9 @@ test('confirmed reports reject DATA/SOURCE mutation before provider upload', asy
   let uploads = 0
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-1'], error: null } }) as never,
     createClient: () => db.client,
     storage: {
       async upload() { uploads += 1; throw new Error('should not upload') },
@@ -539,6 +551,9 @@ test('artifact delete removes provider object first and soft-deletes metadata', 
   const deletes: string[] = []
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-1'], error: null } }) as never,
     createClient: () => db.client,
     storage: {
       async upload() { throw new Error('unused') },

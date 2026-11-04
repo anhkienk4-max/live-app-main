@@ -79,3 +79,64 @@ test('Leader cannot generate a report artifact from a forged cross-scope report 
   assert.equal(response.status, 403)
   assert.equal(reads, 0)
 })
+
+test('Leader outside the persisted report Brand cannot upload or delete artifacts', async () => {
+  const effects = { upload: 0, delete: 0, folder: 0, mutation: 0 }
+  const client = {
+    from(table: string) {
+      const query = {
+        select() { return query }, eq() { return query }, is() { return query },
+        update() { effects.mutation++; return query }, insert() { effects.mutation++; return query },
+        async maybeSingle() {
+          const rows: Record<string, unknown> = {
+            reports: { id: 'report-foreign', shift_id: 'shift-foreign', submitted_by: 'other', status: 'draft', metrics_confirmed: false },
+            shifts: { id: 'shift-foreign', brand_id: 'brand-foreign', date: '2026-11-01' },
+            stored_files: { id: 'file-foreign', report_id: 'report-foreign', provider: 'google_drive', external_file_id: 'drive-foreign' },
+          }
+          return { data: rows[table] ?? null, error: null }
+        },
+      }
+      return query
+    },
+  } as unknown as SupabaseClient
+  const handler = createReportArtifactRouteHandler({
+    resolveUser: async () => leader,
+    createClient: () => client,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'leader-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-owned'], error: null } }) as unknown as Pick<SupabaseClient, 'rpc'>,
+    storage: {
+      upload: async () => { effects.upload++; throw new Error('unexpected upload') },
+      delete: async () => { effects.delete++; throw new Error('unexpected delete') },
+      ensureFolder: async () => { effects.folder++; throw new Error('unexpected folder') },
+    } as never,
+    routingMode: 'domain_first',
+  })
+  const form = new FormData()
+  form.set('report_id', 'report-foreign')
+  form.set('file', new Blob(['synthetic'], { type: 'text/plain' }), 'source.txt')
+  const upload = await handler.POST(request('', { method: 'POST', body: form }))
+  assert.equal(upload.status, 404)
+  assert.equal((await upload.json()).error.code, 'REPORT_ARTIFACT_NOT_FOUND')
+  const deletion = await handler.DELETE(request('', {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id: 'file-foreign' }),
+  }))
+  assert.equal(deletion.status, 404)
+  assert.equal((await deletion.json()).error.code, 'REPORT_ARTIFACT_NOT_FOUND')
+  assert.deepEqual(effects, { upload: 0, delete: 0, folder: 0, mutation: 0 })
+
+  const missingQuery = {
+    select() { return missingQuery }, eq() { return missingQuery }, is() { return missingQuery },
+    async maybeSingle() { return { data: null, error: null } },
+  }
+  const missingHandler = createReportArtifactRouteHandler({
+    resolveUser: async () => leader,
+    createClient: () => ({ from: () => missingQuery }) as unknown as SupabaseClient,
+    storage: storage().gateway,
+    routingMode: 'domain_first',
+  })
+  const missing = await missingHandler.POST(request('', { method: 'POST', body: form }))
+  assert.equal(missing.status, 404)
+  assert.equal((await missing.json()).error.code, 'REPORT_ARTIFACT_NOT_FOUND')
+})
