@@ -138,7 +138,11 @@ export function buildScheduleExportRows(
       'Title': shift.title ?? '',
       'Studio': shift.studio ?? '',
       'Execution Source': executionSourceDisplayLabel(shift.execution_source),
-      'Agency': shift.agency_code ? agencyDisplayLabel(shift.agency_code) : '',
+      'Agency': shift.agency_code
+        ? agencyDisplayLabel(shift.agency_code)
+        : (typeof (shift as unknown as { custom_fields?: Record<string, unknown> }).custom_fields?.Agency === 'string'
+          ? (shift as unknown as { custom_fields?: Record<string, unknown> }).custom_fields!.Agency as string
+          : ''),
       'Assigned Host Names': getAssignedNames(shift, 'host', shift.host_id),
       'Assigned Support Names': getAssignedNames(shift, 'support', shift.support_id),
       'Assigned Technical Names': getAssignedNames(shift, 'technical', shift.technical_id),
