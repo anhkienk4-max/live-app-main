@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "14404e43dc0d603a4ea5b6ccad5e28fc6151d4fb",
+    "head": "db067f63b42f4513c6e26477883aec3f6a134bf8",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -119,12 +119,12 @@
       "roots": {
         "app": 93,
         "components": 188,
-        "lib": 281,
+        "lib": 283,
         "scripts": 35,
         "supabase": 129,
-        "tests": 338
+        "tests": 340
       },
-      "total": 1064
+      "total": 1068
     },
     "tests": {
       "files": [
@@ -299,8 +299,10 @@
         "tests/rc19-batch05a4-storage-runtime-integration.test.ts",
         "tests/rc19-batch05a4-storage-runtime-migration.test.ts",
         "tests/rc19-batch05a41-sequential-migrations.test.ts",
+        "tests/rc19-c3-mutation-authorization.test.ts",
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
+        "tests/rc19-effective-permission.test.ts",
         "tests/rc19-filter01a-shifts.test.ts",
         "tests/rc19-g2-inapp-camera.test.ts",
         "tests/rc19-g3-import-bulk-export-registration.test.ts",
@@ -400,7 +402,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 271
+      "count": 273
     },
     "migrations": {
       "files": [
@@ -520,5 +522,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-04T13:29:11+07:00"
+  "synced_at": "2026-11-04T14:41:45+07:00"
 }
