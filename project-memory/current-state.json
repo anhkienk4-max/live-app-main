@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "214dd915ceae0fcdd79307ae14607ecfc95023ad",
+    "head": "9be460fd46f29b7b13244036def6b9ad4fa1e601",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -121,10 +121,10 @@
         "components": 188,
         "lib": 283,
         "scripts": 35,
-        "supabase": 131,
-        "tests": 342
+        "supabase": 132,
+        "tests": 343
       },
-      "total": 1072
+      "total": 1074
     },
     "tests": {
       "files": [
@@ -302,6 +302,7 @@
         "tests/rc19-c3-mutation-authorization.test.ts",
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
+        "tests/rc19-dynamic-rbac-server-guard.test.ts",
         "tests/rc19-effective-permission.test.ts",
         "tests/rc19-filter01a-shifts.test.ts",
         "tests/rc19-g2-inapp-camera.test.ts",
@@ -402,7 +403,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 273
+      "count": 274
     },
     "migrations": {
       "files": [
@@ -508,9 +509,10 @@
         "supabase/migrations/20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
         "supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql",
         "supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql",
-        "supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql"
+        "supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql",
+        "supabase/migrations/20261104093735_rc19_rbac03_supported_permission_enforcement.sql"
       ],
-      "count": 103
+      "count": 104
     }
   },
   "verification": {
@@ -524,5 +526,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-04T16:24:08+07:00"
+  "synced_at": "2026-11-04T16:54:20+07:00"
 }
