@@ -109,8 +109,8 @@ SELECT public.rbac02_set_account_override('leader-a','audit.view_team','allow',
 RESET ROLE;
 SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
 SET ROLE authenticated;
+SELECT pg_catalog.pg_sleep(1.1);
 DO $$ BEGIN
-  PERFORM pg_catalog.pg_sleep(1.1);
   IF public.rbac_permission_decision('audit.view_team')->>'source' <> 'expired'
      OR public.rbac01_effective_permission('audit.view_team') IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'ACCOUNT_EXPIRY_FALLBACK_FAILED';

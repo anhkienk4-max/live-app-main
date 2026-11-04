@@ -378,7 +378,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.rbac01_activate_role_defaults(
   p_version_id bigint, p_expected_active_version integer, p_effective_at timestamptz DEFAULT NULL
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE v_actor text; v_version private.rbac01_role_default_versions%ROWTYPE; v_effective_at timestamptz;
+DECLARE v_actor text; v_version private.rbac01_role_default_versions%ROWTYPE; v_effective_at timestamptz; v_now timestamptz;
 BEGIN
   v_actor := private.current_business_user_id();
   IF v_actor IS NULL OR private.current_system_permission() <> 'admin' THEN
@@ -398,8 +398,9 @@ BEGIN
       WHERE e.version_id=p_version_id AND e.event_type IN ('activation','rollback')) THEN
     RAISE EXCEPTION 'RBAC01_APPROVAL_REQUIRED_OR_ALREADY_ACTIVE' USING ERRCODE='42501';
   END IF;
-  v_effective_at := coalesce(p_effective_at,clock_timestamp());
-  IF v_effective_at < clock_timestamp() OR v_effective_at > clock_timestamp() + interval '30 days' THEN
+  v_now := clock_timestamp();
+  v_effective_at := coalesce(p_effective_at,v_now);
+  IF v_effective_at < v_now OR v_effective_at > v_now + interval '30 days' THEN
     RAISE EXCEPTION 'RBAC01_EFFECTIVE_TIME_INVALID' USING ERRCODE='22023';
   END IF;
   INSERT INTO private.rbac01_role_default_events(
