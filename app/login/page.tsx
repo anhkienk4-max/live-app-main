@@ -268,7 +268,7 @@ function LoginPagePending() {
   const { t } = useTranslation()
   return (
     <AuthLayout variant="login" title={t('signIn')} subtitle={t('loginSubtitle')}>
-      <div role="status" aria-busy="true" aria-label={t('loading')} data-testid="login-pending" className="space-y-5">
+      <div role="status" aria-busy="true" aria-label={t('loading')} data-testid="login-pending" className="space-y-5 motion-reduce:animate-none">
         <div className="space-y-2">
           <label htmlFor="email-pending" className="text-sm font-semibold text-slate-700">{t('email')}</label>
           <Input id="email-pending" name="email" type="email" disabled placeholder="ten@congty.com" className="h-12 border-slate-200 bg-slate-50" />
