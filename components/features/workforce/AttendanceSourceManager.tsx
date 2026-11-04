@@ -667,11 +667,18 @@ export function AttendanceSourceManager() {
 
         {/* GOOGLE SHEETS API STATUS BANNER */}
         {step === 1 && importMethod === 'paste' && (
-          <div className="border-t border-slate-800/60 bg-amber-950/20 px-4 py-2 text-[11px] text-amber-300 flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
-            <span>
-              {en ? 'Direct Google Sheets API access requires an authorized service account. Paste rows here or upload an exported Excel file.' : 'Tính năng tự động đọc trực tiếp từ Google Sheets API yêu cầu cấu hình Service Account đã cấp quyền. Hiện tại bạn có thể copy-paste toàn bộ bảng dữ liệu vào đây hoặc tải lên file Excel xuất từ Google Sheets.'}
-            </span>
+          <div className="border-t border-slate-800/60 bg-amber-950/30 px-4 py-3 text-xs text-amber-200 flex items-start gap-2.5 rounded-b-lg">
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-amber-300">
+                {en ? 'Manual Copy-Paste Notice (Not Auto-Sync URL)' : 'Lưu ý quan trọng: Dán dữ liệu thủ công (Không phải tự động đồng bộ qua Google Sheets URL)'}
+              </p>
+              <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                {en
+                  ? 'Pasting attendance rows is a manual copy-paste operation (TSV/CSV tabular clipboard text). It does NOT automatically sync or poll from a Google Sheets URL. For automated sync, an authorized Google service account is required.'
+                  : 'Dán dữ liệu là thao tác sao chép - dán thủ công từ clipboard (định dạng bảng TSV/CSV). Hệ thống KHÔNG tự động đồng bộ hay kéo dữ liệu trực tiếp từ đường link Google Sheets URL. Để đồng bộ tự động, cần cấu hình Service Account riêng.'}
+              </p>
+            </div>
           </div>
         )}
 
