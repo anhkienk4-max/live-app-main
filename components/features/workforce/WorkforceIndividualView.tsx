@@ -229,7 +229,7 @@ export function WorkforceIndividualView({
           <p className="mt-1 text-xs text-rose-600">{error}</p>
           <Button className="mt-3" variant="outline" onClick={() => loadPerformance()}>{en ? 'Retry' : 'Thử lại'}</Button>
         </Card>
-      ) : summary && summary.assignedShifts === 0 && summary.verifiedShifts === 0 ? (
+      ) : summary && !summary.warning && summary.isComplete && summary.assignedShifts === 0 && summary.verifiedShifts === 0 ? (
         <Card className="border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600" role="status">
           {en ? 'No assigned shifts or approved attendance for this period.' : 'Chưa có ca phân công hoặc chấm công đã duyệt trong kỳ này.'}
         </Card>

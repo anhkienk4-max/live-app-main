@@ -1,5 +1,6 @@
 import type { Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { pageRange, type PageSize } from '@/lib/utils/pagination'
+import { getAuthMode } from '@/lib/auth/authMode'
 
 export type OperationsList = 'shifts' | 'open_shifts' | 'my_shifts' | 'brands' | 'platforms' | 'campaigns' | 'staff' | 'notifications' | 'reports' | 'report_queue' | 'registration_reviews' | 'import_batches' | 'schedule_changes' | 'swaps' | 'quality' | 'live_shifts' | 'analytics_reports' | 'live_updates' | 'archives' | 'account_requests'
 export interface ListFilters {
@@ -86,7 +87,8 @@ export async function getCollectionPage<T>(entity: OperationsList, query: ListQu
     throw new OperationsListError('LIST_IDENTITY_CHANGED', 409)
   }
   if (!response.ok) throw new OperationsListError(body?.error?.code ?? 'LIST_READ_FAILED', response.status)
-  if (typeof window !== 'undefined' && body?.ownerKey !== owner) {
+  const isEnforced = getAuthMode() === 'supabase' || body?.ownerKey !== undefined
+  if (typeof window !== 'undefined' && isEnforced && body?.ownerKey !== owner) {
     console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', {
       entity, stage: body?.ownerKey === undefined ? 'server_owner_missing' : 'server_owner_mismatch',
       httpStatus: response.status,
@@ -97,7 +99,7 @@ export async function getCollectionPage<T>(entity: OperationsList, query: ListQu
     throw new OperationsListError('LIST_RESPONSE_INVALID', 502)
   }
   if (entity === 'reports') {
-    const contexts = body.historicalShiftContexts
+    const contexts = body.historicalShiftContexts ?? (getAuthMode() === 'mock' ? {} : undefined)
     if (!contexts || typeof contexts !== 'object' || Array.isArray(contexts)) {
       throw new OperationsListError('REPORT_HISTORY_RESPONSE_INVALID', 502)
     }
