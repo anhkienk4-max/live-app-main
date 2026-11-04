@@ -10,6 +10,7 @@ export type RoleDefaultsCatalogItem = {
   action: RoleDefaultsAction
   /** Locked permissions are not mutable until server + every relevant DB policy is proven. */
   locked: boolean
+  configurableRoles?: readonly SystemPermission[]
   reason?: string
 }
 const item = (permission: Permission, module: RoleDefaultsDomain, action: RoleDefaultsAction, reason?: string): RoleDefaultsCatalogItem =>
@@ -38,7 +39,7 @@ export const ROLE_DEFAULTS_CATALOG: readonly RoleDefaultsCatalogItem[] = [
   item('settings.member', 'settings', 'view'), item('settings.leader', 'settings', 'view'),
   item('settings.admin', 'settings', 'manage', 'Bootstrap privilege locked'),
   item('permissions.manage', 'settings', 'manage', 'Bootstrap privilege locked; no self-escalation'),
-  item('audit.view', 'audit', 'view'), { ...item('audit.view_team', 'audit', 'view'), locked: false },
+  item('audit.view', 'audit', 'view'), { ...item('audit.view_team', 'audit', 'view'), locked: false, configurableRoles: ['leader'] },
   item('audit.restore', 'audit', 'restore', 'Audit integrity boundary locked'), item('audit.review', 'audit', 'approve', 'Audit approval boundary locked'),
   item('data.force_delete', 'data', 'delete', 'Destructive capability locked'),
   item('attendance.record_own', 'attendance', 'create', 'Self-only check-in/out and correction RPCs remain authoritative'),
@@ -89,12 +90,13 @@ export function validateRoleDefaultProposal(
     const permission = key as Permission
     const entry = catalog.get(permission)
     if (!entry || !['inherit', 'allow', 'deny'].includes(String(value))) return { ok: false, code: 'PERMISSION_INVALID' }
-    // Non-privileged deny proposals may be saved for review but NEVER become effective
-    // while the DB/server enforcement attestation gate remains disabled.
     if (entry.reason && value === 'deny') return { ok: false, code: 'SECURITY_BOUNDARY_LOCKED' }
     if (value === 'allow' && !permissionMatrix[role].has(permission)) return { ok: false, code: 'PRIVILEGE_ESCALATION_DENIED' }
     if (value === 'allow') return { ok: false, code: 'RBAC01_APPROVAL_BLOCKED' }
     if (value === 'deny' && !permissionMatrix[role].has(permission)) return { ok: false, code: 'NOT_A_LEGACY_GRANT' }
+    if (entry.locked || (entry.configurableRoles && !entry.configurableRoles.includes(role))) {
+      return { ok: false, code: 'SECURITY_BOUNDARY_LOCKED' }
+    }
   }
   return { ok: true }
 }

@@ -15,7 +15,9 @@ const proposalSchema = z.object({
 }).strict()
 const rollbackSchema=z.object({action:z.literal('rollback'),versionId:z.number().int().positive()}).strict()
 const approveSchema=z.object({action:z.literal('approve'),versionId:z.number().int().positive()}).strict()
-const bodySchema=z.discriminatedUnion('action',[proposalSchema,rollbackSchema,approveSchema])
+const activateSchema=z.object({action:z.literal('activate'),versionId:z.number().int().positive(),expectedActiveVersion:z.number().int().min(0),effectiveAt:z.string().datetime({offset:true}).nullable().default(null)}).strict()
+const revokeSchema=z.object({action:z.literal('revoke'),role:roleSchema,expectedActiveVersion:z.number().int().positive(),reason:z.string().trim().min(5).max(500)}).strict()
+const bodySchema=z.discriminatedUnion('action',[proposalSchema,rollbackSchema,approveSchema,activateSchema,revokeSchema])
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}})
 
 type Options={
@@ -25,11 +27,7 @@ type Options={
 }
 const rpcFailure=(message:string)=>json({ok:false,error:{code:'RBAC01_DATABASE_UNAVAILABLE',message}},503)
 
-/**
- * Role-default drafts never take effect from UI/API. Approval is disabled in
- * SQL and here until DB RLS/RPC/service-admin parity is reviewed. This endpoint
- * is NOT a business-authorization decision point.
- */
+/** Role policy mutation remains opt-in and database-owned; the Admin UI cannot assert approval or actor identity. */
 export function createRbac01RoleDefaultsHandler(options:Options={}) {
   const enabled=options.enabled??(()=>process.env.FEATURE_RBAC01_ROLE_DEFAULTS==='true')
   const client=options.createClient??createClient
@@ -45,7 +43,7 @@ export function createRbac01RoleDefaultsHandler(options:Options={}) {
           isolatedDomains:RBAC01_ISOLATED_DOMAINS,
           enabled:enabled(),
           effective:false,
-          approvalEnabled:false,
+          approvalEnabled:enabled(),
         }
         if(!enabled())return json({ok:true,...catalog,versions:[]})
         const db=await client()
@@ -67,9 +65,6 @@ export function createRbac01RoleDefaultsHandler(options:Options={}) {
         const parsed=bodySchema.safeParse(input)
         if(!parsed.success)return json({ok:false,error:{code:'RBAC01_INPUT_INVALID'}},400)
         const action=parsed.data
-        // No approval path can be activated until audited DB and API enforcement
-        // are complete. UI-provided approver/effective/status are never accepted.
-        if(action.action==='approve')return json({ok:false,error:{code:'RBAC01_ENFORCEMENT_NOT_ATTESTED'}},409)
         if(action.action==='propose'){
           const valid=validateRoleDefaultProposal(action.role,action.decisions)
           if(!valid.ok)return json({ok:false,error:{code:valid.code}},403)
@@ -77,9 +72,15 @@ export function createRbac01RoleDefaultsHandler(options:Options={}) {
         const db=await client()
         const call=action.action==='propose'
           ?db.rpc('rbac01_propose_role_defaults',{p_role:action.role,p_decisions:action.decisions,p_comment:action.comment})
-          :db.rpc('rbac01_rollback_role_defaults',{p_version_id:action.versionId})
+          :action.action==='approve'
+            ?db.rpc('rbac01_approve_role_defaults',{p_version_id:action.versionId})
+            :action.action==='activate'
+              ?db.rpc('rbac01_activate_role_defaults',{p_version_id:action.versionId,p_expected_active_version:action.expectedActiveVersion,p_effective_at:action.effectiveAt})
+              :action.action==='revoke'
+                ?db.rpc('rbac01_revoke_role_defaults',{p_role:action.role,p_expected_active_version:action.expectedActiveVersion,p_reason:action.reason})
+                :db.rpc('rbac01_rollback_role_defaults',{p_version_id:action.versionId})
         const result=await call
-        if(result.error||!result.data)return rpcFailure('Review-only database RPC rejected the update.')
+        if(result.error||!result.data)return rpcFailure('Database rejected the role policy update.')
         return json({ok:true,result:result.data})
       }catch(error){
         if(isAuthorizationError(error))return authorizationErrorResponse(error)

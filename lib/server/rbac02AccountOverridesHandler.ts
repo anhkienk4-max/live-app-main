@@ -28,7 +28,14 @@ const resetSchema = z.object({
   reason: z.string().trim().min(5).max(500),
   expectedVersion: z.number().int().min(0),
 }).strict()
-const bodySchema = z.discriminatedUnion('action', [setSchema, resetSchema])
+const revokeSchema = z.object({
+  action: z.literal('revoke'),
+  targetId: z.string().min(1).max(100),
+  permission,
+  reason: z.string().trim().min(5).max(500),
+  expectedVersion: z.number().int().min(0),
+}).strict()
+const bodySchema = z.discriminatedUnion('action', [setSchema, resetSchema, revokeSchema])
 type RpcClient = Pick<SupabaseClient, 'rpc'>
 type Options = {
   resolveUser?: ServerUserResolver
@@ -79,12 +86,19 @@ export function createRbac02AccountOverridesHandler(options: Options = {}) {
             p_expires_at: parsed.data.expiresAt,
             p_expected_version: parsed.data.expectedVersion,
           })
-          : await db.rpc('rbac02_reset_account_override', {
+          : parsed.data.action === 'reset'
+            ? await db.rpc('rbac02_reset_account_override', {
             p_target_business_user_id: parsed.data.targetId,
             p_permission: parsed.data.permission,
             p_reason: parsed.data.reason,
             p_expected_version: parsed.data.expectedVersion,
           })
+            : await db.rpc('rbac02_revoke_account_override', {
+              p_target_business_user_id: parsed.data.targetId,
+              p_permission: parsed.data.permission,
+              p_reason: parsed.data.reason,
+              p_expected_version: parsed.data.expectedVersion,
+            })
         if (result.error || !result.data) return response({ ok: false, error: { code: 'RBAC02_UPDATE_REJECTED' } }, 409)
         return response({ ok: true, result: result.data })
       } catch (error) {

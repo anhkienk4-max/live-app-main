@@ -1,8 +1,10 @@
 import type { SystemPermission } from '@/lib/types/database.types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAuthIdentity, mapAuthIdentityToBusinessUser } from '@/lib/auth/authIdentity'
 import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMasterDataService'
-import type { Permission } from '@/lib/permissions'
-import { resolveEffectivePermission } from '@/lib/rbac/effectivePermission'
+import { permissionMatrix, type Permission } from '@/lib/permissions'
+import { HARD_RESTRICTED_PERMISSIONS, resolveEffectivePermission } from '@/lib/rbac/effectivePermission'
+import { createClient } from '@/lib/supabase/server'
 
 export interface AuthenticatedServerUser {
   id: string
@@ -22,8 +24,8 @@ export interface ServerUserResolutionDiagnostics {
 
 export class AuthorizationError extends Error {
   constructor(
-    public readonly status: 401 | 403,
-    public readonly code: 'AUTHENTICATION_REQUIRED' | 'PERMISSION_DENIED',
+    public readonly status: 401 | 403 | 503,
+    public readonly code: 'AUTHENTICATION_REQUIRED' | 'PERMISSION_DENIED' | 'RBAC_AUTHORIZATION_UNAVAILABLE',
     message: string,
   ) {
     super(message)
@@ -98,9 +100,36 @@ export async function requirePermission(
   request: Request,
   permission: Permission,
   resolveUser: ServerUserResolver = resolveServerUser,
+  createPermissionClient: () => Promise<Pick<SupabaseClient, 'rpc'>> = createClient,
 ): Promise<AuthenticatedServerUser> {
   const user = await requireUser(request, resolveUser)
-  const effective = resolveEffectivePermission({ role: user.systemPermission, permission })
+  let effective = resolveEffectivePermission({ role: user.systemPermission, permission })
+  if (process.env.FEATURE_RBAC_DYNAMIC_ENFORCEMENT === 'true') {
+    if (!user.businessUserId) {
+      throw new AuthorizationError(403, 'PERMISSION_DENIED', 'A verified business account is required.')
+    }
+    try {
+      const { data, error } = await (await createPermissionClient()).rpc(
+        'rbac_permission_decision', { p_permission: permission },
+      )
+      if (error || !isDatabasePermissionDecision(data)
+        || data.actor_business_user_id !== user.businessUserId
+        || data.role !== user.systemPermission
+        || data.permission !== permission
+        || (HARD_RESTRICTED_PERMISSIONS.has(permission)
+          && data.allowed !== permissionMatrix[user.systemPermission].has(permission))) {
+        throw new Error('RBAC_PERMISSION_DECISION_INVALID')
+      }
+      effective = { allowed: data.allowed, source: data.source, reason: data.reason,
+        ...(typeof data.version === 'number' ? { version: data.version } : {}) }
+    } catch {
+      throw new AuthorizationError(
+        503,
+        'RBAC_AUTHORIZATION_UNAVAILABLE',
+        'Permission state is temporarily unavailable.',
+      )
+    }
+  }
   if (!effective.allowed) {
     console.warn('OPS_PERMISSION_DENIED', {
       route: new URL(request.url).pathname,
@@ -115,6 +144,38 @@ export async function requirePermission(
     )
   }
   return user
+}
+
+const permissionSources = new Set([
+  'legacy_default', 'role_override', 'account_allow', 'account_deny',
+  'hard_restriction', 'expired', 'revoked', 'business_scope', 'invalid_version',
+])
+
+export type DatabasePermissionDecision = {
+  actor_business_user_id: string
+  role: SystemPermission
+  permission: string
+  allowed: boolean
+  source: 'legacy_default' | 'role_override' | 'account_allow' | 'account_deny'
+    | 'hard_restriction' | 'expired' | 'revoked' | 'business_scope' | 'invalid_version'
+  reason: string
+  version: number | null
+  expires_at: string | null
+  effective_at: string | null
+}
+
+export function isDatabasePermissionDecision(value: unknown): value is DatabasePermissionDecision {
+  if (!value || typeof value !== 'object') return false
+  const decision = value as Record<string, unknown>
+  return typeof decision.actor_business_user_id === 'string'
+    && ['member', 'leader', 'admin'].includes(String(decision.role))
+    && typeof decision.permission === 'string'
+    && typeof decision.allowed === 'boolean'
+    && typeof decision.source === 'string' && permissionSources.has(decision.source)
+    && typeof decision.reason === 'string'
+    && (decision.version === null || (typeof decision.version === 'number' && Number.isSafeInteger(decision.version)))
+    && (decision.expires_at === null || (typeof decision.expires_at === 'string' && Number.isFinite(Date.parse(decision.expires_at))))
+    && (decision.effective_at === null || (typeof decision.effective_at === 'string' && Number.isFinite(Date.parse(decision.effective_at))))
 }
 
 export async function requireRole(

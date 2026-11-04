@@ -41,7 +41,9 @@ test('RBAC-01 rejects escalation, service role injection, admin bootstrap and un
  assert.deepEqual(validateRoleDefaultProposal('admin',{'audit.restore':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
  assert.deepEqual(validateRoleDefaultProposal('member',{'brands.manage':'deny'}),{ok:false,code:'NOT_A_LEGACY_GRANT'})
  assert.deepEqual(validateRoleDefaultProposal('admin',{'settings.admin':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
- assert.deepEqual(validateRoleDefaultProposal('leader',{'shifts.view_assigned':'deny'}),{ok:true})
+ assert.deepEqual(validateRoleDefaultProposal('leader',{'audit.view_team':'deny'}),{ok:true})
+ assert.deepEqual(validateRoleDefaultProposal('admin',{'audit.view_team':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
+ assert.deepEqual(validateRoleDefaultProposal('leader',{'shifts.view_assigned':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
 })
 test('RBAC-01 denies unauthenticated and forged Member/Leader API POST before RPC',async()=>{
  let rpcCalls=0
@@ -69,7 +71,6 @@ test('RBAC-01 Admin cannot forge status or approvedBy or actor/user id',async()=
   {action:'propose',role:'member',decisions:{'shifts.register':'deny'},effective:true},
   {action:'propose',role:'member',decisions:{'service_role':'allow'}},
   {action:'propose',role:'member',decisions:{'staff.manage':'allow'}},
-  {action:'approve',versionId:1},
  ]){
   const res=await handler.POST(new Request('https://local/api/role-defaults',{
    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),
@@ -78,13 +79,34 @@ test('RBAC-01 Admin cannot forge status or approvedBy or actor/user id',async()=
  }
  assert.equal(rpcCalls,0)
 })
+test('RBAC-01 approved role API delegates independent review and activation to database RPCs',async()=>{
+ const calls:Array<{name:string,args?:unknown}>=[]
+ const handler=createRbac01RoleDefaultsHandler({
+  enabled:()=>true,resolveUser:actor('admin'),
+  createClient:async()=>({rpc:async(name:string,args?:unknown)=>{calls.push({name,args});return{data:{status:'ok'},error:null}}}) as never,
+ })
+ for(const body of [
+  {action:'approve',versionId:7},
+  {action:'activate',versionId:7,expectedActiveVersion:0,effectiveAt:null},
+  {action:'revoke',role:'leader',expectedActiveVersion:1,reason:'revoke approved policy'},
+  {action:'rollback',versionId:7},
+ ]){
+  const response=await handler.POST(new Request('https://local/api/role-defaults',{method:'POST',body:JSON.stringify(body)}))
+  assert.equal(response.status,200)
+ }
+ assert.deepEqual(calls.map(({name})=>name),[
+  'rbac01_approve_role_defaults','rbac01_activate_role_defaults',
+  'rbac01_revoke_role_defaults','rbac01_rollback_role_defaults',
+ ])
+ assert.deepEqual(calls[1].args,{p_version_id:7,p_expected_active_version:0,p_effective_at:null})
+})
 test('RBAC-01 gated Admin draft API requires live DB RPC, stores proposed only',async()=>{
  const calls:string[]=[]
  const handler=createRbac01RoleDefaultsHandler({
   enabled:()=>true,resolveUser:actor('admin'),
   createClient:async()=>({rpc:async(name:string)=>{calls.push(name);return{data:{version:1,status:'proposed',effective:false},error:null}}}) as never,
  })
- const input={action:'propose',role:'member',decisions:{'shifts.register':'deny'}}
+ const input={action:'propose',role:'leader',decisions:{'audit.view_team':'deny'}}
  const res=await handler.POST(new Request('https://local/api/role-defaults',{method:'POST',body:JSON.stringify(input)}))
  assert.equal(res.status,200)
  assert.equal((await res.json()).result.effective,false)
@@ -107,10 +129,13 @@ test('RBAC-01 feature OFF is exact fallback, no DB access and no mutations',asyn
  assert.equal(update.status,503)
  assert.equal(calls,0)
 })
-test('RBAC-01 boundary guard not silently wired to Payroll/Reports/Storage or existing auth',()=>{
+test('RBAC-01 deployable policy is distinct from historical review-only fixture',()=>{
  const handler=readFileSync(new URL('../lib/server/rbac01RoleDefaultsHandler.ts',import.meta.url),'utf8')
  const sql=readFileSync(new URL('../docs/rbac01/RC19_RBAC01_REVIEW_ONLY.sql',import.meta.url),'utf8')
- assert.match(handler,/RBAC01_ENFORCEMENT_NOT_ATTESTED/)
+ const migration=readFileSync(new URL('../supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql',import.meta.url),'utf8')
+ assert.doesNotMatch(handler,/RBAC01_ENFORCEMENT_NOT_ATTESTED/)
+ assert.match(migration,/public\.rbac01_approve_role_defaults/)
+ assert.match(migration,/public\.rbac01_activate_role_defaults/)
  assert.match(sql,/RBAC01_ENFORCEMENT_NOT_ATTESTED/)
  assert.match(sql,/SELECT u.id INTO v_actor FROM public.business_users/)
  assert.match(sql,/auth\.uid\(\)/)

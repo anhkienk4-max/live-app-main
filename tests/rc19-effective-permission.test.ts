@@ -24,7 +24,7 @@ test('effective permission resolver keeps legacy fallback and independent approv
   assert.equal(denied.source, 'role_override')
 })
 
-test('account deny wins; allow cannot exceed role baseline; reset, expiry and revoke fall back', () => {
+test('account Deny wins; only catalog-approved account Allow exceeds role policy; reset, expiry and revoke fall back', () => {
   const denied = resolveEffectivePermission({ ...base, roleOverride: { ...approvedRoleDeny, decision: 'allow' },
     accountOverride: { decision: 'deny', version: 2, currentVersion: 2 } })
   assert.equal(denied.allowed, false)
@@ -34,6 +34,12 @@ test('account deny wins; allow cannot exceed role baseline; reset, expiry and re
     accountOverride: { decision: 'allow', version: 1, currentVersion: 1 } })
   assert.equal(noBaseline.allowed, false)
   assert.equal(noBaseline.source, 'account_allow')
+
+  const extraLeaderAction = resolveEffectivePermission({ role: 'leader', permission: 'audit.view_team', now: base.now,
+    roleOverride: { ...approvedRoleDeny, decision: 'deny' },
+    accountOverride: { decision: 'allow', version: 1, currentVersion: 1 } })
+  assert.equal(extraLeaderAction.allowed, true)
+  assert.equal(extraLeaderAction.source, 'account_allow')
 
   for (const [override, expectedSource] of [
     [{ decision: 'deny', version: 1, currentVersion: 1, expiresAt: '2026-11-03T00:00:00Z' }, 'expired'],

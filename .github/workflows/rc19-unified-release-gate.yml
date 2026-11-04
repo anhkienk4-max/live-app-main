@@ -105,6 +105,7 @@ jobs:
         run: |
           node --import ./tests/typescript-alias-loader.mjs --test \
             tests/rc19-effective-permission.test.ts \
+            tests/rc19-dynamic-rbac-server-guard.test.ts \
             tests/rc19-c3-mutation-authorization.test.ts \
             tests/rc19-rbac01-security.test.ts \
             tests/rc19-rbac01b-audit-slice.test.ts \
@@ -124,6 +125,11 @@ jobs:
           psql -h localhost -U rc19_ci -d rc19_rbac_enforcement_disposable -v ON_ERROR_STOP=1 \
             -f tests/rbac-enforcement/pg17_fixture.sql -f tests/rbac-enforcement/pg17_assertions.sql
           echo "Deployable RBAC migrations applied and exercised against isolated PostgreSQL 17; legacy review-only contract suites ran separately." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PostgreSQL 17 RBAC account update concurrency
+        env:
+          PGPASSWORD: rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash tests/rbac-enforcement/pg17_concurrency.sh
 
       - name: PostgreSQL 17 Multi-Connection Concurrency Gate
         env:

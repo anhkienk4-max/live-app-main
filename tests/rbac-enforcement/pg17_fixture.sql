@@ -55,6 +55,7 @@ CREATE POLICY audit_logs_read ON public.audit_logs FOR SELECT TO authenticated U
 
 \i supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql
 \i supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql
+\i supabase/migrations/20261104093735_rc19_rbac03_supported_permission_enforcement.sql
 
 DO $$
 BEGIN
@@ -66,6 +67,15 @@ BEGIN
   END IF;
   IF (SELECT count(*) FROM private.rbac_permission_catalog) <> 39 THEN
     RAISE EXCEPTION 'RBAC_PERMISSION_CATALOG_PARITY_FAILED';
+  END IF;
+  IF EXISTS (SELECT 1 FROM private.rbac_permission_catalog WHERE permission<>'audit.view_team'
+    AND (cardinality(role_override_roles)>0 OR cardinality(account_override_roles)>0 OR cardinality(account_allow_roles)>0)) THEN
+    RAISE EXCEPTION 'UNENFORCED_PERMISSION_CATALOG_ENTRY_WAS_UNLOCKED';
+  END IF;
+  IF (SELECT role_override_roles FROM private.rbac_permission_catalog WHERE permission='audit.view_team') <> ARRAY['leader']::text[]
+    OR (SELECT account_override_roles FROM private.rbac_permission_catalog WHERE permission='audit.view_team') <> ARRAY['leader']::text[]
+    OR (SELECT account_allow_roles FROM private.rbac_permission_catalog WHERE permission='audit.view_team') <> ARRAY['leader']::text[] THEN
+    RAISE EXCEPTION 'SUPPORTED_AUDIT_PERMISSION_CATALOG_INVALID';
   END IF;
 END;
 $$;

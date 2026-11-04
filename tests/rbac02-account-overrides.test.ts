@@ -115,3 +115,19 @@ test('RBAC02 reset is a distinct RPC and database conflicts are not reported as 
   assert.equal(response.status, 409)
   assert.deepEqual(names, ['rbac02_reset_account_override'])
 })
+
+test('RBAC02 revoke is distinct from reset and records an explicit revoke event', async () => {
+  const names: string[] = []
+  const handler = createRbac02AccountOverridesHandler({
+    enabled: () => true, resolveUser: identity('admin', 'business-admin'),
+    createClient: async () => ({ rpc: async (name: string) => {
+      names.push(name); return { data: { decision: 'revoke' }, error: null }
+    } }) as never,
+  })
+  const response = await handler.POST(request(undefined, {
+    action: 'revoke', targetId: 'leader-a', permission: 'audit.view_team',
+    reason: 'revoke expired grant', expectedVersion: 4,
+  }))
+  assert.equal(response.status, 200)
+  assert.deepEqual(names, ['rbac02_revoke_account_override'])
+})

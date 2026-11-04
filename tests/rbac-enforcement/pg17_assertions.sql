@@ -204,4 +204,35 @@ DO $$ BEGIN
     RAISE EXCEPTION 'RBAC_PRIVILEGE_BOUNDARY_FAILED';
   END IF;
 END $$;
+
+-- Mutations reject permissions without matching DB enforcement.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.rbac02_set_account_override('leader-a','reports.review','deny',
+      'unsupported account decision',NULL,0);
+    RAISE EXCEPTION 'UNSUPPORTED_ACCOUNT_OVERRIDE_WAS_ACCEPTED';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.rbac01_propose_role_defaults('leader','{"reports.review":"deny"}'::jsonb,
+      'unsupported role decision',0);
+    RAISE EXCEPTION 'UNSUPPORTED_ROLE_OVERRIDE_WAS_ACCEPTED';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+
+-- Batch and single-permission RPCs use the same authenticated database result.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ DECLARE v_single jsonb; v_batch jsonb;
+BEGIN
+  v_single:=public.rbac_permission_decision('audit.view_team');
+  SELECT item INTO v_batch FROM jsonb_array_elements(public.rbac_permission_decisions()) item
+    WHERE item->>'permission'='audit.view_team';
+  IF v_single IS DISTINCT FROM v_batch THEN RAISE EXCEPTION 'BATCH_SINGLE_PERMISSION_DIVERGED'; END IF;
+END $$;
+RESET ROLE;
 SELECT 'RC19_RBAC_ENFORCEMENT_PG17: PASS';
