@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import { ROLE_DEFAULTS_CATALOG } from '@/lib/rbac/roleDefaults'
 import * as XLSX from 'xlsx'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createReportExportHandler } from '@/lib/server/reportExportHandler'
@@ -143,4 +145,38 @@ test('Admin exports list, detail and image workbooks from authorized database ro
   assert.deepEqual(imageRows[0], ['Report ID', 'Category', 'Original Name', 'Storage Path', 'Mock URL', 'MIME Type', 'Size Bytes', 'Created At'])
   assert.deepEqual(imageRows[1], ['report-1', 'dashboard', 'dashboard.jpg', 'reports/report-1/image-1.jpg',
     'https://drive.example/image-1', 'image/jpeg', 1234, '2026-11-02T12:30:00Z'])
+})
+
+test('C3 Leader scope migration is additive, DB-owned, versioned and applied to report read paths', () => {
+  const sql = readFileSync(new URL('../supabase/migrations/20261104120000_rc19_c3_leader_brand_scope_reports.sql', import.meta.url), 'utf8')
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.rc19_leader_brand_scopes/i)
+  assert.match(sql, /REFERENCES public\.business_users\(id\)/i)
+  assert.match(sql, /REFERENCES public\.brands\(id\)/i)
+  assert.match(sql, /valid_from timestamptz[\s\S]*?valid_until timestamptz[\s\S]*?revoked_at timestamptz/i)
+  assert.match(sql, /UNIQUE \(leader_business_user_id, brand_id, scope_key\)/i)
+  assert.match(sql, /pg_advisory_xact_lock[\s\S]*?LEADER_BRAND_SCOPE_VERSION_CONFLICT[\s\S]*?40001/i)
+  assert.match(sql, /private\.current_system_permission\(\) <> 'admin'[\s\S]*?ADMIN_SCOPE_MANAGEMENT_REQUIRED/i)
+  assert.match(sql, /rc19_leader_brand_scope_events[\s\S]*?actor_business_user_id[\s\S]*?reason/i)
+  assert.match(sql, /CREATE OR REPLACE FUNCTION private\.can_read_report[\s\S]*?rc19_has_any_leader_brand_scope/i)
+  const reportRead = sql.split('CREATE OR REPLACE FUNCTION private.can_read_report')[1]?.split('CREATE OR REPLACE FUNCTION private.rc19_guard_report_write')[0] ?? ''
+  assert.match(reportRead, /reports\.read[\s\S]*?reports\.review[\s\S]*?reports\.submit/i)
+  assert.doesNotMatch(reportRead, /reports\.export/i, 'export-only scope cannot grant direct Data API reads')
+  assert.match(sql, /CREATE POLICY reports_active_select[\s\S]*?private\.can_read_report\(id\)/i)
+  assert.match(sql, /CREATE POLICY report_revisions_read[\s\S]*?private\.can_read_report\(report_id\)/i)
+  assert.match(sql, /CREATE POLICY report_images_read[\s\S]*?private\.can_read_report\(report_id\)/i)
+  assert.match(sql, /CREATE POLICY live_report_images_read[\s\S]*?report_id IS NOT NULL AND private\.can_read_report\(report_id\)/i)
+  assert.match(sql, /CREATE POLICY "report-images-authenticated-read"[\s\S]*?private\.can_read_report/i)
+  assert.match(sql, /DROP POLICY IF EXISTS "report-images-read" ON storage\.objects/i)
+  assert.match(sql, /CREATE TRIGGER rc19_report_scope_write_guard/i)
+  assert.match(sql, /CREATE TRIGGER rc19_report_image_scope_write_guard/i)
+  assert.match(sql, /CREATE TRIGGER rc19_live_report_image_scope_write_guard/i)
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.authorize_report_image_delete[\s\S]*?private\.rc19_can_mutate_report/i)
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.authorize_live_report_image_delete[\s\S]*?private\.rc19_can_mutate_report/i)
+  assert.match(sql, /event_type = 'automatic_revoke'| 'automatic_revoke'/i)
+  const resolver = sql.split('CREATE OR REPLACE FUNCTION private.rc19_has_leader_brand_scope')[1]?.split('CREATE OR REPLACE FUNCTION public.rc19_current_leader_brand_ids')[0] ?? ''
+  assert.doesNotMatch(resolver, /department/i)
+  assert.doesNotMatch(sql, /WHEN actor_role = 'leader' THEN true/i)
+
+  const exportPermission = ROLE_DEFAULTS_CATALOG.find(item => item.permission === 'reports.export')
+  assert.equal(exportPermission?.locked, true, 'reports.export stays locked until the DB and scope evidence is exact-SHA verified')
 })

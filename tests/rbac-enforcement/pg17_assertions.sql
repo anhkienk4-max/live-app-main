@@ -349,3 +349,240 @@ BEGIN
 END $$;
 RESET ROLE;
 SELECT 'RC19_RBAC_ENFORCEMENT_PG17: PASS';
+
+-- Admin-managed Leader-to-Brand scope, report RLS, child resources and RPC triggers.
+GRANT SELECT ON public.shifts, public.shift_registrations TO authenticated;
+ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shift_registrations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS shift_registrations_disposable_test_scope ON public.shift_registrations;
+CREATE POLICY shifts_scoped_select ON public.shifts FOR SELECT TO authenticated
+  USING ((SELECT private.can_read_shift(id)));
+CREATE POLICY shift_registrations_scoped_select ON public.shift_registrations FOR SELECT TO authenticated
+  USING ((SELECT private.can_read_shift(shift_id)));
+CREATE OR REPLACE FUNCTION public.pg17_test_update_report(p_report_id text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  UPDATE public.reports SET status = status WHERE id = p_report_id;
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.pg17_test_update_report_image(p_image_id text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  UPDATE public.report_images SET deleted_at = deleted_at WHERE id = p_image_id;
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.pg17_test_change_user_role(p_user_id text, p_permission text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  UPDATE public.business_users SET system_permission = p_permission WHERE id = p_user_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.pg17_test_update_report(text), public.pg17_test_update_report_image(text),
+  public.pg17_test_change_user_role(text,text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.pg17_test_update_report(text), public.pg17_test_update_report_image(text),
+  public.pg17_test_change_user_role(text,text) TO authenticated;
+
+-- No mapping is synthesized. Admin A grants only Brand X and named domains.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.rc19_set_leader_brand_scope('leader-a','brand-x','reports.read',true,0,
+  statement_timestamp(),NULL,'PG17 synthetic report-read grant');
+SELECT public.rc19_set_leader_brand_scope('leader-a','brand-x','workforce.read',true,0,
+  statement_timestamp(),NULL,'PG17 synthetic workforce grant');
+SELECT public.rc19_set_leader_brand_scope('leader-a','brand-x','shifts.read',true,0,
+  statement_timestamp(),NULL,'PG17 synthetic shift-read grant');
+SELECT public.rc19_set_leader_brand_scope('leader-b','brand-y','reports.export',true,0,
+  statement_timestamp(),NULL,'PG17 export scope must not grant direct report reads');
+RESET ROLE;
+
+-- Leader A sees only report/revision/image/Drive-object rows in Brand X.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ DECLARE v_brands text[];
+BEGIN
+  SELECT array_agg(value ORDER BY value) INTO v_brands
+    FROM public.rc19_current_leader_brand_ids('workforce.read') AS value;
+  IF v_brands IS DISTINCT FROM ARRAY['brand-x']::text[] THEN RAISE EXCEPTION 'LEADER_BRAND_IDS_SCOPE_FAILED'; END IF;
+  IF (SELECT count(*) FROM public.reports) <> 2 THEN RAISE EXCEPTION 'REPORT_RLS_CROSS_BRAND_READ'; END IF;
+  IF (SELECT count(*) FROM public.report_revisions) <> 1 THEN RAISE EXCEPTION 'REPORT_REVISION_CROSS_BRAND_READ'; END IF;
+  IF (SELECT count(*) FROM public.report_images) <> 2 THEN RAISE EXCEPTION 'REPORT_IMAGE_CROSS_BRAND_READ'; END IF;
+  IF (SELECT count(*) FROM public.live_report_images) <> 1 THEN RAISE EXCEPTION 'LIVE_REPORT_IMAGE_CROSS_BRAND_OR_ORPHAN_READ'; END IF;
+  IF (SELECT count(*) FROM storage.objects) <> 1 THEN RAISE EXCEPTION 'REPORT_STORAGE_CROSS_BRAND_READ'; END IF;
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+      AND policyname='report-images-read') THEN RAISE EXCEPTION 'STALE_BROAD_REPORT_STORAGE_POLICY_REMAINS'; END IF;
+  IF private.can_read_report('report-y') OR private.can_read_report('forged-report-id') THEN
+    RAISE EXCEPTION 'CROSS_BRAND_OR_FORGED_REPORT_AUTHORIZED';
+  END IF;
+  IF NOT private.can_read_report('report-x') OR NOT private.can_read_shift('shift-x')
+     OR private.can_read_shift('shift-y') THEN RAISE EXCEPTION 'LEADER_SCOPE_FUNCTION_MISMATCH'; END IF;
+  IF EXISTS (SELECT 1 FROM public.business_users WHERE id='staff-y')
+     OR NOT EXISTS (SELECT 1 FROM public.business_users WHERE id='staff-x') THEN
+    RAISE EXCEPTION 'LEADER_WORKFORCE_DIRECTORY_CROSS_BRAND_LEAK';
+  END IF;
+  IF has_table_privilege('authenticated','public.rc19_leader_brand_scopes','INSERT')
+     OR has_table_privilege('authenticated','public.rc19_leader_brand_scopes','UPDATE') THEN
+    RAISE EXCEPTION 'LEADER_SCOPE_DIRECT_WRITE_PRIVILEGE';
+  END IF;
+  IF public.authorize_report_image_delete('forged-image-id') THEN
+    RAISE EXCEPTION 'FORGED_IMAGE_DELETE_PREFLIGHT_AUTHORIZED';
+  END IF;
+END $$;
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.pg17_test_update_report('report-x');
+    RAISE EXCEPTION 'REPORT_READ_SCOPE_ALLOWED_REVIEW_MUTATION';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.pg17_test_update_report_image('image-x');
+    RAISE EXCEPTION 'REPORT_READ_SCOPE_ALLOWED_IMAGE_MUTATION';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.rc19_set_leader_brand_scope('leader-a','brand-x','reports.read',true,1,
+      statement_timestamp(),NULL,'Leader must not self grant');
+    RAISE EXCEPTION 'LEADER_SELF_GRANT_ACCEPTED';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.authorize_report_image_delete('image-x');
+    RAISE EXCEPTION 'REPORT_READ_SCOPE_ALLOWED_PROVIDER_DELETE';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.authorize_report_image_delete('image-y');
+    RAISE EXCEPTION 'CROSS_BRAND_PROVIDER_DELETE_PREFLIGHT_AUTHORIZED';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+
+-- A second Leader receives no inherited Brand X access; forged IDs stay hidden.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000022';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF (SELECT count(*) FROM public.reports) <> 0
+     OR cardinality(ARRAY(SELECT public.rc19_current_leader_brand_ids('reports.read'))) <> 0
+     OR private.can_read_report('report-x') OR private.can_read_report('report-y') THEN
+    RAISE EXCEPTION 'LEADER_B_INHERITED_BRAND_A_SCOPE';
+  END IF;
+END $$;
+RESET ROLE;
+
+-- Member ownership/assignment is unchanged; an unassigned cross-Brand report is denied.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000031';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF (SELECT count(*) FROM public.reports) <> 2
+     OR private.can_read_report('report-y') THEN RAISE EXCEPTION 'MEMBER_REPORT_SCOPE_REGRESSION'; END IF;
+  IF public.authorize_report_image_delete('image-member') IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'MEMBER_OWN_IMAGE_DELETE_REGRESSION';
+  END IF;
+  BEGIN
+    PERFORM public.authorize_report_image_delete('image-x');
+    RAISE EXCEPTION 'MEMBER_CROSS_OWNER_IMAGE_DELETE_AUTHORIZED';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+  PERFORM public.pg17_test_update_report('report-member-x');
+  BEGIN
+    PERFORM public.pg17_test_update_report('report-x');
+    RAISE EXCEPTION 'MEMBER_UPDATED_OTHER_REPORT';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+
+-- Admin remains global; reports.review is distinct from read and can mutate only its Brand.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.rc19_set_leader_brand_scope('leader-a','brand-x','reports.review',true,0,
+  statement_timestamp(),NULL,'PG17 synthetic report-review grant');
+DO $$ BEGIN
+  IF (SELECT count(*) FROM public.reports) <> 3 THEN RAISE EXCEPTION 'ADMIN_REPORT_GLOBAL_VIEW_FAILED'; END IF;
+END $$;
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF public.authorize_report_image_delete('image-x') IS DISTINCT FROM true
+     OR public.authorize_live_report_image_delete('live-image-x') IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'REPORT_REVIEW_PROVIDER_DELETE_PREFLIGHT_DENIED';
+  END IF;
+END $$;
+SELECT public.pg17_test_update_report('report-x');
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.pg17_test_update_report('report-y');
+    RAISE EXCEPTION 'LEADER_REVIEW_CROSSED_BRAND';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+
+-- Expiry, revoke and version conflict all remove scope without deleting history.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.rc19_set_leader_brand_scope('leader-b','brand-y','reports.read',true,0,
+  statement_timestamp()-interval '2 hours',statement_timestamp()-interval '1 hour','PG17 expired grant');
+SELECT public.rc19_set_leader_brand_scope('leader-a','brand-x','reports.read',false,1,
+  statement_timestamp(),NULL,'PG17 revoke report read');
+SELECT public.rc19_set_leader_brand_scope('leader-a','brand-x','reports.review',false,1,
+  statement_timestamp(),NULL,'PG17 revoke report review');
+DO $$ BEGIN
+  BEGIN
+    PERFORM public.rc19_set_leader_brand_scope('leader-a','brand-x','reports.read',true,1,
+      statement_timestamp(),NULL,'PG17 stale expected version');
+    RAISE EXCEPTION 'STALE_SCOPE_VERSION_ACCEPTED';
+  EXCEPTION WHEN SQLSTATE '40001' THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF private.can_read_report('report-x') OR (SELECT count(*) FROM public.reports) <> 0 THEN
+    RAISE EXCEPTION 'REVOKED_REPORT_SCOPE_STILL_ACTIVE';
+  END IF;
+END $$;
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000022';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF private.can_read_report('report-y') THEN RAISE EXCEPTION 'EXPIRED_REPORT_SCOPE_STILL_ACTIVE'; END IF;
+END $$;
+RESET ROLE;
+-- Losing Leader authority revokes grants permanently; re-promotion does not resurrect them.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.pg17_test_change_user_role('leader-a','member');
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF private.can_read_report('report-x')
+     OR cardinality(ARRAY(SELECT public.rc19_current_leader_brand_ids('workforce.read'))) <> 0 THEN
+    RAISE EXCEPTION 'ROLE_LOSS_DID_NOT_REVOKE_SCOPES';
+  END IF;
+END $$;
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.pg17_test_change_user_role('leader-a','leader');
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF private.can_read_report('report-x') THEN RAISE EXCEPTION 'ROLE_REPROMOTION_RESURRECTED_SCOPES'; END IF;
+END $$;
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF (SELECT count(*) FROM public.rc19_leader_brand_scope_events WHERE event_type='automatic_revoke') < 2
+     OR (SELECT count(*) FROM public.rc19_leader_brand_scope_events) < 7 THEN
+    RAISE EXCEPTION 'LEADER_SCOPE_AUDIT_HISTORY_MISSING';
+  END IF;
+END $$;
+RESET ROLE;
+RESET request.jwt.claim.sub;
+SELECT 'RC19_C3_LEADER_BRAND_REPORTS_PG17: PASS';

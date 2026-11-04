@@ -29,9 +29,15 @@ const query=z.object({
   .refine(input=>Boolean(input.page)===Boolean(input.page_size))
 const fail=(code:string,status:number)=>Response.json({ok:false,error:{code}},
   {status,headers:{'Cache-Control':'no-store'}})
+type LeaderScopeClient={rpc:(name:string,args:Record<string,unknown>)=>PromiseLike<{data:unknown,error:unknown}>}
 type Options={createClient?:()=>SupabaseClient;resolveUser?:ServerUserResolver,
+  createScopeClient?:()=>Promise<LeaderScopeClient>;
   isEnabled?:()=>boolean;
   grace?:()=>number|null;leaderboardMin?:()=>number|null}
+function parseBrandIds(value:unknown):string[]|null{
+  if(!Array.isArray(value)||value.some(id=>typeof id!=='string'||!id.trim()))return null
+  return [...new Set(value as string[])]
+}
 function envInt(key:string):number|null{
   const v=process.env[key]?.trim()
   return v&&/^\d{1,3}$/u.test(v)?Number(v):null
@@ -41,33 +47,41 @@ export function createWorkforceOverviewHandler(options:Options={}) {
   return {async GET(request:Request):Promise<Response>{
     try{
       const actor=await requireRole(request,['admin','leader'],options.resolveUser)
-      if(actor.systemPermission==='leader')
-        return fail('WORKFORCE_LEADER_SCOPE_UNAVAILABLE',503)
       if(!(options.isEnabled??(()=>isFeatureEnabled('actual_staffing')))())
         return fail('WORKFORCE_FEATURE_DISABLED',503)
       const input=query.parse(Object.fromEntries(new URL(request.url).searchParams.entries()))
       const grace=(options.grace??(()=>WORKFORCE_LATE_GRACE_MINUTES))()
       if(grace===null||!Number.isSafeInteger(grace)||grace<0||grace>120)
         return fail('WORKFORCE_GRACE_POLICY_NOT_CONFIGURED',409)
+      let leaderBrandIds:string[]|null=null
+      let scopeClient:LeaderScopeClient|null=null
+      if(actor.systemPermission==='leader'){
+        if(!actor.businessUserId)return fail('WORKFORCE_LEADER_SCOPE_UNAVAILABLE',503)
+        try{
+          scopeClient=options.createScopeClient
+            ?await options.createScopeClient()
+            :await (await import('@/lib/supabase/server')).createClient() as unknown as LeaderScopeClient
+          const scope=await scopeClient.rpc('rc19_current_leader_brand_ids',{p_scope_key:'workforce.read'})
+          leaderBrandIds=parseBrandIds(scope.data)
+          if(scope.error||leaderBrandIds===null)return fail('WORKFORCE_LEADER_SCOPE_UNAVAILABLE',503)
+          if(leaderBrandIds.length===0)return fail('WORKFORCE_LEADER_SCOPE_DENIED',403)
+        }catch{return fail('WORKFORCE_LEADER_SCOPE_UNAVAILABLE',503)}
+      }
       const period=input.period??input.month!
       const {from:first,to:last}=workforcePeriodRange(period)
       const db=(options.createClient??createSupabaseAdminClient)()
-      const [staffRows,shiftRows]=await Promise.all([
-        readCompleteWorkforceRows(
-          (from,to)=>db.from('business_users')
-            .select('id,full_name,department',{count:'exact'})
-            .eq('status','active').is('deleted_at',null)
-            .order('id',{ascending:true}).range(from,to),
-          'WORKFORCE_TEAM_SCOPE_INCOMPLETE',
-        ),
-        readCompleteWorkforceRows(
-          (from,to)=>db.from('shifts')
-            .select('id,date,start_at,status,host_id,support_id,technical_id',{count:'exact'})
+      const shiftRows=await readCompleteWorkforceRows(
+        (from,to)=>leaderBrandIds
+          ?db.from('shifts').select('id,date,start_at,status,host_id,support_id,technical_id,brand_id',{count:'exact'})
+            .in('brand_id',leaderBrandIds).gte('date',first).lte('date',last).is('deleted_at',null).is('archived_at',null)
+            .order('id',{ascending:true}).range(from,to)
+          :db.from('shifts').select('id,date,start_at,status,host_id,support_id,technical_id,brand_id',{count:'exact'})
             .gte('date',first).lte('date',last).is('deleted_at',null)
             .order('id',{ascending:true}).range(from,to),
-          'WORKFORCE_TEAM_SCOPE_INCOMPLETE',
-        ),
-      ])
+        'WORKFORCE_TEAM_SCOPE_INCOMPLETE',
+      )
+      if(leaderBrandIds&&shiftRows.some(shift=>!leaderBrandIds!.includes(shift.brand_id)))
+        return fail('WORKFORCE_LEADER_SCOPE_DENIED',403)
       const shifts=shiftRows.filter(s=>s.status!=='cancelled')
       const shiftIds=shifts.map(s=>s.id)
       const [registrationRows,actualRows]=await Promise.all([
@@ -88,6 +102,28 @@ export function createWorkforceOverviewHandler(options:Options={}) {
           'WORKFORCE_TEAM_EVIDENCE_INCOMPLETE',
         ),
       ])
+      const staffIds=[...new Set([
+        ...shifts.flatMap(shift=>[shift.host_id,shift.support_id,shift.technical_id].filter((id):id is string=>typeof id==='string'&&id.length>0)),
+        ...registrationRows.map(row=>row.user_id),
+      ])]
+      const staffRows=staffIds.length===0?[]:await readCompleteWorkforceRows(
+        (from,to)=>{
+          const query=db.from('business_users').select('id,full_name,department',{count:'exact'})
+            .eq('status','active').is('deleted_at',null)
+          return actor.systemPermission==='admin'
+            ?query.order('id',{ascending:true}).range(from,to)
+            :query.in('id',staffIds).order('id',{ascending:true}).range(from,to)
+        },
+        'WORKFORCE_TEAM_SCOPE_INCOMPLETE',
+      )
+      if(leaderBrandIds&&scopeClient){
+        try{
+          const latest=await scopeClient.rpc('rc19_current_leader_brand_ids',{p_scope_key:'workforce.read'})
+          const latestBrandIds=parseBrandIds(latest.data)
+          if(latest.error||latestBrandIds===null||leaderBrandIds.some(id=>!latestBrandIds.includes(id)))
+            return fail('WORKFORCE_LEADER_SCOPE_CHANGED',409)
+        }catch{return fail('WORKFORCE_LEADER_SCOPE_CHANGED',409)}
+      }
       const registrations=registrationRows
       const known=new Map(staffRows.map(s=>[s.id,s]))
       const registrationsByShift=new Map<string,typeof registrations>()
