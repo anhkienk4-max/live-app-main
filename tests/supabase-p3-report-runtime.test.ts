@@ -55,6 +55,8 @@ class FakeQuery {
   private updatePayload: Record<string, unknown> | null = null
   private isCount = false
   private returning = false
+  private rangeFrom: number | null = null
+  private rangeTo: number | null = null
 
   constructor(
     private readonly database: FakeDatabase,
@@ -70,6 +72,11 @@ class FakeQuery {
   }
   order(column: string, options?: { ascending?: boolean }) {
     this.orderClauses.push({ column, ascending: options?.ascending !== false }); return this
+  }
+  range(from: number, to: number) {
+    this.rangeFrom = from
+    this.rangeTo = to
+    return this
   }
   limit(count: number) { this.limitCount = count; return this }
   update(payload: Record<string, unknown>) { this.updatePayload = payload; return this }
@@ -102,6 +109,9 @@ class FakeQuery {
         String(a[column] ?? '').localeCompare(String(b[column] ?? '')) * (ascending ? 1 : -1))
     }
     if (this.limitCount !== null) matching = matching.slice(0, this.limitCount)
+    if (this.rangeFrom !== null && this.rangeTo !== null) {
+      matching = matching.slice(this.rangeFrom, this.rangeTo + 1)
+    }
     return { data: single ? matching[0] ?? null : matching, error: null }
   }
 }

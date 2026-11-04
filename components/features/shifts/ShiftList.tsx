@@ -3,12 +3,14 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 
 import * as React from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { usePagedList } from '@/lib/hooks/usePagedList'
-import { getOperationalReferences } from '@/lib/services/operationalReferences'
+import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/services/operationalReferences'
 import { shiftService, shiftRegistrationService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
-import { formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
+import { businessLocalDate, formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
+import { shiftDateWindowFilters } from '@/lib/utils/shiftDateWindow'
 import { ActionBar } from '@/components/ui/action-bar'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { buildShiftActions } from '@/lib/ui/action-priority'
@@ -18,7 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Pencil, Trash2, Copy, Upload, Eye, ArrowDownUp, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, Copy, Upload, Eye, ArrowDownUp, Search, ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { ShiftFormDialog } from './ShiftFormDialog'
@@ -27,10 +29,14 @@ import { BulkActionsToolbar } from './BulkActionsToolbar'
 import { ImportExportDialog } from './ImportExportDialog'
 import { format } from 'date-fns'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
+import { invalidShiftListEntityFilters, readShiftListUrlState, shiftListUrlValues, type ShiftListUrlState } from '@/lib/utils/shiftListUrlState'
+import type { ListQuery } from '@/lib/services/operationsPageService'
+import type { ShiftDateWindow } from '@/lib/utils/shiftDateWindow'
 
 const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = {
   scheduled: 'secondary',
@@ -39,7 +45,62 @@ const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = 
   cancelled: 'secondary'
 }
 
+const invalidFilterService = {
+  getPage: async (query: ListQuery) => ({ items: [] as Shift[], total: 0, page: query.page, pageSize: query.pageSize }),
+}
+
+function ShiftDateFilter({ state, onApply, t, mobile = false }: { state: ShiftListUrlState; onApply: (state: ShiftListUrlState) => void; t: (key: string) => string; mobile?: boolean }) {
+  const { language } = useTranslation()
+  const [mode, setMode] = React.useState<ShiftDateWindow>(state.dateWindow)
+  const [month, setMonth] = React.useState(state.month || businessLocalDate().slice(0, 7))
+  const [from, setFrom] = React.useState(state.from || shiftDateWindowFilters('recent').from || '')
+  const [to, setTo] = React.useState(state.to || businessLocalDate())
+  let valid = true
+  try { shiftDateWindowFilters(mode, new Date(), month, from, to) }
+  catch { valid = false }
+  const changeMode = (next: ShiftDateWindow) => {
+    setMode(next)
+    if (next !== 'month' && next !== 'custom') onApply({ ...state, dateWindow: next, month: '', from: '', to: '' })
+  }
+  return <div className={mobile ? 'contents' : 'flex flex-wrap items-center gap-2'}>
+    <label className={mobile ? 'min-w-0' : 'flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600'}>
+      <span className={mobile ? 'sr-only' : ''}>{t('dateRange')}</span>
+      <select aria-label={t('dateRange')} value={mode} onChange={event => changeMode(event.target.value as ShiftDateWindow)} data-testid={mobile ? 'shifts-mobile-date-mode' : 'shifts-desktop-date-mode'}
+        className={mobile ? 'h-11 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800' : 'max-w-40 bg-transparent font-medium text-slate-800 outline-none'}>
+        <option value="recent">{t('last30Days')}</option>
+        <option value="upcoming">{t('upcoming')}</option>
+        <option value="all">{t('all')}</option>
+        <option value="month">{t('month')}</option>
+        <option value="custom">{t('customRange')}</option>
+      </select>
+    </label>
+    {mode === 'month' && <Input type="month" aria-label={t('month')} value={month} onChange={event => setMonth(event.target.value)} data-testid="shifts-month-input" className={mobile ? 'col-span-2 h-11' : 'w-40'} />}
+    {mode === 'custom' && <>
+      <Input type="date" aria-label={t('startDate')} value={from} onChange={event => setFrom(event.target.value)} data-testid="shifts-from-input" className={mobile ? 'col-span-2 h-11' : 'w-40'} />
+      <Input type="date" aria-label={t('endDate')} value={to} onChange={event => setTo(event.target.value)} data-testid="shifts-to-input" className={mobile ? 'col-span-2 h-11' : 'w-40'} />
+    </>}
+    {(mode === 'month' || mode === 'custom') && <Button type="button" variant="outline" disabled={!valid} onClick={() => onApply({ ...state, dateWindow: mode, month, from, to })} data-testid="shifts-date-apply" className={mobile ? 'col-span-2 h-11' : ''}>{language === 'vi' ? 'Áp dụng' : 'Apply'}</Button>}
+  </div>
+}
+
+function ShiftEntityFilter({ label, name, value, options, onChange, all, unavailable, mobile = false }: {
+  label: string; name: 'brand' | 'platform' | 'campaign'; value: string; options: Array<{ id: string; name: string }>
+  onChange: (value: string) => void; all: string; unavailable: string; mobile?: boolean
+}) {
+  return <label className={mobile ? 'min-w-0' : 'flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600'}>
+    <span className={mobile ? 'sr-only' : ''}>{label}</span>
+    <select aria-label={label} data-testid={`shifts-${mobile ? 'mobile' : 'desktop'}-${name}-filter`} value={value}
+      onChange={event => onChange(event.target.value)}
+      className={mobile ? 'h-11 min-w-0 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800' : 'max-w-40 bg-transparent font-medium text-slate-800 outline-none'}>
+      <option value="">{mobile ? `${label}: ${all}` : all}</option>
+      {value && !options.some(option => option.id === value) && <option value={value}>{unavailable}</option>}
+      {options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+    </select>
+  </label>
+}
+
 export function ShiftList() {
+  const router = useRouter()
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
@@ -60,48 +121,8 @@ export function ShiftList() {
   const [isFormOpen, setIsFormOpen] = React.useState(false)
   const [isImportExportOpen, setIsImportExportOpen] = React.useState(false)
   
-  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
-  const [showBulkActions, setShowBulkActions] = React.useState(false)
-  const [statusFilter, setStatusFilter] = React.useState<Shift['status'] | 'all'>('all')
-  const [searchQuery, setSearchQuery] = React.useState('')
-  const [sortDescending, setSortDescending] = React.useState(false)
-  const [visibleShifts, setVisibleShifts] = React.useState<Shift[]>([])
-  const [filteredTableShifts, setFilteredTableShifts] = React.useState<Shift[]>([])
-  const [tableFilterInitialized, setTableFilterInitialized] = React.useState(false)
-
-  const handleVisibleDataChange = React.useCallback((next: Shift[]) => {
-    setVisibleShifts(prev => {
-      if (prev.length === next.length && prev.every((s, i) => s.id === next[i]?.id)) {
-        return prev
-      }
-      return next
-    })
-  }, [])
-
-  const handleFilteredDataChange = React.useCallback((next: Shift[]) => {
-    setTableFilterInitialized(true)
-    setFilteredTableShifts(prev => {
-      if (prev.length === next.length && prev.every((s, i) => s.id === next[i]?.id)) {
-        return prev
-      }
-      return next
-    })
-  }, [])
-
-  const handleStatusFilterChange = React.useCallback((status: Shift['status'] | 'all') => {
-    setStatusFilter(status)
-    setSelectedIds(new Set())
-    setShowBulkActions(false)
-  }, [])
-
-  const handleSearchQueryChange = React.useCallback((query: string) => {
-    setSearchQuery(query)
-    setSelectedIds(new Set())
-    setShowBulkActions(false)
-  }, [])
-  
   const { toast } = useToast()
-  const { t, translate } = useTranslation()
+  const { t, translate, language } = useTranslation()
   const { currentUser } = useCurrentUser()
 
   // Granular capability gating (UX-P1-01)
@@ -114,8 +135,30 @@ export function ShiftList() {
   const canMutate = canEdit || canDelete
 
   const statusValues = ['scheduled', 'preparing', 'live', 'paused', 'completed', 'cancelled'] as const
-  const listFilters = { search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], descending: sortDescending }
-  const list = usePagedList(shiftService, 'shifts', listFilters)
+  const searchParams = useSearchParams()
+  const requestedEditShiftId = searchParams.get('edit_shift_id') ?? ''
+  const urlState = readShiftListUrlState(searchParams)
+  const invalidEntities = invalidShiftListEntityFilters(searchParams)
+  const invalidEntityFilter = invalidEntities.brand || invalidEntities.platform || invalidEntities.campaign
+  const { dateWindow, status: statusFilter, search: searchQuery, descending: sortDescending } = urlState
+  const listFilters = { ...shiftDateWindowFilters(dateWindow, new Date(), urlState.month, urlState.from, urlState.to), search: searchQuery, statuses: statusFilter === 'all' ? [] : [statusFilter], brandIds: urlState.brandId ? [urlState.brandId] : [], platformIds: urlState.platformId ? [urlState.platformId] : [], campaignIds: urlState.campaignId ? [urlState.campaignId] : [], descending: sortDescending }
+  const dateFilterKey = [dateWindow, urlState.month, urlState.from, urlState.to].join(':')
+  const list = usePagedList(invalidEntityFilter ? invalidFilterService : shiftService, 'shifts', listFilters)
+  const referenceKey = currentUser ? operationalReferenceIdentity(currentUser) : ''
+  const currentReferenceKey = React.useRef(referenceKey)
+  React.useEffect(() => { currentReferenceKey.current = referenceKey }, [referenceKey])
+  const [loadedReferenceKey, setLoadedReferenceKey] = React.useState('')
+  const selectionScope = JSON.stringify([referenceKey, list.page, list.pageSize, listFilters])
+  const [previousSelectionScope, setPreviousSelectionScope] = React.useState(selectionScope)
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  const [showBulkActions, setShowBulkActions] = React.useState(false)
+  if (previousSelectionScope !== selectionScope) {
+    setPreviousSelectionScope(selectionScope)
+    setSelectedIds(new Set())
+    setShowBulkActions(false)
+    setPendingBulkStatus(null)
+  }
+  useShiftChangeRefresh(list.reload)
   const { items: shifts, loading } = list
   const sortedShifts = shifts
 
@@ -145,13 +188,15 @@ export function ShiftList() {
     setLoadError(null)
     try {
       const [refs, templatesData] = await Promise.all([getOperationalReferences(currentUser), templateService.getAll()])
+      if (currentReferenceKey.current !== operationalReferenceIdentity(currentUser)) return
       const { brands: brandsData, platforms: platformsData, campaigns: campaignsData, users: usersData } = refs
       setBrands(brandsData)
       setPlatforms(platformsData)
       setCampaigns(campaignsData)
       setUsers(usersData)
       setTemplates(templatesData)
-    } catch (error) { setLoadError(error) }
+      setLoadedReferenceKey(operationalReferenceIdentity(currentUser))
+    } catch (error) { if (currentReferenceKey.current === operationalReferenceIdentity(currentUser)) setLoadError(error) }
   }, [currentUser])
 
   React.useEffect(() => {
@@ -168,9 +213,20 @@ export function ShiftList() {
     return () => { active = false }
   }, [pageIds])
   const clearSelection = () => { setSelectedIds(new Set()); setShowBulkActions(false) }
+  const updateFilters = (next: typeof urlState, replace = false) => {
+    list.navigate(shiftListUrlValues(next), replace)
+    clearSelection()
+  }
+  const handleStatusFilterChange = (status: Shift['status'] | 'all') => updateFilters({ ...urlState, status })
+  const handleSearchQueryChange = (search: string) => updateFilters({ ...urlState, search }, true)
+  const resetEntities = () => updateFilters({ ...urlState, brandId: '', platformId: '', campaignId: '' })
+  const availableBrands = loadedReferenceKey === referenceKey ? brands : []
+  const availablePlatforms = loadedReferenceKey === referenceKey ? platforms : []
+  const availableCampaigns = loadedReferenceKey === referenceKey ? campaigns : []
+  const resetEntityLabel = language === 'vi' ? 'Đặt lại thương hiệu, nền tảng và chiến dịch' : 'Reset brand, platform and campaign'
 
   const requestDelete = async (ids: string[]) => {
-    if (!canDelete) return
+    if (!canDelete || ids.length === 0 || ids.some(id => !shifts.some(shift => shift.id === id))) return
     const impacts = (await Promise.all(ids.map(id => shiftService.getDeletionImpact(id)))).filter((impact): impact is DeletionImpact => Boolean(impact))
     if (impacts.length === 0) return
     setDeleteIds(ids)
@@ -189,6 +245,7 @@ export function ShiftList() {
   const handleDelete = async (reason: string) => {
     if (!currentUser || !canDelete) return
     try {
+      if (deleteIds.some(id => !shifts.some(shift => shift.id === id))) throw new Error('SHIFT_SELECTION_CHANGED')
       for (const id of deleteIds) {
         await shiftService.remove(id, currentUser.id, reason, shifts.find(shift => shift.id === id)?.version)
       }
@@ -202,13 +259,13 @@ export function ShiftList() {
     }
   }
 
-  const handleEdit = (shift: Shift) => {
+  const handleEdit = React.useCallback((shift: Shift) => {
     if (!canEdit) return
     setEditingShift(shift)
     setDuplicateShift(null)
     setReopenDetailAfterEdit(false)
     setIsFormOpen(true)
-  }
+  }, [canEdit])
 
   const handleDuplicate = (shift: Shift) => {
     if (!canCreate) return
@@ -235,7 +292,39 @@ export function ShiftList() {
     setIsFormOpen(true)
   }
 
+  const processedEditRequest = React.useRef('')
+  const editRequestKey = `${currentUser?.id ?? 'anonymous'}:${requestedEditShiftId}`
+  React.useEffect(() => {
+    if (!requestedEditShiftId || processedEditRequest.current === editRequestKey) return
+    processedEditRequest.current = editRequestKey
+    const clearEditRequest = () => {
+      const nextParams = new URLSearchParams(searchParams.toString())
+      nextParams.delete('edit_shift_id')
+      const query = nextParams.toString()
+      processedEditRequest.current = ''
+      router.replace(query ? `/shifts?${query}` : '/shifts', { scroll: false })
+    }
+    if (!canEdit) {
+      clearEditRequest()
+      return
+    }
+
+    let active = true
+    void shiftService.getById(requestedEditShiftId).then(shift => {
+      if (!active) return
+      if (shift) handleEdit(shift)
+      else toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
+      clearEditRequest()
+    }).catch(error => {
+      if (!active) return
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      clearEditRequest()
+    })
+    return () => { active = false }
+  }, [requestedEditShiftId, editRequestKey, canEdit, router, searchParams, handleEdit, toast, t])
+
   const toggleSelect = (id: string) => {
+    if (!sortedShifts.some(shift => shift.id === id)) return
     const newSet = new Set(selectedIds)
     if (newSet.has(id)) {
       newSet.delete(id)
@@ -246,58 +335,20 @@ export function ShiftList() {
     setShowBulkActions(newSet.size > 0)
   }
 
-  // Active filtered shifts on desktop:
-  // - If table filter is initialized: strictly filteredTableShifts (which is [] when 0 results match)
-  // - If table filter is not yet initialized: sortedShifts
-  const currentTableFilteredShifts = React.useMemo(() => {
-    if (tableFilterInitialized) {
-      return filteredTableShifts
-    }
-    return sortedShifts
-  }, [tableFilterInitialized, filteredTableShifts, sortedShifts])
-
-  // Reconcile selectedIds during render when filtered table data changes:
-  // Prunes any previously selected IDs that no longer exist in currentTableFilteredShifts.
-  const [prevFilteredShifts, setPrevFilteredShifts] = React.useState<Shift[]>(filteredTableShifts)
-  if (filteredTableShifts !== prevFilteredShifts) {
-    setPrevFilteredShifts(filteredTableShifts)
-    if (selectedIds.size > 0 && tableFilterInitialized) {
-      const validIdSet = new Set(filteredTableShifts.map(s => s.id))
-      const next = new Set<string>()
-      selectedIds.forEach(id => {
-        if (validIdSet.has(id)) next.add(id)
-      })
-      if (next.size !== selectedIds.size) {
-        setSelectedIds(next)
-        if (next.size === 0) {
-          setShowBulkActions(false)
-        }
-      }
-    }
-  }
-
-  // Only shifts that are currently selected AND in currentTableFilteredShifts
-  const selectedFilteredShifts = React.useMemo(() => {
-    if (tableFilterInitialized && filteredTableShifts.length === 0) {
-      return []
-    }
-    const pool = currentTableFilteredShifts
-    const validIds = new Set(pool.map(s => s.id))
-    return pool.filter(s => selectedIds.has(s.id) && validIds.has(s.id))
-  }, [tableFilterInitialized, filteredTableShifts, currentTableFilteredShifts, selectedIds])
-
-  const allPageSelected = visibleShifts.length > 0 && visibleShifts.every(s => selectedIds.has(s.id))
-  const somePageSelected = visibleShifts.some(s => selectedIds.has(s.id)) && !allPageSelected
+  // A server page is the only selectable scope for both table and mobile cards.
+  const selectedFilteredShifts = sortedShifts.filter(shift => selectedIds.has(shift.id))
+  const allPageSelected = sortedShifts.length > 0 && sortedShifts.every(shift => selectedIds.has(shift.id))
+  const somePageSelected = sortedShifts.some(shift => selectedIds.has(shift.id)) && !allPageSelected
 
   const toggleSelectPage = () => {
     if (allPageSelected) {
       const next = new Set(selectedIds)
-      visibleShifts.forEach(s => next.delete(s.id))
+      sortedShifts.forEach(s => next.delete(s.id))
       setSelectedIds(next)
       setShowBulkActions(next.size > 0)
     } else {
       const next = new Set(selectedIds)
-      visibleShifts.forEach(s => next.add(s.id))
+      sortedShifts.forEach(s => next.add(s.id))
       setSelectedIds(next)
       setShowBulkActions(true)
     }
@@ -391,15 +442,19 @@ export function ShiftList() {
     }
   ]
 
+  if (invalidEntityFilter) return <div role="alert" className="space-y-3 rounded-lg border p-4" data-testid="shifts-invalid-entity-filter">
+    <p>{language === 'vi' ? 'Bộ lọc thương hiệu, nền tảng hoặc chiến dịch trong URL không hợp lệ. Không hiển thị ca cho đến khi sửa bộ lọc.' : 'The brand, platform or campaign filter in the URL is invalid. No shifts are shown until it is corrected.'}</p>
+    <Button type="button" variant="outline" onClick={() => updateFilters({ ...urlState, brandId: invalidEntities.brand ? '' : urlState.brandId, platformId: invalidEntities.platform ? '' : urlState.platformId, campaignId: invalidEntities.campaign ? '' : urlState.campaignId })}>
+      {language === 'vi' ? 'Xóa bộ lọc không hợp lệ' : 'Clear invalid filters'}
+    </Button>
+  </div>
   if (loadError || list.error) return <PageLoadError error={loadError || list.error} onRetry={() => { setLoadError(null); void loadData() }} />
-  if (loading) return <div className="text-center py-12">{t('loading')}</div>
-
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{translate('Shift Management')}</h1>
-          <p className="mt-1 text-xs text-muted-foreground">{list.total} {t('totalShifts')}</p>
+          <p className="mt-1 text-xs text-muted-foreground" role={loading ? 'status' : undefined}>{loading ? t('loading') : `${list.total} ${t('totalShifts')}`}</p>
         </div>
         <div className="flex gap-2">
           {canImportExport && (
@@ -424,11 +479,11 @@ export function ShiftList() {
         </div>
       </div>
 
-      {showBulkActions && <p className="text-xs text-muted-foreground">{t('currentPage')} · {t('selectedCount',{count:selectedIds.size})}</p>}
+      {showBulkActions && selectedFilteredShifts.length > 0 && <p className="text-xs text-muted-foreground">{t('currentPage')} · {t('selectedCount',{count:selectedFilteredShifts.length})}</p>}
       {showBulkActions && selectedFilteredShifts.length > 0 && (
         <BulkActionsToolbar
           selectedCount={selectedFilteredShifts.length}
-          totalFilteredCount={currentTableFilteredShifts.length}
+          totalFilteredCount={sortedShifts.length}
           onBulkDelete={() => void requestDelete(selectedFilteredShifts.map(s => s.id))}
           onDeselectAll={() => { setSelectedIds(new Set()); setShowBulkActions(false) }}
           shifts={selectedFilteredShifts}
@@ -438,27 +493,49 @@ export function ShiftList() {
         />
       )}
 
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label={language === 'vi' ? 'Kiểu hiển thị ca trực' : 'Shift display mode'} className="inline-flex rounded-md border bg-white p-0.5">
+            <Button type="button" size="sm" variant={urlState.viewMode === 'table' ? 'default' : 'ghost'} aria-pressed={urlState.viewMode === 'table'} onClick={() => updateFilters({ ...urlState, viewMode: 'table' })}>
+              <List className="mr-1.5 h-4 w-4" />{language === 'vi' ? 'Bảng' : 'Table'}
+            </Button>
+            <Button type="button" size="sm" variant={urlState.viewMode === 'cards' ? 'default' : 'ghost'} aria-pressed={urlState.viewMode === 'cards'} onClick={() => updateFilters({ ...urlState, viewMode: 'cards' })}>
+              <LayoutGrid className="mr-1.5 h-4 w-4" />{language === 'vi' ? 'Thẻ' : 'Cards'}
+            </Button>
+          </div>
+          <span className="hidden text-xs text-muted-foreground lg:inline">{language === 'vi' ? 'Xem lịch:' : 'Calendar:'}</span>
+          {(['month', 'week', 'day', 'list'] as const).map(view => <Button key={view} type="button" size="sm" variant="outline" onClick={() => router.push(`/calendar?calendar_view=${view}`)}>
+            {t(view)}
+          </Button>)}
+        </div>
+        {urlState.viewMode === 'cards' && <span className="text-xs text-muted-foreground">{language === 'vi' ? 'Dùng chung bộ lọc và phân trang với bảng.' : 'Cards use the same filters and pagination as the table.'}</span>}
+      </div>
+
       {/* DESKTOP VIEW: Data Table (UX-P1-02: Hidden on mobile < md) */}
-      <div className="hidden md:block [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]">
+      <div className={`${urlState.viewMode === 'table' ? 'hidden md:block' : 'hidden'} [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_table]:text-xs [&_tbody_tr]:h-[62px]`}>
         <DataTable
           data={sortedShifts}
           columns={columns}
           search={searchQuery}
-          onSearch={value => { handleSearchQueryChange(value); list.reset() }}
-          pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total,
+          onSearch={handleSearchQueryChange}
+          pagination={{ loading: loading || list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total,
             onPageChange: value => { clearSelection(); list.setPage(value) },
             onPageSizeChange: value => { clearSelection(); list.setPageSize(value) } }}
-          onVisibleDataChange={handleVisibleDataChange}
-          onFilteredDataChange={handleFilteredDataChange}
           searchPlaceholder={t('search')}
           filterComponent={
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <ShiftDateFilter key={'desktop:' + dateFilterKey} state={urlState} onApply={updateFilters} t={t} />
+              <ShiftEntityFilter label={t('brand')} name="brand" value={urlState.brandId} options={availableBrands} onChange={brandId => updateFilters({ ...urlState, brandId })} all={t('all')} unavailable={t('notUpdated')} />
+              <ShiftEntityFilter label={t('platform')} name="platform" value={urlState.platformId} options={availablePlatforms} onChange={platformId => updateFilters({ ...urlState, platformId })} all={t('all')} unavailable={t('notUpdated')} />
+              <ShiftEntityFilter label={t('campaign')} name="campaign" value={urlState.campaignId} options={availableCampaigns} onChange={campaignId => updateFilters({ ...urlState, campaignId })} all={t('all')} unavailable={t('notUpdated')} />
+              <Button variant="outline" size="sm" onClick={resetEntities} disabled={!urlState.brandId && !urlState.platformId && !urlState.campaignId}>{resetEntityLabel}</Button>
               <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600">
                 <span>{t('status')}</span>
                 <select
                   aria-label={t('status')}
+                  data-testid="shifts-desktop-status-filter"
                   value={statusFilter}
-                  onChange={event => { handleStatusFilterChange(event.target.value as Shift['status'] | 'all'); list.reset() }}
+                  onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
                   className="max-w-40 bg-transparent font-medium text-slate-800 outline-none"
                 >
                   <option value="all">{t('all')}</option>
@@ -472,8 +549,9 @@ export function ShiftList() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setSortDescending(value => !value); clearSelection(); list.reset() }}
+                onClick={() => updateFilters({ ...urlState, descending: !sortDescending })}
                 aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
+                data-testid="shifts-desktop-sort"
                 title={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
               >
                 <ArrowDownUp className="mr-1.5 h-4 w-4" />
@@ -481,31 +559,36 @@ export function ShiftList() {
               </Button>
             </div>
           }
-          emptyMessage={t('noData')}
+          emptyMessage={loading ? t('loading') : t('noData')}
         />
       </div>
 
       {/* MOBILE VIEW: Compact Shift Cards with 10/20/50 pagination (UX-P1-02: 390px mobile scan) */}
-      <div className="block md:hidden space-y-3" data-testid="shifts-mobile-container">
+      <div className={`${urlState.viewMode === 'cards' ? 'block' : 'block md:hidden'} space-y-3`} data-testid="shifts-mobile-container">
         {/* Mobile Search & Filter Toolbar */}
-        <div className="flex flex-col gap-2 bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs">
+        <div className={`${urlState.viewMode === 'cards' ? '' : 'md:hidden'} flex flex-col gap-2 bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs`}>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
               type="text"
               placeholder={t('search')}
               value={searchQuery}
-              onChange={e => { handleSearchQueryChange(e.target.value); list.reset() }}
+              onChange={e => handleSearchQueryChange(e.target.value)}
               className="pl-8 h-9 text-xs"
               data-testid="shifts-mobile-search"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid min-w-0 grid-cols-2 gap-2">
+            <ShiftDateFilter key={'mobile:' + dateFilterKey} state={urlState} onApply={updateFilters} t={t} mobile />
+            <ShiftEntityFilter mobile label={t('brand')} name="brand" value={urlState.brandId} options={availableBrands} onChange={brandId => updateFilters({ ...urlState, brandId })} all={t('all')} unavailable={t('notUpdated')} />
+            <ShiftEntityFilter mobile label={t('platform')} name="platform" value={urlState.platformId} options={availablePlatforms} onChange={platformId => updateFilters({ ...urlState, platformId })} all={t('all')} unavailable={t('notUpdated')} />
+            <ShiftEntityFilter mobile label={t('campaign')} name="campaign" value={urlState.campaignId} options={availableCampaigns} onChange={campaignId => updateFilters({ ...urlState, campaignId })} all={t('all')} unavailable={t('notUpdated')} />
+            <Button variant="outline" size="sm" className="col-span-2 min-h-11" onClick={resetEntities} disabled={!urlState.brandId && !urlState.platformId && !urlState.campaignId}>{resetEntityLabel}</Button>
             <select
               aria-label={t('status')}
               value={statusFilter}
-              onChange={event => { handleStatusFilterChange(event.target.value as Shift['status'] | 'all'); list.reset() }}
-              className="flex-1 h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none"
+              onChange={event => handleStatusFilterChange(event.target.value as Shift['status'] | 'all')}
+              className="h-11 min-w-0 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none"
               data-testid="shifts-mobile-status-filter"
             >
               <option value="all">{t('all')}</option>
@@ -518,9 +601,10 @@ export function ShiftList() {
             <Button
               variant="outline"
               size="sm"
-              className="h-9 px-2.5 text-xs shrink-0"
-              onClick={() => { setSortDescending(value => !value); clearSelection(); list.reset() }}
+              className="col-span-2 min-h-11 w-full px-2.5 text-xs"
+              onClick={() => updateFilters({ ...urlState, descending: !sortDescending })}
               aria-label={`${t('date')} ${sortDescending ? 'ascending' : 'descending'}`}
+              data-testid="shifts-mobile-sort"
             >
               <ArrowDownUp className="mr-1 h-3.5 w-3.5" />
               {t('date')} {sortDescending ? '↓' : '↑'}
@@ -531,10 +615,10 @@ export function ShiftList() {
         {/* Compact Cards List */}
         {mobilePaginatedShifts.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center text-xs text-muted-foreground" data-testid="shifts-mobile-empty-state">
-            {t('noData')}
+            {loading ? t('loading') : t('noData')}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className={urlState.viewMode === 'cards' ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-2'}>
             {mobilePaginatedShifts.map(shift => {
               const capacities = getShiftRoleCapacities(shift, registrations)
               const brand = getBrandName(shift.brand_id)
@@ -810,7 +894,7 @@ export function ShiftList() {
               <Button
                 size="sm"
                 data-testid="confirm-bulk-status-btn"
-                disabled={isBulkUpdating}
+                disabled={isBulkUpdating || selectedFilteredShifts.length === 0 || loading}
                 onClick={async () => {
                   setIsBulkUpdating(true)
                   try {

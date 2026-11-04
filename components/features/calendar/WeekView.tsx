@@ -28,11 +28,13 @@ interface WeekViewProps {
   brands: Brand[];
   platforms: Platform[];
   registrations: ShiftRegistration[];
+  users?: User[];
   onShiftClick?: (shift: Shift) => void;
   hasActiveFilters?: boolean;
   currentUser?: User | null;
   onClearFilters?: () => void;
   onCreateShift?: () => void;
+  fullOnMobile?: boolean;
 }
 
 
@@ -43,11 +45,13 @@ export function WeekView({
   brands,
   platforms,
   registrations,
+  users = [],
   onShiftClick,
   hasActiveFilters = false,
   currentUser = null,
   onClearFilters,
   onCreateShift,
+  fullOnMobile = false,
 }: WeekViewProps) {
   const context: CalendarFilterContext = {
     currentDate: new Date(),
@@ -90,11 +94,13 @@ export function WeekView({
       </div>
       {/* DESKTOP: Horizontally scrollable true-time grid */}
       <div
-        className="hidden sm:block overflow-x-auto relative bg-background"
+        data-testid="calendar-week-scroller"
+        aria-label={language === 'vi' ? 'Lịch tuần, cuộn ngang để xem đủ bảy ngày' : 'Week calendar, scroll horizontally to see all seven days'}
+        className={`relative max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-md border bg-background ${fullOnMobile ? 'block' : 'hidden sm:block'}`}
         style={{ scrollbarWidth: "thin" }}
       >
         {shifts.length === 0 && (
-          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm min-h-[400px]">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm min-h-[400px]">
             <div className="text-center p-6 bg-background rounded-xl border shadow-sm max-w-sm">
               <p className="text-lg font-medium text-foreground mb-4">
                 {hasActiveFilters ? "No shifts match these filters." : "No shifts scheduled this week."}
@@ -119,18 +125,18 @@ export function WeekView({
           </div>
         )}
         <div
-          className="grid min-w-[700px]"
-          style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(90px, 1fr))` }}
+          className="grid min-w-[1080px]"
+          style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(140px, 1fr))` }}
         >
           {/* Header Row */}
-          <div className="sticky top-0 z-30 bg-background border-b border-border border-r"></div>
+          <div className="bg-background border-b border-border border-r"></div>
           {weekDays.map((day) => {
             const isToday = isSameDay(day, today);
             const dayShifts = getShiftsForDate(day);
             return (
               <div
                 key={`header-${day.toString()}`}
-                className={`sticky top-0 z-30 bg-background flex flex-col items-center gap-1 py-2 px-1 border-b border-r last:border-r-0 ${isToday ? "border-primary/40 bg-primary/[0.02]" : "border-border"}`}
+                className={`relative bg-background flex flex-col items-center gap-1 py-2 px-1 border-b border-r last:border-r-0 ${isToday ? "border-primary/40 bg-primary/[0.02]" : "border-border"}`}
               >
                 <span
                   className={`text-[10px] uppercase tracking-wider font-semibold ${isToday ? "text-primary" : "text-muted-foreground"}`}
@@ -146,6 +152,15 @@ export function WeekView({
                   <span className="text-[10px] text-muted-foreground font-medium">
                     {dayShifts.length}
                   </span>
+                )}
+                {fullOnMobile && (
+                  <button
+                    type="button"
+                    className="absolute inset-0 z-10 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:hidden"
+                    aria-label={`${t("viewDetails")} · ${format(day, "dd/MM")} · ${dayShifts.length} ${t("totalShifts")}`}
+                    data-testid={`calendar-week-full-day-${format(day, "yyyy-MM-dd")}`}
+                    onClick={() => { setDetailIds(null); setDetailDay(day); setDetailPage(1) }}
+                  />
                 )}
               </div>
             );
@@ -191,7 +206,7 @@ export function WeekView({
                 return (
                   <div
                     key={`col-${day.toString()}`}
-                    className={`flex-1 relative border-r last:border-r-0 border-border/40 ${isToday ? "bg-primary/[0.02]" : ""}`}
+                    className={`min-w-0 flex-1 relative border-r last:border-r-0 border-border/40 ${isToday ? "bg-primary/[0.02]" : ""}`}
                   >
                     {isToday && today.getHours() >= firstHour && (
                       <div
@@ -231,11 +246,13 @@ export function WeekView({
                             title={[shift.title, formatShiftTimeRange(shift)].filter(Boolean).join(" · ")}
                             aria-label={[shift.title || shift.id, formatShiftTimeRange(shift), t("viewDetails")].join(" · ")}
                             shift={shift}
-                            variant="compact"
+                            variant="embedded"
+                          users={users}
+                          showDate
                             onClick={() => onShiftClick?.(shift)}
                             context={context}
                             isToday={isToday}
-                            className="h-full items-start border bg-card"
+                            className="h-full min-w-0 border bg-card"
                           />}
                         </div>
                       );
@@ -249,7 +266,7 @@ export function WeekView({
       </div>
 
       {/* MOBILE: Compact date-grouped agenda */}
-      <div className="sm:hidden divide-y divide-border">
+      <div className={fullOnMobile ? "hidden" : "sm:hidden divide-y divide-border"}>
         {weekDays.map((day) => {
           const dayShifts = getShiftsForDate(day);
           const isToday = isSameDay(day, today);

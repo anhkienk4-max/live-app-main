@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import * as XLSX from 'xlsx'
 
 import type { FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import {
   resolveOperationalStoragePlacement,
+  type OperationalStoragePlacement,
   type OperationalStoragePlacementInput,
   type OperationalStorageRoute,
 } from '@/lib/files/operationalStoragePlacementResolver'
@@ -28,6 +30,8 @@ const report = {
   average_viewer: 5,
   comments: 1,
   shares: 1,
+  insights_good: 'Retention improved',
+  insights_improvement: 'Reduce response lag',
   created_at: '2026-10-01T00:00:00.000Z',
   updated_at: '2026-10-01T00:00:00.000Z',
 }
@@ -64,6 +68,7 @@ type StoredRow = Record<string, unknown>
 
 function fakeClient(options: {
   report?: StoredRow
+  shift?: StoredRow
   existing?: StoredRow | null
   insertError?: { message: string } | null
 } = {}) {
@@ -73,7 +78,7 @@ function fakeClient(options: {
 
   const tableRows = (table: string) => {
     if (table === 'reports') return [options.report ?? report]
-    if (table === 'shifts') return [shift]
+    if (table === 'shifts') return [options.shift ?? shift]
     if (table === 'stored_files') return rows
     if (table === 'brands') return [{ id: 'brand-1', name: 'Female AI livestream' }]
     if (table === 'platforms') return [{ id: 'platform-1', name: 'Shopee Live' }]
@@ -189,9 +194,11 @@ test('DATA/SOURCE upload resolves canonical folder, writes provider bytes, and s
   const routeInputs: OperationalStoragePlacementInput[] = []
   const placements: string[][] = []
   const uploads: FileUploadInput[] = []
+  const providerFiles = new Map<string, Uint8Array>()
   const storage = {
     async upload(input: FileUploadInput): Promise<FileUploadResult> {
       uploads.push(input)
+      providerFiles.set('drive-file-1', new Uint8Array(input.content as Uint8Array))
       return {
         asset: {
           id: 'asset-1',
@@ -211,7 +218,10 @@ test('DATA/SOURCE upload resolves canonical folder, writes provider bytes, and s
         },
       }
     },
-    async read() { return new Uint8Array() },
+    async getMetadata(reference: { external_file_id: string }) {
+      return { id: reference.external_file_id, name: 'source.xlsx', kind: 'file', parent_ids: ['source-parent'] }
+    },
+    async read(reference: { external_file_id: string }) { return providerFiles.get(reference.external_file_id) ?? new Uint8Array() },
     async delete() {},
     async ensureFolder() { throw new Error('unused') },
   }
@@ -251,6 +261,67 @@ test('DATA/SOURCE upload resolves canonical folder, writes provider bytes, and s
   assert.equal(Object.hasOwn(db.rows[0], 'base64'), false)
 })
 
+test('domain-first report artifact upload uses the persisted ADA/internal Shift agency', async () => {
+  const db = fakeClient({ shift: { ...shift, agency_code: 'ada', execution_source: 'internal' } })
+  const placements: OperationalStoragePlacement[] = []
+  let uploadedParent = ''
+  const storage = {
+    async upload(input: FileUploadInput): Promise<FileUploadResult> {
+      uploadedParent = input.external_parent_id ?? ''
+      return { asset: {
+        id: 'domain-artifact', provider: 'google_drive', external_file_id: 'domain-artifact',
+        external_parent_id: uploadedParent, name: input.name, mime_type: input.mime_type,
+        size_bytes: input.size_bytes, checksum_sha256: input.checksum_sha256,
+        entity_type: input.entity_type, entity_id: input.entity_id, status: 'active',
+        created_by: input.created_by, created_at: new Date().toISOString(),
+      } }
+    },
+    async getMetadata(reference: { external_file_id: string }) {
+      return { id: reference.external_file_id, kind: 'file' as const, parent_ids: [uploadedParent], trashed: false }
+    },
+    async read() { return new Uint8Array([1, 2, 3]) },
+    async delete() {},
+    async ensureFolder() { throw new Error('unused') },
+  }
+  let group = ''
+  const handler = createReportArtifactRouteHandler({
+    resolveUser: async () => user,
+    createClient: () => db.client,
+    storage: storage as never,
+    routeResolver: { async resolvePlacement() { throw new Error('legacy route must not be used') } },
+    domainRouteResolver: {
+      async resolveDomainCategoryPlacement() { throw new Error('category route must not be used') },
+      async resolveAttendancePhotoBasePlacement() { throw new Error('attendance route must not be used') },
+      async resolveAttendancePhotoPlacement() { throw new Error('attendance route must not be used') },
+      async resolveReportArtifactGroupPlacement(input) {
+        group = input.group
+        assert.equal(input.agencyCode, 'ada')
+        assert.equal(input.executionSource, 'internal')
+        const placement: OperationalStoragePlacement = {
+          provider: 'google_drive', storageProfile: 'REPORT_ARTIFACT_GROUP',
+          rootFolderId: 'app-root', baseFolderId: 'report-root',
+          folderSegments: ['brand-1', 'platform-1', '2026', '09', 'SHIFT_20260914__shift-1', '09_FILE_MANIFEST_CHECKSUMS'],
+          folderPath: 'brand-1/platform-1/2026/09/SHIFT_20260914__shift-1/09_FILE_MANIFEST_CHECKSUMS',
+          expectedBaseParentId: 'app-root', accessClassification: 'shared', sensitive: false,
+          fileName: input.fileName, logicalCategory: 'data_source', periodLabel: '09/2026',
+        }
+        placements.push(placement)
+        return placement
+      },
+    },
+    materializeFolders: async () => 'domain-parent',
+    routingMode: 'domain_first',
+  })
+  const form = await sourceRequest().formData()
+  form.set('artifact_group', 'file_manifest_checksums')
+  const response = await handler.POST(new Request('https://example.test/api/report-artifacts', { method: 'POST', body: form }))
+  assert.equal(response.status, 200)
+  assert.equal(group, 'file_manifest_checksums')
+  assert.equal(placements.length, 1)
+  assert.equal(uploadedParent, 'domain-parent')
+  assert.equal(db.rows[0]?.external_parent_id, 'domain-parent')
+})
+
 test('same DATA/SOURCE content is idempotent and skips a second provider upload', async () => {
   const bytes = new Uint8Array([1, 2, 3])
   const checksum = (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex')
@@ -282,7 +353,10 @@ test('same DATA/SOURCE content is idempotent and skips a second provider upload'
     createClient: () => db.client,
     storage: {
       async upload() { uploads += 1; throw new Error('should not upload') },
-      async read() { return new Uint8Array() },
+      async getMetadata(reference: { external_file_id: string }) {
+        return { id: reference.external_file_id, name: 'existing.xlsx', kind: 'file', parent_ids: ['source-parent'] }
+      },
+      async read() { return new Uint8Array([1, 2, 3]) },
       async delete() {},
       async ensureFolder() { throw new Error('unused') },
     } as never,
@@ -335,12 +409,14 @@ test('confirmed report generates XLSX into canonical DATA/REPORT and persists on
   const routeInputs: OperationalStoragePlacementInput[] = []
   const placements: string[][] = []
   const uploads: FileUploadInput[] = []
+  const providerFiles = new Map<string, Uint8Array>()
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
     createClient: () => db.client,
     storage: {
       async upload(input: FileUploadInput): Promise<FileUploadResult> {
         uploads.push(input)
+        providerFiles.set('drive-report-1', new Uint8Array(input.content as Uint8Array))
         return {
           asset: {
             id: 'asset-report',
@@ -360,7 +436,10 @@ test('confirmed report generates XLSX into canonical DATA/REPORT and persists on
           },
         }
       },
-      async read() { return new Uint8Array() },
+      async getMetadata(reference: { external_file_id: string }) {
+        return { id: reference.external_file_id, name: 'report.xlsx', kind: 'file', parent_ids: ['report-parent'] }
+      },
+      async read(reference: { external_file_id: string }) { return providerFiles.get(reference.external_file_id) ?? new Uint8Array() },
       async delete() {},
       async ensureFolder() { throw new Error('unused') },
     } as never,
@@ -391,6 +470,13 @@ test('confirmed report generates XLSX into canonical DATA/REPORT and persists on
   assert.equal(uploads.length, 1)
   assert.equal(uploads[0].mime_type, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   assert.ok(uploads[0].size_bytes > 0)
+  const workbook = XLSX.read(uploads[0].content as Uint8Array, { type: 'array' })
+  const insights = XLSX.utils.sheet_to_json(workbook.Sheets['05_FINAL_INSIGHTS'], { header: 1 })
+  assert.deepEqual(insights, [
+    ['Insight', 'Part', 'Content'],
+    ['What Went Well', 1, 'Retention improved'],
+    ['Improvement Areas', 1, 'Reduce response lag'],
+  ])
   assert.match(uploads[0].name, /^20260914_data-report_[A-F0-9]{64}_report_report-1_v5\.xlsx$/u)
   assert.equal(db.rows[0].artifact_key, 'report:v5')
   assert.equal(db.rows[0].report_version, 5)

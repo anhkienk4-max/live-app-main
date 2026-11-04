@@ -1,0 +1,57 @@
+import { expect, test } from '@playwright/test'
+
+for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440, language: 'en' }]) {
+  test(`Calendar filter draft, Apply and URL state at ${width}px (${language})`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.addInitScript(language => {
+      localStorage.setItem('livestream-ops-current-user', '1')
+      localStorage.setItem('livestream-ops-language', language)
+    }, language)
+    await page.goto('/calendar?calendar_view=month&calendar_date=2026-10-15')
+    const toggle = page.getByTestId('calendar-filter-toggle')
+    await expect(toggle).toBeVisible()
+    await toggle.click()
+    const drawer = page.getByTestId('calendar-filter-drawer')
+    await expect(drawer).toBeVisible()
+    await expect(drawer.getByTestId('calendar-brand-filter')).toBeVisible()
+    await expect(drawer.getByTestId('calendar-registration-state-filter')).toBeVisible()
+    await page.screenshot({ path: `docs/handoffs/evidence/rc19-u04-filter-after-${width}.png`, caret: 'initial' })
+    const bounds = await drawer.evaluate(element => ({ left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right }))
+    expect(bounds.left).toBeGreaterThanOrEqual(-1)
+    expect(bounds.right).toBeLessThanOrEqual(width + 1)
+
+    await drawer.getByTestId('calendar-status-filter').getByRole('button').first().click()
+    await page.getByRole('menuitemcheckbox').nth(1).click()
+    expect(new URL(page.url()).searchParams.has('calendar_filters')).toBe(false)
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+    await expect(drawer).toBeHidden()
+    expect(new URL(page.url()).searchParams.has('calendar_filters')).toBe(false)
+
+    await toggle.click()
+    await drawer.getByTestId('calendar-status-filter').getByRole('button').first().click()
+    await page.getByRole('menuitemcheckbox').nth(1).click()
+    await page.keyboard.press('Escape')
+    await drawer.getByTestId('calendar-filter-apply').click()
+    await expect(drawer).toBeHidden()
+    await expect.poll(() => JSON.parse(new URL(page.url()).searchParams.get('calendar_filters') ?? '{}').statuses).toEqual(['scheduled'])
+    await expect(page.getByRole('button', { name: /^Remove filter/ })).toBeVisible()
+
+    await page.getByRole('button', { name: language === 'vi' ? 'Tiếp' : 'Next', exact: true }).click()
+    expect(new URL(page.url()).searchParams.get('calendar_date')).toBe('2026-11-15')
+    expect(JSON.parse(new URL(page.url()).searchParams.get('calendar_filters') ?? '{}').statuses).toEqual(['scheduled'])
+    await page.getByRole('button', { name: language === 'vi' ? 'Tháng' : 'Month', exact: true }).click()
+    await page.getByRole('button', { name: language === 'vi' ? 'Tuần' : 'Week', exact: true }).click()
+    expect(JSON.parse(new URL(page.url()).searchParams.get('calendar_filters') ?? '{}').statuses).toEqual(['scheduled'])
+    await page.getByRole('button', { name: /^Remove filter/ }).click()
+    await expect.poll(() => JSON.parse(new URL(page.url()).searchParams.get('calendar_filters') ?? '{}').statuses).toEqual([])
+
+    await toggle.click()
+    await drawer.getByTestId('calendar-status-filter').getByRole('button').first().click()
+    await page.getByRole('menuitemcheckbox').nth(1).click()
+    await page.keyboard.press('Escape')
+    await drawer.getByRole('button', { name: language === 'vi' ? 'Đặt lại bộ lọc' : 'Reset filters' }).click()
+    await drawer.getByTestId('calendar-filter-apply').click()
+    await expect.poll(() => JSON.parse(new URL(page.url()).searchParams.get('calendar_filters') ?? '{}').statuses).toEqual([])
+  })
+}

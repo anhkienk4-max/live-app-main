@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import type { Report, Shift, User } from '../lib/types/database.types.ts'
+import { canExportReportDetail } from '../lib/permissions.ts'
 import { clearReportShiftQuery, initialReportShift, loadReportTarget, reportShiftHref } from '../lib/utils/reportTarget.ts'
 import { limitReportCandidates } from '../lib/utils/reportQueue.ts'
 import { deriveReportAttention } from '../lib/ui/operational-attention.ts'
@@ -124,7 +125,8 @@ test('desktop/mobile Calendar and report page wire exact targets without an eage
   const form = readFileSync(new URL('../components/features/reports/ReportFormModal.tsx', import.meta.url), 'utf8')
   assert.equal(calendar.match(/router\.push\(reportShiftHref\(shift\.id\)\)/g)?.length, 2)
   assert.doesNotMatch(calendar, /location\.assign\('\/reports'\)/)
-  assert.match(list, /shiftService\.getReportCandidates\(30\)/)
+  assert.match(list, /getReportObligationPage\(\{ page: queuePage, pageSize: queuePageSize/)
+  assert.doesNotMatch(list, /shiftService\.getReportCandidates\(30\)/)
   assert.match(list, /getShift: id => shiftService\.getById\(id\)/)
   assert.match(list, /getReport: id => reportService\.getByShift\(id\)/)
   assert.doesNotMatch(list, /shiftService\.getAll\(|reportService\.getAll\(/)
@@ -135,4 +137,225 @@ test('desktop/mobile Calendar and report page wire exact targets without an eage
   assert.match(form, /initialReportShift\(completedShiftsRef\.current, initialReport, initialShiftId\)/)
   assert.match(form, /disabled=\{explicitShiftId !== undefined\}/)
   assert.match(form, /targetUnavailable && <p role="alert"/)
+})
+
+test('Report detail export is fail-closed and respects Member submitter ownership', () => {
+  const leader = { id: 'leader', role: 'leader', system_permission: 'leader' } as User
+  assert.equal(canExportReportDetail(null, 'member'), false)
+  assert.equal(canExportReportDetail(undefined, undefined), false)
+  assert.equal(canExportReportDetail(member, undefined), false)
+  assert.equal(canExportReportDetail(member, null), false)
+  assert.equal(canExportReportDetail(member, 'other-member'), false)
+  assert.equal(canExportReportDetail(member, member.id), true)
+  assert.equal(canExportReportDetail(leader, 'other-member'), true)
+  assert.equal(canExportReportDetail(admin, 'other-member'), true)
+})
+
+test('Report detail modal delegates Excel visibility to centralized export authorization', () => {
+  const source = readFileSync(new URL('../components/features/reports/ReportDetailModal.tsx', import.meta.url), 'utf8')
+  assert.match(source, /const canExport = canExportReportDetail\(currentUser, report\.submitted_by\)/)
+  assert.doesNotMatch(source, /const canExport = !currentUser/)
+  assert.doesNotMatch(source, /hasPermission\(currentUser, 'reports\.submit'\).*report\.submitted_by/)
+})
+
+const rc19ReportSecurityMigration = readFileSync(
+  new URL('../supabase/migrations/20261023093000_rc19_p0_report_read_ownership_and_revisions.sql', import.meta.url), 'utf8',
+)
+
+test('RC19 #84 direct report scope is constrained by assignment, ownership and role', () => {
+  const sql = rc19ReportSecurityMigration
+  assert.match(sql, /create or replace function private\.can_read_report\(p_report_id text\)/i)
+  assert.match(sql, /security definer[\s\S]*?set search_path = ''/i)
+  assert.match(sql, /current_business_user_is_active\(\)/i)
+  assert.match(sql, /actor_role = 'admin'/i)
+  assert.match(sql, /actor_role = 'leader'/i)
+  assert.match(sql, /coalesce\(report\.submitted_by = actor_id, false\)/i)
+  assert.match(sql, /actor_id in \(shift\.host_id, shift\.support_id, shift\.technical_id\)/i)
+  assert.match(sql, /assignment\.status in \('approved', 'manually_assigned'\)/i)
+  assert.doesNotMatch(sql, /assignment\.status in \([^)]*'pending'/i)
+  assert.match(sql, /create policy reports_active_select[\s\S]*?private\.can_read_report\(id\)/i)
+  assert.match(sql, /create policy reports_archived_select[\s\S]*?= 'admin'[\s\S]*?private\.can_read_report\(id\)/i)
+})
+
+test('RC19 #84 revision SECURITY DEFINER independently checks report ownership', () => {
+  const sql = rc19ReportSecurityMigration
+  assert.match(sql, /create or replace function public\.get_report_revisions\(p_report_id text\)/i)
+  assert.match(sql, /security definer[\s\S]*?set search_path = ''/i)
+  assert.match(sql, /if not private\.can_read_report\(p_report_id\) then/i)
+  assert.match(sql, /message = 'REPORT_NOT_FOUND'/i)
+  assert.match(sql, /revoke all on function public\.get_report_revisions\(text\) from public, anon, authenticated, service_role/i)
+  assert.match(sql, /grant execute on function public\.get_report_revisions\(text\) to authenticated/i)
+  assert.doesNotMatch(sql, /delete from|truncate|drop table|drop column/i)
+})
+
+
+test('RC19 #84 follow-up: revision RPC invokes table RLS rather than bypassing as definer', () => {
+  const sql = readFileSync(
+    new URL('../supabase/migrations/20261023102000_rc19_p0_report_revision_rpc_invoker.sql', import.meta.url), 'utf8',
+  )
+  assert.match(sql, /alter function public\.get_report_revisions\(text\) security invoker/i)
+  assert.match(sql, /revoke all on function public\.get_report_revisions\(text\) from public, anon, authenticated, service_role/i)
+  assert.match(sql, /grant execute on function public\.get_report_revisions\(text\) to authenticated/i)
+  assert.doesNotMatch(sql, /create table|drop policy|truncate|update public\.reports|delete from/i)
+})
+
+
+test('RC19 #84 invoker RPC resolves authenticated actor without privileged helper grant', () => {
+  const sql = readFileSync(
+    new URL('../supabase/migrations/20261023103500_rc19_p0_report_revision_invoker_identity_fix.sql', import.meta.url), 'utf8',
+  )
+  assert.match(sql, /create or replace function public\.get_report_revisions\(p_report_id text\)/i)
+  assert.match(sql, /security invoker[\s\S]*?set search_path = ''/i)
+  assert.match(sql, /actor_id := private\.current_business_user_id\(\)/i)
+  assert.match(sql, /not private\.current_business_user_is_active\(\)/i)
+  assert.match(sql, /if not private\.can_read_report\(p_report_id\) then/i)
+  assert.match(sql, /message = 'REPORT_NOT_FOUND'/i)
+  assert.match(sql, /revoke all on function public\.get_report_revisions\(text\) from public, anon, authenticated, service_role/i)
+  assert.match(sql, /grant execute on function public\.get_report_revisions\(text\) to authenticated/i)
+  assert.doesNotMatch(sql, /private\.require_report_actor\(false\)/i)
+  assert.doesNotMatch(sql, /grant execute on function private\.require_report_actor/i)
+  assert.doesNotMatch(sql, /update public\.|delete from public\.|truncate|drop table/i)
+})
+
+
+test('RC19 #77 historical report shift context is authorization-gated and minimal', () => {
+  const sql = readFileSync(
+    new URL('../supabase/migrations/20261023112000_rc19_report_authorized_shift_display_context.sql', import.meta.url), 'utf8',
+  )
+  assert.match(sql, /create or replace function private\.report_shift_display_context\(p_report_id text\)/i)
+  assert.match(sql, /language plpgsql[\s\S]*?stable[\s\S]*?security definer[\s\S]*?set search_path = ''/i)
+  assert.match(sql, /not private\.current_business_user_is_active\(\)/i)
+  assert.match(sql, /not private\.can_read_report\(p_report_id\)/i)
+  assert.match(sql, /where report\.id = p_report_id/i)
+  const keys = [...sql.matchAll(/'([a-z_]+)', shift\.[a-z_]+/g)].map(match => match[1])
+  assert.deepEqual(keys, ['date', 'start_time', 'end_time', 'brand_id', 'platform_id', 'campaign_id'])
+  assert.doesNotMatch(sql, /'host_id'|'support_id'|'technical_id'|'studio'|'product_notes'|'recording_url'/i)
+  assert.match(sql, /revoke all on function private\.report_shift_display_context\(text\)[\s\S]*?from public, anon, authenticated, service_role/i)
+  assert.match(sql, /grant execute on function private\.report_shift_display_context\(text\)[\s\S]*?to authenticated/i)
+  assert.doesNotMatch(sql, /create policy|alter policy|alter table public\.shifts|delete from|truncate|drop table/i)
+})
+
+
+test('RC19 #77 new paginated Reports RPC is RLS invoker, validates before lazy CTEs and cannot widen Shift',()=>{
+  const initial=readFileSync(new URL('../supabase/migrations/20261023153500_rc19_reports_historical_pagination_v2.sql',import.meta.url),'utf8')
+  const guard=readFileSync(new URL('../supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql',import.meta.url),'utf8')
+  assert.match(initial,/create or replace function public\.get_report_list_with_history/i)
+  assert.match(initial,/security invoker/i)
+  assert.match(initial,/from public\.reports r/i)
+  assert.match(initial,/private\.report_shift_display_context\(r\.id\)/i)
+  assert.match(initial,/historicalShiftContexts/i)
+  assert.match(initial,/private\.can_read_report\(p_report_id\)/i)
+  assert.match(initial,/revoke all on function public\.get_report_list_with_history\(integer,integer,jsonb\)/i)
+  assert.doesNotMatch(initial,/create policy|alter policy|alter table public\.shifts|grant select on public\.shifts|truncate public\./i)
+  assert.match(guard,/RC19_HISTORY_VALIDATE_ALL_FILTERS/)
+  assert.match(guard,/perform 1 from private\.filtered_shift_ids\('all'/i)
+  assert.match(guard,/LIST_FILTER_INVALID/)
+  assert.doesNotMatch(guard,/security definer/i)
+})
+
+test('Reports history is listed read-only without fabricated shifts; XLSX includes six-field context',async()=>{
+  const api=readFileSync(new URL('../lib/server/operationsCollectionHandler.ts',import.meta.url),'utf8')
+  const frontend=readFileSync(new URL('../components/features/reports/ReportsList.tsx',import.meta.url),'utf8')
+  const paging=readFileSync(new URL('../lib/services/operationsPageService.ts',import.meta.url),'utf8')
+  const exportService=readFileSync(new URL('../lib/services/dataService.ts',import.meta.url),'utf8')
+  const exportUtils=readFileSync(new URL('../lib/utils/excelUtils.ts',import.meta.url),'utf8')
+  assert.match(api,/entity === 'reports'[\s\S]*?get_report_list_with_history/)
+  assert.match(api,/historicalShiftContexts/)
+  assert.match(frontend,/data-testid="report-historical-read-only"/)
+  assert.match(frontend,/data-testid="historical-report-detail-read-only"/)
+  assert.match(frontend,/Lịch sử · Chỉ xem/)
+  assert.match(frontend,/getAllFilteredWithHistoricalContext/)
+  assert.match(paging,/REPORT_HISTORY_RESPONSE_INVALID/)
+  assert.match(exportService,/getAllFilteredWithHistoricalContext/)
+  assert.match(exportUtils,/historicalShiftContexts\?: Record/)
+  assert.doesNotMatch(frontend,/if \(!shift\) return null/)
+  const {buildReportExportRows}=await import('../lib/utils/excelUtils.ts')
+  const rows=buildReportExportRows([{
+    ...draft,id:'history-only',shift_id:'hidden-shift',status:'confirmed',
+    metrics_confirmed:true,orders:3,
+  }],{
+    shifts:[],campaigns:[],users:[],brands:new Map([['brand-a','Brand A']]),
+    platforms:new Map([['tt','TikTok']]),
+    historicalShiftContexts:{'history-only':{
+      date:'2026-10-23',start_time:'23:45:00',end_time:'01:45:00',
+      brand_id:'brand-a',platform_id:'tt',campaign_id:null,
+    }},
+  })
+  assert.equal(rows.length,1)
+  assert.equal(rows[0]['Report ID'],'history-only')
+  assert.equal(rows[0]['Start Date'],'2026-10-23')
+  assert.equal(rows[0]['End Date'],'2026-10-24')
+  assert.equal(rows[0]['Brand'],'Brand A')
+  assert.equal(rows[0]['Platform'],'TikTok')
+  assert.equal(rows[0]['Host'],'')
+  assert.equal(rows[0]['Support'],'')
+  assert.equal(rows[0]['Technical'],'')
+})
+
+
+test('RC19 #77 hidden historical Shift staffing cannot be inferred by ID probe filters',()=>{
+  const privacy=readFileSync(new URL('../supabase/migrations/20261023160500_rc19_reports_history_staff_filter_privacy.sql',import.meta.url),'utf8')
+  assert.match(privacy,/create or replace function private\.report_historical_staff_filters_match/i)
+  assert.match(privacy,/private\.can_read_report\(p_report_id\)/)
+  assert.match(privacy,/jsonb_array_length\(coalesce\(p_filters->'hostIds'/)
+  assert.match(privacy,/jsonb_array_length\(coalesce\(p_filters->'supportIds'/)
+  assert.match(privacy,/jsonb_array_length\(coalesce\(p_filters->'technicalIds'/)
+  assert.doesNotMatch(privacy,/from public\.shifts|from public\.shift_registrations|host_id in|support_id in|technical_id in/i)
+  assert.doesNotMatch(privacy,/grant select on public\.shifts|alter policy|create policy/i)
+})
+
+
+test('RC19 P0 Reports direct-table security gate matches revision RPC and report-specific Member scope',()=>{
+  const sql=readFileSync(new URL('../supabase/migrations/20261023093000_rc19_p0_report_read_ownership_and_revisions.sql',import.meta.url),'utf8')
+  const segment=sql.slice(sql.indexOf('create or replace function private.can_read_report'))
+  assert.match(segment,/security definer/i)
+  assert.match(segment,/set search_path = ''/)
+  assert.match(segment,/actor_role = 'member'/)
+  assert.match(segment,/report\.submitted_by = actor_id/)
+  assert.match(segment,/actor_id in \(shift\.host_id, shift\.support_id, shift\.technical_id\)/)
+  assert.match(segment,/assignment\.status in \('approved', 'manually_assigned'\)/)
+  assert.doesNotMatch(segment,/assignment\.status in \('pending'/)
+  assert.match(sql,/create policy reports_active_select[\s\S]*?private\.can_read_report\(id\)/i)
+  assert.match(sql,/create policy reports_archived_select[\s\S]*?private\.can_read_report\(id\)/i)
+  const rpc=sql.slice(sql.indexOf('create or replace function public.get_report_revisions'))
+  assert.match(rpc,/security definer/i)
+  assert.match(rpc,/if not private\.can_read_report\(p_report_id\) then/i)
+  assert.match(rpc,/REPORT_NOT_FOUND/)
+  assert.match(sql,/grant execute on function public\.get_report_revisions\(text\) to authenticated/i)
+  assert.doesNotMatch(sql,/grant execute on function public\.get_report_revisions\(text\) to anon/i)
+  assert.doesNotMatch(sql,/alter table public\.reports disable row level security|grant select on public\.reports to anon/i)
+})
+
+test('RC19 #84 orphan live-image read policy fails closed without a linked report', () => {
+  const sql = readFileSync(
+    new URL('../supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql', import.meta.url), 'utf8',
+  )
+  assert.match(sql, /create policy live_report_images_read[\s\S]*?for select to authenticated/i)
+  assert.match(sql, /\(select private\.current_business_user_is_active\(\)\)/i)
+  assert.match(sql, /and report_id is not null/i)
+  assert.match(sql, /from public\.reports report[\s\S]*?report\.id = live_report_images\.report_id/i)
+  assert.match(sql, /report\.deleted_at is null and report\.archived_at is null/i)
+  assert.match(sql, /private\.current_system_permission\(\)\) = 'admin'/i)
+  assert.doesNotMatch(sql, /report_id is null\) or|or \(report_id is null\)/i)
+  assert.doesNotMatch(sql, /grant select on public\.reports|delete from public\.|truncate public\./i)
+})
+
+test('RC19 #84 replay script requires seven read-only, rollback-only actor cases', () => {
+  const sql = readFileSync(
+    new URL('../scripts/uat/rc19-reports-rls-role-simulation.sql', import.meta.url), 'utf8',
+  )
+  assert.equal((sql.match(/BEGIN READ ONLY;/g) ?? []).length, 7)
+  assert.equal((sql.match(/^ROLLBACK;$/gm) ?? []).length, 7)
+  assert.equal((sql.match(/-- Member #[1-5]:/g) ?? []).length, 5)
+  assert.match(sql, /-- leader: active reports/)
+  assert.match(sql, /-- admin: active reports/)
+  assert.match(sql, /NOT genuine Supabase HTTP requests/)
+  assert.match(sql, /RC19_MEMBER_FOREIGN_READ_LEAK/)
+  assert.match(sql, /RC19_MEMBER_FOREIGN_RPC_LEAK/)
+  assert.match(sql, /RC19_MEMBER_OWN_RPC_MISMATCH/)
+  assert.match(sql, /public\.get_report_revisions/)
+  for (const table of ['reports', 'report_revisions', 'report_images', 'live_report_images']) {
+    assert.ok(sql.includes('public.' + table))
+  }
+  assert.doesNotMatch(sql, /^\s*(insert|update|delete|truncate|alter|drop|create)\s+(into\s+|from\s+|table\s+|policy\s+|function\s+)?public\./gim)
 })

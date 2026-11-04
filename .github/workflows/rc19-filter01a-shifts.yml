@@ -1,0 +1,83 @@
+name: RC19 FILTER-01A shifts source gate (no deploy)
+
+on:
+  push:
+    branches:
+      - fix/rc19-lane2-filter01a
+      - integration/rc19-lane2-swap-filter-convergence
+  pull_request:
+    branches:
+      - integration/rc19-master-calendar-20261030
+
+permissions:
+  contents: read
+
+jobs:
+  filter-source-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source and target lineage
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_BASE: integration/rc19-master-calendar-20261030
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            case "$GITHUB_REF" in
+              refs/heads/fix/rc19-lane2-filter01a|refs/heads/integration/rc19-lane2-swap-filter-convergence) ;;
+              *) echo "Unexpected push branch: $GITHUB_REF" >&2; exit 1 ;;
+            esac
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            test "$GITHUB_BASE_REF" = "$EXPECTED_BASE"
+            git merge-base --is-ancestor "origin/$EXPECTED_BASE" "$EXPECTED_SOURCE_SHA"
+          else
+            echo "Unexpected event: $GITHUB_EVENT_NAME" >&2
+            exit 1
+          fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm run type-check
+      - name: ESLint
+        run: pnpm run lint
+      - name: FILTER-01A focused regression
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc18a-shift-list-url-state.test.ts tests/rc19-filter01a-shifts.test.ts
+      - name: Full repository regression
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: FILTER-01A responsive mock browser regression
+        run: pnpm exec playwright test --config=playwright.rc19-filter01a.config.ts --reporter=line
+      - name: Guarded production-equivalent build
+        env:
+          CI: 'true'
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: No-deploy declaration
+        if: always()
+        run: |
+          echo "Source SHA: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow does not deploy, apply SQL, or mutate Production data. Authenticated RLS UAT remains separate." >> "$GITHUB_STEP_SUMMARY"

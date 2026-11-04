@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "change": "RC19-STO-02 resource registry",
+  "status": "REVIEW_ONLY_NOT_APPLIED",
+  "auto_apply": false,
+  "target_environment": null,
+  "migration_proposal": "supabase/proposals/rc19-sto02-resource-registry/20261027150000_rc19_sto02_resource_registry.sql",
+  "preflight": "supabase/proposals/rc19-sto02-resource-registry/preflight.sql",
+  "approval_required_before_release": true,
+  "release_requirements": [
+    "Owner-approved migration artifact and exact checksum",
+    "PostgreSQL 17 compatibility preflight on the selected non-production baseline",
+    "RLS negative role matrix and atomic RPC failure matrix",
+    "Operational storage route preservation verification",
+    "Independent Production UAT and provider ACL review"
+  ],
+  "compatibility_contract": {
+    "operational_storage_routes": "Read-only compatibility dependency; must remain unchanged",
+    "provider_objects": "Metadata lookup only; no folder, file, or ACL mutation",
+    "binary_storage": "No binary content in Supabase"
+  }
+}

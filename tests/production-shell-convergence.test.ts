@@ -14,7 +14,7 @@ test('authenticated routes use one persistent production frame', () => {
   assert.ok(shell.includes('<Sidebar />') && shell.includes('<Header user={user} />') && shell.includes('<BottomNav />'))
   assert.ok(sidebar.includes('w-[248px]') && sidebar.includes('bg-[#082743]') && sidebar.includes('h-[56px]'))
   assert.ok(header.includes('h-[56px]') && !header.includes('ProductionShellVariant'))
-  assert.ok(bottomNav.includes('bg-[#082743]') && !bottomNav.includes('variant'))
+  assert.ok(bottomNav.includes('bg-white pb-safe') && !bottomNav.includes('variant'))
   assert.ok(!/resolveProductionShell|ProductionShellVariant|w-\[230px\]|h-\[44px\]|bg-white text-slate-600/.test(`${shell}\n${sidebar}\n${header}\n${bottomNav}`))
 })
 test('nested and query navigation highlight one canonical destination per role', () => {

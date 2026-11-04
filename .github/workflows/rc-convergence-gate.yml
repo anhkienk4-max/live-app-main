@@ -131,7 +131,7 @@ jobs:
         env:
           SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
           TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
-        run: node scripts/run-final-regression.mjs
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
 
       - name: Isolated H52 fixture rehearsal (not Production baseline rehearsal)
         run: node scripts/rehearse_db_clone.mjs

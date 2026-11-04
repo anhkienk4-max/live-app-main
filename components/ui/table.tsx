@@ -1,12 +1,17 @@
+'use client'
+
 import * as React from 'react'
+import { useTranslation } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+  ({ className, ...props }, ref) => {
+    const { language } = useTranslation()
+    return <div role="region" aria-label={language === 'vi' ? 'Bảng dữ liệu, cuộn ngang để xem thêm' : 'Data table, scroll horizontally for more'} tabIndex={0} className="relative w-full min-w-0 overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <p className="sticky left-0 w-fit px-3 py-2 text-xs text-muted-foreground md:hidden">{language === 'vi' ? '↔ Vuốt ngang để xem bảng' : '↔ Swipe to explore the table'}</p>
       <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
-  )
+  }
 )
 Table.displayName = 'Table'
 

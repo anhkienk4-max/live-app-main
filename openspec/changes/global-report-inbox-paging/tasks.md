@@ -1,0 +1,7 @@
+- [x] Confirm all report-candidate callers and current RLS/lifecycle behavior.
+- [x] Add read-only SQL page function and authenticated grants.
+- [x] Wire the operations collection route and typed page service.
+- [x] Move queue filters/count/pagination to the server and keep mock parity.
+- [ ] Run PostgreSQL role/RLS and page-boundary regression on hosted PG16/17 (harness and workflow ready; execution pending).
+- [ ] Record and validate canonical memory after checkpoint commit.
+- [x] Focused tests, typecheck, scoped lint and production build pass locally.

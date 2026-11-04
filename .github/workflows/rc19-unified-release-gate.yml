@@ -1,0 +1,202 @@
+name: RC19 Unified Production Release Quality Gate
+
+on:
+  push:
+    branches:
+      - gemini/rc19-batch01.3.1-unified-release
+      - integration/rc19-unified-release
+      - integration/rc19-unified-candidate
+      - codex/rc19-batch05a43-ci-hardening
+  pull_request:
+    branches:
+      - main
+      - feat/ops-full-app-upgrade-rc19
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unified-release-gate:
+    name: RC19 Unified Release Gate (PostgreSQL 17 + Strict Concurrency + Build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres17:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: rc19_ci
+          POSTGRES_PASSWORD: rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U rc19_ci -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - name: Checkout reviewed branch at exact commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact HEAD SHA
+        run: |
+          echo "Verified Head SHA: ${{ github.sha }}"
+          git rev-parse HEAD
+
+      - name: Verify PostgreSQL 17 and create isolated test databases
+        env:
+          PGPASSWORD: rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          version_num="$(psql -h localhost -U rc19_ci -d postgres -Atqc 'SHOW server_version_num')"
+          case "$version_num" in
+            17*) echo "PostgreSQL server major version: 17 (${version_num})" ;;
+            *) echo "::error::Expected PostgreSQL 17, got ${version_num}"; exit 1 ;;
+          esac
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_migrations_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_sto01_migrations_disposable IS 'RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE'"
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_unified_import_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_unified_import_disposable IS 'RC19_UNIFIED_IMPORT_DISPOSABLE_TEST_DATABASE'"
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_concurrency_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_concurrency_disposable IS 'RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE'"
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac01_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac01b_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac02_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_restore_disposable TEMPLATE template0'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_restore_disposable IS 'RC19_RESTORE_DISPOSABLE_TEST_DATABASE'"
+          marker="$(psql -h localhost -U rc19_ci -d postgres -Atqc "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = 'rc19_concurrency_disposable'")"
+          test "$marker" = 'RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE'
+
+      - name: Set up Node.js 24 (matches Vercel Production runtime)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+
+      - name: Verify package lock consistency
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: TypeScript Static Typecheck
+        run: |
+          pnpm run type-check
+
+      - name: ESLint Code Quality
+        run: |
+          pnpm run lint
+
+      - name: Validate canonical project memory
+        run: pnpm run memory:validate
+
+      - name: RBAC API negative authorization and resolver tests
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-effective-permission.test.ts \
+            tests/rc19-c3-mutation-authorization.test.ts \
+            tests/rc19-rbac01-security.test.ts \
+            tests/rc19-rbac01b-audit-slice.test.ts \
+            tests/rbac02-account-overrides.test.ts \
+            tests/rbac-capabilities.test.ts
+
+      - name: Disposable PostgreSQL 17 RBAC catalog and RLS contracts
+        env:
+          PGPASSWORD: rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          psql -h localhost -U rc19_ci -d rc19_rbac01_disposable -v ON_ERROR_STOP=1 \
+            -f tests/rbac01/pg17_fixture.sql -f tests/rbac01/pg17_assertions.sql
+          psql -h localhost -U rc19_ci -d rc19_rbac01b_disposable -v ON_ERROR_STOP=1 \
+            -f tests/rbac01b/pg17_fixture.sql -f tests/rbac01b/pg17_assertions.sql
+          psql -h localhost -U rc19_ci -d rc19_rbac02_disposable -v ON_ERROR_STOP=1 \
+            -f tests/rbac02/pg17_fixture.sql -f tests/rbac02/pg17_assertions.sql
+          echo "RBAC SQL fixtures are review-only contracts; no Supabase migration was added or applied." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PostgreSQL 17 Multi-Connection Concurrency Gate
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_concurrency_disposable
+          STRICT_CONCURRENCY_GATE: 'true'
+          RC19_CONCURRENCY_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-postgres17-concurrency.integration.test.ts
+
+      - name: Owner ID 23 Segmented Staffing & Database Identity Suites
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/postgres
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-owner23-segmented-staffing.test.ts \
+            tests/rc19-batch01-3-database-identity.test.ts
+
+      - name: PostgreSQL 17 RC19 unified Import agency and supplemental-field migrations
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_unified_import_disposable
+          RC19_UNIFIED_IMPORT_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-unified-import-postgres17.test.ts
+
+      - name: PostgreSQL 17 Storage Route Seed (10 real server tests)
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_sto01_disposable
+          RC19_STO01_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto01-storage-seed-postgres17.test.ts
+
+      - name: PostgreSQL 17 ordered 05A migration, RLS, receipt, and rollback tests
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_sto01_migrations_disposable
+          RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-batch05a-storage-migrations-postgres17.test.ts
+
+      - name: PostgreSQL 17 synthetic fixture backup and isolated restore parity
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://rc19_ci:rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/rc19_sto01_migrations_disposable
+          RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+          RC19_RESTORE_REHEARSAL_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-postgres17-fixture-restore.integration.test.ts
+
+      - name: Storage Runtime & Sequential Migration Verification
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-sto01-storage-seed-preflight.test.ts \
+            tests/rc19-storage-security-patch.test.ts \
+            tests/rc19-sequential-migration-runner.test.ts \
+            tests/rc19-batch05a41-sequential-migrations.test.ts
+
+      - name: Full canonical Node regression (PostgreSQL 17 suites are gated separately)
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
+
+      - name: Next.js production build (credential-free CI compile)
+        env:
+          CI: 'true'
+          VERCEL: ''
+          VERCEL_ENV: ''
+          VERCEL_TARGET_ENV: ''
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: |
+          pnpm run build

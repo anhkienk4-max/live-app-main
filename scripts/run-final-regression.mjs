@@ -6,6 +6,13 @@ const manifest = JSON.parse(readFileSync('tests/final-release-test-manifest.json
 const inventory = readdirSync('tests').filter(name => /\.test\.(ts|tsx)$/.test(name))
   .sort().map(name => `tests/${name}`)
 assert.deepEqual([...manifest.node_test_files].sort(), inventory, 'Release manifest must include every TS/TSX test file')
+const selectedInventory = process.argv.includes('--exclude-postgres17')
+  ? inventory.filter(file => !file.toLowerCase().includes('postgres17'))
+  : inventory
+assert.ok(selectedInventory.length > 0, 'Release regression must include test files')
+if (selectedInventory.length !== inventory.length) {
+  console.log(`PostgreSQL 17 integration files are delegated to dedicated disposable database gates (${inventory.length - selectedInventory.length}).`)
+}
 const optionalStagingChecks = new Set([
   'Account Request Phase 2 staging runtime contract',
   'existing Auth identity provisions one linked member Staff row without FK failure',
@@ -24,7 +31,7 @@ assert.equal(hasSkippedTests('ok 1 - unknown # SKIP staging\n# skipped 1'), true
 assert.equal(hasSkippedTests('# pass 3'), false)
 
 const child = spawn(process.execPath, ['--import', './tests/typescript-alias-loader.mjs',
-  '--test', '--test-concurrency=4', '--test-reporter=tap', ...inventory], { stdio: ['ignore', 'pipe', 'inherit'] })
+  '--test', '--test-concurrency=4', '--test-reporter=tap', ...selectedInventory], { stdio: ['ignore', 'pipe', 'inherit'] })
 let output = ''
 child.stdout.on('data', chunk => { output += chunk; process.stdout.write(chunk) })
 child.on('error', error => { console.error(error.message); process.exitCode = 1 })

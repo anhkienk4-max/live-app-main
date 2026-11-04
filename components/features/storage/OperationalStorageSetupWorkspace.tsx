@@ -64,7 +64,7 @@ function parsePeriodOverrides(raw: string): Record<string, { default: string }> 
 }
 
 export function OperationalStorageSetupWorkspace() {
-  const { t, translate } = useTranslation()
+  const { translate } = useTranslation()
   const {currentUser,loading:userLoading}=useCurrentUser()
   const canManage=!!currentUser&&resolveSystemPermission(currentUser)==='admin'
   const [data, setData] = React.useState<Inventory | null>(null)
@@ -204,7 +204,24 @@ export function OperationalStorageSetupWorkspace() {
     } finally { setBusy(false) }
   }
 
-  if(userLoading)return <p className="p-6">{t('loading')}</p>
+  if (userLoading) {
+    return (
+      <div className="mx-auto max-w-6xl space-y-5 animate-pulse" data-testid="storage-setup-loading">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-lg bg-slate-200" />
+          <div className="space-y-1.5">
+            <div className="h-7 w-56 rounded bg-slate-200" />
+            <div className="h-4 w-80 rounded bg-slate-100" />
+          </div>
+        </div>
+        <div className="h-6 w-24 rounded bg-slate-100" />
+        <div className="space-y-4">
+          <div className="h-48 rounded-lg border border-slate-200 bg-white p-6" />
+          <div className="h-48 rounded-lg border border-slate-200 bg-white p-6" />
+        </div>
+      </div>
+    )
+  }
   if(!canManage)return <p className="p-6" role="alert">Bạn không có quyền thiết lập lưu trữ.</p>
   return <div className="mx-auto max-w-6xl space-y-5" data-testid="storage-setup">
     <div className="flex items-center gap-3">
@@ -214,7 +231,7 @@ export function OperationalStorageSetupWorkspace() {
         <p className="text-sm text-muted-foreground">{translate('Kiểm tra cấu hình, phân loại có phê duyệt; không tự tạo route hay backfill ca.')}</p>
       </div>
     </div>
-    <Link href="/storage" className="text-sm underline">← Kho file</Link>
+    <Link href="/storage" className="inline-flex min-h-11 items-center text-sm underline">← Kho file</Link>
     {error && <p role="alert" className="rounded-md border border-red-300 p-3 text-sm text-red-700">{error}</p>}
     {notice && <p role="status" className="rounded-md border p-3 text-sm">{notice}</p>}
     <section className="rounded-xl border p-4 space-y-3" aria-label="Storage readiness">

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
@@ -233,4 +234,60 @@ test('request claims cannot elevate a mapped member and Vision remains fail-clos
   } finally {
     process.env.NODE_ENV = previousNodeEnv
   }
+})
+
+
+test('a stale AuthIdentityProvider cleanup cannot clear the newest mapped actor binding', async () => {
+  const previousNodeEnv = process.env.NODE_ENV
+  const previousMockFlag = process.env.NEXT_PUBLIC_USE_MOCK_DATA
+  process.env.NODE_ENV = 'production'
+  process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
+
+  try {
+    const member = mapped(source('member', '3')).businessUser
+    const leader = mapped(source('leader', '5')).businessUser
+    assert.ok(member)
+    assert.ok(leader)
+
+    // Two layouts can overlap when Next.js mounts a new tree before disposing
+    // its previous effect. The business-user ID may be identical across both.
+    const oldMemberLease = currentUserService.bindAuthenticatedUser(member)
+    const freshMemberLease = currentUserService.bindAuthenticatedUser(member)
+    assert.notEqual(oldMemberLease, freshMemberLease)
+    currentUserService.clearAuthenticatedUser(member.id, oldMemberLease)
+    assert.equal((await currentUserService.getCurrent())?.id, member.id)
+    assert.equal((await currentUserService.getCurrent())?.system_permission, 'member')
+
+    // An older Member cleanup must not erase a new Leader account either.
+    const leaderLease = currentUserService.bindAuthenticatedUser(leader)
+    currentUserService.clearAuthenticatedUser(member.id, freshMemberLease)
+    assert.equal((await currentUserService.getCurrent())?.id, leader.id)
+    assert.equal((await currentUserService.getCurrent())?.system_permission, 'leader')
+
+    // The owner that installed the active binding can clear it.
+    currentUserService.clearAuthenticatedUser(leader.id, leaderLease)
+    assert.throws(() => currentUserService.getId(), /unavailable/)
+  } finally {
+    currentUserService.clearAuthenticatedUser()
+    process.env.NODE_ENV = previousNodeEnv
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = previousMockFlag
+  }
+})
+
+test('RC19 source guard: identity updates before a passive effect and logout stays revoked', () => {
+  // Static contract only. Authenticated multi-route/role UAT is still required.
+  const provider = readFileSync(
+    new URL('../lib/auth/AuthIdentityProvider.tsx', import.meta.url), 'utf8',
+  )
+  assert.match(provider, /snapshot\.sourceIdentity !== initialIdentity \|\| snapshot\.sourceBusinessUser !== initialBusinessUser/)
+  assert.match(provider, /setSnapshot\(\{[\s\S]*?sourceIdentity: initialIdentity,[\s\S]*?identity: initialIdentity,[\s\S]*?businessUser: initialBusinessUser/)
+  assert.doesNotMatch(provider, /React\.useEffect\(\(\) => \{[\s\S]*?setIdentity\(initialIdentity\)/)
+  assert.match(provider, /React\.useLayoutEffect\(\(\) => \{[\s\S]*?bindAuthenticatedUser\(businessUser\)/)
+  assert.match(provider, /setSnapshot\(previous => \(\{ \.\.\.previous, identity: null, businessUser: null \}\)\)/)
+  const list = readFileSync(new URL('../lib/services/operationsPageService.ts', import.meta.url), 'utf8')
+  assert.match(list, /body\?\.ownerKey !== owner/)
+  assert.match(list, /const ownerAfterResponse = await browserOwner\(\)/)
+  assert.match(list, /owner !== ownerAfterResponse/)
+  assert.match(list, /stage: 'actor_changed_during_request'/)
+  assert.match(list, /stage: body\?\.ownerKey === undefined \? 'server_owner_missing' : 'server_owner_mismatch'/)
 })

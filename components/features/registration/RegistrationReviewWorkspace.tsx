@@ -202,7 +202,7 @@ export function RegistrationReviewWorkspace() {
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
           <div className="flex flex-wrap items-center gap-2">
             {/* Search */}
-            <div className="relative w-56">
+            <div className="relative w-full sm:w-56">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <Input
                 type="text"
@@ -305,7 +305,7 @@ export function RegistrationReviewWorkspace() {
           </div>
 
           {/* Quick Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Link href="/calendar?tab=mine">
               <Button variant="outline" size="sm" className="h-8 text-xs bg-white">
                 <UserPlus className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
@@ -326,7 +326,7 @@ export function RegistrationReviewWorkspace() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 text-xs text-slate-600"
+              aria-label="Làm mới" className="h-8 text-xs text-slate-600"
               disabled={refreshing}
               onClick={() => void loadData()}
             >
@@ -339,7 +339,7 @@ export function RegistrationReviewWorkspace() {
       {/* 4. MAIN SPLIT VIEW (LEFT: QUEUE, RIGHT: DETAIL) */}
       <div className="flex flex-1 overflow-hidden relative">
         {/* LEFT PANE: QUEUE */}
-        <div className={`flex-1 overflow-y-auto ${showMobileDetail ? 'hidden lg:block' : 'block'}`}>
+        <div role="region" aria-label="Hàng đợi đăng ký, cuộn ngang / Scroll horizontally" tabIndex={0} className={`min-w-0 flex-1 overflow-auto ${showMobileDetail ? 'hidden lg:block' : 'block'}`}>
           {filteredRegistrations.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center h-full">
               {searchQuery.trim() || statusFilter !== 'all' || roleFilter !== 'all' ? (
@@ -389,8 +389,11 @@ export function RegistrationReviewWorkspace() {
                   const isSelected = activeReg?.id === reg.id
                   const user = userMap.get(reg.user_id)
                   const shift = shiftMap.get(reg.shift_id)
+                  const brand = shift?.brand_id ? brandMap.get(shift.brand_id) : undefined
+                  const platform = shift?.platform_id ? platformMap.get(shift.platform_id) : undefined
                   const cap = shift && capacities[shift.id] ? capacities[shift.id][reg.operational_role] : undefined
                   const userName = user?.full_name || reg.imported_name || reg.user_id
+                  const isApproved = reg.status === 'approved' || reg.status === 'manually_assigned'
                   const initials = userName
                     .split(' ')
                     .map(p => p[0])
@@ -422,6 +425,9 @@ export function RegistrationReviewWorkspace() {
                             <div className="flex items-center gap-1.5 font-semibold text-slate-900">
                               <span>{userName}</span>
                               <span className="font-mono text-[10px] text-slate-400 font-normal">#{reg.id}</span>
+                              <Badge variant="outline" className={`text-[9px] px-1 py-0 h-4 ${isApproved ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+                                {isApproved ? 'Đã duyệt' : 'Ứng tuyển'}
+                              </Badge>
                             </div>
                             <div className="text-[10px] text-slate-500">
                               {reg.requested_at ? new Date(reg.requested_at).toLocaleDateString('vi-VN') : 'N/A'} · <span className="font-mono">{reg.source}</span>
@@ -448,7 +454,17 @@ export function RegistrationReviewWorkspace() {
 
                       {/* Shift Context */}
                       <td className="py-3 px-3">
-                        <div className="font-medium text-slate-800 truncate max-w-[200px]" title={shift?.title}>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge variant="outline" className="border-blue-200 bg-blue-50/70 text-[10px] text-blue-800 font-semibold px-1.5 py-0">
+                            {brand?.name ?? (loading ? 'Đang tải...' : 'Chưa phân loại')}
+                          </Badge>
+                          {platform && (
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              ({platform.name})
+                            </span>
+                          )}
+                        </div>
+                        <div className="font-medium text-slate-800 truncate max-w-[220px] mt-0.5" title={shift?.title}>
                           {shift?.title || `#${reg.shift_id}`}
                         </div>
                         {shift && (
@@ -548,6 +564,8 @@ export function RegistrationReviewWorkspace() {
         registration={activeReg}
         applicant={activeApplicant}
         shift={activeShift}
+        brand={activeBrand}
+        platform={activePlatform}
         capacity={activeCapacity}
         reviewerId={currentUser?.id || 'system'}
         onSuccess={async () => {

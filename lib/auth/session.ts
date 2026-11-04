@@ -1,3 +1,9 @@
+import {
+  isAuthApiError,
+  isAuthRetryableFetchError,
+  isAuthSessionMissingError,
+} from '@supabase/supabase-js'
+
 export interface PasswordSessionClient {
   auth: {
     signInWithPassword(credentials: {
@@ -9,6 +15,35 @@ export interface PasswordSessionClient {
     }>
     signOut(options: { scope: 'local' }): Promise<{ error: unknown | null }>
   }
+}
+
+export type PasswordSessionFailure =
+  | 'INVALID_CREDENTIALS'
+  | 'AUTH_NETWORK_ERROR'
+  | 'AUTH_PROVIDER_UNAVAILABLE'
+  | 'AUTH_SESSION_FAILURE'
+  | 'UNKNOWN_AUTH_ERROR'
+
+export type PasswordSessionResult =
+  | { ok: true }
+  | { ok: false; reason: PasswordSessionFailure }
+
+function supabaseErrorShape(error: unknown): { name: string; code?: string } | null {
+  if (typeof error !== 'object' || error === null || !('name' in error) || typeof error.name !== 'string') return null
+  return { name: error.name, code: 'code' in error && typeof error.code === 'string' ? error.code : undefined }
+}
+
+export function classifyPasswordSessionError(error: unknown): PasswordSessionFailure {
+  const typedError = supabaseErrorShape(error)
+  if (isAuthRetryableFetchError(error) || typedError?.name === 'AuthRetryableFetchError') return 'AUTH_NETWORK_ERROR'
+  if (isAuthSessionMissingError(error) || typedError?.name === 'AuthSessionMissingError') return 'AUTH_SESSION_FAILURE'
+  if (isAuthApiError(error) || typedError?.name === 'AuthApiError') {
+    if (typedError?.code === 'invalid_credentials') return 'INVALID_CREDENTIALS'
+    if (typedError?.code === 'email_provider_disabled' || typedError?.code === 'provider_disabled') {
+      return 'AUTH_PROVIDER_UNAVAILABLE'
+    }
+  }
+  return 'UNKNOWN_AUTH_ERROR'
 }
 
 const sessionResetReasons = new Set([
@@ -24,18 +59,21 @@ export function shouldClearLocalSessionForLoginReason(
 }
 
 export async function establishPasswordSession(
-  client: PasswordSessionClient,
+  createClient: () => PasswordSessionClient,
   email: string,
   password: string,
-): Promise<boolean> {
+): Promise<PasswordSessionResult> {
   try {
+    const client = createClient()
     const { data, error } = await client.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
     })
-    return !error && Boolean(data.session) && Boolean(data.user)
-  } catch {
-    return false
+    if (error) return { ok: false, reason: classifyPasswordSessionError(error) }
+    if (!data.session || !data.user) return { ok: false, reason: 'AUTH_SESSION_FAILURE' }
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, reason: classifyPasswordSessionError(error) }
   }
 }
 

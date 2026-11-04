@@ -13,7 +13,7 @@ const PageLoader = () => {
   return (
     <div className="space-y-6 p-6">
       <Skeleton className="h-8 w-64" />
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[...Array(4)].map((_, i) => (
           <Skeleton key={i} className="h-24" />
         ))}
@@ -43,7 +43,7 @@ export const LazyDashboardAnalytics = dynamic(
 
 // Reports list with lazy loading
 export const LazyReportsList = dynamic(
-  () => import('@/components/features/reports/ReportsContainer').then((mod) => ({ default: mod.ReportsContainer })),
+  () => import('@/components/features/reports/ReportsList').then((mod) => ({ default: mod.ReportsList })),
   {
     loading: () => <PageLoader />,
   }

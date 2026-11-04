@@ -1,0 +1,53 @@
+name: ADA OPS PWA icon and phone install hotfix (NO PRODUCTION DEPLOY)
+on:
+  push:
+    branches:
+      - hotfix/pwa-mobile-install-icons-20261030
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Only exact PWA public assets and UI allowed
+        run: |
+          node - <<'NODE'
+          const {execFileSync}=require('node:child_process')
+          const paths=execFileSync('git',['diff','--name-only','83451a7b2c01f3db9ba6563ecc221bd040a0c7d2','HEAD'],{encoding:'utf8'}).trim().split(/\r?\n/).filter(Boolean)
+          const allowed=new Set(['proxy.ts','app/manifest.ts','app/login/page.tsx','app/(dashboard)/profile/page.tsx','components/pwa/PwaInstallControl.tsx','playwright.pwa-public.config.ts','e2e/pwa-public-install.spec.ts','.github/workflows/pwa-public-hotfix.yml'])
+          if(paths.length!==allowed.size)throw Error('Expected '+allowed.size+' scoped paths; got '+paths.length)
+          for(const p of paths)if(!allowed.has(p))throw Error('HOTFIX BOUNDARY FAILED '+p)
+          console.log('PWA-only boundary PASS')
+          NODE
+      - run: pnpm exec tsc --noEmit --incremental false
+      - run: pnpm exec eslint proxy.ts app/manifest.ts app/login/page.tsx 'app/(dashboard)/profile/page.tsx' components/pwa/PwaInstallControl.tsx e2e/pwa-public-install.spec.ts playwright.pwa-public.config.ts
+      - name: Build without credentials
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          NEXT_PUBLIC_USE_MOCK_DATA: 'false'
+          FEATURE_PAYROLL: 'false'
+          FEATURE_ACTUAL_STAFFING: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Unauthenticated install asset HTTP, PNG signature and protected route smoke
+        run: pnpm exec playwright test --config=playwright.pwa-public.config.ts
+      - name: Explicit release hold
+        if: always()
+        run: echo 'No Production deployment from this workflow. Human approval/production env required.' >> "$GITHUB_STEP_SUMMARY"

@@ -9,6 +9,149 @@ export const liveReportImageCategories: readonly LiveReportImageCategory[] = [
   'other',
 ]
 
+export const liveReportPhotoGroups = [
+  'key_visual_before',
+  'key_visual_after',
+  'dashboard_summary',
+  'dashboard_periodic',
+  'live_session',
+  'other',
+] as const
+
+export type LiveReportPhotoGroup = (typeof liveReportPhotoGroups)[number]
+
+export interface LiveReportPhotoGroupMetadata {
+  readonly id: LiveReportPhotoGroup
+  readonly code: string
+  readonly labelVi: string
+  readonly labelEn: string
+  readonly descriptionVi: string
+  readonly descriptionEn: string
+  readonly dbCategory: LiveReportImageCategory
+  readonly defaultTitlePrefix?: string
+  readonly requiresTimestamp?: boolean
+  readonly order: number
+}
+
+export const LIVE_REPORT_PHOTO_GROUPS: readonly LiveReportPhotoGroupMetadata[] = [
+  {
+    id: 'key_visual_before',
+    code: 'KV_BEFORE',
+    labelVi: '1. Key Visual trước ca',
+    labelEn: '1. Pre-session Key Visual',
+    descriptionVi: 'Ảnh Key Visual / poster chuẩn bị trước ca live',
+    descriptionEn: 'Key visual / poster prepared before live broadcast',
+    dbCategory: 'key_visual',
+    defaultTitlePrefix: '[KV Trước ca]',
+    order: 1,
+  },
+  {
+    id: 'key_visual_after',
+    code: 'KV_AFTER',
+    labelVi: '2. Key Visual sau ca',
+    labelEn: '2. Post-session Key Visual',
+    descriptionVi: 'Ảnh Key Visual tổng kết / cảm ơn sau ca live',
+    descriptionEn: 'Summary or thank-you key visual after live broadcast',
+    dbCategory: 'key_visual',
+    defaultTitlePrefix: '[KV Sau ca]',
+    order: 2,
+  },
+  {
+    id: 'dashboard_summary',
+    code: 'DASHBOARD_SUMMARY',
+    labelVi: '3. Dashboard tổng hợp',
+    labelEn: '3. Summary Dashboard',
+    descriptionVi: 'Ảnh chụp màn hình Dashboard số liệu toàn phiên live',
+    descriptionEn: 'Full-session overview dashboard screenshot',
+    dbCategory: 'other',
+    defaultTitlePrefix: '[Dashboard Tổng hợp]',
+    order: 3,
+  },
+  {
+    id: 'dashboard_periodic',
+    code: 'DASHBOARD_PERIODIC',
+    labelVi: '4. Dashboard chu kỳ 30 phút (có timestamp)',
+    labelEn: '4. 30-Minute Interval Dashboard (timestamped)',
+    descriptionVi: 'Ảnh chụp màn hình số liệu theo từng mốc 30 phút, ghi rõ thời gian',
+    descriptionEn: 'Metrics screenshot at 30-minute intervals with timestamp',
+    dbCategory: 'other',
+    defaultTitlePrefix: '[Dashboard 30m]',
+    requiresTimestamp: true,
+    order: 4,
+  },
+  {
+    id: 'live_session',
+    code: 'LIVE_SESSION',
+    labelVi: '5. Hình ảnh trong phiên livestream',
+    labelEn: '5. In-Stream Photos',
+    descriptionVi: 'Hình ảnh hậu trường, Host/Trợ live hoặc sản phẩm trong luồng phát',
+    descriptionEn: 'Behind-the-scenes, host/support, or in-stream product shots',
+    dbCategory: 'live_session',
+    order: 5,
+  },
+  {
+    id: 'other',
+    code: 'OTHER',
+    labelVi: '6. Hình ảnh khác',
+    labelEn: '6. Other Photos',
+    descriptionVi: 'Tài liệu, sự cố kỹ thuật hoặc hình ảnh bổ trợ khác',
+    descriptionEn: 'Documentation, technical issues, or other supporting photos',
+    dbCategory: 'other',
+    order: 6,
+  },
+]
+
+export function resolveLiveReportPhotoGroup(
+  image: Pick<LiveReportImage, 'category'> & Partial<Pick<LiveReportImage, 'title' | 'description' | 'captured_at'>>,
+): LiveReportPhotoGroup {
+  const title = (image.title || '').trim().toLowerCase()
+  if (image.category === 'key_visual') {
+    if (title.includes('sau ca') || title.includes('kv sau') || title.includes('[kv sau ca]') || title.includes('post-session')) {
+      return 'key_visual_after'
+    }
+    return 'key_visual_before'
+  }
+  if (image.category === 'live_session') {
+    return 'live_session'
+  }
+  if (title.includes('tổng hợp') || title.includes('tong hop') || title.includes('summary') || title.includes('[dashboard tổng hợp]')) {
+    return 'dashboard_summary'
+  }
+  if (title.includes('30') || title.includes('chu kỳ') || title.includes('chu ky') || title.includes('periodic') || title.includes('[dashboard 30m]')) {
+    return 'dashboard_periodic'
+  }
+  if (image.captured_at && (title.includes('dashboard') || title.includes('số liệu') || title.includes('so lieu') || title.includes('metrics'))) {
+    return 'dashboard_periodic'
+  }
+  return 'other'
+}
+
+export function photoGroupToCategoryAndTitle(
+  group: LiveReportPhotoGroup,
+  currentTitle?: string,
+): {
+  category: LiveReportImageCategory
+  title?: string
+} {
+  const meta = LIVE_REPORT_PHOTO_GROUPS.find(g => g.id === group)
+  if (!meta) return { category: 'other', title: currentTitle }
+
+  const cleanTitle = (currentTitle || '')
+    .replace(/^\[KV Trước ca\]\s*/i, '')
+    .replace(/^\[KV Sau ca\]\s*/i, '')
+    .replace(/^\[Dashboard Tổng hợp\]\s*/i, '')
+    .replace(/^\[Dashboard 30m\]\s*/i, '')
+    .trim()
+
+  const prefix = meta.defaultTitlePrefix
+  const nextTitle = prefix ? (cleanTitle ? `${prefix} ${cleanTitle}` : prefix) : cleanTitle || undefined
+
+  return {
+    category: meta.dbCategory,
+    title: nextTitle,
+  }
+}
+
 export const maximumLiveReportImages = 30
 export const maximumLiveReportImageBytes = 10 * 1024 * 1024
 export const maximumLiveReportImageTitleLength = 120
@@ -73,7 +216,8 @@ export function validateLiveReportImageMetadata(input: {
 export function createLiveReportImageDrafts({
   files,
   currentImages,
-  category,
+  category = 'live_session',
+  photoGroup,
   uploadedBy,
   createObjectUrl = file => URL.createObjectURL(file),
   createId = () => crypto.randomUUID(),
@@ -81,7 +225,8 @@ export function createLiveReportImageDrafts({
 }: {
   files: readonly File[]
   currentImages: readonly LiveReportImage[]
-  category: LiveReportImageCategory
+  category?: LiveReportImageCategory
+  photoGroup?: LiveReportPhotoGroup
   uploadedBy?: string
   createObjectUrl?: (file: File) => string
   createId?: () => string
@@ -89,6 +234,10 @@ export function createLiveReportImageDrafts({
 }) {
   const images: LiveReportImage[] = []
   const errors: LiveReportImageValidationError[] = []
+
+  const mapped = photoGroup ? photoGroupToCategoryAndTitle(photoGroup) : null
+  const effectiveCategory = mapped?.category ?? category
+  const defaultTitle = mapped?.title
 
   for (const file of files) {
     const validationError = validateLiveReportImageFile(
@@ -102,7 +251,8 @@ export function createLiveReportImageDrafts({
     const id = createId()
     images.push({
       id,
-      category,
+      category: effectiveCategory,
+      title: defaultTitle,
       file_url: createObjectUrl(file),
       file_name: sanitizeLiveReportImageFileName(file.name),
       mime_type: file.type,
@@ -186,6 +336,17 @@ export function sortedLiveReportImages(images: readonly LiveReportImage[]) {
   return [...images].sort((left, right) =>
     Number(right.is_cover) - Number(left.is_cover)
     || left.sort_order - right.sort_order,
+  )
+}
+
+export function filterLiveReportImagesByCategories(
+  images: readonly LiveReportImage[],
+  categories: readonly string[],
+) {
+  if (categories.length === 0) return [...images]
+  return images.filter(image =>
+    categories.includes(image.category) ||
+    categories.includes(resolveLiveReportPhotoGroup(image)),
   )
 }
 

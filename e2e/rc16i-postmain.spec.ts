@@ -81,12 +81,12 @@ test('Team/individual use real contract fields; UNKNOWN stays unknown on desktop
   const summary={staffId:'Synthetic Host',role:'host',assignedShifts:2,verifiedShifts:1,unknownAttendanceShifts:1,approvedNoShows:0,approvedWorkedShifts:1,approvedActualMinutes:90,lateShifts:0,onTimeShifts:1,attendanceCoveragePct:50,punctualityPct:100,knownReliabilityPct:100,isComplete:false,warning:'INCOMPLETE_ATTENDANCE_EVIDENCE'}
   await page.route('**/api/workforce/overview*',route=>route.fulfill({json:{ok:true,month:'2026-09',role:'host',team:{...summary,staffCount:1,workedShifts:1,actualMinutes:90,incompleteStaffCount:1},staff:[summary],leaderboard:[],leaderboard_policy_configured:false,gmv_per_hour:null,orders_per_hour:null}}))
   await page.route('**/api/workforce/performance*',route=>route.fulfill({json:{ok:true,performance:summary,gmv_per_hour:null,orders_per_hour:null}}))
-  await page.goto('/workforce');await expect(page.getByText('Synthetic Host',{exact:true}).first()).toBeVisible()
+  await page.goto('/workforce');await page.getByRole('tab',{name:'Bảng',exact:true}).click();await expect(page.getByText('Synthetic Host',{exact:true}).first()).toBeVisible()
   await page.screenshot({path:info.outputPath('workforce-team-desktop.png'),fullPage:true})
-  await page.getByRole('tab',{name:/Hiệu suất cá nhân/}).click();await expect(page.getByText(/90|1 giờ/).first()).toBeVisible()
+  await page.getByRole('tab',{name:'Cá nhân'}).click();await expect(page.getByText(/90|1 giờ/).first()).toBeVisible()
   await page.setViewportSize({width:390,height:844});await fit(page)
   await page.screenshot({path:info.outputPath('workforce-individual-mobile.png'),fullPage:true})
-  await page.getByRole('tab',{name:/Bảng xếp hạng/}).click();await expect(page.getByText(/Chưa kích hoạt/)).toBeVisible()
+  await page.getByRole('tab',{name:'Xếp hạng'}).click();await expect(page.getByText(/Chưa kích hoạt/)).toBeVisible()
 })
 
 test('Identity change and expired API session remove sensitive data immediately',async({page})=>{
@@ -224,7 +224,7 @@ test('A delayed overview response cannot restore data from the previous month', 
   const summary = {staffId:'Latest evidence',role:'host',assignedShifts:0,verifiedShifts:0,unknownAttendanceShifts:0,approvedNoShows:0,approvedWorkedShifts:0,approvedActualMinutes:0,lateShifts:0,onTimeShifts:0,attendanceCoveragePct:null,punctualityPct:null,knownReliabilityPct:null,isComplete:false}
   const response = (staffId: string) => ({ok:true,team:{...summary,staffCount:1,workedShifts:0,actualMinutes:0,incompleteStaffCount:1},staff:[{...summary,staffId}],leaderboard:[],leaderboard_policy_configured:false})
   await page.route('**/api/workforce/overview*', async route => {
-    if(new URL(route.request().url()).searchParams.get('month') !== '2026-08') { delayed = route; return }
+    if(new URL(route.request().url()).searchParams.get('period') !== '2026-08') { delayed = route; return }
     await route.fulfill({json:response('Latest evidence')})
   })
   await page.goto('/workforce')

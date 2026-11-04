@@ -53,6 +53,9 @@ test('Dashboard and Reports show authorized read-only rows before complete secon
   assert.match(dash,/getOperationalReferences\(currentUser\)/)
   assert.match(reports,/data-testid="reports-visible-first"/)
   assert.match(reports,/setFirstRows\(\{key:pageKey,rows:page.items,shifts:related,total:page.total\}\)/)
-  assert.match(reports,/shiftService\.getReportCandidates\(30\)/)
+  // Reports Inbox now pages all eligible obligations through an authorized
+  // server-side RPC. The previous client candidate cap of 30 is obsolete.
+  assert.ok(reports.includes('getReportObligationPage({ page: queuePage, pageSize: queuePageSize'), 'Reports Inbox should use authorized server-side obligation pagination')
+  assert.ok(!reports.includes('shiftService.getReportCandidates(30)'), 'Reports Inbox must not retain the legacy 30-candidate cap')
   assert.doesNotMatch(dash,/calculateAggregate\(future\.items/)
 })

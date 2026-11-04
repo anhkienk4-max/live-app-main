@@ -1,4 +1,7 @@
-﻿import React from 'react'
+import React from 'react'
+import { useTranslation } from '@/lib/i18n'
+import { OpsMobileHome } from '../OpsMobileHome'
+import { getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
 import {
   Calendar, CheckCircle, Clock, MapPin, ArrowRight,
   ArrowLeftRight, FileText, AlertTriangle,
@@ -20,6 +23,7 @@ export interface NextShiftData {
 
 export interface ScheduleEntry {
   date: string
+  onView?: () => void
   time: string
   brand: string
   platform: string
@@ -54,6 +58,7 @@ export interface NotificationEntry {
 
 export interface MemberDashboardViewModel {
   nextShift: NextShiftData | null
+  onOpenNextShift?: () => void
   mySchedule: ScheduleEntry[]
   /** null = source unavailable; [] = loaded, verified empty */
   myActions: ActionEntry[] | null
@@ -63,14 +68,16 @@ export interface MemberDashboardViewModel {
   myRequests: RequestEntry[] | null
   /** null = source unavailable; [] = loaded, verified empty */
   notifications: NotificationEntry[] | null
+  userName?: string
+  dashboardFeatureLinks?: React.ReactNode
 }
 
 // Sub-components
 
-interface ScheduleItemProps { date: string; time: string; brand: string; platform: string; role: string }
-function ScheduleItem({ date, time, brand, platform, role }: ScheduleItemProps) {
+interface ScheduleItemProps { onView?: () => void; date: string; time: string; brand: string; platform: string; role: string }
+function ScheduleItem({ date, time, brand, platform, role, onView }: ScheduleItemProps) {
   return (
-    <div className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:border-slate-200 transition-colors bg-slate-50/50">
+    <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-slate-100 hover:border-slate-200 transition-colors bg-slate-50/50">
       <div className="flex items-center gap-4">
         <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 shadow-sm flex items-center justify-center font-bold text-[13px] text-slate-700">
           {brand.substring(0, 2).toUpperCase()}
@@ -80,9 +87,9 @@ function ScheduleItem({ date, time, brand, platform, role }: ScheduleItemProps) 
           <span className="text-[12px] text-slate-500">{date} · {time} · {platform}</span>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <span className="text-[12px] font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-full shadow-sm">{role}</span>
-        <button className="text-slate-400 hover:text-indigo-600"><ArrowRight className="w-4 h-4" /></button>
+        <button type="button" aria-label="Xem chi tiết ca" disabled={!onView} onClick={onView} className="text-slate-400 hover:text-indigo-600"><ArrowRight className="w-4 h-4" /></button>
       </div>
     </div>
   )
@@ -119,9 +126,9 @@ function OpenShiftItem({ brand, time, platform, role }: OpenShiftItemProps) {
           <span className="text-[11px] text-slate-500">{time} · {platform}</span>
         </div>
       </div>
-      <button className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded hover:bg-indigo-100 transition-colors">
+      <a href="/calendar?tab=open" className="inline-flex min-h-11 items-center text-[11px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded hover:bg-indigo-100 transition-colors">
         Đăng ký {role}
-      </button>
+      </a>
     </div>
   )
 }
@@ -159,36 +166,50 @@ function NotificationItem({ title, time, unread }: NotificationItemProps) {
 // Main export
 
 export function MemberDashboardView({
-  nextShift, mySchedule, myActions, openShifts, myRequests, notifications,
+  nextShift, onOpenNextShift, mySchedule, myActions, openShifts, myRequests, notifications, userName, dashboardFeatureLinks,
 }: MemberDashboardViewModel) {
+  const { t } = useTranslation()
+  const todayShiftCount = mySchedule.filter(item => item.date === getCurrentBusinessDate()).length
+  const attention = myActions?.map((item, index) => ({
+    key: item.type + index, title: item.title, description: item.description,
+    href: item.type === 'swap' ? '/swaps' : item.type === 'report' ? '/reports' : '/data-quality',
+    level: item.type === 'warning' ? 'critical' as const : 'info' as const,
+  })) ?? null
   return (
-    <main className="p-8 flex flex-col gap-6 overflow-y-auto">
+    <>
+    <OpsMobileHome
+      role="member" userName={userName} shiftCount={todayShiftCount} shiftLabel={t('assignedShiftsToday')}
+      liveCount={null} pendingCount={myRequests === null ? null : myRequests.filter(item => item.status === 'pending').length}
+      attention={attention} shift={nextShift ? { key: nextShift.brand + nextShift.time, brand: nextShift.brand, platform: nextShift.platform, time: nextShift.time, status: nextShift.role, onView: onOpenNextShift } : null}
+    />
+    <div className="hidden min-w-0 flex-col gap-6 p-4 md:flex sm:p-8">
       <div className="flex flex-col gap-1 mb-1">
-        <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">My Workspace</h1>
-        <p className="text-[14px] text-slate-500 font-medium">Welcome back! Ready for your upcoming shifts today?</p>
+        <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">{t('myWorkspace')}</h1>
+        <p className="text-[14px] text-slate-500 font-medium">{t('memberDashboardWelcome')}</p>
       </div>
+      {dashboardFeatureLinks}
 
       {/* NEXT SHIFT — 12/12 */}
-      <div className="w-full bg-white rounded-[16px] border border-slate-200 shadow-sm p-6 flex items-stretch min-h-[170px] relative overflow-hidden">
+      <div className="w-full bg-white rounded-[16px] border border-slate-200 shadow-sm p-4 sm:p-6 flex flex-col gap-4 lg:flex-row lg:gap-0 items-stretch min-h-[170px] relative overflow-hidden">
         <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-600"></div>
         {nextShift ? (
           <>
-            <div className="flex-1 flex flex-col justify-center">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 rounded border border-indigo-100">Next Shift</span>
+            <div className="min-w-0 flex-1 flex flex-col justify-center">
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <span className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 rounded border border-indigo-100">{t('nextAssignedShift')}</span>
                 {nextShift.startsIn && (
                   <span className="flex items-center gap-1.5 text-[12px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
                     <Clock className="w-3.5 h-3.5" /> {nextShift.startsIn}
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-5">
-                <div className="w-[72px] h-[72px] rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-[22px] font-bold text-slate-700 shadow-sm">
+              <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+                <div className="w-12 h-12 shrink-0 sm:w-[72px] sm:h-[72px] rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-[22px] font-bold text-slate-700 shadow-sm">
                   {nextShift.brand.substring(0, 2).toUpperCase()}
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex min-w-0 flex-col gap-1.5">
                   <div className="flex items-center gap-3">
-                    <h2 className="text-[24px] font-bold text-slate-900 leading-none">{nextShift.brand}</h2>
+                    <h2 className="break-words text-xl sm:text-[24px] font-bold text-slate-900 leading-snug [overflow-wrap:anywhere]">{nextShift.brand}</h2>
                     <span className="text-[12px] font-semibold text-slate-500 uppercase px-2 py-0.5 bg-slate-100 rounded">{nextShift.platform}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-[13px] text-slate-600 mt-1">
@@ -199,37 +220,37 @@ export function MemberDashboardView({
                 </div>
               </div>
             </div>
-            <div className="w-[280px] flex flex-col items-end justify-center border-l border-slate-100 pl-6">
-              <button className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-bold rounded-md shadow-sm transition-colors flex items-center justify-center gap-2">
-                <ArrowRight className="w-4 h-4" /> Vào Dashboard Ca
+            <div className="w-full flex flex-col items-end justify-center border-t border-slate-100 pt-4 lg:w-[280px] lg:shrink-0 lg:border-t-0 lg:border-l lg:pl-6 lg:pt-0">
+              <button type="button" data-testid="member-next-shift-details" disabled={!onOpenNextShift} onClick={onOpenNextShift} className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-bold rounded-md shadow-sm transition-colors flex items-center justify-center gap-2">
+                <ArrowRight className="w-4 h-4" /> {t('viewShiftDetails')}
               </button>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">Không có ca làm việc sắp tới.</div>
+          <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">{t('noUpcomingMemberShift')}</div>
         )}
       </div>
 
       {/* ROW 2: MY SCHEDULE (7/12) + MY ACTIONS (5/12) */}
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-7 flex flex-col">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
+        <div className="min-w-0 xl:col-span-7 flex flex-col">
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-[16px] font-bold text-slate-900">My Schedule</h2>
+            <h2 className="text-[16px] font-bold text-slate-900">{t('mySchedule')}</h2>
           </div>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-4 flex flex-col flex-1">
             <div className="space-y-3">
               {mySchedule.length > 0 ? mySchedule.slice(0, 6).map((s, i) => (
-                <ScheduleItem key={i} date={s.date} time={s.time} brand={s.brand} platform={s.platform} role={s.role} />
+                <ScheduleItem key={i} date={s.date} time={s.time} brand={s.brand} platform={s.platform} role={s.role} onView={s.onView} />
               )) : (
-                <div className="text-center text-sm text-slate-500 py-4">Không có lịch trình</div>
+                <div className="text-center text-sm text-slate-500 py-4">{t('noMemberSchedule')}</div>
               )}
             </div>
           </div>
         </div>
 
-        <div className="col-span-5 flex flex-col">
+        <div className="min-w-0 xl:col-span-5 flex flex-col">
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-[16px] font-bold text-slate-900">My Actions</h2>
+            <h2 className="text-[16px] font-bold text-slate-900">{t('myActions')}</h2>
           </div>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-4 flex flex-col gap-3 flex-1">
             {myActions === null ? (
@@ -237,7 +258,7 @@ export function MemberDashboardView({
             ) : myActions.length > 0 ? myActions.slice(0, 6).map((a, i) => (
               <ActionCard key={i} type={a.type} title={a.title} time={a.time} description={a.description} />
             )) : (
-              <div className="text-center text-sm text-slate-500 py-4">Không có hành động nào</div>
+              <div className="text-center text-sm text-slate-500 py-4">{t('noMemberActions')}</div>
             )}
           </div>
         </div>
@@ -246,7 +267,7 @@ export function MemberDashboardView({
       {/* ROW 3: OPEN SHIFTS — 12/12 */}
       <div className="flex flex-col">
         <div className="flex justify-between items-center mb-3">
-          <h2 className="text-[16px] font-bold text-slate-900">Open Shifts For You</h2>
+          <h2 className="text-[16px] font-bold text-slate-900">{t('openShifts')}</h2>
         </div>
         <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-4">
           <div className="space-y-3">
@@ -255,17 +276,17 @@ export function MemberDashboardView({
             ) : openShifts.length > 0 ? openShifts.slice(0, 6).map((s, i) => (
               <OpenShiftItem key={i} brand={s.brand} time={s.time} platform={s.platform} role={s.role} />
             )) : (
-              <div className="text-center text-sm text-slate-500 py-4">Không có ca mở</div>
+              <div className="text-center text-sm text-slate-500 py-4">{t('noOpenShifts')}</div>
             )}
           </div>
         </div>
       </div>
 
       {/* ROW 4: MY REQUESTS (6/12) + NOTIFICATIONS (6/12) */}
-      <div className="grid grid-cols-12 gap-6 pb-6">
-        <div className="col-span-6 flex flex-col">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6 pb-6">
+        <div className="min-w-0 xl:col-span-6 flex flex-col">
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-[16px] font-bold text-slate-900">My Requests</h2>
+            <h2 className="text-[16px] font-bold text-slate-900">{t('myRequests')}</h2>
           </div>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-4 flex flex-col flex-1">
             <div className="space-y-3">
@@ -274,15 +295,15 @@ export function MemberDashboardView({
               ) : myRequests.length > 0 ? myRequests.slice(0, 6).map((r, i) => (
                 <RequestItem key={i} type={r.type} title={r.title} status={r.status} />
               )) : (
-                <div className="text-center text-sm text-slate-500 py-4">Không có yêu cầu</div>
+                <div className="text-center text-sm text-slate-500 py-4">{t('noMemberRequests')}</div>
               )}
             </div>
           </div>
         </div>
 
-        <div className="col-span-6 flex flex-col">
+        <div className="min-w-0 xl:col-span-6 flex flex-col">
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-[16px] font-bold text-slate-900">Recent Notifications</h2>
+            <h2 className="text-[16px] font-bold text-slate-900">{t('recentNotifications')}</h2>
           </div>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-4 flex flex-col flex-1">
             <div className="space-y-3">
@@ -291,13 +312,14 @@ export function MemberDashboardView({
               ) : notifications.length > 0 ? notifications.slice(0, 6).map((n, i) => (
                 <NotificationItem key={i} title={n.title} time={n.time} unread={n.unread} />
               )) : (
-                <div className="text-center text-sm text-slate-500 py-4">Không có thông báo</div>
+                <div className="text-center text-sm text-slate-500 py-4">{t('noNotifications')}</div>
               )}
             </div>
           </div>
         </div>
       </div>
-    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a></nav>
-    </main>
+    <nav aria-label={t('viewAll')} className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">{t('dashboardAllShifts')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">{t('allReports')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">{t('allNotifications')}</a></nav>
+    </div>
+    </>
   )
 }

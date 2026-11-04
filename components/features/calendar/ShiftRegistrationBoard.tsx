@@ -1,8 +1,10 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import * as React from 'react'
-import { format } from 'date-fns'
-import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
+import { addMonths, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
+import { enUS, vi } from 'date-fns/locale'
+import { CalendarDays, ChevronLeft, ChevronRight, Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   shiftRegistrationService,
   shiftService,
@@ -24,6 +26,7 @@ import {
 } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
@@ -49,6 +52,8 @@ import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRe
 import { deriveStaffingAttention } from '@/lib/ui/operational-attention'
 import { AttentionBanner } from '@/components/ui/operational-status'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
+import { MonthView } from '@/components/features/calendar/MonthView'
+import { readCalendarWindow } from '@/lib/services/calendarWindow'
 import {
   buildStudioFilterOptions,
   calendarTimeScope,
@@ -70,7 +75,7 @@ type Filters = {
   registrationStatuses: RegistrationStatus[]
 }
 type CapacityMap = Record<string, ShiftRoleCapacity[]>
-type ViewMode = 'card' | 'compact' | 'table'
+type ViewMode = 'card' | 'compact' | 'table' | 'calendar'
 
 const initialFilters: Filters = {
   search: '',
@@ -113,8 +118,9 @@ function useOperationalLoadState() {
 }
 
 export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
+  const router = useRouter()
   const { currentUser, loading: userLoading } = useCurrentUser()
-  const { t } = useTranslation()
+  const { language, t } = useTranslation()
   const { toast } = useToast()
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
@@ -127,6 +133,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const pagination = useListPagination(mode, 10)
   const { params, navigate, page, pageSize } = pagination
   const rawFilters = params.get(mode + '_filters') ?? ''
+  const calendarMonthValue = params.get(mode + '_calendar_month')
   const filters = React.useMemo((): Filters => {
     try {
       const parsed = JSON.parse(rawFilters)
@@ -173,12 +180,50 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [removalTarget, setRemovalTarget] = React.useState<{ registration: ShiftRegistration; kind: 'cancel' | 'unassign' } | null>(null)
   const viewValue = params.get(mode + '_view')
-  const viewMode: ViewMode = viewValue === 'table' || viewValue === 'card' ? viewValue : 'compact'
+  const viewMode: ViewMode = viewValue === 'table' || viewValue === 'card' || viewValue === 'calendar' ? viewValue : 'compact'
+  const calendarMonth = React.useMemo(() => {
+    const match = calendarMonthValue?.match(/^(\d{4})-(0[1-9]|1[0-2])$/)
+    return match ? new Date(Number(match[1]), Number(match[2]) - 1, 1) : startOfMonth(new Date(currentTime))
+  }, [calendarMonthValue, currentTime])
+  const calendarRange = React.useMemo(() => {
+    const monthStart = format(startOfMonth(calendarMonth), 'yyyy-MM-dd')
+    const monthEnd = format(endOfMonth(calendarMonth), 'yyyy-MM-dd')
+    return {
+      from: timeScope.from && timeScope.from > monthStart ? timeScope.from : monthStart,
+      to: timeScope.to && timeScope.to < monthEnd ? timeScope.to : monthEnd,
+    }
+  }, [calendarMonth, timeScope.from, timeScope.to])
+  const calendarFilters = React.useMemo(() => ({ ...JSON.parse(queryFilters) as ListFilters, ...calendarRange }), [calendarRange, queryFilters])
+  const [calendarRetry, setCalendarRetry] = React.useState(0)
+  const calendarRequestKey = identity + ':' + mode + ':' + JSON.stringify(calendarFilters) + ':' + calendarRetry
+  const [calendarResult, setCalendarResult] = React.useState<
+    { key: string; data: OperationalLoadResult } | { key: string; error: unknown } | null
+  >(null)
+  const calendarRangeInvalid = !timeScope.valid || calendarRange.from > calendarRange.to
+  const currentCalendarResult = calendarResult?.key === calendarRequestKey ? calendarResult : null
+  const calendarData = currentCalendarResult && 'data' in currentCalendarResult ? currentCalendarResult.data : null
+  const calendarError = currentCalendarResult && 'error' in currentCalendarResult ? currentCalendarResult.error : null
+  const calendarLoading = !calendarRangeInvalid && !currentCalendarResult
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
   const [exportShiftId, setExportShiftId] = React.useState<string | null>(null)
   const [exportOpen, setExportOpen] = React.useState(false)
   const [showFilters, setShowFilters] = React.useState(false)
   const { getLatest, isActive, isCurrent, nextVersion, setLatest } = useOperationalLoadState()
+
+  React.useEffect(() => {
+    if (viewMode !== 'calendar' || calendarRangeInvalid) return
+    const controller = new AbortController()
+    let active = true
+    void readCalendarWindow(calendarFilters, controller.signal, undefined, mode)
+      .then(result => {
+        if (!active) return
+        setCalendarResult({ key: calendarRequestKey, data: { shifts: result.items, registrations: result.registrations } })
+      })
+      .catch(error => {
+        if (active && !(error instanceof Error && error.name === 'AbortError')) setCalendarResult({ key: calendarRequestKey, error })
+      })
+    return () => { active = false; controller.abort() }
+  }, [calendarFilters, calendarRangeInvalid, calendarRequestKey, mode, viewMode])
 
   const referenceVersion = React.useRef(0)
   const loadReferenceData = React.useCallback(async () => {
@@ -238,6 +283,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     setLoading(true)
     await Promise.all([loadReferenceData(), loadRegistrationOperationalData(signal)])
   }, [loadReferenceData, loadRegistrationOperationalData])
+  useShiftChangeRefresh(() => loadData())
 
   React.useEffect(() => {
     const controller = new AbortController()
@@ -265,7 +311,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     navigate({ [mode + '_view']: next, [mode + '_page']: null, [mode + '_size']: next === 'table' ? '20' : '10', [mode + '_pending']: null })
   }
 
-  const runAction = async (id: string, action: () => Promise<unknown>, success: string, openShiftId?: string) => {
+  const runAction = async (id: string, action: () => Promise<unknown>, success: string, openShiftId?: string, throwAfterToast = false) => {
     setBusyId(id)
     try {
       await action()
@@ -281,6 +327,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         description: error instanceof Error ? error.message : t('validationError'),
         variant: 'destructive',
       })
+      if (throwAfterToast) throw error
     } finally {
       setBusyId(null)
     }
@@ -423,11 +470,12 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
       {(mode === 'open' || mode === 'mine') && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{total} {mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}</p>
+          <p aria-live="polite" aria-busy={loadedKey !== requestKey && !loadError} className="text-sm text-muted-foreground">{loadedKey === requestKey ? `${total} ${mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}` : loadError ? t('error') : t('loading')}</p>
           <div className="inline-flex rounded-lg border bg-background p-1" aria-label={mode === 'mine' ? 'My shift view' : 'Open shift view'}>
             <ViewButton active={viewMode === 'card'} onClick={() => changeViewMode('card')} icon={<LayoutGrid className="h-4 w-4" />} label={t('cardView')} />
             <ViewButton active={viewMode === 'compact'} onClick={() => changeViewMode('compact')} icon={<List className="h-4 w-4" />} label={t('compactView')} />
             <ViewButton active={viewMode === 'table'} onClick={() => changeViewMode('table')} icon={<Table2 className="h-4 w-4" />} label={t('tableView')} />
+            <ViewButton active={viewMode === 'calendar'} onClick={() => changeViewMode('calendar')} icon={<CalendarDays className="h-4 w-4" />} label={t('month')} />
           </div>
         </div>
       )}
@@ -475,7 +523,25 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         </Card>
       )}
 
-      {(mode === 'mine' ? visibleMyEntries.length === 0 : visibleShifts.length === 0) ? (
+      {viewMode === 'calendar' ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 px-4 py-3">
+            <CardTitle className="text-base">{format(calendarMonth, 'MMMM yyyy', { locale: language === 'vi' ? vi : enUS })}</CardTitle>
+            <div className="flex items-center gap-1">
+              <Button aria-label={t('previousPage')} onClick={() => navigate({ [mode + '_calendar_month']: format(subMonths(calendarMonth, 1), 'yyyy-MM') })} size="sm" variant="outline"><ChevronLeft className="h-4 w-4" /></Button>
+              <Button onClick={() => navigate({ [mode + '_calendar_month']: format(startOfMonth(new Date()), 'yyyy-MM') })} size="sm" variant="outline">{t('today')}</Button>
+              <Button aria-label={t('nextPage')} onClick={() => navigate({ [mode + '_calendar_month']: format(addMonths(calendarMonth, 1), 'yyyy-MM') })} size="sm" variant="outline"><ChevronRight className="h-4 w-4" /></Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 px-3 pb-3 sm:px-4">
+            {calendarRangeInvalid
+              ? <MonthView currentDate={calendarMonth} shifts={[]} brands={brands} platforms={platforms} onShiftClick={setDetailShift} />
+              : calendarError ? <PageLoadError error={calendarError} onRetry={() => setCalendarRetry(value => value + 1)} />
+                : calendarLoading ? <ContentSkeleton />
+                  : <MonthView currentDate={calendarMonth} shifts={calendarData?.shifts ?? []} brands={brands} platforms={platforms} registrations={calendarData?.registrations ?? []} onShiftClick={setDetailShift} />}
+          </CardContent>
+        </Card>
+      ) : (mode === 'mine' ? visibleMyEntries.length === 0 : visibleShifts.length === 0) ? (
         <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
       ) : mode === 'mine' ? (
         viewMode === 'table' ? (
@@ -489,7 +555,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         <ShiftSummaryTable
           allShifts={shifts}
           currentUser={currentUser}
-          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
+          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId, true)}
           shifts={visibleShifts}
           registrations={registrations}
           roleFilter={filters.roles}
@@ -505,7 +571,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           capacities={capacities}
           currentUser={currentUser}
           onManage={setDetailShift}
-          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
+          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId, true)}
           platforms={platforms}
           registrations={registrations}
           roleFilter={filters.roles}
@@ -559,9 +625,11 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                     </Button>
                     <ShiftRegistrationActions
                       allShifts={shifts}
+                       brandName={brandName(brands, shift.brand_id)}
+                       platformName={platformName(platforms, shift.platform_id)}
                       compact
                       currentUser={currentUser}
-                      onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'), shift.id)}
+                      onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'), shift.id, true)}
                       registrations={registrations}
                       shift={shift}
                     />
@@ -600,7 +668,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           })}
         </div>
       )}
-      <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+      {viewMode !== 'calendar' && <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />}
       </>}
       {detailShift && loadedKey === requestKey && (
         <ShiftDetailModal
@@ -611,23 +679,31 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           platforms={platforms}
           campaigns={campaigns}
           users={users}
-          allShifts={shifts}
-          allRegistrations={registrations}
+          allShifts={viewMode === 'calendar' ? calendarData?.shifts ?? [] : shifts}
+          allRegistrations={viewMode === 'calendar' ? calendarData?.registrations ?? [] : registrations}
           onUpdate={(updatedShift?: Shift) => {
             void (async () => {
               if (updatedShift) {
                 setDetailShift(updatedShift)
                 await loadRegistrationOperationalData()
+                if (viewMode === 'calendar') setCalendarRetry(value => value + 1)
               } else {
                 const refreshed = await loadRegistrationOperationalData()
                 const refreshedShift = refreshed?.shifts.find(shift => shift.id === detailShift.id)
                 if (refreshedShift) setDetailShift({ ...refreshedShift })
+                if (viewMode === 'calendar') setCalendarRetry(value => value + 1)
               }
             })()
+          }}
+          onEdit={() => {
+            const shiftId = detailShift.id
+            setDetailShift(null)
+            router.push(`/shifts?edit_shift_id=${encodeURIComponent(shiftId)}`)
           }}
           onDelete={() => {
             setDetailShift(null)
             void loadRegistrationOperationalData()
+            if (viewMode === 'calendar') setCalendarRetry(value => value + 1)
           }}
         />
       )}
@@ -858,6 +934,8 @@ function CompactShiftList({
 
                   <ShiftRegistrationActions
                     allShifts={allShifts}
+                    brandName={brandName(brands, shift.brand_id)}
+                    platformName={platformName(platforms, shift.platform_id)}
                     compact
                     currentUser={currentUser}
                     onRegister={role => onRegister(shift.id, role)}
@@ -999,7 +1077,7 @@ function ShiftSummaryTable({
         <td className="p-2">{platformName(platforms, shift.platform_id)}</td>
         <td className="p-2">{visibleCapacities.map(capacity => t(capacity.role)).join(', ')}</td>
         <td className="p-2">{visibleCapacities.map(capacity => `${t(capacity.role)} ${capacity.approved}/${capacity.required}`).join(' · ')}</td>
-        <td className="p-2"><div className="flex items-center gap-2"><ShiftRegistrationActions allShifts={allShifts} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div></td>
+        <td className="p-2"><div className="flex items-center gap-2"><ShiftRegistrationActions allShifts={allShifts} brandName={brandName(brands, shift.brand_id)} platformName={platformName(platforms, shift.platform_id)} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div></td>
       </tr>
     })}</tbody>
   </table></CardContent></Card>

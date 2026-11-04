@@ -1,0 +1,6 @@
+- [ ] Add proposal-only PostgreSQL schema, RPCs, and shared effective authorization path.
+- [ ] Add Admin-only server API with default-off, no-database behavior.
+- [ ] Add Admin settings UI for supported account overrides and reset.
+- [ ] Add API negative tests and PostgreSQL 17 role/security tests.
+- [ ] Add exact-branch Preview suppression and focused CI gate.
+- [ ] Run available gates; keep unexecuted gates explicitly blocked.

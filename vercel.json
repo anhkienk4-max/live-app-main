@@ -4,7 +4,28 @@
     "deploymentEnabled": {
       "feat/rc16-payroll-workforce-backend": false,
       "integration/rc14-rc15-rc16-prod": false,
-      "feat/rc16k-ui-consistency-pagination": false
+      "feat/rc16k-ui-consistency-pagination": false,
+      "fix/rc19-staffing-73": false,
+      "fix/rc19-reg128-lane1": false,
+      "release/rc19-core-2026-11-01-integrated": false,
+      "integration/rc19-wave2-core": false,
+      "fix/rc19-p2-04-attendance-photo-review": false,
+      "fix/rc19-report02-core-counter-20261029": false,
+      "feat/rc19-bi01-analytics-composer-20261029": false,
+      "codex/rc19-payroll-release-candidate": false,
+      "fix/rc19-sto01-internal-only": false,
+      "integration/rc19-final-storage-prep": false,
+      "feat/rc19-rbac-security-20261029": false,
+      "integration/rc19-final-rbac": false,
+      "feat/rc19-brand-campaign-sku-hub": false,
+      "feat/rc19-admin02-unified-workspace": false,
+      "fix/rc19-calendar-mobile-full-after-rbac-20261030": false,
+      "integration/rc19-master-calendar-20261030": false,
+      "codex/rc19-restore-previous-prod-ui": false,
+      "feat/rc19-rbac02-account-overrides": false,
+      "fix/rc19-lane2-ops-stabilization": false,
+      "fix/rc19-lane2-filter01a": false,
+      "integration/rc19-lane2-swap-filter-convergence": false
     }
   }
 }

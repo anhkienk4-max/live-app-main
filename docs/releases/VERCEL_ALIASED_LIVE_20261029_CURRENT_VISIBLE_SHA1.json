@@ -1,0 +1,2731 @@
+{
+  "schemaVersion": 1,
+  "deploymentId": "dpl_6KfC7VLRAwHkTcGnFyqhv6gkucqL",
+  "alias": "ops5729.top",
+  "referenceCoreCommit": "1befe23bea9380dac37061a7132ac38143cf678b",
+  "inventoryNature": "partial_Vercel_depth_limited_CLI_source_list_NOT_total_deployment_files",
+  "visibleFileCount": 679,
+  "validHashCount": 678,
+  "depthTruncationMarkers": 356,
+  "unresolvedPaths": [
+    "tests/auth-session-foundation.test.ts"
+  ],
+  "unresolvedHashLengths": [
+    44
+  ],
+  "embeddedWorktreeVisibleFiles": 0,
+  "files": [
+    {
+      "path": ".agents/memory/MEMORY.md",
+      "sha1": "8a11e1c2e611099f1b57b439c1cfc672493572fe"
+    },
+    {
+      "path": ".agents/memory/brand-kb-fields.md",
+      "sha1": "1c315386929fd6dc80bdb1a553192e6194373a70"
+    },
+    {
+      "path": ".agents/memory/livestream-ops-arch.md",
+      "sha1": "ba7a3c335c1b8808da1e110f861622340927a1ec"
+    },
+    {
+      "path": ".env.example",
+      "sha1": "be8a1141757c45870633ed061aae15f53f921f6f"
+    },
+    {
+      "path": ".gitattributes",
+      "sha1": "2073ba013487be83bd3f6f03d698de8065180481"
+    },
+    {
+      "path": ".github/p0-postgres/Dockerfile",
+      "sha1": "58c9fc1f9008450b1b5c507d2a55867869aa8347"
+    },
+    {
+      "path": ".github/workflows/ada-hls-browser-integration.yml",
+      "sha1": "a96a3d9bba42830bec3ec22675785c759ba9c76d"
+    },
+    {
+      "path": ".github/workflows/ada-hls-player-gate.yml",
+      "sha1": "a0c4414e98e3e7b3fcf8fd51119e126c328675d1"
+    },
+    {
+      "path": ".github/workflows/ada-hls-react-component.yml",
+      "sha1": "05e17336394e66004f1cba2a7c99b8a2f44a4843"
+    },
+    {
+      "path": ".github/workflows/analytics-p0-identity-cdp.yml",
+      "sha1": "f78127ff132fc5806a08a71e52d14c2942593e80"
+    },
+    {
+      "path": ".github/workflows/media-player-dependency-resolve.yml",
+      "sha1": "42da12d98c10b48765e7371b9b21e4c3b9a1eb7d"
+    },
+    {
+      "path": ".github/workflows/media-poc-smoke.yml",
+      "sha1": "bd8dd0c130122b3a0dc85fef2b1ae63be50989fc"
+    },
+    {
+      "path": ".github/workflows/media-viewer-grants.yml",
+      "sha1": "d6c2f06fb17a039bd283e72b6f6a36c5c075c8b7"
+    },
+    {
+      "path": ".github/workflows/p0-shift-status-postgres.yml",
+      "sha1": "30eeea282ea83de6f8b7d06f58281bf5377ccd8c"
+    },
+    {
+      "path": ".github/workflows/prod-uat-auth-calendar-gate.yml",
+      "sha1": "65034ea2b9f18fecd875813a246e2d2744ce0bef"
+    },
+    {
+      "path": ".github/workflows/rc-convergence-gate.yml",
+      "sha1": "9f5f41112bd41818b0f768605d9119ac697a9bbf"
+    },
+    {
+      "path": ".github/workflows/rc15-storage-gate.yml",
+      "sha1": "593a85b7b4ec06ab2d2c6651ca9d610000f2eb9e"
+    },
+    {
+      "path": ".github/workflows/rc16-workforce-payroll-gate.yml",
+      "sha1": "4ee76c9156e1f7232b5aa3623792185c2f15a5fd"
+    },
+    {
+      "path": ".github/workflows/rc17d-responsive-gate.yml",
+      "sha1": "2da8a40e4ba5ea6664439c88c28eaf3b4f399d63"
+    },
+    {
+      "path": ".github/workflows/rc18-integration-prod-candidate.yml",
+      "sha1": "1a3c489a824677fb18ad3ff44bf44d3d7ec6ad12"
+    },
+    {
+      "path": ".github/workflows/rc18-payroll-ada-room-rules.yml",
+      "sha1": "d1f321af95b6c6cba3b017437aaed047ab8ad466"
+    },
+    {
+      "path": ".github/workflows/rc18-payroll-attendance-rulebook-gate.yml",
+      "sha1": "a1c565ee874906632d44bc197537af5552d7aa57"
+    },
+    {
+      "path": ".github/workflows/rc18a-realtime-publication-contract.yml",
+      "sha1": "3621bd77656de8b785aa46d98bc4a0cc95fb31fb"
+    },
+    {
+      "path": ".github/workflows/rc19-one-preview-release-gate.yml",
+      "sha1": "d45aa08853888f97a32f03cc534e0d17e30acdb8"
+    },
+    {
+      "path": ".github/workflows/rc19-p0-member-identity-gate.yml",
+      "sha1": "a39a6d239bc4be72212ac62ce7d21f9d4bf7be06"
+    },
+    {
+      "path": ".github/workflows/rc19-p1-calendar-density-gate.yml",
+      "sha1": "5173ae09fa84ac79e243a5c1cf621394416c13b2"
+    },
+    {
+      "path": ".github/workflows/rc19-p1-staffing-gap-gate.yml",
+      "sha1": "3a2307cd94c5a28cf5817ff9f562a537ad46f58e"
+    },
+    {
+      "path": ".npmrc",
+      "sha1": "1b0313313b77ce5d44f3e3c2b73c015c6d7045c9"
+    },
+    {
+      "path": ".replit",
+      "sha1": "9951a086f6e83c7624f20bef2ba97ecd0730407b"
+    },
+    {
+      "path": ".replitignore",
+      "sha1": "63d052aa3beee3776f771285b0ef54e8e0918f1a"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha1": "32b8540ead66dfb3dd4edb11b6f70218aa78c346"
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha1": "c140473a3a5fbe89301c99d9d0d1b76c5971f2c3"
+    },
+    {
+      "path": "CONVERGENCE_IMPLEMENTATION_REPORT.md",
+      "sha1": "b741ba04ff8f9743f504c355af815e63281dd7b6"
+    },
+    {
+      "path": "DEPLOYED_PREVIEW_CONTACT_SHEET_REJECTED.html",
+      "sha1": "cdcbe77617aa2c2e802b6e59de1747c55de55d17"
+    },
+    {
+      "path": "DEPLOYED_PREVIEW_SCREENSHOT_MANIFEST_REJECTED.json",
+      "sha1": "7d660b100f82965626233c826575668dd61993d1"
+    },
+    {
+      "path": "DEPLOYED_PREVIEW_VISUAL_PARITY_MATRIX_REJECTED.md",
+      "sha1": "716dc5f7eb08c1c86b247b88ce592cc15b165213"
+    },
+    {
+      "path": "FINAL_CONTACT_SHEET.html",
+      "sha1": "d9d4400b09290af86a2f8491a99a76fa0b2058ff"
+    },
+    {
+      "path": "FORWARD_ONLY_RECONCILIATION_PROPOSAL.md",
+      "sha1": "ad6bfa903aed21694ab112a328a7e407a05cec68"
+    },
+    {
+      "path": "GO_NO_GO_BLOCKERS_UPDATED.md",
+      "sha1": "2f37c700b13b8014009f24af4b659996a3a77784"
+    },
+    {
+      "path": "H4_FULL_REGRESSION_RESULTS.md",
+      "sha1": "506462ee0a6552091bfa84df7fa1f46968c0ab28"
+    },
+    {
+      "path": "H4_IMMUTABLE_MIGRATION_AUDIT.md",
+      "sha1": "5083bb833dce88d457cf83a05c6db0b71d0f010d"
+    },
+    {
+      "path": "H4_PROVIDER_CONTRACT_REPAIR.md",
+      "sha1": "cb67b0e91c66c91cc1655f21108a858bc5373429"
+    },
+    {
+      "path": "H4_RELEASE_CANDIDATE_DECISION.md",
+      "sha1": "ae2e6c465f5e6b618a12e520548cd62d54cfa9e9"
+    },
+    {
+      "path": "H4_STORAGE_ROUTE_SECURITY_TESTS.md",
+      "sha1": "d87d704b99b1dbdaabf750728c6c66c573e3d9d8"
+    },
+    {
+      "path": "H4_VERCEL_BUILD_ROOT_CAUSE.md",
+      "sha1": "40069cdb8f3a1950f51bf117b345ec294087821f"
+    },
+    {
+      "path": "H51_FULL_CI_RESULTS.md",
+      "sha1": "35c6008a72bc90088729987ae095e0ea507487c0"
+    },
+    {
+      "path": "H51_GO_NO_GO_DECISION.md",
+      "sha1": "31f98a097a019069348541739fe9a202f0fe0a62"
+    },
+    {
+      "path": "H51_PRODUCTION_SCHEMA_REHEARSAL.md",
+      "sha1": "6fc548e146c10d31da0a4cb274f0665d5e62e8ee"
+    },
+    {
+      "path": "H51_PROVIDER_INTEGRITY_FIX.md",
+      "sha1": "064769144db2e8252b35a6ab745626269ca72924"
+    },
+    {
+      "path": "H51_RBAC_NEGATIVE_TESTS.md",
+      "sha1": "3279014b3e64937276d0c787b4447f7d3237055b"
+    },
+    {
+      "path": "H51_RELEASE_GATE_CORRECTION.md",
+      "sha1": "90d8e26ad9eba8a26763ce2a2f0c67c71ea26eb8"
+    },
+    {
+      "path": "H52_DB_AUTH_INTEGRATION_RESULTS.md",
+      "sha1": "d228984561021df58c77dcfb5bb31913dd335994"
+    },
+    {
+      "path": "H52_FINAL_SECURITY_CONTRACT.md",
+      "sha1": "beab7f0aa8d7f6323ed5205342b0913bdd0ea8b4"
+    },
+    {
+      "path": "H52_GO_NO_GO_DECISION.md",
+      "sha1": "82217167b70fe618717ba11c61589448e559c6e7"
+    },
+    {
+      "path": "H52_PRODUCTION_EQUIVALENT_REHEARSAL.md",
+      "sha1": "8891482228f658cfcc8e23f534677ad4ee2dff66"
+    },
+    {
+      "path": "H52_RELEASE_GATE_ASSURANCE.md",
+      "sha1": "15f9a284bdc243c268221fe426e9c4817420d496"
+    },
+    {
+      "path": "H5_DB_CLONE_REHEARSAL_RESULTS.md",
+      "sha1": "aea6af3a648d5706d359f4a731c69571dc4f7c0c"
+    },
+    {
+      "path": "H5_DEPLOYED_VISUAL_UAT.md",
+      "sha1": "d3acdd03f93128b690ed3f8b251d756fd95ab33e"
+    },
+    {
+      "path": "H5_GITHUB_CI_RESULTS.md",
+      "sha1": "ec95c39c0adc7c28ffe63bb181e648dd55a42069"
+    },
+    {
+      "path": "H5_GO_NO_GO_DECISION.md",
+      "sha1": "ac6eb890f0e49f24dee240721abd3221f156b523"
+    },
+    {
+      "path": "H5_PROVIDER_E2E_RESULTS.md",
+      "sha1": "1e7f13893ce7208bd9662a8cf25cd089271fa4de"
+    },
+    {
+      "path": "H5_RELEASE_GATE_EVIDENCE.md",
+      "sha1": "de5cf80ce68bc4a6bef6b1d6b249ee9c94ddd78f"
+    },
+    {
+      "path": "HIGH_FIDELITY_VISUAL_PARITY_MATRIX.md",
+      "sha1": "9b39a95072b85b94a852a6f39697c13aca49b146"
+    },
+    {
+      "path": "INTEGRATION_14_WAVE_REGRESSION.md",
+      "sha1": "6fa801e5f3db54aed8d09f1b16dfc712fcc092ac"
+    },
+    {
+      "path": "INTEGRATION_MIGRATION_COMPATIBILITY_REPORT.md",
+      "sha1": "53ebc755b8a6a8173f29b22d8d4c63bf60929254"
+    },
+    {
+      "path": "INTEGRATION_RELEASE_GATE.md",
+      "sha1": "e21524cc9e768e5ec9730f56b342b6919a2391a9"
+    },
+    {
+      "path": "INTEGRATION_SOURCE_REGRESSION_REPORT.md",
+      "sha1": "d3fbac804cb2234080a6fdbd1194a2054843fd0c"
+    },
+    {
+      "path": "INTERIOR_PARITY_MATRIX_14_WAVES.md",
+      "sha1": "d9a6328c52d1a2675e0f289baf43d573a25511d5"
+    },
+    {
+      "path": "LIVE_CALENDAR_DATA_RECONCILIATION.md",
+      "sha1": "84d4761ae6c06b4186c1deb76a324c21e5d89d54"
+    },
+    {
+      "path": "LIVE_CALENDAR_POPULATED_STATE_QA_REJECTED.md",
+      "sha1": "45484f110e88b0fe8f76a491db961065acdc97b0"
+    },
+    {
+      "path": "PHASE1_COMPLETION_SUMMARY.md",
+      "sha1": "d0ba67abc41fafb81a176c8f4f22468c75fe3777"
+    },
+    {
+      "path": "PHASE_H_AUDIT_CORRECTION.md",
+      "sha1": "cb365ebcdf5d95d79a46d0b13fefe53bb111a648"
+    },
+    {
+      "path": "PHASE_H_GO_LIVE_PREPARATION_AUDIT.md",
+      "sha1": "48ab30ff9101ca937ff0bd2b27104853c53279ca"
+    },
+    {
+      "path": "artifacts/api-server/build.mjs",
+      "sha1": "5c91db95cdc455d7ded9ca4b705ea51d1c25dee4"
+    },
+    {
+      "path": "artifacts/api-server/package.json",
+      "sha1": "b103d56cedc8fc00c10c2c40c5a1e004ca187781"
+    },
+    {
+      "path": "artifacts/api-server/tsconfig.json",
+      "sha1": "07213c69d8a1ba64530767a439405823c0b155a9"
+    },
+    {
+      "path": "artifacts/livestream-ops/components.json",
+      "sha1": "958a95e3f68a15685041224398be3abf479e18f4"
+    },
+    {
+      "path": "artifacts/livestream-ops/index.html",
+      "sha1": "54ff0318efa40e0ea7b95c446b721b9c0232af2b"
+    },
+    {
+      "path": "artifacts/livestream-ops/package.json",
+      "sha1": "6853b9622c7bef4874c14bea72b4d65e3e3e909e"
+    },
+    {
+      "path": "artifacts/livestream-ops/tsconfig.json",
+      "sha1": "ef6329e1c9dc92f639c604652ccbdfea9ad4db7c"
+    },
+    {
+      "path": "artifacts/livestream-ops/vite.config.ts",
+      "sha1": "3461fcd0205412bc4b35ae142bc77105c6c95f9f"
+    },
+    {
+      "path": "artifacts/mockup-sandbox/components.json",
+      "sha1": "eef9884f31261819295d0d019743f918be61e036"
+    },
+    {
+      "path": "artifacts/mockup-sandbox/index.html",
+      "sha1": "e256e9818df678ed4b8cb644e1d5d1272f8e3565"
+    },
+    {
+      "path": "artifacts/mockup-sandbox/mockupPreviewPlugin.ts",
+      "sha1": "f7266c539d0332c7d26af933ba55f2746df620d4"
+    },
+    {
+      "path": "artifacts/mockup-sandbox/package.json",
+      "sha1": "9a9ed5dd8db12473f827df5c2a2188c74e2aae7c"
+    },
+    {
+      "path": "artifacts/mockup-sandbox/tsconfig.json",
+      "sha1": "6fe27bb895d5686f14081c4f834a93a091ab455d"
+    },
+    {
+      "path": "artifacts/mockup-sandbox/vite.config.ts",
+      "sha1": "1811614d74fded755e0dab6806027385fcd6da29"
+    },
+    {
+      "path": "public/file.svg",
+      "sha1": "fb380eeffe87d50b597383664c02982964d0d28c"
+    },
+    {
+      "path": "public/globe.svg",
+      "sha1": "2eba23b01a46733bb8423e6d38ebf5f7e95abec5"
+    },
+    {
+      "path": "public/next.svg",
+      "sha1": "3f3e95622612b989c5bd6a03299a308c6f3c7e6b"
+    },
+    {
+      "path": "public/vercel.svg",
+      "sha1": "cebb8852d58c8886be3e9051a26957f42bb82f1a"
+    },
+    {
+      "path": "public/window.svg",
+      "sha1": "54c48e0daa6caa317fe1b4c419007fd93e948db9"
+    },
+    {
+      "path": "public/ocr/THIRD_PARTY_NOTICES.txt",
+      "sha1": "4f8994fec4b8ac38efe67563b1f14f3a155ca564"
+    },
+    {
+      "path": "lib/utils.ts",
+      "sha1": "03edf7b44c7cf1d3f48be4f72866007dbb63b8c6"
+    },
+    {
+      "path": "lib/utils/entityHelpers.ts",
+      "sha1": "c989d2f175bbda2af9e59f2e6a263cebb6451db2"
+    },
+    {
+      "path": "lib/utils/accountIdentity.ts",
+      "sha1": "5845017dbd5a0cd090174fe5f307fe34aeb84ff2"
+    },
+    {
+      "path": "lib/utils/analytics.ts",
+      "sha1": "53e432f5f006869ccd4551a05745d673f551327f"
+    },
+    {
+      "path": "lib/utils/attendanceDriveAcl.ts",
+      "sha1": "2233d321bf381f46a70660137a45db312fdf23bc"
+    },
+    {
+      "path": "lib/utils/attendancePhotoNaming.ts",
+      "sha1": "0b8bd324a73b49ee56647069e7283c9c15b7e9b8"
+    },
+    {
+      "path": "lib/utils/auditNormalize.ts",
+      "sha1": "d62a0d0ab580a26745a94eeaae0765d4e402af9a"
+    },
+    {
+      "path": "lib/utils/calendarExport.ts",
+      "sha1": "501ef3d9032e3074d466c4b5cb95007e02102afd"
+    },
+    {
+      "path": "lib/utils/calendarExportWorkbook.ts",
+      "sha1": "acee2fc07c61c1146d978b80e0650904e0fcfa5d"
+    },
+    {
+      "path": "lib/utils/calendarFilters.ts",
+      "sha1": "399bc3b99c7bd93b808a7bcb0e6661514526a788"
+    },
+    {
+      "path": "lib/utils/calendarRange.ts",
+      "sha1": "6311d3dd259923b5c7b56dfba298b2d380c02f1b"
+    },
+    {
+      "path": "lib/utils/calendarStaffingApproval.ts",
+      "sha1": "be55d11063de7a33a37a29f07d6e9e1709ebbde4"
+    },
+    {
+      "path": "lib/utils/chartLabels.ts",
+      "sha1": "8f8ef77d0c1e15c5eea73fb776b9ba564c0c7a29"
+    },
+    {
+      "path": "lib/utils/currency.ts",
+      "sha1": "d4ac6c35a27da1887c4d7c6ee5ade0dd727f56a5"
+    },
+    {
+      "path": "lib/utils/dashboardRegionDetection.ts",
+      "sha1": "fea20e0a6accbb6a9d627f1c652e6430bb04c371"
+    },
+    {
+      "path": "lib/utils/dataIntegrity.ts",
+      "sha1": "309dcb920380d09425dca5b380a8ebbd07af4aed"
+    },
+    {
+      "path": "lib/utils/dataQuality.ts",
+      "sha1": "675f1d10293d026bd73bd969045ba96e241be93f"
+    },
+    {
+      "path": "lib/utils/excelUtils.ts",
+      "sha1": "2ad2f490c610ff381baaa9600dab966c171c3444"
+    },
+    {
+      "path": "lib/utils/executionSource.ts",
+      "sha1": "bc95b3e6828d51bfd49be86299cdacb0566560f2"
+    },
+    {
+      "path": "lib/utils/finalReportMetricFilter.ts",
+      "sha1": "482d1bb973aa138b53a8cc9ec80c8b817cc923ea"
+    },
+    {
+      "path": "lib/utils/finalReportRecap.ts",
+      "sha1": "659ce10c9cc086497f076c7f2911c9622a6e517d"
+    },
+    {
+      "path": "lib/utils/lazyComponents.tsx",
+      "sha1": "bb8f6a4e6c3907f761eee75d0de98b7163762e11"
+    },
+    {
+      "path": "lib/utils/liveReportImages.ts",
+      "sha1": "a66264bb83e4b62f7c004c1163e2618fd1eec7ee"
+    },
+    {
+      "path": "lib/utils/liveStreamLink.ts",
+      "sha1": "512099486295bb3780e60d574046454c6cfd8138"
+    },
+    {
+      "path": "lib/utils/multiSelectFilter.ts",
+      "sha1": "f343a3b885b0988f073316b565e086f263120634"
+    },
+    {
+      "path": "lib/utils/myShifts.ts",
+      "sha1": "7d20e0e198df6ea0e45c1de9f27dbb36dd59ad2f"
+    },
+    {
+      "path": "lib/utils/ocrCanonical.ts",
+      "sha1": "55b40fbc46c6e6f17c6bd4041a204365802e277b"
+    },
+    {
+      "path": "lib/utils/ocrImage.ts",
+      "sha1": "323cf37ae1d89800f6d7827e7ad166710a0a380b"
+    },
+    {
+      "path": "lib/utils/ocrLabelGeometry.ts",
+      "sha1": "b32564ed43792b30ebf547daf4007afa8346d5df"
+    },
+    {
+      "path": "lib/utils/ocrMetricSerialization.ts",
+      "sha1": "ef470d059af25d93b865dd8cda559f6a0dd25e7c"
+    },
+    {
+      "path": "lib/utils/ocrMetrics.ts",
+      "sha1": "02cf11c0142825a008fd78e89fa4795592bead62"
+    },
+    {
+      "path": "lib/utils/ocrRegionGeometry.ts",
+      "sha1": "a01356e596a733abb569e5482f277cfd3ba36595"
+    },
+    {
+      "path": "lib/utils/ocrReview.ts",
+      "sha1": "aeffe4291ac72cca3905b99854af23111d5b32ff"
+    },
+    {
+      "path": "lib/utils/pagination.ts",
+      "sha1": "b83ca9c01622b97478f2522e46e80951a9b8a38f"
+    },
+    {
+      "path": "lib/utils/reportMetricInput.ts",
+      "sha1": "bf89a31109884b41e828af1b9c44bbbf91943a5e"
+    },
+    {
+      "path": "lib/utils/reportQueue.ts",
+      "sha1": "28aacef6dfce51595c94b7f432085e0b16e33408"
+    },
+    {
+      "path": "lib/utils/reportTarget.ts",
+      "sha1": "a764ee765255aaede66a2f4a8f87a9e2010189ea"
+    },
+    {
+      "path": "lib/utils/scheduleArchiveMessage.ts",
+      "sha1": "570b8ecbc4fe42db03f26aa3b4e9403f0db199c7"
+    },
+    {
+      "path": "lib/utils/scheduleExportFields.ts",
+      "sha1": "64bb6b028cc77a181c144930cdf7ea08f1857a94"
+    },
+    {
+      "path": "lib/utils/scheduleExportUtils.ts",
+      "sha1": "e70a3bd5c493e7734c2920411168774396febbe7"
+    },
+    {
+      "path": "lib/utils/scheduleImportArchive.ts",
+      "sha1": "0780dba00014174375710e0be89f515fdf9709d3"
+    },
+    {
+      "path": "lib/utils/scheduleImportBatch.ts",
+      "sha1": "236eab2f7a337c890cbb6ee2340b29433a0574cb"
+    },
+    {
+      "path": "lib/utils/scheduleImportDraft.ts",
+      "sha1": "eb56e0745d3bcdbdebc1557a794c2de8be46d11e"
+    },
+    {
+      "path": "lib/utils/scheduleImportPreview.ts",
+      "sha1": "e3f647969d78951ff651cc7b989d7aa3edfc98ca"
+    },
+    {
+      "path": "lib/utils/scheduleImportReadiness.ts",
+      "sha1": "f4452f5c929b4b4c5f742e88f32623fff67a766f"
+    },
+    {
+      "path": "lib/utils/scheduleImportRecovery.ts",
+      "sha1": "fe70241fc950e1f64cfd4b67f9440120ce819cf1"
+    },
+    {
+      "path": "lib/utils/scheduleImportUx.ts",
+      "sha1": "c025baef9cad6a3d36fdd38969b1c289327a9012"
+    },
+    {
+      "path": "lib/utils/scopedRefresh.ts",
+      "sha1": "1cbe0dc3f422ff3a4bfebf4687888bf726c14f39"
+    },
+    {
+      "path": "lib/utils/selfAttendanceContract.ts",
+      "sha1": "5d246587dbe03b4ab0a0e9930632e266b0f87dfa"
+    },
+    {
+      "path": "lib/utils/shiftDateWindow.ts",
+      "sha1": "bec6aaa064e151ae5767cd6f2339c6cadad6a866"
+    },
+    {
+      "path": "lib/utils/shiftListUrlState.ts",
+      "sha1": "4ec2a6e9884f7693e475b304c0c49a29ac37079d"
+    },
+    {
+      "path": "lib/utils/shiftRegistration.ts",
+      "sha1": "7c7b3d3fe9679bb79f935dc34ea9a4cb76a7b955"
+    },
+    {
+      "path": "lib/utils/shiftRegistrationRoleView.ts",
+      "sha1": "073338155922d16e095495763806e9b997d3c97d"
+    },
+    {
+      "path": "lib/utils/shiftUtils.ts",
+      "sha1": "5116a24f8142e06ca7a489bd8831dacc24a7989e"
+    },
+    {
+      "path": "lib/utils/staffIdentityMatching.ts",
+      "sha1": "4f0711ecdb28ba3c1f3cf1b049ddbd938e8a61a9"
+    },
+    {
+      "path": "lib/utils/staffingCandidateContract.ts",
+      "sha1": "6b1a9a0b3227c0b1a1b457d628d690d3f3f8c719"
+    },
+    {
+      "path": "lib/utils/staffingCandidates.ts",
+      "sha1": "89b64e43f48c6c61bba400375af2819fcd8f9053"
+    },
+    {
+      "path": "lib/utils/staffingResolver.ts",
+      "sha1": "7cf3747fd5b8e03268f36daf1fde18e0553a34d8"
+    },
+    {
+      "path": "lib/utils/swapEligibleShiftPicker.ts",
+      "sha1": "50c2e7a6a9b7aa3b6af6ce6c97886a6a83ac28d5"
+    },
+    {
+      "path": "lib/utils/swapUi.ts",
+      "sha1": "f3b9b6fbc3e28c59738f71d98dc43f2e6377e74c"
+    },
+    {
+      "path": "lib/utils/timeGrid.ts",
+      "sha1": "91155ea9686c3bd7a5bb86c49680e295581d26fc"
+    },
+    {
+      "path": "lib/utils/visionOcrHybrid.ts",
+      "sha1": "3d21a894236e2d4b13a2329923757edb40e02b0d"
+    },
+    {
+      "path": "lib/ai/hooks.ts",
+      "sha1": "face741ca8a532c83437e9d616874b00e1e513a0"
+    },
+    {
+      "path": "lib/ai/index.ts",
+      "sha1": "1fbadcf3bd1c854482f94f9f9da7f50c8403881b"
+    },
+    {
+      "path": "lib/ai/service.ts",
+      "sha1": "99ce5b598de8ff3291343690dcbdffb35db685cf"
+    },
+    {
+      "path": "lib/ai/types.ts",
+      "sha1": "7925dc0a69b3bf32d3b7a4e1b867945e3dc87862"
+    },
+    {
+      "path": "lib/ai/utils.ts",
+      "sha1": "de48f9af52290a78256e8dd301222349a7f56ba4"
+    },
+    {
+      "path": "lib/api-client-react/package.json",
+      "sha1": "07745aa59becc45a51f3ce0944ba538f0408f0dc"
+    },
+    {
+      "path": "lib/api-client-react/tsconfig.json",
+      "sha1": "acbef360b2363dea3fe75a41ceebea109897cd98"
+    },
+    {
+      "path": "lib/api-spec/openapi.yaml",
+      "sha1": "86806fbe283554cb36aca4e12bdda2713c038090"
+    },
+    {
+      "path": "lib/api-spec/orval.config.ts",
+      "sha1": "d86b3c25bfed6b51b66dbd5b321a36dd662e1a89"
+    },
+    {
+      "path": "lib/api-spec/package.json",
+      "sha1": "a5eb9a0e31765651c7d70cfab50dc751910fc50a"
+    },
+    {
+      "path": "lib/api-zod/package.json",
+      "sha1": "3deacb134fe5214492bc212555756eba7c58891e"
+    },
+    {
+      "path": "lib/api-zod/tsconfig.json",
+      "sha1": "41f6da4cd217d5a061fca6a55d692ee44df1b594"
+    },
+    {
+      "path": "lib/auth/AuthIdentityProvider.tsx",
+      "sha1": "d2ec2332811a40ea126198fe95a2379c5060f8d4"
+    },
+    {
+      "path": "lib/auth/authConfirm.ts",
+      "sha1": "a112173863299e3470b701fb37c89d5a281b7d0a"
+    },
+    {
+      "path": "lib/auth/authIdentity.ts",
+      "sha1": "56e27424b0ae83b31d88fd0ae7327aee73d6cc23"
+    },
+    {
+      "path": "lib/auth/authMode.ts",
+      "sha1": "cf51799b73d8b0ae0147054a478f60ae4ee01e2a"
+    },
+    {
+      "path": "lib/auth/googleOAuth.ts",
+      "sha1": "308a9399d43031c03ac16c50583e959de77bcdde"
+    },
+    {
+      "path": "lib/auth/oauthCallback.ts",
+      "sha1": "849cfbc773d77784d3ed71bfc7030e2ff780bae6"
+    },
+    {
+      "path": "lib/auth/operationsActorKey.ts",
+      "sha1": "f8557706466e5ea163bc5bc6c128e2a26f0652c9"
+    },
+    {
+      "path": "lib/auth/passwordRecovery.ts",
+      "sha1": "bffad9d617ca67a26899dbf4342a7aa71c801523"
+    },
+    {
+      "path": "lib/auth/proxy.ts",
+      "sha1": "8b37f011f1c6951cb3e7fa5c98e5db07591a61fd"
+    },
+    {
+      "path": "lib/auth/session.ts",
+      "sha1": "b9389b1477577ad1484efaede0a3e30fdd473051"
+    },
+    {
+      "path": "lib/db/drizzle.config.ts",
+      "sha1": "8b1c9549359bf9e99b23eafe2f2f05ae66615860"
+    },
+    {
+      "path": "lib/db/package.json",
+      "sha1": "783d9fb6e7206655b1d9cab893c953e7cc5899ba"
+    },
+    {
+      "path": "lib/db/tsconfig.json",
+      "sha1": "420e920be8313385a2466ce53ee16e434b1f1da7"
+    },
+    {
+      "path": "lib/files/applicationFileSource.ts",
+      "sha1": "82012c6a6940aa563cd2691a4a41b769226fd390"
+    },
+    {
+      "path": "lib/files/cloudAssetReference.ts",
+      "sha1": "d6adc11fc9cfda366db8cab6bc373ac4f4ba2fe0"
+    },
+    {
+      "path": "lib/files/filePlacement.ts",
+      "sha1": "1ec0a3a138650776db1f1c6f6a2d0addc128ae58"
+    },
+    {
+      "path": "lib/files/fileProvider.ts",
+      "sha1": "c5010082374c57d455421f68c5060afb7c3122ae"
+    },
+    {
+      "path": "lib/files/fileValidation.ts",
+      "sha1": "943f67945ed4091b7ae2a03101731fee5f51a72e"
+    },
+    {
+      "path": "lib/files/operationalFileCatalog.ts",
+      "sha1": "dbea716437b865eef56f069e8e9d2a355d8f912b"
+    },
+    {
+      "path": "lib/files/operationalFilePlacement.ts",
+      "sha1": "d563cb63d2864e21a1c5e4ba6656d4e1ab66680a"
+    },
+    {
+      "path": "lib/files/operationalStoragePlacementResolver.ts",
+      "sha1": "c3cae315433f6ea5f35d00e92c8333e1cf8cb3d0"
+    },
+    {
+      "path": "lib/files/trustedAccessUrl.ts",
+      "sha1": "c3df29675c2679016baeee53543da6bf68c0ce78"
+    },
+    {
+      "path": "lib/flags.ts",
+      "sha1": "9b837c5b07ed1826872b8a1a6776255b661aabbf"
+    },
+    {
+      "path": "lib/hooks/useCurrentUser.ts",
+      "sha1": "ebaab8cb91c1399ef764c4b6e52e5e4fc6a417ba"
+    },
+    {
+      "path": "lib/hooks/useListPagination.ts",
+      "sha1": "825359e5c64ec46b9bc02dd7f45c1455e05acc35"
+    },
+    {
+      "path": "lib/hooks/usePagedList.ts",
+      "sha1": "cce909b68b536b17dffff156f28080ec63fe2bf8"
+    },
+    {
+      "path": "lib/hooks/useRequestSequence.ts",
+      "sha1": "51896a2b7fb94023ba8ec6ff2f4d5cda60eef7dc"
+    },
+    {
+      "path": "lib/hooks/useShiftChangeRefresh.ts",
+      "sha1": "4554797898d70bdcc6c74da94f7747543ab42fc2"
+    },
+    {
+      "path": "lib/hooks/useWorkforceCapabilities.ts",
+      "sha1": "3e6532a198d8710e3c8f72be3d364e5aabf8d7ac"
+    },
+    {
+      "path": "lib/i18n.tsx",
+      "sha1": "a2d502a0075973e26cc6a3039db0ab54bf8f1fd0"
+    },
+    {
+      "path": "lib/media/hlsPlayerSecurity.ts",
+      "sha1": "cc687cebe7718a9d37469da87caa51332987eed1"
+    },
+    {
+      "path": "lib/media/mediaViewerPolicy.ts",
+      "sha1": "e1234a9ba6147a83e235f8eaa54a74611e93cea5"
+    },
+    {
+      "path": "lib/permissions.ts",
+      "sha1": "6a41d2105d86864dddd2f93cdf0ce68018e022db"
+    },
+    {
+      "path": "lib/reportMetricLabels.ts",
+      "sha1": "738799d2aed30926dc79d65c1581be783dee50c0"
+    },
+    {
+      "path": "lib/server/accountRequestProvisioningRouteHandler.ts",
+      "sha1": "095d8cda246777c6d7766cd96ca774ad5453e5a4"
+    },
+    {
+      "path": "lib/server/accountRequestProvisioningService.ts",
+      "sha1": "71d1f22c58c7f292b1521436d7a1a6adf0843d6b"
+    },
+    {
+      "path": "lib/server/accountRequestRouteHandler.ts",
+      "sha1": "04ac5ee28f19e39878cb3e9d2f5b9555ae09631b"
+    },
+    {
+      "path": "lib/server/accountRequestService.ts",
+      "sha1": "efdaaa085c97450c0051877995d201185b4c02e7"
+    },
+    {
+      "path": "lib/server/analyticsSnapshotHandler.ts",
+      "sha1": "2a44b8ba37277156e19b05629a9110b8a4f72088"
+    },
+    {
+      "path": "lib/server/apiSecurity.ts",
+      "sha1": "9779f7b5d4884bc01d8bb8986235c6714491384c"
+    },
+    {
+      "path": "lib/server/applicationFileSourceRouteHandler.ts",
+      "sha1": "234e5b0978183aa06ec61b40ecad9d3a1fb45467"
+    },
+    {
+      "path": "lib/server/attendanceDriveAcl.ts",
+      "sha1": "b219418cfbf21e55ce6d82056c4c64d2db0ead8c"
+    },
+    {
+      "path": "lib/server/authGuards.ts",
+      "sha1": "71be0895c06f9ae91c447a23b601dad4c32cc3a5"
+    },
+    {
+      "path": "lib/server/calendarExportHandler.ts",
+      "sha1": "cd46972e99127c52e8dbc9f30e1128fe8c6165e8"
+    },
+    {
+      "path": "lib/server/dataQualityPage.ts",
+      "sha1": "72989b22d01a21a6368ac9ae4c9adc37c5ff3b14"
+    },
+    {
+      "path": "lib/server/fileProviderDiagnosticsRouteHandler.ts",
+      "sha1": "3ff5dee5480ed4a3272e6867ce663b4860b1fef0"
+    },
+    {
+      "path": "lib/server/fileProviderRegistry.ts",
+      "sha1": "35d0c54a10590621de484fa6835fcbdf286a13ea"
+    },
+    {
+      "path": "lib/server/fileProviderResolver.ts",
+      "sha1": "812cedf64fbbe16d1a90f58312100c3d9e782f7a"
+    },
+    {
+      "path": "lib/server/googleDriveAuth.ts",
+      "sha1": "74c411f5f92fd2e23c3866f166f2fe2dd572f3b2"
+    },
+    {
+      "path": "lib/server/googleDriveDestination.ts",
+      "sha1": "039ac18d55c585baaea04e99a2bc8ca2b1908464"
+    },
+    {
+      "path": "lib/server/googleDriveFileProvider.ts",
+      "sha1": "7fdd9a7c16ed5ac25093397f16340ff8c22c3d06"
+    },
+    {
+      "path": "lib/server/historicalAttendanceHandler.ts",
+      "sha1": "e9c86255a056cc0df5e02dc7cf8ca64bf513aa14"
+    },
+    {
+      "path": "lib/server/mediaJwksHandler.ts",
+      "sha1": "31baf435bda58719cec305362392036ee9334069"
+    },
+    {
+      "path": "lib/server/mediaViewerGrantHandler.ts",
+      "sha1": "c5e2b52871b45242c88cd51fe5e13c1cdd641627"
+    },
+    {
+      "path": "lib/server/mediaViewerKey.ts",
+      "sha1": "e8cb6adbbe132bd972419db2d1ee4ba8882b7e52"
+    },
+    {
+      "path": "lib/server/mockFileProvider.ts",
+      "sha1": "c3b2b33d5fb7c8448a72cd6c6ea196d6dd14af08"
+    },
+    {
+      "path": "lib/server/myPayslipHandler.ts",
+      "sha1": "00838dec9ff3ffd7ad99f2406e8bee3c92006d6c"
+    },
+    {
+      "path": "lib/server/ocrRouteHandler.ts",
+      "sha1": "1b39f5dcd50a8790f3b114712ff7f6da7631aa36"
+    },
+    {
+      "path": "lib/server/oneDriveAuth.ts",
+      "sha1": "36178ee426cce8ba9ed806b4dfc6c1674e2d5dab"
+    },
+    {
+      "path": "lib/server/oneDriveDestination.ts",
+      "sha1": "1373b84eda160c106fd87ee4f79b15564f7a93c6"
+    },
+    {
+      "path": "lib/server/oneDriveFileProvider.ts",
+      "sha1": "4c7cf148a7a429ffa3607c851624d70bbd16774b"
+    },
+    {
+      "path": "lib/server/operationalFileRouteHandler.ts",
+      "sha1": "1d064f8cf5f511beacc570501a133b14fc7d9589"
+    },
+    {
+      "path": "lib/server/operationalStorageFolderMaterializer.ts",
+      "sha1": "4de8e79cc123e19028a1b5913d2fd42d697b3084"
+    },
+    {
+      "path": "lib/server/operationalStorageRouteRepository.ts",
+      "sha1": "c14b35a8f27285d4e726176777a6357835bbfa5c"
+    },
+    {
+      "path": "lib/server/operationalStorageRoutingMode.ts",
+      "sha1": "7eec825341497f0196406a31ffb2a9b01ee3d2ea"
+    },
+    {
+      "path": "lib/server/operationalStorageSetupHandler.ts",
+      "sha1": "5082eaed1cd220f45e5ce0d6b0088ee33d1f48f1"
+    },
+    {
+      "path": "lib/server/operationalSystemExport.ts",
+      "sha1": "5b9feaf3b5b2725ba08370021d16c17cd41cd8b9"
+    },
+    {
+      "path": "lib/server/operationsCollectionHandler.ts",
+      "sha1": "20d7e77c15ca28cd031b806900f04ce4cf3075b5"
+    },
+    {
+      "path": "lib/server/operationsResponseOwnerKey.ts",
+      "sha1": "7b3dc35df8e5116c3752b15122f01da9438c7e27"
+    },
+    {
+      "path": "lib/server/registrationReviewContextHandler.ts",
+      "sha1": "53e8b84ecfcd76f6f887ff2186ab69e41ff42c0c"
+    },
+    {
+      "path": "lib/server/reportArtifactRouteHandler.ts",
+      "sha1": "fda23fb4ed3362cf4b5ca38b45509c9d47de9cdc"
+    },
+    {
+      "path": "lib/server/reportImageRouteHandler.ts",
+      "sha1": "184e173a0321e745345e808055cf2f8b2fa45504"
+    },
+    {
+      "path": "lib/server/selfAttendancePhotoHandler.ts",
+      "sha1": "cb18cc1c42e2aa1bed6fccd421ba482dfdc20418"
+    },
+    {
+      "path": "lib/server/staticOperationalStorageRouteRepository.ts",
+      "sha1": "202858c44885113df49bf00e858ef683afa18b1c"
+    },
+    {
+      "path": "lib/server/supabaseAdmin.ts",
+      "sha1": "b2fc3fcb7c090e95c37490f698453d6d19426e15"
+    },
+    {
+      "path": "lib/server/supabaseEnvironment.ts",
+      "sha1": "158a35130286a3afa53779060519bf1615851093"
+    },
+    {
+      "path": "lib/server/visionOcrProviders.ts",
+      "sha1": "563279ddb4ce528d1d2ea85d58c93d417c5a3a93"
+    },
+    {
+      "path": "lib/server/visionOcrRouteHandler.ts",
+      "sha1": "f740ef05275736ce86bfa16666d6e88bafa0b2bd"
+    },
+    {
+      "path": "lib/server/workforceActualHandler.ts",
+      "sha1": "92a638d26d78f494d06e14840f1e8548d6055da8"
+    },
+    {
+      "path": "lib/server/workforceCapabilitiesHandler.ts",
+      "sha1": "8875269ba76346f36afe9b507179eec914a44b2c"
+    },
+    {
+      "path": "lib/server/workforceOverviewHandler.ts",
+      "sha1": "5ff0564a8eafde474791695e134dd7954d14bd7e"
+    },
+    {
+      "path": "lib/server/workforcePayrollHandler.ts",
+      "sha1": "de077beb30309ce1cfcc2f266698b900cb2a1f21"
+    },
+    {
+      "path": "lib/server/workforcePerformanceHandler.ts",
+      "sha1": "e4b460e753a511595215ed61add2633658776b46"
+    },
+    {
+      "path": "lib/server/workforceScopePagination.ts",
+      "sha1": "94d2c03273aa8ee207dfc3cc6118c57f1e4cc141"
+    },
+    {
+      "path": "lib/services/applicationFileSourceClient.ts",
+      "sha1": "63541a453852d8c1b942736004d8611d36f0b6fc"
+    },
+    {
+      "path": "lib/services/applicationFileSourceService.ts",
+      "sha1": "746a3aad8d71cda74b61b13046c236100fe5168a"
+    },
+    {
+      "path": "lib/services/auditService.ts",
+      "sha1": "c744f388beeff4bd41d4e045cd6353ac9a02da40"
+    },
+    {
+      "path": "lib/services/calendarReferenceData.ts",
+      "sha1": "9d07dff60ee1d26f9a80b405177b9ba23b5690b7"
+    },
+    {
+      "path": "lib/services/calendarWindow.ts",
+      "sha1": "d6e3ac3c10353ebb5ce40373af28a0a75f7e205c"
+    },
+    {
+      "path": "lib/services/cloudFileIngestionService.ts",
+      "sha1": "c56c95fa1aa126911d0fbef9d19eb9ba24a27f8a"
+    },
+    {
+      "path": "lib/services/dataQualityPageService.ts",
+      "sha1": "77d717743cd24943063f82eea3c4ffc7d45a4c43"
+    },
+    {
+      "path": "lib/services/dataService.ts",
+      "sha1": "ea90a5ea822d026e5bdef9ff05b0e98d4b0c274b"
+    },
+    {
+      "path": "lib/services/fileStorageService.ts",
+      "sha1": "07a3832aebfa22e0fcf9bd11490a24a5782e7c14"
+    },
+    {
+      "path": "lib/services/imageOcrService.ts",
+      "sha1": "d5c53c28889fae011624536cdab44a5069f9b4cb"
+    },
+    {
+      "path": "lib/services/liveDashboardStorageService.ts",
+      "sha1": "7f3cd8f2159e026c1e5b7ab7c145f54b987a57e3"
+    },
+    {
+      "path": "lib/services/mockAuthService.ts",
+      "sha1": "45b321b09a22100c12dbb97e02e1718b01809a58"
+    },
+    {
+      "path": "lib/services/mockData.ts",
+      "sha1": "4c6159e2667cf938fc05e2edbf3e8c4ae73a155e"
+    },
+    {
+      "path": "lib/services/notificationEventAdapter.ts",
+      "sha1": "ef9b4a13307f3c93716e468ed01cb99ae35ef03a"
+    },
+    {
+      "path": "lib/services/notificationRoutes.ts",
+      "sha1": "7ae536305f38809dd79e6aab87ac166b29fea120"
+    },
+    {
+      "path": "lib/services/notificationService.ts",
+      "sha1": "059d17488b9236258bef1757096fcfa0ecd904a3"
+    },
+    {
+      "path": "lib/services/ocrApiContract.ts",
+      "sha1": "6a466485a96e692cb42321a6d1073c9f95512bab"
+    },
+    {
+      "path": "lib/services/ocrRuntimeConfig.ts",
+      "sha1": "3250ac46eed2259a9c8f46d6b21087e20430d17f"
+    },
+    {
+      "path": "lib/services/operationalReferences.ts",
+      "sha1": "62f9e8113f076a5413efa798c550941382b6ebee"
+    },
+    {
+      "path": "lib/services/operationsPageCache.ts",
+      "sha1": "17eda6a2889b568299713f3cb2eb4ba5d77fa8a7"
+    },
+    {
+      "path": "lib/services/operationsPageService.ts",
+      "sha1": "9ba55dd999f24b52750563cbccffaf03145d3eda"
+    },
+    {
+      "path": "lib/services/profileAvatarStorageService.ts",
+      "sha1": "0a7a41f20e10d4801c8c29ca47e2c411199612a6"
+    },
+    {
+      "path": "lib/services/scheduleImportBatchPort.ts",
+      "sha1": "f3b9c4813d99917f7522618c96b002ae955f6405"
+    },
+    {
+      "path": "lib/services/sharedWorkforceCapabilities.ts",
+      "sha1": "d9ec7897dda3847f81e1af828326ab93a5d6e35d"
+    },
+    {
+      "path": "lib/services/shiftChangeSubscription.ts",
+      "sha1": "958bc665235dfc1b654e06e1c21019083cb53638"
+    },
+    {
+      "path": "lib/services/supabaseAuditService.ts",
+      "sha1": "ca766a21bc0b339d2271c3d7ae3c745055b7d26a"
+    },
+    {
+      "path": "lib/services/supabaseDashboardUpdateService.ts",
+      "sha1": "6194490757fe77d9abe21fdba0ef7889bc9a816c"
+    },
+    {
+      "path": "lib/services/supabaseMasterDataService.ts",
+      "sha1": "99f142a6439725e86330a019ff456f46710a672f"
+    },
+    {
+      "path": "lib/services/supabaseNotificationService.ts",
+      "sha1": "f30ac0f83fe52835907fc8f12beb9cd903e3f786"
+    },
+    {
+      "path": "lib/services/supabaseReportService.ts",
+      "sha1": "0b0c902bdb453982f4b556cba1fe01abb3f40c14"
+    },
+    {
+      "path": "lib/services/supabaseScheduleImportService.ts",
+      "sha1": "9eaa6fa7efc61f9e6c848e2742969918e6e906be"
+    },
+    {
+      "path": "lib/services/supabaseSelfAttendanceService.ts",
+      "sha1": "31c92a5bd756108f35fe0745038db787bdf860e7"
+    },
+    {
+      "path": "lib/services/supabaseSettingsService.ts",
+      "sha1": "414ae06d968d296c35da5779eb5d6e1e77ffdd18"
+    },
+    {
+      "path": "lib/services/supabaseShiftRegistrationService.ts",
+      "sha1": "4ad471b8f4a509be48d61d386f7298817a5bf229"
+    },
+    {
+      "path": "lib/services/supabaseShiftService.ts",
+      "sha1": "25bd98817cbd9e5e6f057f9f65faf3b0e0cfa069"
+    },
+    {
+      "path": "lib/services/supabaseStaffingCandidateService.ts",
+      "sha1": "b95e3cbe193d06d92fe7d356275fbd8e8f242b8f"
+    },
+    {
+      "path": "lib/services/supabaseStaffingReadService.ts",
+      "sha1": "5b0b832026157813fef6d115320fae2dff293df0"
+    },
+    {
+      "path": "lib/services/supabaseSwapRequestService.ts",
+      "sha1": "6bbb0b79cccd037b085650da83784d3bece53b82"
+    },
+    {
+      "path": "lib/services/templateService.ts",
+      "sha1": "5b318e7ecd54b37cb38623a8b18e183a3d7e90dd"
+    },
+    {
+      "path": "lib/services/transientDataCache.ts",
+      "sha1": "8a4f6d11c7266780428e57fe088e0293c945fd29"
+    },
+    {
+      "path": "lib/services/visionOcrService.ts",
+      "sha1": "0dcbef28594024d3e7f5c7af246bb50f1d4ae3cf"
+    },
+    {
+      "path": "lib/services/workforceService.ts",
+      "sha1": "25f5b4b21553ac13a7e65b6844d68cd39cc92d32"
+    },
+    {
+      "path": "lib/storage/cloudStorageManager.ts",
+      "sha1": "8dab154254362f05f735d1e90c782e0454876a77"
+    },
+    {
+      "path": "lib/storage/folderCapable.ts",
+      "sha1": "37cadb88e360c9c8b944c382f2d4e17c4474a911"
+    },
+    {
+      "path": "lib/storage/types.ts",
+      "sha1": "94cfed811a86a7ecf8a15b469346ad554641c479"
+    },
+    {
+      "path": "lib/supabase/client.ts",
+      "sha1": "bcbf55e2c4f18f6064950e6e35173cb2f242a03a"
+    },
+    {
+      "path": "lib/supabase/environmentIdentity.ts",
+      "sha1": "649061a3fa97c6675b1a92018c1e067bd9767fc8"
+    },
+    {
+      "path": "lib/supabase/middleware.ts",
+      "sha1": "8c878522632e6d67caaf857efa802fba34b29950"
+    },
+    {
+      "path": "lib/supabase/server.ts",
+      "sha1": "2f4838c1e923a55520e32b6b6294c4ccfc8c68cd"
+    },
+    {
+      "path": "lib/types/accountRequest.types.ts",
+      "sha1": "51e69ab12f148ca1a60a24883158841a875f4e50"
+    },
+    {
+      "path": "lib/types/dataQuality.ts",
+      "sha1": "a20fe4c4b468f2f60ebe6f9d745db03ce7ff3b7a"
+    },
+    {
+      "path": "lib/types/database.types.ts",
+      "sha1": "0df89f87fa2c1d204747832e233cc9616baf7311"
+    },
+    {
+      "path": "lib/types/tesseract-data.d.ts",
+      "sha1": "960c6927d3493c369644a97ae5ce005cde74cbde"
+    },
+    {
+      "path": "lib/ui/action-priority.ts",
+      "sha1": "44056dfef56eea9e0b9feff435ffc38917a4862b"
+    },
+    {
+      "path": "lib/ui/archetypes.ts",
+      "sha1": "445350b78cfaa5f94e5155122ec6f6bd2d89bfe1"
+    },
+    {
+      "path": "lib/ui/dashboard-role-data.ts",
+      "sha1": "705b45220aba99577ba7d3928ce21437c113a0db"
+    },
+    {
+      "path": "lib/ui/operational-attention.ts",
+      "sha1": "c411783068dfbf407d95d6c7f0da886e7a9a6890"
+    },
+    {
+      "path": "lib/ui/role-lens.ts",
+      "sha1": "12458c08c3207ffc8f00211931deaaa112cbfa81"
+    },
+    {
+      "path": "lib/ui/role-ux.ts",
+      "sha1": "e6848f38b553fd631e462d35b4d66119d4aa99e9"
+    },
+    {
+      "path": "lib/ui/workforceNavigation.ts",
+      "sha1": "0d1a2c11011e84dc76a15cd6b91cd971935808cb"
+    },
+    {
+      "path": "lib/visionOcr/types.ts",
+      "sha1": "64a56f85fbea1ac0ab9900f8f6b269753347eeed"
+    },
+    {
+      "path": "lib/visual-fixtures/dashboards.ts",
+      "sha1": "919f034bacb0835993a26b12ab1a123c407c42d9"
+    },
+    {
+      "path": "lib/visual-fixtures/index.ts",
+      "sha1": "ef71182dd9b00056f3e3b023fbc4ee72ddbd0c90"
+    },
+    {
+      "path": "lib/visual-fixtures/types.ts",
+      "sha1": "e06ae5e0aaad0cc04c698a5c1c41b8808010ea59"
+    },
+    {
+      "path": "lib/workforce/adaRoomAttendanceReview.ts",
+      "sha1": "087e231a581a52988945eea28141acd31d7cc80c"
+    },
+    {
+      "path": "lib/workforce/adaRoomRulebook.ts",
+      "sha1": "290f5c7201c6cf9ea29836723247d0f7283a13e0"
+    },
+    {
+      "path": "lib/workforce/adaRoomRulesCatalog.ts",
+      "sha1": "fe8229b9f50ea292e6b7d0815bbea3717d2c7514"
+    },
+    {
+      "path": "lib/workforce/historicalAttendanceMatcher.ts",
+      "sha1": "f1ba68195f3af727dff86b06e75cedab2be79e2f"
+    },
+    {
+      "path": "lib/workforce/historicalAttendanceParser.ts",
+      "sha1": "92cec10aa3b54fb8c2249efa275615553afee46c"
+    },
+    {
+      "path": "lib/workforce/historicalAttendanceService.ts",
+      "sha1": "ead016d5619e6342fd30a9ec5d4534670e6b8717"
+    },
+    {
+      "path": "lib/workforce/historicalAttendanceTypes.ts",
+      "sha1": "0955757b8ce72e09057e8cea3a4d0ccc35036443"
+    },
+    {
+      "path": "lib/workforce/latenessPolicy.ts",
+      "sha1": "be10c0ccf69d1997e1eed94759c5fb14a410ba4b"
+    },
+    {
+      "path": "lib/workforce/payrollCalculation.ts",
+      "sha1": "8d325953da7aa3107b557967101902029b97aac9"
+    },
+    {
+      "path": "lib/workforce/workforceOverview.ts",
+      "sha1": "edb09c0ce560709dc957ec05c6502b4ef975e73d"
+    },
+    {
+      "path": "lib/workforce/workforcePerformance.ts",
+      "sha1": "39b3be70a5e4f7bf786354860819e535e45b8e7b"
+    },
+    {
+      "path": "lib/workforce/workforcePeriod.ts",
+      "sha1": "47dd83a2f5fe112d10339120e75e288de63dd452"
+    },
+    {
+      "path": "lib/workforce/workforcePolicy.ts",
+      "sha1": "3c2abfde0e2ec9aa49d760b1d7e5cb1ef04aac51"
+    },
+    {
+      "path": "attached_assets/Pasted-We-will-continue-developing-the-project-from-its-CURREN_1784101336577.txt",
+      "sha1": "58359f539779165d871c029dd536808297771cdc"
+    },
+    {
+      "path": "components.json",
+      "sha1": "577af703bacf304e5c0cc5d5a7d331202b415b0a"
+    },
+    {
+      "path": "components/domain/ImportOutcomeBadge.tsx",
+      "sha1": "34461126f7e5676298f1ed05ec562e7338e77b82"
+    },
+    {
+      "path": "components/domain/OperationalRoleChip.tsx",
+      "sha1": "5db5e398ffba5c8337183e07088912cbdb75c103"
+    },
+    {
+      "path": "components/domain/RegistrationStatusBadge.tsx",
+      "sha1": "e6643ff963d3e09a0cbf2a4a41612154f5177011"
+    },
+    {
+      "path": "components/domain/ShiftStatusBadge.tsx",
+      "sha1": "ef9add0d613c3d79ec3e9e70abf94185f5672c5e"
+    },
+    {
+      "path": "components/domain/SystemRoleBadge.tsx",
+      "sha1": "81529bd4f0bf3154768a1f629f8ca1d3c339af5c"
+    },
+    {
+      "path": "components/layout/AccountMenu.tsx",
+      "sha1": "1d78efac30227fcac7c42bc6c1976f1e19c93c80"
+    },
+    {
+      "path": "components/layout/BottomNav.tsx",
+      "sha1": "2b37b50d9112d143f8a032ee4ad95936989cc9a5"
+    },
+    {
+      "path": "components/layout/Header.tsx",
+      "sha1": "002b05d4dbd1f04119f15436eb71e7abfe36f4cb"
+    },
+    {
+      "path": "components/layout/NavigationDrawer.tsx",
+      "sha1": "405a11b525afbe373122657548f1891564323b7b"
+    },
+    {
+      "path": "components/layout/ProductionAppShell.tsx",
+      "sha1": "ec758e4b208839de08b49c6e1fa9512332caa175"
+    },
+    {
+      "path": "components/layout/Sidebar.tsx",
+      "sha1": "17c19abeceb04d1c3767c68f93f2258c0c71cf3c"
+    },
+    {
+      "path": "components/layout/shellConfig.ts",
+      "sha1": "fcfc1821e1c70c7dae89062902009dae141c0212"
+    },
+    {
+      "path": "components/layouts/AuthLayout.tsx",
+      "sha1": "c7938052c09369131a92f32380d3fb3face0b468"
+    },
+    {
+      "path": "components/providers/QueryProvider.tsx",
+      "sha1": "235d8630fb87a632b7265445e7f1e941fec4b603"
+    },
+    {
+      "path": "components/providers/RoleLensProvider.tsx",
+      "sha1": "2ef3b53d0475ebdde65956429ffc64f7f70dffc3"
+    },
+    {
+      "path": "components/providers/ShiftChangeBridge.tsx",
+      "sha1": "f71eeacda735e1888f697dada0709fe7e21fb5ac"
+    },
+    {
+      "path": "components/ui/action-bar.tsx",
+      "sha1": "5d668128bd7192cb3c784a5707b17b78c3403ec4"
+    },
+    {
+      "path": "components/ui/alert-dialog.tsx",
+      "sha1": "f19789f41f71326db00b9de2037cf0912981cd5c"
+    },
+    {
+      "path": "components/ui/archetypes.tsx",
+      "sha1": "7465c392a86130ebe5b0ee8f1176768334e1519e"
+    },
+    {
+      "path": "components/ui/avatar.tsx",
+      "sha1": "5f17ac74b8173d21e90f2f58d1904933a82d0e92"
+    },
+    {
+      "path": "components/ui/badge.tsx",
+      "sha1": "fb242f278f2ecb43c293aa52101c4ef1e16dd46c"
+    },
+    {
+      "path": "components/ui/button.tsx",
+      "sha1": "1d93d4e3276c57e2c37b3406799e3c7c3430df34"
+    },
+    {
+      "path": "components/ui/calendar.tsx",
+      "sha1": "2c97fe31235c81c58b2941f0f5dd496a3d1c7806"
+    },
+    {
+      "path": "components/ui/card.tsx",
+      "sha1": "fae7b9c802e70f0db19b9e919f94675d2af4fb3c"
+    },
+    {
+      "path": "components/ui/checkbox.tsx",
+      "sha1": "7b53b705a92e5d346ad915c547ca9fbabe10471b"
+    },
+    {
+      "path": "components/ui/command-toolbar.tsx",
+      "sha1": "34d01ce208847dee866fd92bbb4204e4db8c31ce"
+    },
+    {
+      "path": "components/ui/content-skeleton.tsx",
+      "sha1": "f9bef95421c7d02c355bac1e26107d3bdbf158d5"
+    },
+    {
+      "path": "components/ui/current-time-indicator.tsx",
+      "sha1": "b60525657ec00f509e3a2c98281dcb6dc3f891f3"
+    },
+    {
+      "path": "components/ui/data-table.tsx",
+      "sha1": "bf9c2838be82cca5a4f61a0098b56c1a9d68ce44"
+    },
+    {
+      "path": "components/ui/dialog.tsx",
+      "sha1": "1237541277a3907c77042d77cfb0e3f82d05c6a1"
+    },
+    {
+      "path": "components/ui/dropdown-menu.tsx",
+      "sha1": "5abe0d68d30c966596b241e6fa20cb0e1a9fc9aa"
+    },
+    {
+      "path": "components/ui/enterprise-data-table.tsx",
+      "sha1": "f5a033a7c3fcb078f11be0abfa0b9d2186ae0b52"
+    },
+    {
+      "path": "components/ui/filter-bar.tsx",
+      "sha1": "21071beddac5e80a9302e67c88d2ff308e5afe26"
+    },
+    {
+      "path": "components/ui/history-pagination.tsx",
+      "sha1": "ad50a76d980e68eaf336e6f9b068e380374050ab"
+    },
+    {
+      "path": "components/ui/input.tsx",
+      "sha1": "b50f27d64536daa030c998cc6c6450ee01abf1d3"
+    },
+    {
+      "path": "components/ui/lifecycle-action-dialog.tsx",
+      "sha1": "4ffda987f83be746b6095dd9a2ca42fe9d056e9a"
+    },
+    {
+      "path": "components/ui/list-feedback.tsx",
+      "sha1": "f1eefaca458cfd88e77c955cf12bb771e20db822"
+    },
+    {
+      "path": "components/ui/mobile-action-menu.tsx",
+      "sha1": "af64d05211045f8de9a6979e340924d22335c4a4"
+    },
+    {
+      "path": "components/ui/motion.tsx",
+      "sha1": "7b2ce27d6e5ab62b8fc08c7a21717fa9b7e7751e"
+    },
+    {
+      "path": "components/ui/multi-select-filter.tsx",
+      "sha1": "9959e66165b44f0509ea82034fdcbcb9b0279fd6"
+    },
+    {
+      "path": "components/ui/operational-status.tsx",
+      "sha1": "a51731fec977a15c40bb77a21b95de79f3ede5be"
+    },
+    {
+      "path": "components/ui/page-load-error.tsx",
+      "sha1": "8797c7d04b10eb3ceafc7aec6ab304cdd473e9d1"
+    },
+    {
+      "path": "components/ui/select.tsx",
+      "sha1": "7e6a566d30583ae30c49b934a7de3a0d0e731c6a"
+    },
+    {
+      "path": "components/ui/separator.tsx",
+      "sha1": "dd758111c6a9b05d5f58e5a7318c94d01e630f47"
+    },
+    {
+      "path": "components/ui/skeleton.tsx",
+      "sha1": "e64a1d19862d098a35e013c31ca97351131391aa"
+    },
+    {
+      "path": "components/ui/states.tsx",
+      "sha1": "6fd390293abd11230e311a196fdcc51bbb38194f"
+    },
+    {
+      "path": "components/ui/switch.tsx",
+      "sha1": "99cc103bf1b5b75e341f2229054c360ae9e9557a"
+    },
+    {
+      "path": "components/ui/table.tsx",
+      "sha1": "bf02bb7198982971891fa66c57c28f8a469d1b2e"
+    },
+    {
+      "path": "components/ui/tabs.tsx",
+      "sha1": "06a52c65e96de1b6a7b1aabdf6c409068680029f"
+    },
+    {
+      "path": "components/ui/textarea.tsx",
+      "sha1": "aea59c9d214c617e6e748a13dc80c5f0d068d45d"
+    },
+    {
+      "path": "components/ui/toast.tsx",
+      "sha1": "87f1f349009dafa9db9137864f3a9b52e37df7f0"
+    },
+    {
+      "path": "components/visual-qa/AdminReferenceMock.tsx",
+      "sha1": "901849b27d7dacc905fda0e4b3ecd2e86f525524"
+    },
+    {
+      "path": "components/visual-qa/AdminSystemReferenceShell.tsx",
+      "sha1": "ff21df00c5c2547ab97fe1d15f07acb1639901c8"
+    },
+    {
+      "path": "components/visual-qa/AnalyticsReferenceMock.tsx",
+      "sha1": "5b2ac85227b50b679072b78f6d67aac7d10e03dd"
+    },
+    {
+      "path": "components/visual-qa/AuditReferenceMock.tsx",
+      "sha1": "7d9c0a19c233ae353c0e25340570db43dcc09f71"
+    },
+    {
+      "path": "components/visual-qa/AuthReferenceMock.tsx",
+      "sha1": "62a14ca16141553563af714ffa53841b4d1b08eb"
+    },
+    {
+      "path": "components/visual-qa/CalendarReferenceMock.tsx",
+      "sha1": "e15e8feefd461479abff1dfa4e641551edc5d3cc"
+    },
+    {
+      "path": "components/visual-qa/CreateShiftReferenceMock.tsx",
+      "sha1": "92ff7c5258a625ec4371a3c3011755494bbd2eaa"
+    },
+    {
+      "path": "components/visual-qa/EditShiftActionsReferenceMock.tsx",
+      "sha1": "068096ec28f528e1b054ee3f78fb6c9f1b456022"
+    },
+    {
+      "path": "components/visual-qa/EditShiftDuplicateReferenceMock.tsx",
+      "sha1": "369579ec9afc6cfdf23e981820e543af3aaccb90"
+    },
+    {
+      "path": "components/visual-qa/EditShiftReferenceMock.tsx",
+      "sha1": "bb56553b3c27a111db324af96f37fa5222a810f9"
+    },
+    {
+      "path": "components/visual-qa/ImportReferenceMock.tsx",
+      "sha1": "fc060532adb53ec345d3d702bdb9e86fa9fbba67"
+    },
+    {
+      "path": "components/visual-qa/InsightsReferenceShell.tsx",
+      "sha1": "7825d2e72ec0bac329611c980662bf0f1ed543e9"
+    },
+    {
+      "path": "components/visual-qa/LeaderReferenceMock.tsx",
+      "sha1": "27d1c3d71b98ee6e8386dea489c03f3f62993e78"
+    },
+    {
+      "path": "components/visual-qa/LiveOperationsReferenceMock.tsx",
+      "sha1": "2f5f6bb3560ada5c056d7095941979e85be0525f"
+    },
+    {
+      "path": "components/visual-qa/MemberReferenceMock.tsx",
+      "sha1": "3faac834c4bf5398519a0a6c627c0d800e8d624e"
+    },
+    {
+      "path": "components/visual-qa/NotificationsReferenceMock.tsx",
+      "sha1": "7e6d9dad84992c31892220539fb8e71ed4ecf7e7"
+    },
+    {
+      "path": "components/visual-qa/OpsWorkflowReferenceShell.tsx",
+      "sha1": "24f70040a3c610dbf9e73e407f195d33ba320a45"
+    },
+    {
+      "path": "components/visual-qa/PeopleOpsReferenceShell.tsx",
+      "sha1": "c655f3349a42a7f6c3edf7c96a7ede51fe1aebf9"
+    },
+    {
+      "path": "components/visual-qa/PeopleReferenceMock.tsx",
+      "sha1": "67ace19fa022e818d5e827abc4e791158d22af5a"
+    },
+    {
+      "path": "components/visual-qa/RegistrationReferenceMock.tsx",
+      "sha1": "174dba1f42e97236128e145b8ff49c27ea2e248d"
+    },
+    {
+      "path": "components/visual-qa/ReportsReferenceMock.tsx",
+      "sha1": "a581314ac9a817058ac58f7bc3e48d0dac406afc"
+    },
+    {
+      "path": "components/visual-qa/SettingsReferenceMock.tsx",
+      "sha1": "08efbd0d505ee0fee0f40f5a714019eb29d9d9e2"
+    },
+    {
+      "path": "components/visual-qa/ShiftDetailReferenceMock.tsx",
+      "sha1": "0217fe3fd9650150baeab6f7e0b87d9ca6567f51"
+    },
+    {
+      "path": "components/visual-qa/ShiftLifecycleReferenceMock.tsx",
+      "sha1": "804ec1ccd09ce893d217c83a927682b32ec17cda"
+    },
+    {
+      "path": "components/visual-qa/ShiftOperationalReference.tsx",
+      "sha1": "5922039f02ec14d8ded80a80141c144c19f4e7ec"
+    },
+    {
+      "path": "components/visual-qa/StaffingReferenceMock.tsx",
+      "sha1": "1b45212daada80c0a4080a077fda29c293edc798"
+    },
+    {
+      "path": "components/visual-qa/SwapsReferenceMock.tsx",
+      "sha1": "3392eb1442f58f33957596b4dcfd69ab25b58491"
+    },
+    {
+      "path": "components/visual-qa/VisualQaShell.tsx",
+      "sha1": "380fdb02eb844698554e702e3dcb659d3ad46bde"
+    },
+    {
+      "path": "config/storage-v1-production-routes.proposed.json",
+      "sha1": "e8e653609347dbaa5f5b5cc174c1f2cc515b7ce8"
+    },
+    {
+      "path": "docs/AI_INTEGRATION.md",
+      "sha1": "151aba8f71e80ffee19b8ce2b6167f3085d6225a"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "sha1": "f29f2d0fb001a504b72308f32c17ed36d3954e01"
+    },
+    {
+      "path": "docs/architecture/file-provider-foundation.md",
+      "sha1": "2ba7a403f8597092efad09d22f58a84edf6ded35"
+    },
+    {
+      "path": "docs/global-stabilization/CONSOLIDATED_BACKLOG.md",
+      "sha1": "8eb9750cb6ca1c4eafe37184dfebe0d1d0c1d8c5"
+    },
+    {
+      "path": "docs/global-stabilization/PRODUCTION_CUTOVER_PREFLIGHT_20261021.md",
+      "sha1": "580a7fe3dff4c59673c27e5e4edefcd36a08d461"
+    },
+    {
+      "path": "docs/handoffs/CODEX_RC19_UI_FIX_HANDOFF.md",
+      "sha1": "4f54168190f380363fdc39ff78e7d9a1097939a3"
+    },
+    {
+      "path": "docs/handoffs/GEMINI_RC19_U08_STORAGE_HANDOFF.md",
+      "sha1": "e4cdb6bda60f7f46f5e8cc0a65f8531d688a61e5"
+    },
+    {
+      "path": "docs/handoffs/GEMINI_RC19_U09_REPORTS_HANDOFF.md",
+      "sha1": "7eba180b557e0f409083cbbc15e2a52326652da0"
+    },
+    {
+      "path": "docs/media-poc/ADA_PLAYER_UAT.md",
+      "sha1": "ce76d32d6ae10144884faf889fd7bdbac7dfae56"
+    },
+    {
+      "path": "docs/media-poc/ADA_VIEWER_GRANT_BACKEND.md",
+      "sha1": "706aa861c11e94d00c56dd3396f9950cd814d176"
+    },
+    {
+      "path": "docs/media-poc/MEDIA_ACL_SCHEMA_PROPOSAL.sql",
+      "sha1": "300e52d86e12cf934a554e3530f40a0f24f47956"
+    },
+    {
+      "path": "docs/media-poc/README.md",
+      "sha1": "ac76ddd8e9288368b62feb6e20d14aa5eccc9a12"
+    },
+    {
+      "path": "docs/media-poc/SECURITY_CONTRACT.md",
+      "sha1": "bcecae8ec99c5a4cc01f5ce18f73784fdd1322b4"
+    },
+    {
+      "path": "docs/media-poc/STAGING_GATEWAY_PREFLIGHT.md",
+      "sha1": "d25b7726db40bdfc17f85239168ffd28470f33d6"
+    },
+    {
+      "path": "docs/media-poc/STUDIO_WAN_UAT_GATE.md",
+      "sha1": "5872c88f688dfa48dcad4e8367b4f832f7fba748"
+    },
+    {
+      "path": "docs/media-poc/UAT_MATRIX.md",
+      "sha1": "350e4aa8f87f7f39ebe0e12252c77347d2bd9041"
+    },
+    {
+      "path": "docs/rc17d/FILES.md",
+      "sha1": "fd59c7a82768ef793f9ea935f88100e1751de301"
+    },
+    {
+      "path": "docs/rc17d/PRODUCTION_AUTH_STATUS.json",
+      "sha1": "5001efdba4f9357d64caea3fe0c0b8df5ffc4936"
+    },
+    {
+      "path": "docs/rc17d/README.md",
+      "sha1": "8447f5d5e5563f50776ae524657746aa62bba0a0"
+    },
+    {
+      "path": "docs/rc17d/RESPONSIVE_MATRIX.csv",
+      "sha1": "7c3302c0e4dd3e603809b2ef542be6f95d6b1d66"
+    },
+    {
+      "path": "docs/rc17d/ROUTE_MATRIX.md",
+      "sha1": "fde1232cb812aa142fd1a07712e345eeeb4f722a"
+    },
+    {
+      "path": "docs/rc17d/SCREENSHOTS.md",
+      "sha1": "e127b79ae7b8095f9b3527f702e0eb162279ed66"
+    },
+    {
+      "path": "docs/rc17d/VERIFICATION.md",
+      "sha1": "06e9b49b1203a54d1229acb1e4f03047e02366dc"
+    },
+    {
+      "path": "docs/rc18/RC18A_SCOPE_MATRIX.md",
+      "sha1": "8e2f74eb8725415c16e7d3784f916513e56096bf"
+    },
+    {
+      "path": "docs/rc19/staffing_candidate_availability.MIGRATION_DRAFT.sql",
+      "sha1": "74659a47986776391dec3ef481b41068777dabf3"
+    },
+    {
+      "path": "docs/release-safety.md",
+      "sha1": "e8abf306697f213d5414843d1f305426cf026c9c"
+    },
+    {
+      "path": "docs/releases/RC19_MIGRATION_PARITY_SNAPSHOT_20261023.json",
+      "sha1": "637b7c492f26b5b0b626d9d3dfd2cdbb08153778"
+    },
+    {
+      "path": "docs/releases/RC19_P0_REPORT_SECURITY_STAGING_EVIDENCE_20261023.md",
+      "sha1": "9412133f15d013667de2edad61fdbb7ed249462a"
+    },
+    {
+      "path": "docs/releases/RC19_P2_04_ATTENDANCE_SINGLE_PREVIEW_GATE.md",
+      "sha1": "2cb387b82fd485992aadf436c45c61105dad9d62"
+    },
+    {
+      "path": "docs/releases/RC19_REPORT_OBLIGATION_SCHEMA_PARITY_GATE.md",
+      "sha1": "e2c761e32079947a38148933d0558138505376ee"
+    },
+    {
+      "path": "docs/releases/RC19_SCREENSHOT_FIX_SCOPE_AND_ACCEPTANCE_20261024.md",
+      "sha1": "05d939a79fa657493bfb0c7a3a9492d3ab603b65"
+    },
+    {
+      "path": "docs/releases/core-v1-rc1.md",
+      "sha1": "f77ad5a66f9d416ba6588cb7afc142815ebfb116"
+    },
+    {
+      "path": "docs/runbooks/core-v1-backup-restore.md",
+      "sha1": "5f5b9917dad5bd54dc36603743c7fc8cdda9847d"
+    },
+    {
+      "path": "docs/s4f-lite-staffing-labels.md",
+      "sha1": "c23b6fde051071ed68c74761e84478e18933d845"
+    },
+    {
+      "path": "docs/storage/RC15_GOLIVE_READINESS_RUNBOOK.md",
+      "sha1": "6c9eb6dae2de58060eed0ab402ca8ea4d9edd77b"
+    },
+    {
+      "path": "docs/storage/RC15_PRODUCTION_DRIVE_TOPOLOGY_READONLY.md",
+      "sha1": "6be4c03ae432d1413efa6d7910bb0e4540a1ec28"
+    },
+    {
+      "path": "docs/storage/RC15_STORAGE_CONTRACT_V2.md",
+      "sha1": "261983abd8b3e80a1bf9326c5673d42ec2ec81af"
+    },
+    {
+      "path": "docs/supabase-p1a-schema-rls-design.md",
+      "sha1": "51452b15828d05c57f7dd2165f6b9d33ff467753"
+    },
+    {
+      "path": "docs/supabase-p1b-migration-plan.md",
+      "sha1": "bea82f64a178c88b87eec8ef866ab8879b5f709b"
+    },
+    {
+      "path": "docs/workforce/RC16B_BUSINESS_RULE_AUDIT.md",
+      "sha1": "7a61f0de57d4e59546e1b4da7430431bcfdb7505"
+    },
+    {
+      "path": "docs/workforce/RC16C_ENVIRONMENT_IDENTITY.md",
+      "sha1": "203480463e98e452de2b6d8740e7d18f000dcda8"
+    },
+    {
+      "path": "docs/workforce/RC16C_INTEGRATION_READINESS.md",
+      "sha1": "a576c35e959233be97fe26850a68235cb860ab6d"
+    },
+    {
+      "path": "docs/workforce/RC16C_SYNTHETIC_UAT_CHECKLIST.md",
+      "sha1": "81099ae9d1648c6692dee37be7bd58ae4a807269"
+    },
+    {
+      "path": "docs/workforce/RC16C_UI_API_PARITY_MATRIX.md",
+      "sha1": "11e4a81713b6b8fbc7ade389eaf48ef8460c8dca"
+    },
+    {
+      "path": "docs/workforce/RC16F_BLOCKERS.md",
+      "sha1": "a50b332557cbb7a62bcfb8d363948270218b9366"
+    },
+    {
+      "path": "docs/workforce/RC16F_MIGRATION_COMPATIBILITY.md",
+      "sha1": "4265ed95cfd16acd87d86dee4a79791519ab6607"
+    },
+    {
+      "path": "docs/workforce/RC16F_PREVIEW_ACCEPTANCE.md",
+      "sha1": "51567d15ceb37fa7e3289e1bb8396d9ccf811dd5"
+    },
+    {
+      "path": "docs/workforce/RC16F_REHEARSAL_EVIDENCE.md",
+      "sha1": "09bb84bd420b5e3605243d018271ee1a23552c54"
+    },
+    {
+      "path": "docs/workforce/RC16F_STAGING_APPROVAL_PACKAGE.md",
+      "sha1": "4b26a71f5f342dd4fc473113a2648d94801cbf68"
+    },
+    {
+      "path": "docs/workforce/RC16F_STAGING_PREFLIGHT.md",
+      "sha1": "5ac9e2438c6584512ca09c04fef1608bd02fffe8"
+    },
+    {
+      "path": "docs/workforce/RC16F_SYNTHETIC_FIXTURES.md",
+      "sha1": "9883d8a26b2930cf7fe04eb527b00f36464d8c9c"
+    },
+    {
+      "path": "docs/workforce/RC16G_RECONCILIATION_READINESS.md",
+      "sha1": "d2a788814db25ffc312253d254497edea16e0219"
+    },
+    {
+      "path": "docs/workforce/RC16H_ANTIGRAVITY_INTEGRATION.md",
+      "sha1": "84b57ec4e09cc811891800473621db9072de04f6"
+    },
+    {
+      "path": "docs/workforce/RC16H_PRODUCTION_APPROVAL.md",
+      "sha1": "dfd2f253b5071e3f7eb20740d86762c889389a3f"
+    },
+    {
+      "path": "docs/workforce/RC16H_PRODUCTION_READINESS.md",
+      "sha1": "a7ef2f5f955869672c9ab86e110368e0cb0d5928"
+    },
+    {
+      "path": "docs/workforce/RC16H_REHEARSAL_EVIDENCE.md",
+      "sha1": "50db2b7c5025e621820a325dad0f64c16433dfc2"
+    },
+    {
+      "path": "docs/workforce/RC16I_POSTMAIN_DELTA_MATRIX.md",
+      "sha1": "69aa9b58a09b7cb459ecdd4d00950624ea327632"
+    },
+    {
+      "path": "docs/workforce/RC16I_POSTMAIN_HARDENING.md",
+      "sha1": "4ea73ceda2d2af381952ea92945979664aaa7308"
+    },
+    {
+      "path": "docs/workforce/RC16_GEMINI_UI_API_HANDOFF.md",
+      "sha1": "3b66600ca53ae0f9cf1ce0f7a757663aa5c2a6c9"
+    },
+    {
+      "path": "docs/workforce/RC16_UI_INTEGRATION.md",
+      "sha1": "034070e87e3dedff056d5ba9432d6c331984ba82"
+    },
+    {
+      "path": "docs/workforce/RC18_ADA_ROOM_PAYROLL_RULEBOOK.md",
+      "sha1": "dc80089e05e564095b903bc27f019983452894f3"
+    },
+    {
+      "path": "supabase/migrations/20261022165655_rc19_1b3_staffing_candidate_page_before_conflict.sql",
+      "sha1": "74659a47986776391dec3ef481b41068777dabf3"
+    },
+    {
+      "path": "supabase/migrations/20260811110219_p1b_foundation.sql",
+      "sha1": "70e6bf7381e9ec17815048f580710aac42367743"
+    },
+    {
+      "path": "supabase/migrations/20260811110239_p1b_master_data.sql",
+      "sha1": "20b8cbd42813651c5fc7d838a3390f6432e1f9c7"
+    },
+    {
+      "path": "supabase/migrations/20260811112834_p1b_production_bootstrap.sql",
+      "sha1": "a5a6bd21b8c77f697f7ca93188ca7a05336acba7"
+    },
+    {
+      "path": "supabase/migrations/20260814064606_p1b_security_hardening.sql",
+      "sha1": "ba237af2f47d5ddf4b0b857547ad761347058d0b"
+    },
+    {
+      "path": "supabase/migrations/20260814085659_p1c_shift_persistence.sql",
+      "sha1": "c7e240ba952d35db0f42864e79fbffaf60666172"
+    },
+    {
+      "path": "supabase/migrations/20260815122237_p1c_shift_lifecycle.sql",
+      "sha1": "76c7e281064b7eee6140b67399bce36434e02f53"
+    },
+    {
+      "path": "supabase/migrations/20260816105052_p1c_cancel_manual_assignment.sql",
+      "sha1": "51df1ff529444a220c4e6d9e483d16ff16c41205"
+    },
+    {
+      "path": "supabase/migrations/20260820120000_s4a_import_batch_foundation.sql",
+      "sha1": "417af79de905fa275cf8b12f79eb3e32de086866"
+    },
+    {
+      "path": "supabase/migrations/20260821083750_s4f_lite_staffing_display_labels.sql",
+      "sha1": "a49ae9b30b719d1dae0d0adbda0f80f0493f59eb"
+    },
+    {
+      "path": "supabase/migrations/20260822140432_s4f1_edit_staffing_display_labels.sql",
+      "sha1": "bac35a01e66fb95da1862ae1910ffe0d1ba7a4ef"
+    },
+    {
+      "path": "supabase/migrations/20260822144531_s4e_import_recovery_reconciliation.sql",
+      "sha1": "9e353467aaa3a69db2fa2eba0a679eb41692de1d"
+    },
+    {
+      "path": "supabase/migrations/20260822160308_s5_staff_identity_mapping.sql",
+      "sha1": "eaca589f7564b34a37963ee1fa1982f1c0740d01"
+    },
+    {
+      "path": "supabase/migrations/20260823000000_p3_report_persistence.sql",
+      "sha1": "80cc3d42faefb937d68b8a65a717fbc652cc157a"
+    },
+    {
+      "path": "supabase/migrations/20260823120000_s2b_staff_management_writes.sql",
+      "sha1": "72b924ea738bf878f70fe3808a830ec187e21cff"
+    },
+    {
+      "path": "supabase/migrations/20260824120000_bulk_staffing_approval.sql",
+      "sha1": "bb68bc13271b2b739ea0a64d53f673b1a9b6fb04"
+    },
+    {
+      "path": "supabase/migrations/20260826082036_shift_swap_production.sql",
+      "sha1": "afe6c74238d6a0478cece76fb3bf51cb8aa12e0a"
+    },
+    {
+      "path": "supabase/migrations/20260826082055_shift_swap_p0_hardening.sql",
+      "sha1": "6616cfc8d5e79ceb0e7746156946d44c2793f20e"
+    },
+    {
+      "path": "supabase/migrations/20260826083723_shift_swap_lock_helper_fix.sql",
+      "sha1": "5909d4a1ac4ea78a0d155b0d6350ed445e50c289"
+    },
+    {
+      "path": "supabase/migrations/20260826172730_shift_swap_two_flow_semantics.sql",
+      "sha1": "befda34ee2f96a8fdfbc498dd19c1dca5bc043e3"
+    },
+    {
+      "path": "supabase/migrations/20260827094704_core_account_lifecycle.sql",
+      "sha1": "e372094ad74877a93b0e68891565e5e58020fb21"
+    },
+    {
+      "path": "supabase/migrations/20260827110001_notifications_persistent_realtime.sql",
+      "sha1": "dd462d844d8bb1520fc9418453cc7db24b4b7bae"
+    },
+    {
+      "path": "supabase/migrations/20260829120000_core_v1_timezone_contract.sql",
+      "sha1": "58098251e4de37d126200beb835367d782636ab7"
+    },
+    {
+      "path": "supabase/migrations/20260829130000_core_v1_data_integrity_p1b.sql",
+      "sha1": "fa6c012beee4c4cd4d7ea379b75c676a326cfa36"
+    },
+    {
+      "path": "supabase/migrations/20260830085911_core_v1_data_integrity_p1c.sql",
+      "sha1": "c81d202b4cb77756779b88d107b4de0c9c283410"
+    },
+    {
+      "path": "supabase/migrations/20260830102222_core_v1_permission_rls_final.sql",
+      "sha1": "c1cbafe7dab3440146275f0d1e496d6b2e6fd37a"
+    },
+    {
+      "path": "supabase/migrations/20260830113000_core_v1_persistent_audit.sql",
+      "sha1": "90f4619c4a591b424b1ab644471ecd3cdc4b9447"
+    },
+    {
+      "path": "supabase/migrations/20260830114000_core_v1_persistent_audit_read_permission.sql",
+      "sha1": "278529733c9583403033c409ac1eae4dc79b4e70"
+    },
+    {
+      "path": "supabase/migrations/20260831120000_core_v1_shift_lifecycle_admin_guard.sql",
+      "sha1": "1e2a64508c35db2207a664b0b0dc15b89ef37e0c"
+    },
+    {
+      "path": "supabase/migrations/20260831130000_core_v1_audit_update_before_state.sql",
+      "sha1": "0d7836dc55e1d99ad95487928ff07434b5bd36b1"
+    },
+    {
+      "path": "supabase/migrations/20260901120000_account_provisioning_foundation.sql",
+      "sha1": "f200e9eedfe79c32f54b6c726b7eca7863a43a26"
+    },
+    {
+      "path": "supabase/migrations/20260901150241_before_user_created_google_hook.sql",
+      "sha1": "a8bb9ffef13280c81a33cb9b3234385fbc537620"
+    },
+    {
+      "path": "supabase/migrations/20260901190744_account_requests_foundation.sql",
+      "sha1": "548e1d69f7d4da18ff6275a6543af3bd4ef4b9e3"
+    },
+    {
+      "path": "supabase/migrations/20260902110000_account_request_review.sql",
+      "sha1": "90dda8ff40a79d12051838fb741877b28ec87a91"
+    },
+    {
+      "path": "supabase/migrations/20260902130000_f6_import_outcome_existing_shift.sql",
+      "sha1": "3207a0701261a648ca8ca9c0cdcb12e894fd6b23"
+    },
+    {
+      "path": "supabase/migrations/20260902140000_account_request_provisioning.sql",
+      "sha1": "b612410491745e42fb7325d3a7bad1a0725524a2"
+    },
+    {
+      "path": "supabase/migrations/20260902150000_account_request_rate_limit.sql",
+      "sha1": "60d58146e0284b35c8eab7ea6d55873b51a0b62b"
+    },
+    {
+      "path": "supabase/migrations/20260902160000_account_request_provisioning_boundary.sql",
+      "sha1": "4c8ac3721769404c624194a48f65bf35f1a61cf9"
+    },
+    {
+      "path": "supabase/migrations/20260902170000_f9_campaign_leader_edit.sql",
+      "sha1": "62f00e9e486b3846a1629f3f348fc2ce59098d77"
+    },
+    {
+      "path": "supabase/migrations/20260902180000_f9_delete_archive_integrity.sql",
+      "sha1": "106ab93619342191bc8144a3bc0fcc2849a24fc1"
+    },
+    {
+      "path": "supabase/migrations/20260903085439_fix_account_request_identity_composite_assignment.sql",
+      "sha1": "79498e5084f5c6ea77c63da861ad74faead608e2"
+    },
+    {
+      "path": "supabase/migrations/20260903110000_f10_report_active_business_user_rls.sql",
+      "sha1": "46053f854c2717f480390c330478a34b6caef641"
+    },
+    {
+      "path": "supabase/migrations/20260903120000_core_v1_recursive_audit_sanitizer.sql",
+      "sha1": "1ba62722fef0c9f1def56aa3b6776907ccd4788f"
+    },
+    {
+      "path": "supabase/migrations/20260903130000_f11_sanitizer_case_normalization.sql",
+      "sha1": "e307a9a41024b4d19cc97e2343a43fa1146f29c1"
+    },
+    {
+      "path": "supabase/migrations/20260905110000_gl19c_authoritative_settings.sql",
+      "sha1": "d1873afe2f7cc46b8866557a18c962c867825084"
+    },
+    {
+      "path": "supabase/migrations/20260905190925_profile_avatar_storage.sql",
+      "sha1": "bc06107d5158da8b962464bf0dff7a74b5dcfcf4"
+    },
+    {
+      "path": "supabase/migrations/20260905191836_live_dashboard_update_persistence.sql",
+      "sha1": "93c87bfa5a5646114de0859d3069ebf1884ff569"
+    },
+    {
+      "path": "supabase/migrations/20260906100000_gl19c_operational_settings_consumers.sql",
+      "sha1": "b3ebed44b6f6e6c1e43497b06969215c680ac0db"
+    },
+    {
+      "path": "supabase/migrations/20260906141234_rw004_admin_self_operational_roles.sql",
+      "sha1": "fae773bdc301a624de3a8fbfc1cf9bdfcc3b1fda"
+    },
+    {
+      "path": "supabase/migrations/20260912083056_report_draft_nullable_metrics.sql",
+      "sha1": "da47e1a1666b3505b911fc629aa10950532aaa78"
+    },
+    {
+      "path": "supabase/migrations/20260913120000_shift_status_mode_and_auto_completion.sql",
+      "sha1": "d193f3450eea4841622ff87f9eab66b5d7520813"
+    },
+    {
+      "path": "supabase/migrations/20260913122832_20260913125000_account_request_provisioning_boundary_hardening.sql",
+      "sha1": "4e4ece6b79859a8cd4de630e43ef83af3cb119c8"
+    },
+    {
+      "path": "supabase/migrations/20260913130000_account_request_active_lifecycle.sql",
+      "sha1": "4eb5b58aae41490e3f7e1fa2ac278d2462201c48"
+    },
+    {
+      "path": "supabase/migrations/20260913200045_restore_import_create_shift_staffing_contract.sql",
+      "sha1": "f95f257c3f8ac957e312e1270d2668abcfe9435c"
+    },
+    {
+      "path": "supabase/migrations/20260913233111_report_storage_security.sql",
+      "sha1": "44ead7be9b76783efef675736883259eb1c00b2d"
+    },
+    {
+      "path": "supabase/migrations/20260916090000_report_expected_version_cas.sql",
+      "sha1": "c9b1fceb2a60d08080292fdd4f609e2bd51bd027"
+    },
+    {
+      "path": "supabase/migrations/20260919074349_rc12_report_file_provider.sql",
+      "sha1": "d309f0a751382c7ee6a36b47b6e720ceaf7103a4"
+    },
+    {
+      "path": "supabase/migrations/20260924000000_rc13a_execution_source_storage_routes.sql",
+      "sha1": "de97835f73d5520296e078a387c4df343156a330"
+    },
+    {
+      "path": "supabase/migrations/20261006160000_rc14_live_image_storage_contract.sql",
+      "sha1": "867e6b67e3a3a6ff6954367f64ed56b5d95f3988"
+    },
+    {
+      "path": "supabase/migrations/20261007183831_rc14_report_data_artifacts.sql",
+      "sha1": "ed557d460f6759a78377a5ccd376541450f60659"
+    },
+    {
+      "path": "supabase/migrations/20261008160638_member_registration_directory_privacy.sql",
+      "sha1": "76cea92c2a880de86268f21d2ca338a166cf8bef"
+    },
+    {
+      "path": "supabase/migrations/20261008160645_repair_report_revision_history_rpc.sql",
+      "sha1": "e083417e66053f1317e304c910bfc4064a9f039e"
+    },
+    {
+      "path": "supabase/migrations/20261011091925_rc15_storage_route_prerequisites.sql",
+      "sha1": "570a285a2e86da35764d3552641e30eabbb1b9ea"
+    },
+    {
+      "path": "supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql",
+      "sha1": "a97e652173daac132d3155f106d4d29f7ca6840c"
+    },
+    {
+      "path": "supabase/migrations/20261011092051_rc15_operational_files.sql",
+      "sha1": "d3510e496e62e18d67e60a83b30f9d7a26a83cc1"
+    },
+    {
+      "path": "supabase/migrations/20261011221500_rc15_provider_metadata_forward_compat.sql",
+      "sha1": "d8a30c7d89b4a9ea5b2a6ce63287555e1bda2492"
+    },
+    {
+      "path": "supabase/migrations/20261012000000_rc16_workforce_payroll_foundation.sql",
+      "sha1": "60bd3c9c88f4c301634e7a20291294f9af3de538"
+    },
+    {
+      "path": "supabase/migrations/20261012000001_rc16b_draft_payroll_correction.sql",
+      "sha1": "b3c8dd0f001e0c8e3da627fdbc5ca9aae2f11d74"
+    },
+    {
+      "path": "supabase/migrations/20261012145735_p0_audit_privilege_hardening.sql",
+      "sha1": "5c9f2761784cfc6cda3d33c31530d34596d0bf7d"
+    },
+    {
+      "path": "supabase/migrations/20261012171503_rc16k_bounded_shift_lists.sql",
+      "sha1": "628dc84f87d46d68b8a4a32c9c5c866833d00ca6"
+    },
+    {
+      "path": "supabase/migrations/20261017000000_rc17a_actual_staffing_audit.sql",
+      "sha1": "00f26fd7c27a69748756a12c6da48ea8f3543662"
+    },
+    {
+      "path": "supabase/migrations/20261019000000_rc17b_rate_supersession_and_recalc.sql",
+      "sha1": "6379eab9c77d0abddf6c41b1354710ed26dc4d1a"
+    },
+    {
+      "path": "supabase/migrations/20261020164351_rc18a_publish_shifts_realtime.sql",
+      "sha1": "cfff9b5d01e5542f568a7106323715e638cb57d0"
+    },
+    {
+      "path": "supabase/migrations/20261021000000_rc17c_attendance_import_foundation.sql",
+      "sha1": "1a2db122aa5ec79becd4db0e45715f3c5c5b86db"
+    },
+    {
+      "path": "supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql",
+      "sha1": "20d988a4a5bf3998103637475e1d05640a00d284"
+    },
+    {
+      "path": "supabase/migrations/20261021064611_media_viewer_acl_exact_shift_v1.sql",
+      "sha1": "94a79a5da3dbfcd99869b89137044e63fb59640b"
+    },
+    {
+      "path": "supabase/migrations/20261021120000_global_report_obligation_page.sql",
+      "sha1": "9c92b5996b07315a5a73bb5ffd69f30fccbc3e0b"
+    },
+    {
+      "path": "supabase/migrations/20261021190000_global_report_notification_transition_keys.sql",
+      "sha1": "b8f748d1253688f38b959abf4e4690a2f3baa20b"
+    },
+    {
+      "path": "supabase/migrations/20261022165004_rc19_1b2_staffing_candidate_availability.sql",
+      "sha1": "ec70e8922f30ebc05a6d090329ba4187e16dd5fc"
+    },
+    {
+      "path": "supabase/migrations/20261022185140_rc19_p2_04_member_attendance_event_journal.sql",
+      "sha1": "ffcc5b37fd56f999de44d33e6fbe1df9a7bbc03d"
+    },
+    {
+      "path": "supabase/migrations/20261023093000_rc19_p0_report_read_ownership_and_revisions.sql",
+      "sha1": "527868be75fab9d860df3a0c8dca565dd83d97a3"
+    },
+    {
+      "path": "supabase/migrations/20261023102000_rc19_p0_report_revision_rpc_invoker.sql",
+      "sha1": "c3dbd2c5790ea9e248928c860ea9f1de84982620"
+    },
+    {
+      "path": "supabase/migrations/20261023103500_rc19_p0_report_revision_invoker_identity_fix.sql",
+      "sha1": "1b4f5d715daa326fe585675a576357e6e8197766"
+    },
+    {
+      "path": "supabase/migrations/20261023112000_rc19_report_authorized_shift_display_context.sql",
+      "sha1": "279b414884f6cc7858d18ed8ce3f365662530a4d"
+    },
+    {
+      "path": "supabase/migrations/20261023144000_rc19_p2_04b_drive_photo_checkin.sql",
+      "sha1": "097b99ecf1b0bd6940b55da6f08d2b79c22cb19f"
+    },
+    {
+      "path": "supabase/migrations/20261023153500_rc19_reports_historical_pagination_v2.sql",
+      "sha1": "b4223454990c7ef8913a7d6d1693259ab0275793"
+    },
+    {
+      "path": "supabase/migrations/20261023155000_rc19_reports_history_validate_filters_v2.sql",
+      "sha1": "ca4312e7379a910cac3bce3d50b61453638f6480"
+    },
+    {
+      "path": "supabase/migrations/20261023160500_rc19_reports_history_staff_filter_privacy.sql",
+      "sha1": "b4d397e59f21a3b446d8b586d8291f45fd6e96ca"
+    },
+    {
+      "path": "supabase/migrations/20261024003000_rc19_p0_orphan_live_image_read_rls.sql",
+      "sha1": "f48f93779d83ecda652a61abb238e86f1e4a3594"
+    },
+    {
+      "path": "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql",
+      "sha1": "710e377de1c1fc0799c1095735ed2ae5bd9ef6c6"
+    },
+    {
+      "path": "supabase/config.toml",
+      "sha1": "6b8c9b7a2e1d3869512950bb4c3326ab1060ded9"
+    },
+    {
+      "path": "supabase/schema.sql",
+      "sha1": "cefdc2b2b0663fb7321446c64585c4bb9e1945e1"
+    },
+    {
+      "path": "supabase/tests/p1b_bootstrap_negative.sql",
+      "sha1": "20d420a830c9bd5dc0f66d7c748f97d495746b2b"
+    },
+    {
+      "path": "supabase/tests/p1b_rls_read.sql",
+      "sha1": "b2d1b68ea2e283e39fd78a6569680ddfffd6c6bf"
+    },
+    {
+      "path": "supabase/tests/p1b_rls_write.sql",
+      "sha1": "572a4b05b00402284b5ef22001f1325095a605b5"
+    },
+    {
+      "path": "supabase/tests/p1c_shift_capacity_rc.sql",
+      "sha1": "d70885eae1290cdc44a699f4b565b6fc01ea966d"
+    },
+    {
+      "path": "supabase/tests/p1c_shift_rls.sql",
+      "sha1": "62e7891d9276ab247f1d50ac8b4eaf0010ebcba1"
+    },
+    {
+      "path": "supabase/tests/p1c_shift_rpc.sql",
+      "sha1": "ab88d6c9a458357fa233cfc601d5dde01733c8f4"
+    },
+    {
+      "path": "supabase/tests/release_blockers_member_privacy_report_revisions.sql",
+      "sha1": "49547b9d7b32d63ca4e7670ccda9f572235801c8"
+    },
+    {
+      "path": "project-memory/evidence/RC16UI-integration.md",
+      "sha1": "034070e87e3dedff056d5ba9432d6c331984ba82"
+    },
+    {
+      "path": "project-memory/evidence/GL-03-validation.md",
+      "sha1": "1a65c4022f1a9ffa13b044c761e49dc5281fea93"
+    },
+    {
+      "path": "project-memory/evidence/RC16E-environment-isolation.md",
+      "sha1": "d7de23148c0595c3155d28691e0fc2d83b4efab8"
+    },
+    {
+      "path": "project-memory/evidence/RC16F-staging-rehearsal.md",
+      "sha1": "5fb10a6887b1906f359f7fa4d4691fff19552944"
+    },
+    {
+      "path": "project-memory/evidence/RC16G-forward-reconciliation.md",
+      "sha1": "ddd99b3f1a771e569a32116f37a798f62494008f"
+    },
+    {
+      "path": "project-memory/evidence/RC16H-production-readiness.md",
+      "sha1": "fdd1f765de6b6ee604a562c688ad256d7b4228d2"
+    },
+    {
+      "path": "project-memory/evidence/RC16I-postmain-hardening.md",
+      "sha1": "4f70b53c339ff19dfeb2cbd990330c18ffc9fa71"
+    },
+    {
+      "path": "project-memory/evidence/README.md",
+      "sha1": "46dfe6caa5d82d1f44d4a48b40e93c6718fa84fd"
+    },
+    {
+      "path": "project-memory/README.md",
+      "sha1": "083080860145fcfea869d80be28e81ca09d2c8c5"
+    },
+    {
+      "path": "project-memory/business-rules.json",
+      "sha1": "a81ae7fa728aeb5ca640cd2ddb23e3fe9ad026bd"
+    },
+    {
+      "path": "project-memory/current-state.json",
+      "sha1": "514b1737d36c9721d68371837cd9daa824da923e"
+    },
+    {
+      "path": "project-memory/data-contracts.json",
+      "sha1": "3c2d9858d384a4f09af05a1dcaa4fba9e4c6c093"
+    },
+    {
+      "path": "project-memory/decisions/GL-03-foundation.md",
+      "sha1": "7266908966c8392f6f950c2db93864bb008e18d2"
+    },
+    {
+      "path": "project-memory/decisions/RC16H-production-only.md",
+      "sha1": "1ed747e1583ca1468f20f0e327617256afd95004"
+    },
+    {
+      "path": "project-memory/decisions/README.md",
+      "sha1": "230b189b8354f5a05cdad69de44bd780158b7961"
+    },
+    {
+      "path": "project-memory/defects.json",
+      "sha1": "1e6c7bba9742dd9c78aebf0efdb1f5b2d8571d47"
+    },
+    {
+      "path": "project-memory/flows.json",
+      "sha1": "38de3c26062e7dec2ad5950e569fe41fda0e795e"
+    },
+    {
+      "path": "project-memory/generated/project-memory.md",
+      "sha1": "007dd7cb9439a50c65041dd2c0dc239d8b7fb105"
+    },
+    {
+      "path": "project-memory/modules.json",
+      "sha1": "ee92c28bd73ae7c278a891378c0d6eb979cab7fc"
+    },
+    {
+      "path": "project-memory/permissions.json",
+      "sha1": "9a953165745b2eb894d9730a1cf6a10ebaa3e212"
+    },
+    {
+      "path": "project-memory/release-gates.json",
+      "sha1": "1701c140614bb7550de43a07330435c0f21e9205"
+    },
+    {
+      "path": "project-memory/ui-contracts.json",
+      "sha1": "8097fc5fe489f77945a3c8255cf479ce547bb2e2"
+    },
+    {
+      "path": "e2e/action-menu-runtime.spec.ts",
+      "sha1": "2866abda8b4d2e6ad81e58cbb4ec772a17cc933c"
+    },
+    {
+      "path": "e2e/auth-public-entry-regression.spec.ts",
+      "sha1": "5c154fd3a6a7c65619613c319ec81e28f1607419"
+    },
+    {
+      "path": "e2e/auth-redirect-loop.spec.ts",
+      "sha1": "0be24bfb33b4993a3cbaf28b36da578129aec8c5"
+    },
+    {
+      "path": "e2e/calendar-drawer-containment.spec.ts",
+      "sha1": "a3dceaea9808c025b21702fd174ede7639ba3548"
+    },
+    {
+      "path": "e2e/capture-payroll-screens.spec.ts",
+      "sha1": "0fc6806ee23b2e97a8c1d3735349ff4326fe862c"
+    },
+    {
+      "path": "e2e/core-v1-3role.uat.spec.ts",
+      "sha1": "4b6ca4e7a07fad64db648cd822816b868e691833"
+    },
+    {
+      "path": "e2e/fixtures/tiktok-dashboard.jpg",
+      "sha1": "e1742aec42f30e647cde5af3b6c4f451f243ff28"
+    },
+    {
+      "path": "e2e/fixtures/shopee-dashboard.jpg",
+      "sha1": "d23562b8f1d491aa57b70624ad147a61f15a67be"
+    },
+    {
+      "path": "e2e/harness/core-v1-harness.ts",
+      "sha1": "fd10807dd38f05f54d477beb1e2502cd6dc55ecd"
+    },
+    {
+      "path": "e2e/hydration-release.spec.ts",
+      "sha1": "19b243a57abb74c7c83aa8718ec38410041e4e06"
+    },
+    {
+      "path": "e2e/ocr-workflows.spec.ts",
+      "sha1": "10886577dfe59c3ee4f2effd41439032ac9eef18"
+    },
+    {
+      "path": "e2e/preview-authenticated-uat.spec.ts",
+      "sha1": "7d43ce24d865673135a45d89d5d7cea21204012e"
+    },
+    {
+      "path": "e2e/production-shell-invariant.spec.ts",
+      "sha1": "19787005d3a395c5b7ab0ed351d13657084aef56"
+    },
+    {
+      "path": "e2e/rc16-workflow.spec.ts",
+      "sha1": "d6fa41d6a366491d9f594d4d733baeb86736a368"
+    },
+    {
+      "path": "e2e/rc16i-postmain.spec.ts",
+      "sha1": "133b19bea73b3adaf8a0b5979b30352dcaddc265"
+    },
+    {
+      "path": "e2e/rc16k-route-audit.spec.ts",
+      "sha1": "1e12c8f82873de177753f462a59b2f61cf1ad4ca"
+    },
+    {
+      "path": "e2e/rc16k-ui.spec.ts",
+      "sha1": "84b8db99d7dc30aa96afb257512d057dfd4c06ad"
+    },
+    {
+      "path": "e2e/rc16l-calendar.spec.ts",
+      "sha1": "50a7e019cadad31f245ad87c4d779fe8d2c56e7b"
+    },
+    {
+      "path": "e2e/rc17d-auth.spec.ts",
+      "sha1": "bf7a9143d1700285e23c3d0e577abaf23dd44477"
+    },
+    {
+      "path": "e2e/rc17d-responsive.spec.ts",
+      "sha1": "fa99bdaa1ce611df004fd78a379595c5f0dde6ee"
+    },
+    {
+      "path": "e2e/rc17d-workflows.spec.ts",
+      "sha1": "4b6e05ea4571693e876cac2f5bac8e17290078f0"
+    },
+    {
+      "path": "e2e/rc18-analytics-browser.spec.ts",
+      "sha1": "a2174d5cba876f272fc0de09adc446960f15846f"
+    },
+    {
+      "path": "e2e/rc18-payroll-room-rules.spec.ts",
+      "sha1": "c1c64a2a7d41c9d63627643484d6261ad36b575f"
+    },
+    {
+      "path": "e2e/rc19-attendance-workflow.spec.ts",
+      "sha1": "fb5c9e010757a4c99289d6c1749179512de87742"
+    },
+    {
+      "path": "e2e/rc19-auth-zoom-accessibility.spec.ts",
+      "sha1": "ac3a67a91ce746225e76d681399a65a2569c0665"
+    },
+    {
+      "path": "e2e/rc19-cal01-week-scroll.spec.ts",
+      "sha1": "5bfe90a5b10cf96e2336025f6068daa2c7f54f1f"
+    },
+    {
+      "path": "e2e/rc19-cal02-mobile-month.spec.ts",
+      "sha1": "5f7870ab1882496034db49c855c21506fa79136e"
+    },
+    {
+      "path": "e2e/rc19-calendar-density.spec.ts",
+      "sha1": "69f311300ee22b80267854d2b2085aa2b17a3806"
+    },
+    {
+      "path": "e2e/rc19-calendar-filter-apply.spec.ts",
+      "sha1": "fb0335c1107a19b533a6ce9e24ea80250a8d7e86"
+    },
+    {
+      "path": "e2e/rc19-live-monitoring.spec.ts",
+      "sha1": "5151e713443547ea640b3fc742d66a310c1f6a0b"
+    },
+    {
+      "path": "e2e/rc19-reports.spec.ts",
+      "sha1": "1d4e13a389133a53931392cf6f30d5aa87ff6f8e"
+    },
+    {
+      "path": "e2e/rc19-settings-workflow.spec.ts",
+      "sha1": "5fe1848bd7c970f0825caa4937af9123c6d85d05"
+    },
+    {
+      "path": "e2e/rc19-shell01-sidebar-scroll.spec.ts",
+      "sha1": "53b181f968f3560455bdd9fe44667e06b5e50a47"
+    },
+    {
+      "path": "e2e/rc19-shell02-calendar-tab-arrows.spec.ts",
+      "sha1": "db571f9e8eb1157341d6d150d71560045a260ee7"
+    },
+    {
+      "path": "e2e/rc19-shifts-list.spec.ts",
+      "sha1": "316039cb6262985c9aeacc1e8bc10cbda8ecac92"
+    },
+    {
+      "path": "e2e/rc19-staffing-filters.spec.ts",
+      "sha1": "23630657ee2096959b9660b6e427c047c7d1a0cc"
+    },
+    {
+      "path": "e2e/rc19-storage-explorer.spec.ts",
+      "sha1": "0f0207252a6c6fc3d71df0d85da165c6dc76aefd"
+    },
+    {
+      "path": "e2e/rc19-toolbar-scoped.spec.ts",
+      "sha1": "8a2fd7608eec83fb1f20082d39f0525837718c9e"
+    },
+    {
+      "path": "e2e/rc19-u14-self-attendance.spec.ts",
+      "sha1": "f8216b86097f0fa40d38e27305a7c7a81d9d03e2"
+    },
+    {
+      "path": "e2e/rc19-workforce-performance.spec.ts",
+      "sha1": "cacea79eb45e7b30057929ad37fbd41b421917d5"
+    },
+    {
+      "path": "e2e/release-blockers-privacy-revisions.spec.ts",
+      "sha1": "21a4f4060fcb8fff437d2b4294637cfb52da57c3"
+    },
+    {
+      "path": "e2e/report-revision-error.spec.ts",
+      "sha1": "91f3fb8cde44eaa024e106a8e9cf3df233da1b31"
+    },
+    {
+      "path": "e2e/shift-detail-containment.spec.ts",
+      "sha1": "a0d5fbd80870408ca413a06330a64392583cb302"
+    },
+    {
+      "path": "e2e/shift-detail-foundation.spec.ts",
+      "sha1": "9d51c5095bd458b415d0af12385841bbcc7c6e60"
+    },
+    {
+      "path": "e2e/shift-form-responsive.spec.ts",
+      "sha1": "feed36603191a95c76266b44473455417b1b6ae8"
+    },
+    {
+      "path": "e2e/shopee-layout-variants.spec.ts",
+      "sha1": "b573b5f0cff23f0eeeaf8cc03be432c69d995890"
+    },
+    {
+      "path": "e2e/smoke.spec.ts",
+      "sha1": "bb0990ad9a18ff32890d176ab49a8f9a70b9870a"
+    },
+    {
+      "path": "e2e/swap-form-state.spec.ts",
+      "sha1": "346fc17a90afb95c258caf9fc6273b57e38f6b00"
+    },
+    {
+      "path": "e2e/tiktok-layout-variants.spec.ts",
+      "sha1": "cef653a300f448f66f58d37dfd2e7003a33ebf33"
+    },
+    {
+      "path": "e2e/vision-ocr-phase-a.spec.ts",
+      "sha1": "11e520a5feaf01155cac1df4c1b0b8353a5f6de8"
+    },
+    {
+      "path": "eslint.config.mjs",
+      "sha1": "0892ac4790f0efbe7a89adc4c6be512a37451f19"
+    },
+    {
+      "path": "infra/media-poc/compose.yaml",
+      "sha1": "366b33c4c20df566ffb8818ddaae0cdfc711a305"
+    },
+    {
+      "path": "infra/media-poc/hls-auth-guard.mjs",
+      "sha1": "a1900f73d7350db2c2d08a8e05e5e76ba7e043a2"
+    },
+    {
+      "path": "infra/media-poc/mediamtx.yml",
+      "sha1": "e28c66d50ed59b3444cf1a7d1add0fee93a57152"
+    },
+    {
+      "path": "infra/media-poc/nginx-hls.conf.example",
+      "sha1": "392afc8162275fc08fbaa80c859f2e2cbda5c8d3"
+    },
+    {
+      "path": "tests/fixtures/p0_audit_security_assertions.sql",
+      "sha1": "7dd12657baaf6643dd256cc8fb95a67a8cfefc2c"
+    },
+    {
+      "path": "tests/fixtures/p0_shift_status_supabase_base.sql",
+      "sha1": "a1640fe8cbafeba9ae47c59340484c197d0a3ac5"
+    },
+    {
+      "path": "tests/fixtures/rc14-production-storage-usage.json",
+      "sha1": "d71c0f0087b55176f92792d35006efb06053032a"
+    },
+    {
+      "path": "tests/fixtures/rc15_production_shift_rpc_baseline.sql",
+      "sha1": "7a0201abe90406e71ee6d417d8b413448e4519bc"
+    },
+    {
+      "path": "tests/fixtures/rc16_payroll_bootstrap.sql",
+      "sha1": "174a31efc6da10d41c62003505d1a95a035e683d"
+    },
+    {
+      "path": "tests/fixtures/rc16_payroll_integrity.sql",
+      "sha1": "43dcc0f7de4c3dc5391352e3aef633197a98983a"
+    },
+    {
+      "path": "tests/fixtures/rc16b_payroll_correction.sql",
+      "sha1": "8821b94b4a4dd4aadc682f311f14522166d70e99"
+    },
+    {
+      "path": "tests/fixtures/rc16f_synthetic_uat.json",
+      "sha1": "6dcc4003a8e500b297ec1b5fa5de50176eec2900"
+    },
+    {
+      "path": "tests/fixtures/rc16f_synthetic_uat.sql",
+      "sha1": "8808c2773fdbb98eb7959b72268b3c76ea1e24bb"
+    },
+    {
+      "path": "tests/fixtures/rc16g_staging_catalog.json",
+      "sha1": "2741efcee422e6704603c1b05752b651adc2f241"
+    },
+    {
+      "path": "tests/fixtures/rc16h_production_catalog.json",
+      "sha1": "be23ee10adfc191fec936e2f7e2443729c494226"
+    },
+    {
+      "path": "tests/fixtures/rc17a_actual_staffing_assertions.sql",
+      "sha1": "638ab7ba7257780b9cb08ae23a6c8ea88fb442ed"
+    },
+    {
+      "path": "tests/fixtures/report_notification_supabase_base.sql",
+      "sha1": "443b18b12bbbbfbaaad0a2eec249d9a6dac7338a"
+    },
+    {
+      "path": "tests/fixtures/report_obligation_supabase_base.sql",
+      "sha1": "482d1040a7136c52a049c8aeb05681c60c9fd868"
+    },
+    {
+      "path": "tests/fixtures/storage-hydration-browser.tsx",
+      "sha1": "7a0fd06f1217feac166f3904eb33b30f6f3fdc3d"
+    },
+    {
+      "path": "tests/account-lifecycle-contracts.test.ts",
+      "sha1": "412c34a9bb9bb8e37b88f796768b662ca982b4a8"
+    },
+    {
+      "path": "tests/account-management-core-v1.test.ts",
+      "sha1": "d55d0abb369890b3b7abb6273be52fb0146dc930"
+    },
+    {
+      "path": "tests/account-request-active-lifecycle.test.ts",
+      "sha1": "fa72bb9f71094aa7826f304419c36deac442476a"
+    },
+    {
+      "path": "tests/account-request-patch1.test.ts",
+      "sha1": "ccd14f55732148be35adedede9e5e171014c72d7"
+    },
+    {
+      "path": "tests/account-request-patch2.test.ts",
+      "sha1": "2a54319256060972205f13b38c02afa9f8b65cff"
+    },
+    {
+      "path": "tests/account-request-phase1.test.ts",
+      "sha1": "46d1cc82c419096b429158643d4271b663bc96f2"
+    },
+    {
+      "path": "tests/account-request-phase2-staging.test.ts",
+      "sha1": "18b17e436b9fcebf213c4f8495a6f47c38742f05"
+    },
+    {
+      "path": "tests/account-request-phase2.test.ts",
+      "sha1": "3c2d11fa9dcb86e236b85a53e16f2a947f921c33"
+    },
+    {
+      "path": "tests/account-request-phase3.test.ts",
+      "sha1": "87102b8fcf788bda4e7171c17292dd57d5911a61"
+    },
+    {
+      "path": "tests/account-request-provisioning-boundary-hardening.test.ts",
+      "sha1": "5020c6e3b5238a4917384fe76a42bf0a42869b13"
+    },
+    {
+      "path": "tests/account-request-provisioning-composite.test.ts",
+      "sha1": "96e0c88e814cb7cc7aef784a1e361ba899eb7659"
+    },
+    {
+      "path": "tests/ada-hls-player.test.ts",
+      "sha1": "a9a86233399443c3eff2045711dd945e342de62a"
+    },
+    {
+      "path": "tests/ada-hls-security.test.ts",
+      "sha1": "9c3c082534f1d40f8f96a60f384eaa311d8312e6"
+    },
+    {
+      "path": "tests/analytics-actor-key.test.ts",
+      "sha1": "dc3f7f6fda5481024e3363eca67676d8eed84582"
+    },
+    {
+      "path": "tests/auth-confirm-route.test.ts",
+      "sha1": "b023e37757d8006c459f86e53d6636ec96adc8a8"
+    },
+    {
+      "path": "tests/auth-identity-bridge.test.tsx",
+      "sha1": "67d498f80177c57754e1dd494b46c55b861e3461"
+    }
+  ]
+}

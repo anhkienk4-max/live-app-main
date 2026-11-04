@@ -12,6 +12,10 @@ const statusModeMigration = readFileSync(
   'supabase/migrations/20260913120000_shift_status_mode_and_auto_completion.sql',
   'utf8',
 )
+const automaticStatusSafetyMigration = readFileSync(
+  'supabase/migrations/20261021034515_shift_automatic_status_scheduling_and_read_safety.sql',
+  'utf8',
+)
 
 describe('Shift Lifecycle UI State Flow', () => {
   beforeEach(() => {
@@ -156,10 +160,8 @@ describe('Shift Lifecycle UI State Flow', () => {
     const shift = await shiftService.create({
       brand_id: 'b1', platform_id: 'p1', date: '2026-01-10', start_time: '10:00', end_time: '12:00',
     } as Parameters<typeof shiftService.create>[0])
-    const completed = await shiftService.getById(shift.id)
-    assert.strictEqual(completed?.status, 'completed')
-    assert.strictEqual(completed?.status_mode, 'auto')
-    const live = await shiftService.update(shift.id, { status: 'live', version: completed?.version })
+    const preparing = await shiftService.update(shift.id, { status: 'preparing', version: shift.version })
+    const live = await shiftService.update(shift.id, { status: 'live', version: preparing?.version })
     assert.strictEqual(live?.status, 'live')
     assert.strictEqual(live?.status_mode, 'manual')
     const persistedManual = await shiftService.getById(shift.id)
@@ -168,6 +170,32 @@ describe('Shift Lifecycle UI State Flow', () => {
     const automatic = await shiftService.returnToAutomatic(shift.id, undefined, persistedManual?.version)
     assert.strictEqual(automatic?.status, 'completed')
     assert.strictEqual(automatic?.status_mode, 'auto')
+  })
+
+  test('shift read paths never apply automatic status transitions', async () => {
+    const shift = await shiftService.create({
+      brand_id: 'b1', platform_id: 'p1', date: '2026-01-12', start_time: '10:00', end_time: '12:00',
+    } as Parameters<typeof shiftService.create>[0])
+    const query = { page: 1, pageSize: 50 }
+
+    await shiftService.getById(shift.id)
+    await shiftService.getByIds([shift.id])
+    await shiftService.getByDate(shift.date)
+    await shiftService.getByDateRange(shift.date, shift.date)
+    await shiftService.getByStatus('scheduled')
+    await shiftService.getOpen()
+    await shiftService.getReportCandidates()
+    await shiftService.getPage(query)
+    await shiftService.getCalendarPage(query)
+    await shiftService.getRegistrationPage('mine', query)
+    await shiftService.getAll()
+    await shiftService.getAllComplete()
+
+    const afterReads = await shiftService.getById(shift.id)
+    assert.strictEqual(afterReads?.status, 'scheduled')
+    assert.strictEqual(afterReads?.status_mode, 'auto')
+    assert.strictEqual(afterReads?.version, shift.version)
+    assert.strictEqual(afterReads?.updated_at, shift.updated_at)
   })
 
   test('cancelled and manual completed shifts are not time-overwritten', async () => {
@@ -239,5 +267,15 @@ describe('Shift Lifecycle UI State Flow', () => {
     assert.match(statusModeMigration, /after_row \? 'status_mode'[\s\S]*jsonb_build_object\('status_mode'/i)
     assert.match(statusModeMigration, /existing_shift\.status_mode = 'auto'/i)
     assert.match(statusModeMigration, /and shift\.status_mode = 'auto'[\s\S]*and shift\.version = desired\.version/i)
+  })
+
+  test('automatic status refresh is scheduled and explicit refresh is leader/admin-only', () => {
+    assert.match(automaticStatusSafetyMigration, /current_user <> 'postgres'[\s\S]*SHIFT_STATUS_MIGRATION_REQUIRES_POSTGRES_ROLE/i)
+    assert.match(automaticStatusSafetyMigration, /create extension if not exists pg_cron/i)
+    assert.match(automaticStatusSafetyMigration, /perform private\.require_shift_actor\(true\)/i)
+    assert.match(automaticStatusSafetyMigration, /revoke all on function private\.refresh_automatic_shift_statuses_scheduled\(\) from public, anon, authenticated, service_role/i)
+    assert.match(automaticStatusSafetyMigration, /cron\.schedule\([\s\S]*'refresh-automatic-shift-statuses'[\s\S]*'\* \* \* \* \*'/i)
+    assert.match(automaticStatusSafetyMigration, /set_config\('app\.audit_source', 'system', true\)/i)
+    assert.match(automaticStatusSafetyMigration, /and shift\.status_mode = 'auto'[\s\S]*and shift\.version = desired\.version/i)
   })
 })

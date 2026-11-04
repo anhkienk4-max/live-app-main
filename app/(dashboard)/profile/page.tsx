@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { Briefcase, Camera, Mail, Phone, Trash2, User as UserIcon, X } from 'lucide-react'
+import Link from 'next/link'
+import { Bell, Briefcase, CalendarDays, Camera, Mail, Phone, ShieldCheck, Trash2, User as UserIcon, X } from 'lucide-react'
 import { userService } from '@/lib/services/dataService'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
@@ -14,13 +15,14 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { removeProfileAvatar, uploadProfileAvatar } from '@/lib/services/profileAvatarStorageService'
+import { PwaInstallControl } from '@/components/pwa/PwaInstallControl'
 
 const acceptedAvatarTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const maxAvatarBytes = 5 * 1024 * 1024
 
 export default function ProfilePage() {
   const { currentUser, loading, reload } = useCurrentUser()
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const { toast } = useToast()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const objectUrlRef = React.useRef<string | null>(null)
@@ -47,7 +49,20 @@ export default function ProfilePage() {
     return () => cancelAnimationFrame(frame)
   }, [currentUser])
 
-  if (loading || !currentUser) return <div className="py-12 text-center">{t('loading')}</div>
+  if (loading || !currentUser) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6 animate-pulse" data-testid="profile-loading-shell">
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-16 rounded-full bg-slate-200" />
+          <div className="space-y-2">
+            <div className="h-6 w-40 rounded bg-slate-200" />
+            <div className="h-4 w-60 rounded bg-slate-100" />
+          </div>
+        </div>
+        <div className="h-72 rounded-lg border border-slate-200 bg-white p-6" />
+      </div>
+    )
+  }
 
   const canEdit = hasPermission(currentUser, 'profile.edit_own')
   const initials = currentUser.full_name.split(' ').map(part => part[0]).join('').toUpperCase()
@@ -137,13 +152,24 @@ export default function ProfilePage() {
     }
   }
 
-  return <div className="space-y-6">
-    <div><h1 className="text-3xl font-bold">{t('profile')}</h1><p className="mt-1 text-muted-foreground">{t('accountDetails')}</p></div>
+  const accountStatus = currentUser.account_status ?? currentUser.status
+  const accountStatusLabel = accountStatus === 'pending_email_verification'
+    ? (language === 'vi' ? 'Chờ xác minh email' : 'Pending email verification')
+    : accountStatus === 'pending_approval'
+      ? (language === 'vi' ? 'Chờ phê duyệt' : 'Pending approval')
+      : accountStatus === 'rejected' ? t('rejected') : t(currentUser.status)
+  const joinedDate = new Date(currentUser.join_date)
+  const joinedDateLabel = Number.isNaN(joinedDate.getTime()) ? '—' : joinedDate.toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')
+  const authProviderLabel = currentUser.auth_provider === 'google' ? 'Google' : (language === 'vi' ? 'Email' : 'Email')
+
+  return <div className="ada-workspace-page ada-profile-page mx-auto w-full min-w-0 max-w-6xl space-y-4 p-4 md:space-y-6 md:p-6" data-testid="profile-page">
+    <div className="min-w-0"><h1 className="text-xl font-bold tracking-tight md:text-3xl">{t('profile')}</h1><p className="mt-1 break-words text-[13px] leading-relaxed text-muted-foreground md:text-sm">{t('accountDetails')}</p></div>
+    <div className="max-w-sm"><PwaInstallControl /></div>
     <form onSubmit={save}>
       <div className="grid gap-6 lg:grid-cols-3">
         <Card><CardHeader className="items-center text-center">
           <Avatar className="h-24 w-24"><AvatarImage src={displayedAvatar} /><AvatarFallback>{initials}</AvatarFallback></Avatar>
-          <CardTitle>{currentUser.full_name}</CardTitle><CardDescription>{currentUser.email}</CardDescription>
+          <CardTitle className="max-w-full break-words [overflow-wrap:anywhere]">{currentUser.full_name}</CardTitle><CardDescription className="max-w-full break-all">{currentUser.email}</CardDescription>
           <div className="flex flex-wrap justify-center gap-2"><Badge>{t(resolveSystemPermission(currentUser))}</Badge>{currentUser.operational_roles?.map(role => <Badge key={role} variant="outline">{t(role)}</Badge>)}</div>
         </CardHeader><CardContent className="space-y-3">
           <input ref={fileInputRef} className="sr-only" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={selectAvatar} />
@@ -164,6 +190,35 @@ export default function ProfilePage() {
         </CardContent></Card>
       </div>
     </form>
+    <section aria-label={t('accountStatusLabel')} className="grid gap-4 lg:grid-cols-3">
+      <Card className="lg:col-span-2">
+        <CardHeader><CardTitle>{t('accountStatusLabel')}</CardTitle><CardDescription>{t('accountDetails')}</CardDescription></CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <ProfileInfo icon={<ShieldCheck className="h-4 w-4" />} label={t('accountStatusLabel')} value={accountStatusLabel} />
+          <ProfileInfo icon={<CalendarDays className="h-4 w-4" />} label={t('memberSinceLabel')} value={joinedDateLabel} />
+          <ProfileInfo icon={<Mail className="h-4 w-4" />} label={t('emailVerificationLabel')} value={currentUser.email_verified ? t('emailVerifiedStatus') : t('emailNotVerifiedStatus')} />
+          <ProfileInfo icon={<UserIcon className="h-4 w-4" />} label={t('authenticationProviderLabel')} value={authProviderLabel} />
+          <div className="sm:col-span-2">
+            <p className="mb-2 text-sm font-medium">{t('profileOperationalRoles')}</p>
+            <div className="flex flex-wrap gap-2">{currentUser.operational_roles?.length ? currentUser.operational_roles.map(role => <Badge key={role} variant="outline">{t(role)}</Badge>) : <span className="text-sm text-muted-foreground">—</span>}</div>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>{t('profilePreferencesTitle')}</CardTitle><CardDescription>{t('profilePreferencesDescription')}</CardDescription></CardHeader>
+        <CardContent className="space-y-3">
+          <Link href="/settings" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Bell className="h-4 w-4" />{t('profileSettingsLink')}</Link>
+          <Link href="/notifications" className="inline-flex min-h-11 w-full items-center justify-center rounded-md border px-4 text-sm font-medium hover:bg-muted">{t('allNotifications')}</Link>
+        </CardContent>
+      </Card>
+    </section>
+  </div>
+}
+
+function ProfileInfo({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return <div className="min-w-0 rounded-lg border bg-slate-50/50 p-3">
+    <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">{icon}{label}</p>
+    <p className="mt-2 break-words text-sm font-semibold text-foreground">{value}</p>
   </div>
 }
 

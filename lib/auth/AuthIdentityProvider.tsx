@@ -6,6 +6,7 @@ import type { AuthIdentity } from '@/lib/auth/authIdentity'
 import { currentUserService } from '@/lib/services/dataService'
 import type { User } from '@/lib/types/database.types'
 import { invalidatePageCache } from '@/lib/services/operationsPageCache'
+import { ShiftChangeBridge } from '@/components/providers/ShiftChangeBridge'
 
 interface AuthIdentityContextValue {
   mode: AuthMode
@@ -29,25 +30,38 @@ export function AuthIdentityProvider({
   businessUser: initialBusinessUser,
   children,
 }: AuthIdentityProviderProps) {
-  const [identity, setIdentity] = React.useState(initialIdentity)
-  const [businessUser, setBusinessUser] = React.useState(initialBusinessUser)
+  // Server-authenticated props may change while this layout stays mounted.
+  // Synchronize during render, rather than after paint: React discards this
+  // render and retries before descendants can see a previous actor's data.
+  // Keeping the source props separately preserves clearIdentity() on logout.
+  const [snapshot, setSnapshot] = React.useState(() => ({
+    sourceIdentity: initialIdentity,
+    sourceBusinessUser: initialBusinessUser,
+    identity: initialIdentity,
+    businessUser: initialBusinessUser,
+  }))
+  if (snapshot.sourceIdentity !== initialIdentity || snapshot.sourceBusinessUser !== initialBusinessUser) {
+    setSnapshot({
+      sourceIdentity: initialIdentity,
+      sourceBusinessUser: initialBusinessUser,
+      identity: initialIdentity,
+      businessUser: initialBusinessUser,
+    })
+  }
+  const { identity, businessUser } = snapshot
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronize verified server identity into provider state when the server session changes
-    setIdentity(initialIdentity); setBusinessUser(initialBusinessUser)
-  }, [initialBusinessUser, initialIdentity])
-
-  React.useEffect(() => {
+  // Service reads from descendants begin in passive effects. Bind verified identity
+  // during layout commit first, so navigation/initial mount cannot race the actor.
+  React.useLayoutEffect(() => {
     if (mode !== 'supabase' || !businessUser) return
-    currentUserService.bindAuthenticatedUser(businessUser)
-    return () => currentUserService.clearAuthenticatedUser(businessUser.id)
+    const bindingRevision = currentUserService.bindAuthenticatedUser(businessUser)
+    return () => currentUserService.clearAuthenticatedUser(businessUser.id, bindingRevision)
   }, [businessUser, mode])
 
   const clearIdentity = React.useCallback(() => {
     if (businessUser) currentUserService.clearAuthenticatedUser(businessUser.id)
     invalidatePageCache()
-    setIdentity(null)
-    setBusinessUser(null)
+    setSnapshot(previous => ({ ...previous, identity: null, businessUser: null }))
   }, [businessUser])
 
   const value = React.useMemo<AuthIdentityContextValue>(() => ({
@@ -59,6 +73,7 @@ export function AuthIdentityProvider({
 
   return (
     <AuthIdentityContext.Provider value={value}>
+      <ShiftChangeBridge userId={businessUser?.id ?? null} enabled={mode === 'supabase'} />
       {children}
     </AuthIdentityContext.Provider>
   )

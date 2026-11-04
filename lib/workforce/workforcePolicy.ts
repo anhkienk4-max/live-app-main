@@ -1,0 +1,1 @@
+export const WORKFORCE_LATE_GRACE_MINUTES = 10

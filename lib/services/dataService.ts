@@ -1,4 +1,4 @@
-import { getCollectionPage, getCompleteCollection, localListPage, type ListQuery, type ListFilters, type ListPage, type ShiftListPage, OperationsListError } from '@/lib/services/operationsPageService'
+import { getCollectionPage, getCompleteCollection, localListPage, type ListQuery, type ListFilters, type ListPage, type ShiftListPage, type HistoricalReportShiftContext, OperationsListError } from '@/lib/services/operationsPageService'
 import {
   User,
   UserDirectoryEntry,
@@ -11,6 +11,8 @@ import {
   ReportImage,
   DashboardUpdate,
   SwapRequest,
+  SwapConflictCheckInput,
+  SwapConflictCheckStatus,
   ShiftStatus,
   OperationalRole,
   OcrReviewData,
@@ -39,7 +41,7 @@ import {
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
-import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, hasShiftTimeConflict, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import {
   normalizeStaffingDisplayNames,
   toCanonicalScheduleImportPreviewRow,
@@ -67,6 +69,7 @@ import { getSupabaseSettingsRepository } from '@/lib/services/supabaseSettingsSe
 import { getSupabaseDashboardUpdateRepository } from '@/lib/services/supabaseDashboardUpdateService'
 import { getMissingFinalReportMetricKeys } from '@/lib/utils/ocrMetricSerialization'
 import type { MetricState } from '@/lib/utils/ocrCanonical'
+import { reportQueueState } from '@/lib/utils/reportQueue'
 import {
   liveReportImageCategories,
   maximumLiveReportImages,
@@ -106,6 +109,10 @@ let swapRequests = [...mockSwapRequests]
 const scheduleImports: ScheduleImportBatch[] = []
 const scheduleChangeLogs: ScheduleChangeLog[] = []
 let authenticatedBusinessUser: User | null = null
+// The identity provider can briefly have overlapping layout-effect lifetimes
+// during app-router transitions. An older provider must not clear a newer bind,
+// including when both bindings represent the SAME business-user ID.
+let authenticatedBindingRevision = 0
 
 const currentBusinessUserFor = (actorId: string): User | null => {
   if (getAuthMode() === 'supabase') {
@@ -796,17 +803,23 @@ export const currentUserService = {
     return user
   },
 
-  bindAuthenticatedUser(user: User): void {
-    if (getAuthMode() !== 'supabase') return
+  bindAuthenticatedUser(user: User): number {
+    if (getAuthMode() !== 'supabase') return 0
+    const revision = ++authenticatedBindingRevision
     authenticatedBusinessUser = {
       ...user,
       operational_roles: user.operational_roles ? [...user.operational_roles] : [],
     }
+    return revision
   },
 
-  clearAuthenticatedUser(expectedBusinessUserId?: string): void {
+  clearAuthenticatedUser(expectedBusinessUserId?: string, expectedBindingRevision?: number): void {
+    // Only the effect that installed this binding is allowed to release it.
+    // A same-user React remount must not lose its actor to an older cleanup.
+    if (expectedBindingRevision !== undefined && expectedBindingRevision !== authenticatedBindingRevision) return
     if (expectedBusinessUserId && authenticatedBusinessUser?.id !== expectedBusinessUserId) return
     authenticatedBusinessUser = null
+    authenticatedBindingRevision++
   },
 }
 
@@ -1290,24 +1303,6 @@ const assertShiftLifecycleTransition = (
   }
 }
 
-const refreshMockAutomaticStatuses = () => {
-  const now = new Date()
-  shifts = shifts.map(shift => {
-    if ((shift.status_mode ?? 'auto') !== 'auto' || shift.status === 'cancelled') return shift
-    const status = deriveAutomaticShiftStatus(shift, now)
-    if (!status || status === shift.status) return shift
-    const before = { ...shift }
-    const updated = { ...shift, status, updated_at: now.toISOString(), version: nextVersion(shift.version) }
-    recordScheduleChange('update', shift.id, before, { ...updated }, { source: 'system' })
-    audit('calendar', 'update', 'shift', shift.id, shift.title || `${shift.date} ${shift.start_time}`, {
-      before,
-      after: { ...updated },
-      source: 'system',
-    })
-    return updated
-  })
-}
-
 export const shiftService = {
   async getLivePage(query: ListQuery,signal?:AbortSignal):Promise<ShiftListPage & {updates:DashboardUpdate[]}> {
     if(getAuthMode()==='supabase')return await getCollectionPage<Shift>('live_shifts',query,signal) as ShiftListPage & {updates:DashboardUpdate[]}
@@ -1336,7 +1331,6 @@ export const shiftService = {
 
   async getRegistrationPage(mode: 'open' | 'mine', query: ListQuery, signal?: AbortSignal): Promise<ShiftListPage> {
     if (getAuthMode() === 'supabase') return await getCollectionPage<Shift>(mode === 'open' ? 'open_shifts' : 'my_shifts', query, signal) as ShiftListPage
-    refreshMockAutomaticStatuses()
     const actor = actorFor()
     const owned = shiftRegistrations.filter(r => r.user_id === actor.id && ['pending', 'approved', 'manually_assigned'].includes(r.status))
     const filtered = filterMockList(shifts, query.filters).filter(shift=>canReadMockPagedShift(shift,actor)).filter(shift => mode === 'open'
@@ -1362,7 +1356,6 @@ export const shiftService = {
 
   async getPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<Shift>> {
     if (getAuthMode() === 'supabase') return getCollectionPage<Shift>('shifts', query, signal)
-    refreshMockAutomaticStatuses()
     return localListPage(filterMockList(shifts, query.filters).filter(shift=>canReadMockPagedShift(shift,actorFor())), query)
   },
   async getAllFiltered(filters: ListFilters = {}): Promise<Shift[]> {
@@ -1374,7 +1367,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getAll()
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift => !shift.deleted_at))
   },
 
@@ -1382,7 +1374,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getAllComplete()
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift => !shift.deleted_at && !shift.archived_at))
   },
 
@@ -1392,7 +1383,6 @@ export const shiftService = {
       if (repository.getReportCandidates) return repository.getReportCandidates(limit)
       return (await repository.getAllComplete()).filter(shift => ['preparing', 'live', 'paused', 'completed'].includes(shift.status)).slice(0, limit)
     }
-    refreshMockAutomaticStatuses()
     const reportable = shifts.filter(shift =>
       !shift.deleted_at && !shift.archived_at &&
       ['preparing', 'live', 'paused', 'completed'].includes(shift.status),
@@ -1406,7 +1396,6 @@ export const shiftService = {
       if (repository.getByIds) return repository.getByIds(ids)
       return (await Promise.all(ids.map(id => repository.getById(id)))).filter((shift): shift is Shift => Boolean(shift))
     }
-    refreshMockAutomaticStatuses()
     const wanted = new Set(ids)
     return Promise.resolve(shifts.filter(shift => wanted.has(shift.id) && !shift.deleted_at && !shift.archived_at))
   },
@@ -1415,7 +1404,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDateRange(startDate, endDate)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts
       .filter(shift => !shift.deleted_at && !shift.archived_at && shift.date >= startDate && shift.date <= endDate)
       .sort((left, right) => left.date.localeCompare(right.date) || left.start_time.localeCompare(right.start_time) || left.id.localeCompare(right.id)))
@@ -1433,7 +1421,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getById(id)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.find(s => s.id === id) || null)
   },
 
@@ -1881,7 +1868,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDate(date)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(s => s.date === date && !s.deleted_at))
   },
 
@@ -1889,7 +1875,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDateRange(startDate, endDate)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(
       shifts.filter(s => s.date >= startDate && s.date <= endDate && !s.deleted_at)
     )
@@ -1899,7 +1884,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByStatus(status)
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(s => s.status === status && !s.deleted_at))
   },
 
@@ -1912,7 +1896,6 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getOpen()
     }
-    refreshMockAutomaticStatuses()
     return Promise.resolve(shifts.filter(shift =>
       !shift.deleted_at &&
       shift.status === 'scheduled' &&
@@ -1958,6 +1941,41 @@ export const shiftService = {
     if (!shift || shift.status !== 'scheduled' || shiftEndAt(shift) <= new Date()) return null
     return this.update(id, { registration_locked: false, version: expectedVersion }, actorId, { reason: 'Registration reopened' })
   },
+}
+
+export type ReportObligation = { shift: Shift; report: Report | null }
+
+export async function getReportObligationPage(query: ListQuery, signal?: AbortSignal): Promise<ListPage<ReportObligation>> {
+  if (getAuthMode() === 'supabase') return getCollectionPage<ReportObligation>('report_queue', query, signal)
+  const actor = actorFor()
+  if (!actor || actor.status !== 'active' || (actor.account_status && actor.account_status !== 'active') || actor.archived_at || actor.deleted_at || !hasPermission(actor, 'reports.submit')) {
+    return localListPage([], query)
+  }
+  const elevated = hasPermission(actor, 'reports.review')
+  const filters = query.filters ?? {}
+  const rows = shifts.flatMap(shift => {
+    if (shift.deleted_at || shift.archived_at || !['preparing', 'live', 'paused', 'completed'].includes(shift.status)) return []
+    const report = reports.find(item => item.shift_id === shift.id && !item.deleted_at && !item.archived_at) ?? null
+    if (reportQueueState(report ?? undefined) === 'finalized') return []
+    const related = shiftRegistrations.filter(item => item.shift_id === shift.id && item.user_id === actor.id && isStaffedRegistration(item))
+    if (!elevated && shift.host_id !== actor.id && shift.support_id !== actor.id && shift.technical_id !== actor.id && related.length === 0 && report?.submitted_by !== actor.id) return []
+    if (filters.from && shift.date < filters.from || filters.to && shift.date > filters.to) return []
+    if (filters.brandIds?.length && !filters.brandIds.includes(shift.brand_id)) return []
+    if (filters.platformIds?.length && !filters.platformIds.includes(shift.platform_id)) return []
+    if (filters.campaignIds?.length && !filters.campaignIds.includes(shift.campaign_id ?? '')) return []
+    if (filters.hostIds?.length && !filters.hostIds.some(id => shift.host_id === id || shiftRegistrations.some(item => item.shift_id === shift.id && item.operational_role === 'host' && item.user_id === id && isStaffedRegistration(item)))) return []
+    if (filters.supportIds?.length && !filters.supportIds.some(id => shift.support_id === id || shiftRegistrations.some(item => item.shift_id === shift.id && item.operational_role === 'support' && item.user_id === id && isStaffedRegistration(item)))) return []
+    if (filters.technicalIds?.length && !filters.technicalIds.some(id => shift.technical_id === id || shiftRegistrations.some(item => item.shift_id === shift.id && item.operational_role === 'technical' && item.user_id === id && isStaffedRegistration(item)))) return []
+    if (filters.reportStatuses?.length && !filters.reportStatuses.includes(report?.status ?? 'draft')) return []
+    if (filters.metricsStatuses?.length && !filters.metricsStatuses.includes(report?.metrics_confirmed ? 'confirmed' : 'unconfirmed')) return []
+    if (filters.search) {
+      const search = filters.search.toLocaleLowerCase()
+      const names = [brands.find(item => item.id === shift.brand_id)?.name, platforms.find(item => item.id === shift.platform_id)?.name, campaigns.find(item => item.id === shift.campaign_id)?.name]
+      if (![shift.id, shift.title, ...names].filter(Boolean).join(' ').toLocaleLowerCase().includes(search)) return []
+    }
+    return [{ shift, report }]
+  }).sort((left, right) => (right.shift.start_at ?? '').localeCompare(left.shift.start_at ?? '') || right.shift.date.localeCompare(left.shift.date) || right.shift.start_time.localeCompare(left.shift.start_time) || right.shift.id.localeCompare(left.shift.id))
+  return localListPage(rows, query)
 }
 
 export interface ShiftRoleCapacity {
@@ -2750,6 +2768,34 @@ export const reportService = {
         return [report.id, brands.find(b => b.id === shift?.brand_id)?.name, platforms.find(p => p.id === shift?.platform_id)?.name, campaigns.find(c => c.id === shift?.campaign_id)?.name].join(' ').toLowerCase().includes(search.toLowerCase())
       })())).sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
     return localListPage(filtered, query)
+  },
+  /** Bounded, actor-stable report export including only the six-field
+   * authorized historical context. Never fabricate complete Shift objects. */
+  async getAllFilteredWithHistoricalContext(filters: ListFilters = {}) {
+    if (getAuthMode() !== 'supabase') {
+      return { items: await this.getAllFiltered(filters),
+        historicalShiftContexts: {} as Record<string, HistoricalReportShiftContext> }
+    }
+    const rows = new Map<string, Report>()
+    const contexts: Record<string, HistoricalReportShiftContext> = {}
+    let total: number | undefined
+    let ownerKey: string | undefined
+    for (let page = 1; ; page++) {
+      const result = await getCollectionPage<Report>('reports', { page, pageSize: 50, filters })
+      if (page === 1) ownerKey = result.ownerKey
+      else if (result.ownerKey !== ownerKey) throw new OperationsListError('EXPORT_IDENTITY_CHANGED',409)
+      total ??= result.total
+      if (result.total !== total || result.page !== page ||
+        result.items.some(item => rows.has(item.id)) ||
+        !result.historicalShiftContexts) {
+        throw new OperationsListError('EXPORT_COLLECTION_CHANGED',409)
+      }
+      for (const item of result.items) rows.set(item.id,item)
+      Object.assign(contexts,result.historicalShiftContexts)
+      if (page * 50 >= total) break
+    }
+    if (rows.size !== total) throw new OperationsListError('EXPORT_COLLECTION_CHANGED',409)
+    return { items:[...rows.values()], historicalShiftContexts:contexts }
   },
   async getAllFiltered(filters: ListFilters = {}): Promise<Report[]> {
     if (getAuthMode() === 'supabase') return getCompleteCollection<Report>('reports', filters)
@@ -4028,6 +4074,34 @@ export const swapRequestService = {
     return Promise.resolve(swapRequests.filter(sr =>
       (sr.status === 'pending' || sr.status === 'accepted') && canViewMockSwapRequest(sr, actor),
     ))
+  },
+  async verifyConflict(input: SwapConflictCheckInput): Promise<SwapConflictCheckStatus> {
+    if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().verifyConflict(input)
+    const actor = actorFor()
+    const source = shiftRegistrations.find(reg => reg.id === input.sourceRegistrationId)
+    if (!source || source.user_id !== actor.id || !isStaffedRegistration(source)) throw new Error('SWAP_SOURCE_NOT_AUTHORIZED')
+    const sourceShift = shifts.find(shift => shift.id === source.shift_id && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
+    if (!sourceShift) throw new Error('SWAP_SOURCE_NOT_ELIGIBLE')
+    const conflictsFor = (userId: string, target: Shift, excludedRegistrationId?: string) => {
+      const targetTime = resolveShiftDateTime(target.date, target.start_time, target.end_time, target.timezone)
+      if (!targetTime?.valid) return true
+      const assignedShifts = shiftRegistrations
+        .filter(reg => reg.user_id === userId && reg.id !== excludedRegistrationId && (reg.status === 'pending' || isStaffedRegistration(reg)))
+        .map(reg => shifts.find(shift => shift.id === reg.shift_id))
+        .filter((shift): shift is Shift => Boolean(shift))
+      return hasShiftTimeConflict(assignedShifts, targetTime.startAt, targetTime.endAt, [target.id])
+    }
+    if (input.mode === 'replacement') {
+      const replacement = users.find(user => user.id === input.replacementStaffId && user.status === 'active' && !user.archived_at && !user.deleted_at)
+      if (!replacement || !replacement.operational_roles?.includes(source.operational_role)) throw new Error('SWAP_REPLACEMENT_NOT_ELIGIBLE')
+      const alreadyOnSource = shiftRegistrations.some(reg => reg.shift_id === sourceShift.id && reg.user_id === replacement.id && isStaffedRegistration(reg))
+      return alreadyOnSource || conflictsFor(replacement.id, sourceShift) ? 'CONFLICT' : 'VERIFIED_CLEAR'
+    }
+    if (input.mode !== 'exchange' || !input.targetShiftId || !input.counterpartRegistrationId) throw new Error('SWAP_EXCHANGE_PAYLOAD_INVALID')
+    const target = shifts.find(shift => shift.id === input.targetShiftId && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
+    const counterpart = shiftRegistrations.find(reg => reg.id === input.counterpartRegistrationId && reg.shift_id === input.targetShiftId && reg.operational_role === source.operational_role && isStaffedRegistration(reg))
+    if (!target || !counterpart || counterpart.user_id === actor.id) throw new Error('SWAP_COUNTERPART_NOT_ELIGIBLE')
+    return conflictsFor(actor.id, target, source.id) || conflictsFor(counterpart.user_id, sourceShift, counterpart.id) ? 'CONFLICT' : 'VERIFIED_CLEAR'
   },
   async create(
     data: Omit<SwapRequest, 'id' | 'status' | 'created_at' | 'updated_at'> & { status?: SwapRequest['status']; mode?: string; source_registration_id?: string; target_shift_id?: string | null; counterpart_registration_id?: string | null; counterpart_id?: string | null },

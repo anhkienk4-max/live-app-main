@@ -91,7 +91,10 @@ test('F6 separates preview from persistence and requires an explicit confirmatio
   assert.match(panel, /data-testid="schedule-import-confirm-summary"/)
   assert.match(panel, /scheduleImportBatchPort\.createBatch/)
   assert.match(panel, /scheduleImportBatchPort\.markBatchStatus\(batch\.id, 'confirmed'\)/)
-  assert.match(panel, /disabled=\{busy \|\| importableCount === 0\}/)
+  assert.match(panel, /disabled=\{busy \|\| hasPendingDrafts \|\| hasAgencySourceConflict \|\| importableCount === 0 \|\| \(source\?\.type === 'excel' && \(sourceFileStatus !== 'saved' \|\| !sourceFileId\)\)\}/)
+  assert.match(panel, /saveOriginalScheduleSource\(created\.id, file\)/)
+  assert.match(panel, /uploadScheduleSourceFile\(batchId, file\)/)
+  assert.match(panel, /await verifyScheduleSourceFile\(sourceFileId\)/)
 })
 
 test('F6 maps row outcomes to human states and preserves duplicate/retryable semantics', () => {
@@ -163,7 +166,7 @@ test('F6 retains native tab semantics, filter pressed state, and live completion
   assert.match(panel, /ref=\{completedImportRef\} tabIndex=\{-1\}/)
   assert.match(panel, /role="status" aria-live="polite" data-testid="schedule-import-processing"/)
   assert.match(panel, /role="alert" data-testid="schedule-import-master-error"/)
-  assert.match(panel, /role="status">\{result\.rows\.length === 0 \? t\('importNoRows'\) : t\('importNoMatchingRows'\)\}/)
+  assert.match(panel, /role="status">\{mappedResult\?\.rows\.length === 0 \? t\('importNoRows'\) : t\('importNoMatchingRows'\)\}/)
 })
 
 test('F6 keeps import access behind the existing permission contract and does not add fetch loops', () => {

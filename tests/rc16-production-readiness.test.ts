@@ -82,12 +82,12 @@ test('Authenticated capabilities provide only role-filtered booleans; no salary/
     for(const workforce of [false,true])for(const payroll of [false,true]){
       const h=createWorkforceCapabilitiesHandler({
         resolveUser:async()=>({id:'auth',businessUserId:'staff-1',systemPermission:role}),
-        enabled:flag=>flag==='payroll'?payroll:workforce,
+        enabled:flag=>flag==='payroll'?payroll:flag==='actual_staffing'?workforce:false,
       })
       const r=await h.GET(request('capabilities'))
       assert.equal(r.status,200);assert.equal(r.headers.get('Cache-Control'),'no-store')
       assert.deepEqual(await r.json(),{ok:true,capabilities:{
-        actual_staffing:workforce&&role!=='member',team_performance:workforce&&role!=='member',
+        actual_staffing:workforce&&role!=='member',self_attendance_review:false,team_performance:workforce&&role!=='member',
         own_performance:workforce,payroll:payroll&&role==='admin',
       }})
     }

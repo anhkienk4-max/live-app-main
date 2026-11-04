@@ -1,0 +1,198 @@
+{
+  "artifact": "RC19 migration ledger read-only reconciliation",
+  "observed_date": "2026-10-23",
+  "caution": "Ledger entry equality does not establish DDL/RLS equivalence. No database changes were performed.",
+  "environments": {
+    "staging": {
+      "project_id": "amagnzebmmuqiptmrjmc",
+      "ledger_entries": 77
+    },
+    "production": {
+      "project_id": "egdjnpmoasarrttvhgds",
+      "ledger_entries": 75
+    }
+  },
+  "counts": {
+    "common_versions": 59,
+    "staging_only": 18,
+    "production_only": 16,
+    "same_version_different_name": 4
+  },
+  "staging_only": [
+    {
+      "version": "20260919074349",
+      "name": "rc12_report_file_provider"
+    },
+    {
+      "version": "20260924000000",
+      "name": "rc13a_execution_source_storage_routes"
+    },
+    {
+      "version": "20261017214139",
+      "name": "ops_p0_staging_rc16k_four_read_rpc_bridge"
+    },
+    {
+      "version": "20261017214845",
+      "name": "ops_p0_staging_rc16k_remaining_read_rpc_bridge"
+    },
+    {
+      "version": "20261017215937",
+      "name": "ops_p03_staging_rc15_operational_files"
+    },
+    {
+      "version": "20261017220059",
+      "name": "ops_p03_staging_rc15_storage_route_forward_compat"
+    },
+    {
+      "version": "20261017220212",
+      "name": "ops_p03_staging_rc16_workforce_foundation"
+    },
+    {
+      "version": "20261017220308",
+      "name": "ops_p03_staging_rc16b_draft_payroll_correction"
+    },
+    {
+      "version": "20261017220359",
+      "name": "ops_p03_staging_p0_audit_privilege_hardening"
+    },
+    {
+      "version": "20261017220438",
+      "name": "ops_p03_staging_rc16k_payroll_snapshot"
+    },
+    {
+      "version": "20261018074227",
+      "name": "ops_p06_staging_exact_prod_shift_write_rpc"
+    },
+    {
+      "version": "20261018080542",
+      "name": "ops_p07_staging_image_delete_null_owner_auth_fix"
+    },
+    {
+      "version": "20261018083450",
+      "name": "ops_p09_staging_direct_image_delete_owner_guard"
+    },
+    {
+      "version": "20261018084459",
+      "name": "ops_p09b_staging_soft_delete_report_owner_guard"
+    },
+    {
+      "version": "20261021064611",
+      "name": "media_viewer_acl_exact_shift_v1"
+    },
+    {
+      "version": "20261022165004",
+      "name": "rc19_1b2_staffing_candidate_availability"
+    },
+    {
+      "version": "20261022165655",
+      "name": "rc19_1b3_staffing_candidate_page_before_conflict"
+    },
+    {
+      "version": "20261022185140",
+      "name": "rc19_p2_04_member_attendance_event_journal"
+    }
+  ],
+  "production_only": [
+    {
+      "version": "20261011091925",
+      "name": "rc15_storage_route_prerequisites"
+    },
+    {
+      "version": "20261011092015",
+      "name": "rc15_shift_rpc_compatibility"
+    },
+    {
+      "version": "20261011092051",
+      "name": "rc15_operational_files"
+    },
+    {
+      "version": "20261011221500",
+      "name": "rc15_provider_metadata_forward_compat"
+    },
+    {
+      "version": "20261012000000",
+      "name": "rc16_workforce_payroll_foundation"
+    },
+    {
+      "version": "20261012000001",
+      "name": "rc16b_draft_payroll_correction"
+    },
+    {
+      "version": "20261012145735",
+      "name": "p0_audit_privilege_hardening"
+    },
+    {
+      "version": "20261014173408",
+      "name": "20261012171503_rc16k_bounded_shift_lists"
+    },
+    {
+      "version": "20261017000000",
+      "name": "rc17a_actual_staffing_audit"
+    },
+    {
+      "version": "20261019000000",
+      "name": "rc17b_rate_supersession_and_recalc"
+    },
+    {
+      "version": "20261021100941",
+      "name": "rc18a_publish_shifts_realtime_production"
+    },
+    {
+      "version": "20261021100953",
+      "name": "global_report_obligation_page_production"
+    },
+    {
+      "version": "20261021101021",
+      "name": "rc17c_attendance_import_foundation_production"
+    },
+    {
+      "version": "20261021101030",
+      "name": "global_report_notification_transition_keys_production"
+    },
+    {
+      "version": "20261021101104",
+      "name": "shift_automatic_status_scheduling_and_read_safety_production"
+    },
+    {
+      "version": "20261021101725",
+      "name": "media_viewer_acl_exact_shift_v1"
+    }
+  ],
+  "same_version_different_name": [
+    {
+      "version": "20260826082036",
+      "staging_name": "shift_swap_production",
+      "production_name": "20260826082036_shift_swap_production"
+    },
+    {
+      "version": "20260826082055",
+      "staging_name": "shift_swap_p0_hardening",
+      "production_name": "20260826082055_shift_swap_p0_hardening"
+    },
+    {
+      "version": "20260826083723",
+      "staging_name": "shift_swap_lock_helper_fix",
+      "production_name": "20260826083723_shift_swap_lock_helper_fix"
+    },
+    {
+      "version": "20260826172730",
+      "staging_name": "20260826160000_shift_swap_two_flow_semantics",
+      "production_name": "20260826172730_shift_swap_two_flow_semantics"
+    }
+  ],
+  "report_rpc": {
+    "canonical_repo_path": "supabase/migrations/20261021120000_global_report_obligation_page.sql",
+    "canonical_timestamp": "20261021120000",
+    "production_deployed_as": {
+      "version": "20261021100953",
+      "name": "global_report_obligation_page_production"
+    },
+    "production_live_body_matches_canonical_after_whitespace_normalization": true,
+    "production_security_invoker": true,
+    "production_execute_authenticated": true,
+    "production_execute_anon": false,
+    "staging_function_present": false,
+    "staging_version_present": false,
+    "production_canonical_version_present": false
+  }
+}

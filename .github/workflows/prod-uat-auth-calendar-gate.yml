@@ -1,0 +1,48 @@
+name: Production UAT actor and calendar regression gate
+
+on:
+  push:
+    branches: ['fix/prod-uat-auth-fetch-20261022']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Activate pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install reviewed lockfile
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Lint changed modules
+        run: pnpm exec eslint lib/auth/AuthIdentityProvider.tsx components/features/dashboard/DashboardOverview.tsx lib/server/authGuards.ts lib/server/operationsCollectionHandler.ts lib/services/workforceService.ts lib/hooks/useWorkforceCapabilities.ts tests/calendar-business-month-contract.test.ts
+      - name: Authentication, page cache and calendar month contract
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/auth-identity-bridge.test.tsx tests/operations-page-cache.test.ts tests/calendar-business-month-contract.test.ts
+      - name: Full source regression inventory
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Production-equivalent Next build without database writes
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build

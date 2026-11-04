@@ -1,6 +1,7 @@
 import type { ScheduleImportRow, Shift } from '@/lib/types/database.types'
 import type { ImportResult } from '@/lib/utils/excelUtils'
 import { DEFAULT_SHIFT_STAFFING, MAX_SHIFT_CAPACITY } from '@/lib/utils/shiftUtils'
+import { agencyDisplayLabel } from '@/lib/utils/executionSource'
 
 export type PreviewStaffingField = 'required_host_count' | 'required_support_count' | 'required_technical_count'
 export type PreviewStaffingValues = Record<PreviewStaffingField, number | string>
@@ -9,6 +10,7 @@ export type PreviewStaffingNameField = 'host_names' | 'assistant_names' | 'techn
 export type PreviewStaffingNameValues = Record<PreviewStaffingNameField, string[]>
 export type ScheduleImportSourcePresence = Partial<Record<
   | 'execution_source'
+  | 'agency_code'
   | 'campaign_name'
   | 'studio'
   | 'title'
@@ -19,6 +21,7 @@ export type ScheduleImportSourcePresence = Partial<Record<
 
 type ScheduleImportEnrichmentShape = Pick<Shift,
   | 'execution_source'
+  | 'agency_code'
   | 'campaign_id'
   | 'studio'
   | 'title'
@@ -26,6 +29,7 @@ type ScheduleImportEnrichmentShape = Pick<Shift,
   | 'required_host_count'
   | 'required_support_count'
   | 'required_technical_count'
+  | 'supplemental_fields'
   | 'host_names'
   | 'assistant_names'
   | 'technical_names'
@@ -53,6 +57,7 @@ export function buildScheduleImportEnrichmentPatch(
   sourcePresence: ScheduleImportSourcePresence = {},
 ): Partial<Pick<Shift,
   | 'execution_source'
+  | 'agency_code'
   | 'campaign_id'
   | 'studio'
   | 'title'
@@ -60,9 +65,11 @@ export function buildScheduleImportEnrichmentPatch(
   | 'required_host_count'
   | 'required_support_count'
   | 'required_technical_count'
+  | 'supplemental_fields'
 >> {
   const patch: Partial<Pick<Shift,
     | 'execution_source'
+    | 'agency_code'
     | 'campaign_id'
     | 'studio'
     | 'title'
@@ -70,9 +77,13 @@ export function buildScheduleImportEnrichmentPatch(
     | 'required_host_count'
     | 'required_support_count'
     | 'required_technical_count'
+    | 'supplemental_fields'
   >> = {}
   if (sourcePresence.execution_source && imported.execution_source && existing.execution_source !== imported.execution_source) {
     patch.execution_source = imported.execution_source
+  }
+  if (sourcePresence.agency_code && imported.agency_code !== undefined && existing.agency_code !== imported.agency_code) {
+    patch.agency_code = imported.agency_code
   }
   if (sourceValueProvided(sourcePresence.campaign_name, Boolean(imported.campaign_id)) && imported.campaign_id && existing.campaign_id !== imported.campaign_id) {
     patch.campaign_id = imported.campaign_id
@@ -92,6 +103,10 @@ export function buildScheduleImportEnrichmentPatch(
       patch[field] = imported[field]
     }
   })
+  const supplemental = imported.supplemental_fields ?? {}
+  if (Object.entries(supplemental).some(([key, value]) => JSON.stringify(existing.supplemental_fields?.[key]) !== JSON.stringify(value))) {
+    patch.supplemental_fields = { ...existing.supplemental_fields, ...supplemental }
+  }
   return patch
 }
 
@@ -128,6 +143,7 @@ export const previewStaffingNameFields = [
 
 const previewFieldToSourceField: Record<string, string> = {
   execution_source: 'Execution Source',
+  agency_code: 'Agency',
   date: 'Date',
   start_time: 'Start time',
   end_time: 'End time',
@@ -194,9 +210,9 @@ const staffingSourceAliases: Record<PreviewStaffingField, string[]> = {
 }
 
 const staffingNameSourceAliases: Record<PreviewStaffingNameField, string[]> = {
-  host_names: ['host_names', 'Host', 'Tên Host', 'MC'],
-  assistant_names: ['assistant_names', 'Trợ', 'Trợ live', 'Assistant'],
-  technical_names: ['technical_names', 'Kỹ thuật', 'Ky thuat', 'Technical', 'Tech'],
+  host_names: ['host_names', 'Host', 'Tên Host', 'MC', 'Live Host', 'Host live'],
+  assistant_names: ['assistant_names', 'Trợ', 'Trợ lý', 'Tro ly', 'Tro', 'Trợ live', 'Tro live', 'Trợ ca', 'Tro ca', 'Assistant'],
+  technical_names: ['technical_names', 'Kỹ thuật', 'Ky thuat', 'Technical', 'Tech', 'KT', 'Kỹ thuật viên', 'Ky thuat vien'],
 }
 
 const normalizeSourceKey = (value: string) => value
@@ -211,18 +227,43 @@ const normalizeSourceKey = (value: string) => value
   .trim()
   .toLowerCase()
 
+const staffingFieldLookup = new Map<string, PreviewStaffingField>()
+for (const field of previewStaffingFields) {
+  for (const alias of staffingSourceAliases[field]) {
+    staffingFieldLookup.set(normalizeSourceKey(alias), field)
+  }
+}
+
+const staffingNameFieldLookup = new Map<string, PreviewStaffingNameField>()
+for (const field of previewStaffingNameFields) {
+  for (const alias of staffingNameSourceAliases[field]) {
+    staffingNameFieldLookup.set(normalizeSourceKey(alias), field)
+  }
+}
+
+const normalizedStaffingAliases = new Set<string>([
+  ...staffingFieldLookup.keys(),
+  ...staffingNameFieldLookup.keys(),
+])
+
+const normalizedStaffingSourceAliases: Record<PreviewStaffingField, string[]> = {
+  required_host_count: staffingSourceAliases.required_host_count.map(normalizeSourceKey),
+  required_support_count: staffingSourceAliases.required_support_count.map(normalizeSourceKey),
+  required_technical_count: staffingSourceAliases.required_technical_count.map(normalizeSourceKey),
+}
+
+const normalizedStaffingNameSourceAliases: Record<PreviewStaffingNameField, string[]> = {
+  host_names: staffingNameSourceAliases.host_names.map(normalizeSourceKey),
+  assistant_names: staffingNameSourceAliases.assistant_names.map(normalizeSourceKey),
+  technical_names: staffingNameSourceAliases.technical_names.map(normalizeSourceKey),
+}
+
 export function getCanonicalStaffingField(sourceKey: string): PreviewStaffingField | undefined {
-  const normalizedKey = normalizeSourceKey(sourceKey)
-  return previewStaffingFields.find(field =>
-    staffingSourceAliases[field].some(alias => normalizeSourceKey(alias) === normalizedKey),
-  )
+  return staffingFieldLookup.get(normalizeSourceKey(sourceKey))
 }
 
 export function getCanonicalStaffingNameField(sourceKey: string): PreviewStaffingNameField | undefined {
-  const normalizedKey = normalizeSourceKey(sourceKey)
-  return previewStaffingNameFields.find(field =>
-    staffingNameSourceAliases[field].some(alias => normalizeSourceKey(alias) === normalizedKey),
-  )
+  return staffingNameFieldLookup.get(normalizeSourceKey(sourceKey))
 }
 
 export function normalizeStaffingDisplayNames(rawValue: unknown): string[] {
@@ -246,9 +287,8 @@ function staffingSourceValue(
     normalizedEntries.set(normalizeSourceKey(key), value)
   })
   const presentValues: unknown[] = []
-  for (const alias of staffingSourceAliases[field]) {
-    const normalizedAlias = normalizeSourceKey(alias)
-    if (normalizedEntries.has(normalizedAlias)) presentValues.push(normalizedEntries.get(normalizedAlias))
+  for (const alias of normalizedStaffingSourceAliases[field]) {
+    if (normalizedEntries.has(alias)) presentValues.push(normalizedEntries.get(alias))
   }
   return presentValues.find(value => !isMissingStaffingValue(value)) ?? presentValues[0]
 }
@@ -261,9 +301,8 @@ function staffingNameSourceValue(
   Object.entries(sourceRow).forEach(([key, value]) => {
     normalizedEntries.set(normalizeSourceKey(key), value)
   })
-  for (const alias of staffingNameSourceAliases[field]) {
-    const normalizedAlias = normalizeSourceKey(alias)
-    if (normalizedEntries.has(normalizedAlias)) return normalizedEntries.get(normalizedAlias)
+  for (const alias of normalizedStaffingNameSourceAliases[field]) {
+    if (normalizedEntries.has(alias)) return normalizedEntries.get(alias)
   }
   return undefined
 }
@@ -335,25 +374,58 @@ export function validateStaffingValues(
 export function normalizeScheduleImportSourceRow(
   sourceRow: Record<string, unknown>,
 ): Record<string, unknown> & PreviewStaffingValues & PreviewStaffingNameValues & { source_presence?: ScheduleImportSourcePresence } {
-  const staffingAliases = new Set(
-    [
-      ...Object.values(staffingSourceAliases).flat(),
-      ...Object.values(staffingNameSourceAliases).flat(),
-    ].map(normalizeSourceKey),
-  )
-  const canonicalSource = Object.fromEntries(
-    Object.entries(sourceRow).filter(([key]) => !staffingAliases.has(normalizeSourceKey(key))),
-  )
+  const normalizedEntries = new Map<string, unknown>()
+  const canonicalSource: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(sourceRow)) {
+    const normKey = normalizeSourceKey(key)
+    normalizedEntries.set(normKey, value)
+    if (!normalizedStaffingAliases.has(normKey)) {
+      canonicalSource[key] = value
+    }
+  }
+
+  const staffingValues = Object.fromEntries(
+    previewStaffingFields.map(field => {
+      let found: unknown
+      for (const alias of normalizedStaffingSourceAliases[field]) {
+        if (normalizedEntries.has(alias)) {
+          const val = normalizedEntries.get(alias)
+          if (!isMissingStaffingValue(val)) {
+            found = val
+            break
+          }
+          if (found === undefined) found = val
+        }
+      }
+      return [field, normalizeStaffingCountForPreview(found)]
+    }),
+  ) as PreviewStaffingValues
+
+  const staffingNames = Object.fromEntries(
+    previewStaffingNameFields.map(field => {
+      let found: unknown
+      for (const alias of normalizedStaffingNameSourceAliases[field]) {
+        if (normalizedEntries.has(alias)) {
+          found = normalizedEntries.get(alias)
+          break
+        }
+      }
+      return [field, normalizeStaffingDisplayNames(found)]
+    }),
+  ) as PreviewStaffingNameValues
+
   return {
     ...canonicalSource,
-    ...normalizeStaffingValuesForPreview(sourceRow),
-    ...normalizeStaffingNameValuesForPreview(sourceRow),
+    ...staffingValues,
+    ...staffingNames,
   }
 }
 
 export function buildScheduleImportPreviewSourceRow(row: ScheduleImportRow) {
   return normalizeScheduleImportSourceRow({
     'Execution Source': row.execution_source || '',
+    Agency: row.agency_code ? agencyDisplayLabel(row.agency_code) : (row.custom_fields?.Agency || ''),
     Date: row.date,
     'Start time': row.start_time,
     'End time': row.end_time,
@@ -369,6 +441,7 @@ export function buildScheduleImportPreviewSourceRow(row: ScheduleImportRow) {
     required_support_count: row.required_support_count,
     required_technical_count: row.required_technical_count,
     Notes: row.notes || '',
+    custom_fields: row.custom_fields ?? {},
     source_presence: row.source_presence,
   })
 }
@@ -381,6 +454,7 @@ export function toCanonicalScheduleImportPreviewRow(
 
   return {
     ...canonical,
+    agency_code: (row as ScheduleImportRow).agency_code ?? canonical.agency_code,
     studio: studio || undefined,
     host_names: canonical.host_names,
     assistant_names: canonical.assistant_names,
@@ -399,6 +473,8 @@ export function normalizeScheduleImportResult(result: ImportResult): ImportResul
     const shift = preview.shift && previewStaffingFields.every(field => staffing[field] !== null)
       ? {
           ...preview.shift,
+          execution_source: row.execution_source,
+          agency_code: row.agency_code,
           studio: row.studio,
           host_names: row.host_names ?? [],
           assistant_names: row.assistant_names ?? [],

@@ -22,7 +22,15 @@ export function useWorkforceCapabilities() {
     const invalidate = (event: Event) => {
       request.current?.abort()
       invalidateSharedWorkforceCapabilities(identityKey)
-      const message = (event as CustomEvent<{ message?: string }>).detail?.message
+      const detail = (event as CustomEvent<{ message?: string; revalidate?: boolean }>).detail
+      if (detail?.revalidate) {
+        // Read server-authoritative capabilities again; keep protected UI gated
+        // while the check runs instead of preserving an unrelated 403 forever.
+        setResult(null)
+        reload()
+        return
+      }
+      const message = detail?.message
       setResult(identityKey ? { identityKey, error: message || 'Quyền truy cập đã thay đổi. Vui lòng xác minh lại.' } : null)
     }
     const refresh = () => { invalidateSharedWorkforceCapabilities(identityKey); reload() }

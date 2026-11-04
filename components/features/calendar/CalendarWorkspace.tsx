@@ -131,8 +131,8 @@ function CalendarIdentityWorkspace() {
           <p className="text-sm text-muted-foreground">{t("calendarSubtitle")}</p>
         </PageHeaderContent>
       </PageHeader>
-      <div className="min-w-0 max-w-full overflow-x-auto" data-testid="calendar-stable-tabs">
-        <TabsList aria-label={t("calendar")} className="h-auto w-max min-w-full flex-nowrap justify-start sm:min-w-0">
+      <div className="min-w-0 max-w-full overflow-x-auto overflow-y-hidden" data-testid="calendar-stable-tabs">
+        <TabsList aria-label={t("calendar")} className="!flex !h-auto !w-max !min-w-max !flex-nowrap justify-start sm:!min-w-0">
           <TabsTrigger className="!flex-none px-3 py-2" value="calendar">{t("shiftCalendar")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="open">{t("openShifts")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="mine">{t("myShifts")}</TabsTrigger>

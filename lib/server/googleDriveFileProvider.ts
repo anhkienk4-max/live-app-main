@@ -127,6 +127,8 @@ function toMetadata(file: DriveFile): FileProviderMetadata {
     size_bytes: toSize(file.size),
     parent_ids: file.parents ?? [],
     kind: file.mimeType === DRIVE_FOLDER_MIME ? 'folder' : 'file',
+    trashed: file.trashed ?? false,
+    capabilities: file.capabilities ?? undefined,
     provider_metadata: {
       drive_file_id: id,
       parent_ids: file.parents ?? [],
@@ -188,13 +190,19 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
     if (segments.length === 0) throw new GoogleDriveError('GOOGLE_DRIVE_UPLOAD_FAILED')
     let parentId = rootFolderId
     for (const segment of segments) {
+      await request(() => validateGoogleDriveFolder(drive, parentId), 'GOOGLE_DRIVE_FOLDER_NOT_FOUND')
       const cacheKey = `${parentId}\u0000${segment}`
       // Cache only folders already proved unique by lookup or created by this provider.
       // A lookup that later finds duplicates evicts the cached choice before failing.
       const cached = folderCache.get(cacheKey)
       if (cached) {
-        parentId = cached
-        continue
+        const cachedFolder = await driveFile(cached, 'id,name,mimeType,trashed,parents')
+        if (cachedFolder.name === segment && cachedFolder.mimeType === DRIVE_FOLDER_MIME
+          && cachedFolder.trashed !== true && cachedFolder.parents?.includes(parentId)) {
+          parentId = cached
+          continue
+        }
+        folderCache.delete(cacheKey)
       }
       const existing = await findChildFolder(parentId, segment)
       if (existing) {
@@ -233,6 +241,23 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
     return response.data
   }
 
+  async function assertUnderRoot(folderId: string): Promise<void> {
+    let currentId = normalizeGoogleDriveFileId(folderId)
+    const visited = new Set<string>()
+    for (let depth = 0; depth < 32; depth += 1) {
+      if (currentId === rootFolderId) return
+      if (visited.has(currentId)) break
+      visited.add(currentId)
+      const folder = await driveFile(currentId, 'id,mimeType,trashed,parents')
+      if (folder.mimeType !== DRIVE_FOLDER_MIME || folder.trashed === true) {
+        throw new GoogleDriveError('GOOGLE_DRIVE_FOLDER_INVALID')
+      }
+      if (!folder.parents || folder.parents.length !== 1) break
+      currentId = normalizeGoogleDriveFileId(folder.parents[0])
+    }
+    throw new GoogleDriveError('GOOGLE_DRIVE_FOLDER_OUTSIDE_ROOT')
+  }
+
   async function contentBuffer(content: FileUploadInput['content']): Promise<Buffer> {
     if (content instanceof Uint8Array) return Buffer.from(content)
     if (content instanceof ArrayBuffer) return Buffer.from(new Uint8Array(content))
@@ -255,9 +280,11 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
           throw new GoogleDriveError('GOOGLE_DRIVE_FOLDER_URL_INVALID')
         }
         await request(() => validateGoogleDriveFolder(drive, normalizedParentId), 'GOOGLE_DRIVE_FOLDER_NOT_FOUND')
+        await assertUnderRoot(normalizedParentId)
         parentId = normalizedParentId
       } else if (destination.custom) {
         await request(() => validateGoogleDriveFolder(drive, destination.folderId), 'GOOGLE_DRIVE_FOLDER_NOT_FOUND')
+        await assertUnderRoot(destination.folderId)
         parentId = destination.folderId
       } else {
         parentId = await resolveFolderPath(input.logical_path)
@@ -273,6 +300,7 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
       )
       const file = response.data
       const id = fileId(file, 'GOOGLE_DRIVE_UPLOAD_FAILED')
+      if (!file.parents?.includes(parentId)) throw new GoogleDriveError('GOOGLE_DRIVE_UPLOAD_FAILED')
       return {
         asset: {
           id,
@@ -315,7 +343,7 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
       return (response.data.files ?? []).map(file => toMetadata(file))
     },
     async getMetadata(externalFileId) {
-      return toMetadata(await driveFile(externalFileId, 'id,name,mimeType,size,md5Checksum,parents,createdTime,modifiedTime'))
+      return toMetadata(await driveFile(externalFileId, 'id,name,mimeType,size,md5Checksum,parents,createdTime,modifiedTime,trashed,capabilities(canAddChildren,canEdit)'))
     },
     async read(externalFileId) {
       const id = normalizeGoogleDriveFileId(externalFileId)
@@ -382,8 +410,11 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
     },
     async ensureFolder(parentId: string, name: string): Promise<CloudFolderRef> {
       const id = normalizeGoogleDriveFileId(parentId)
+      await request(() => validateGoogleDriveFolder(drive, id), 'GOOGLE_DRIVE_FOLDER_NOT_FOUND')
+      await assertUnderRoot(id)
       const existingId = await findChildFolder(id, name)
       if (existingId) {
+        await assertUnderRoot(existingId)
         return { provider: 'google_drive', id: existingId, name, parentId: id }
       }
       try {
@@ -396,10 +427,14 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
           'GOOGLE_DRIVE_UPLOAD_FAILED',
         )
         const createdId = fileId(created.data, 'GOOGLE_DRIVE_UPLOAD_FAILED')
+        if (!created.data.parents?.includes(id)) throw new GoogleDriveError('GOOGLE_DRIVE_UPLOAD_FAILED')
         return { provider: 'google_drive', id: createdId, name, parentId: id }
       } catch (error) {
         const after = await findChildFolder(id, name)
-        if (after) return { provider: 'google_drive', id: after, name, parentId: id }
+        if (after) {
+          await assertUnderRoot(after)
+          return { provider: 'google_drive', id: after, name, parentId: id }
+        }
         throw toDriveError(error, 'GOOGLE_DRIVE_UPLOAD_FAILED')
       }
     },

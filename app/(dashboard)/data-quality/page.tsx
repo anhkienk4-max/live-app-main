@@ -6,10 +6,11 @@ import { dataQualityPageService,type QualityPage } from '@/lib/services/dataQual
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archetypes'
+import type { DataQualitySeverity, DataQualitySource } from '@/lib/types/dataQuality'
 
 export default function DataQualityPage() {
-  const [filters,setFilters]=React.useState<{severity:'all'|'error'|'warning'|'info';source:string}>({severity:'all',source:'all'})
-  const list=usePagedList(dataQualityPageService,'quality',{severity:filters.severity,qualitySources:filters.source==='all'?[]:[filters.source]},10)
+  const [filters,setFilters]=React.useState<{severity:DataQualitySeverity[];source:DataQualitySource[]}>({severity:[],source:[]})
+  const list=usePagedList(dataQualityPageService,'quality',{severity:filters.severity,qualitySources:filters.source},10)
   const metadata=list.result as QualityPage|undefined
   if(list.error)return <PageLoadError error={list.error} onRetry={()=>void list.reload()} />
   if(list.loading)return <ContentSkeleton />

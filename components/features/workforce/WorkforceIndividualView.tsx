@@ -23,6 +23,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
+import { parseWorkforceYearDraft } from '@/lib/workforce/workforcePeriod'
+import { useTranslation } from '@/lib/i18n'
 import {
   workforceService,
   workforceErrorMessage,
@@ -33,24 +36,28 @@ import {
 interface WorkforceIndividualViewProps {
   staffId: string
   role: WorkforceRole
-  month: string
+  period: string
   canSelectOtherStaff?: boolean
   availableStaff?: Array<{ id: string; name: string | null }>
   onStaffChange?: (newStaffId: string) => void
   onRoleChange?: (newRole: WorkforceRole) => void
-  onMonthChange?: (newMonth: string) => void
+  onPeriodChange?: (newPeriod: string) => void
 }
 
 export function WorkforceIndividualView({
   staffId,
   role,
-  month,
+  period,
   canSelectOtherStaff = false,
   onStaffChange,
   onRoleChange,
-  onMonthChange,
+  onPeriodChange,
 }: WorkforceIndividualViewProps) {
   const { toast } = useToast()
+  const { language } = useTranslation()
+  const en = language === 'en'
+  const [yearDraft, setYearDraft] = React.useState(period.slice(0, 4))
+  const [staffDraft, setStaffDraft] = React.useState(staffId)
   const [summary, setSummary] = React.useState<WorkforcePerformanceSummary | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -66,7 +73,7 @@ export function WorkforceIndividualView({
       const res = await workforceService.getWorkforcePerformance({
         staffId,
         role,
-        month,
+        period,
       })
       if (sequence !== readSequence.current) return
       setSummary(res.performance)
@@ -76,14 +83,15 @@ export function WorkforceIndividualView({
       const msg = workforceErrorMessage(err)
       setError(msg)
       toast({
-        title: 'Không thể tải hiệu suất cá nhân',
+        title: en ? 'Could not load individual performance' : 'Không thể tải hiệu suất cá nhân',
         description: msg,
         variant: 'destructive',
       })
     } finally {
       if (sequence === readSequence.current) setLoading(false)
     }
-  }, [staffId, role, month, toast])
+  }, [staffId, role, period, toast, en])
+  useShiftChangeRefresh(loadPerformance)
 
   React.useEffect(() => {
     const generation = readSequence
@@ -95,8 +103,8 @@ export function WorkforceIndividualView({
 
   const roleLabels: Record<WorkforceRole, string> = {
     host: 'Host Livestream',
-    support: 'Trợ lý phiên Live',
-    technical: 'Kỹ thuật viên',
+    support: en ? 'Support' : 'Trợ lý phiên Live',
+    technical: en ? 'Technical' : 'Kỹ thuật viên',
   }
 
   const hoursWorked = summary ? Math.floor(summary.approvedActualMinutes / 60) : 0
@@ -110,49 +118,81 @@ export function WorkforceIndividualView({
           {canSelectOtherStaff && (
             <div>
               <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Nhân sự (Staff ID)
+                {en ? 'Staff ID' : 'Nhân sự (Staff ID)'}
               </label>
               <div className="mt-1 flex items-center gap-1.5">
                 <Input
                   type="text"
-                  value={staffId}
-                  onChange={(e) => onStaffChange?.(e.target.value)}
-                  placeholder="Nhập staff_id..."
+                  value={staffDraft}
+                  onChange={(e) => setStaffDraft(e.target.value)}
+                  onKeyDown={event => { if (event.key === 'Enter') onStaffChange?.(staffDraft.trim()) }}
+                  aria-label={en ? 'Staff ID' : 'Mã nhân sự'}
+                  placeholder={en ? 'Enter staff ID...' : 'Nhập staff_id...'}
                   className="h-8 text-xs font-mono"
                 />
+                <Button size="sm" variant="outline" onClick={() => onStaffChange?.(staffDraft.trim())}>{en ? 'Apply' : 'Áp dụng'}</Button>
               </div>
             </div>
           )}
 
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Vai trò đánh giá
+              {en ? 'Operational role' : 'Vai trò đánh giá'}
             </label>
             <Select
               value={role}
               onValueChange={(val: WorkforceRole) => onRoleChange?.(val)}
             >
-              <SelectTrigger className="mt-1 h-8 text-xs">
+              <SelectTrigger aria-label={en ? 'Operational role' : 'Vai trò vận hành'} className="mt-1 h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="host">Host Livestream</SelectItem>
-                <SelectItem value="support">Trợ lý phiên Live</SelectItem>
-                <SelectItem value="technical">Kỹ thuật viên</SelectItem>
+                <SelectItem value="support">{en ? 'Support' : 'Trợ lý phiên Live'}</SelectItem>
+                <SelectItem value="technical">{en ? 'Technical' : 'Kỹ thuật viên'}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Tháng đánh giá
+              {en ? 'Period' : 'Kỳ đánh giá'}
             </label>
-            <Input
-              type="month"
-              value={month}
-              onChange={(e) => onMonthChange?.(e.target.value)}
-              className="mt-1 h-8 text-xs"
-            />
+            <div className="mt-1 flex gap-1">
+              <Select value={period.length === 4 ? 'year' : 'month'} onValueChange={(mode) =>
+                onPeriodChange?.(mode === 'year' ? period.slice(0, 4) : `${period.slice(0, 4)}-01`)
+              }>
+                <SelectTrigger aria-label={en ? 'Period mode' : 'Chế độ thời gian'} className="h-8 w-24 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">{en ? 'Month' : 'Tháng'}</SelectItem>
+                  <SelectItem value="year">{en ? 'Year' : 'Năm'}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type={period.length === 4 ? 'number' : 'month'}
+                aria-label={en ? 'Performance period' : 'Kỳ hiệu suất'}
+                min={period.length === 4 ? 1900 : undefined}
+                max={period.length === 4 ? 9999 : undefined}
+                step={period.length === 4 ? 1 : undefined}
+                value={period.length === 4 ? yearDraft : period}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (period.length === 4) {
+                    const parsed = parseWorkforceYearDraft(value)
+                    if (parsed) {
+                      setYearDraft(parsed.draft)
+                      if (parsed.period) onPeriodChange?.(parsed.period)
+                    }
+                  } else if (/^\d{4}-\d{2}$/u.test(value)) {
+                    onPeriodChange?.(value)
+                  }
+                }}
+                onBlur={() => {
+                  if (!/^\d{4}$/u.test(yearDraft)) setYearDraft(period.slice(0, 4))
+                }}
+                className="h-8 min-w-0 text-xs"
+              />
+            </div>
           </div>
 
           <div>
@@ -164,7 +204,7 @@ export function WorkforceIndividualView({
               className="h-8 text-xs w-full sm:w-auto"
             >
               <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-              Làm mới số liệu
+              {en ? 'Retry / Refresh' : 'Làm mới số liệu'}
             </Button>
           </div>
         </div>
@@ -184,9 +224,14 @@ export function WorkforceIndividualView({
         <Card className="border-rose-200 bg-rose-50/50 p-6 text-center">
           <AlertTriangle className="mx-auto h-8 w-8 text-rose-600" />
           <h3 className="mt-2 text-sm font-semibold text-rose-900">
-            Không thể hiển thị dữ liệu hiệu suất
+            {en ? 'Could not show performance data' : 'Không thể hiển thị dữ liệu hiệu suất'}
           </h3>
           <p className="mt-1 text-xs text-rose-600">{error}</p>
+          <Button className="mt-3" variant="outline" onClick={() => loadPerformance()}>{en ? 'Retry' : 'Thử lại'}</Button>
+        </Card>
+      ) : summary && summary.assignedShifts === 0 && summary.verifiedShifts === 0 ? (
+        <Card className="border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600" role="status">
+          {en ? 'No assigned shifts or approved attendance for this period.' : 'Chưa có ca phân công hoặc chấm công đã duyệt trong kỳ này.'}
         </Card>
       ) : summary ? (
         <div className="space-y-6">
@@ -203,9 +248,9 @@ export function WorkforceIndividualView({
                 <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-slate-500">
                   <span className="font-mono">ID: {summary.staffId}</span>
                   <span>•</span>
-                  <span>Vai trò: <strong className="text-slate-700">{roleLabels[summary.role]}</strong></span>
+                  <span>{en ? 'Role' : 'Vai trò'}: <strong className="text-slate-700">{roleLabels[summary.role]}</strong></span>
                   <span>•</span>
-                  <span>Tháng: <strong className="text-slate-700">{month}</strong></span>
+                  <span>{en ? 'Period' : 'Kỳ'}: <strong className="text-slate-700">{period}</strong></span>
                 </div>
               </div>
             </div>
@@ -214,12 +259,12 @@ export function WorkforceIndividualView({
               {summary.isComplete ? (
                 <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-300 text-xs py-1 px-3">
                   <CheckCircle2 className="h-3.5 w-3.5 mr-1 text-emerald-600" />
-                  Hồ sơ chấm công hoàn tất
+                  {en ? 'Attendance record complete' : 'Hồ sơ chấm công hoàn tất'}
                 </Badge>
               ) : (
                 <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs py-1 px-3">
                   <AlertTriangle className="h-3.5 w-3.5 mr-1 text-amber-600" />
-                  Chưa đầy đủ chứng từ xác minh
+                  {en ? 'Attendance evidence incomplete' : 'Chưa đầy đủ chứng từ xác minh'}
                 </Badge>
               )}
             </div>
@@ -231,7 +276,7 @@ export function WorkforceIndividualView({
             <Card className="border-slate-200 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Tỷ lệ đúng giờ
+                  {en ? 'Timeliness' : 'Tỷ lệ đúng giờ'}
                 </CardTitle>
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
                   <Clock className="h-4 w-4" />
@@ -241,10 +286,10 @@ export function WorkforceIndividualView({
                 <div className="text-2xl font-bold tracking-tight text-emerald-700">
                   {summary.punctualityPct !== null
                     ? `${summary.punctualityPct}%`
-                    : 'N/A - Chưa có dữ liệu'}
+                    : (en ? 'No data' : 'N/A - Chưa có dữ liệu')}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {summary.onTimeShifts} ca đúng giờ / {summary.lateShifts} ca trễ quá mức ân hạn
+                  {en ? `${summary.onTimeShifts} on time / ${summary.lateShifts} late` : `${summary.onTimeShifts} ca đúng giờ / ${summary.lateShifts} ca trễ quá mức ân hạn`}
                 </p>
               </CardContent>
             </Card>
@@ -253,7 +298,7 @@ export function WorkforceIndividualView({
             <Card className="border-slate-200 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Bao phủ chấm công
+                  {en ? 'Attendance coverage' : 'Bao phủ chấm công'}
                 </CardTitle>
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-50 text-blue-600">
                   <CheckCircle2 className="h-4 w-4" />
@@ -263,10 +308,10 @@ export function WorkforceIndividualView({
                 <div className="text-2xl font-bold tracking-tight text-blue-900">
                   {summary.attendanceCoveragePct !== null
                     ? `${summary.attendanceCoveragePct}%`
-                    : 'N/A - Chưa có dữ liệu'}
+                    : (en ? 'No data' : 'N/A - Chưa có dữ liệu')}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {summary.verifiedShifts}/{summary.assignedShifts} ca phân công đã xác minh
+                  {en ? `${summary.verifiedShifts}/${summary.assignedShifts} assigned shifts verified` : `${summary.verifiedShifts}/${summary.assignedShifts} ca phân công đã xác minh`}
                 </p>
               </CardContent>
             </Card>
@@ -275,7 +320,7 @@ export function WorkforceIndividualView({
             <Card className="border-slate-200 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Thời lượng làm thực tế
+                  {en ? 'Approved actual time' : 'Thời lượng làm thực tế'}
                 </CardTitle>
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">
                   <BarChart2 className="h-4 w-4" />
@@ -283,10 +328,10 @@ export function WorkforceIndividualView({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold tracking-tight text-slate-900">
-                  {hoursWorked}h {minutesWorked}p
+                  {summary.verifiedShifts > 0 ? `${hoursWorked}h ${minutesWorked}p` : (en ? 'No approved data' : 'Chưa có dữ liệu duyệt')}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {summary.approvedWorkedShifts} ca làm thực tế ({summary.approvedActualMinutes.toLocaleString()} phút)
+                  {en ? `${summary.approvedWorkedShifts} approved worked shifts (${summary.approvedActualMinutes.toLocaleString()} minutes)` : `${summary.approvedWorkedShifts} ca làm thực tế (${summary.approvedActualMinutes.toLocaleString()} phút)`}
                 </p>
               </CardContent>
             </Card>
@@ -295,7 +340,7 @@ export function WorkforceIndividualView({
             <Card className="border-slate-200 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Độ tin cậy xác minh
+                  {en ? 'Verified reliability' : 'Độ tin cậy xác minh'}
                 </CardTitle>
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-purple-50 text-purple-600">
                   <ShieldCheck className="h-4 w-4" />
@@ -305,10 +350,10 @@ export function WorkforceIndividualView({
                 <div className="text-2xl font-bold tracking-tight text-purple-900">
                   {summary.knownReliabilityPct !== null
                     ? `${summary.knownReliabilityPct}%`
-                    : 'N/A - Chưa có dữ liệu'}
+                    : (en ? 'No data' : 'N/A - Chưa có dữ liệu')}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {summary.approvedNoShows} ca xác nhận vắng (No-show)
+                  {en ? `${summary.approvedNoShows} approved no-shows` : `${summary.approvedNoShows} ca xác nhận vắng (No-show)`}
                 </p>
               </CardContent>
             </Card>
@@ -319,7 +364,7 @@ export function WorkforceIndividualView({
             <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-800">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
               <span>
-                <strong>Cảnh báo minh chứng chưa hoàn tất:</strong> Trong tháng có {summary.unknownAttendanceShifts} ca làm việc chưa có dữ liệu chấm công được phê duyệt. Hệ thống không tự động tính là 0 công hoặc vắng mặt; vui lòng hoàn tất chấm công tại mục Chi tiết ca.
+                {en ? `${summary.unknownAttendanceShifts} assigned shifts have no approved attendance. They remain unknown until reviewed.` : <><strong>Cảnh báo minh chứng chưa hoàn tất:</strong> Trong tháng có {summary.unknownAttendanceShifts} ca làm việc chưa có dữ liệu chấm công được phê duyệt. Hệ thống không tự động tính là 0 công hoặc vắng mặt; vui lòng hoàn tất chấm công tại mục Chi tiết ca.</>}
               </span>
             </div>
           )}
@@ -330,10 +375,10 @@ export function WorkforceIndividualView({
               <Info className="h-5 w-5 shrink-0 text-slate-400 mt-0.5" />
               <div className="space-y-1">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
-                  Chỉ số Doanh thu & Đơn hàng (GMV / Giờ)
+                  {en ? 'Revenue and orders per hour' : 'Chỉ số Doanh thu & Đơn hàng (GMV / Giờ)'}
                 </h4>
                 <p className="text-xs text-slate-500">
-                  Chưa có dữ liệu phân bổ trực tiếp (<strong>N/A</strong>). Theo tiêu chuẩn vận hành, hệ thống không tự phân bổ chia đều doanh thu của phiên Live cho nhân sự khi chưa có dữ liệu phân bổ phiên được xác nhận chính thức từ quản lý ca.
+                  {en ? 'No verified direct revenue allocation is available (N/A).' : <>Chưa có dữ liệu phân bổ trực tiếp (<strong>N/A</strong>). Theo tiêu chuẩn vận hành, hệ thống không tự phân bổ chia đều doanh thu của phiên Live cho nhân sự khi chưa có dữ liệu phân bổ phiên được xác nhận chính thức từ quản lý ca.</>}
                 </p>
               </div>
             </div>

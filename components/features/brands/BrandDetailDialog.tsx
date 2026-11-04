@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { ExternalLink, Pencil } from 'lucide-react'
 import Image from 'next/image'
 import { Brand, Campaign, Platform, User } from '@/lib/types/database.types'
@@ -8,8 +9,8 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ScopedResourceLinks } from '@/components/features/storage/ScopedResourceLinks'
 
 export function BrandDetailDialog({ open, onOpenChange, brand, campaigns, platforms, users, onEdit }: {
   open: boolean
@@ -21,11 +22,11 @@ export function BrandDetailDialog({ open, onOpenChange, brand, campaigns, platfo
   onEdit: () => void
 }) {
   const { currentUser } = useCurrentUser()
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const relatedCampaigns = campaigns.filter(campaign => campaign.brand_id === brand.id)
   const platformIds = new Set(relatedCampaigns.flatMap(campaign => campaign.platform_ids || []))
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="xl" className="overflow-y-auto"><DialogHeader><div className="flex items-start justify-between gap-4"><div className="flex items-center gap-3">{brand.logo_url && <Image unoptimized width={56} height={56} className="h-14 w-14 rounded-lg border object-contain" src={brand.logo_url} alt={brand.name} />}<div><DialogTitle className="text-2xl">{brand.name}</DialogTitle><div className="mt-2 flex gap-2"><Badge>{t(brand.status || 'active')}</Badge>{brand.category && <Badge variant="outline">{brand.category}</Badge>}</div></div></div>{currentUser && hasPermission(currentUser, 'brands.manage') && <Button onClick={onEdit}><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></DialogHeader>
-    <div className="grid gap-4 md:grid-cols-2">
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent data-testid="brand-profile-page" size="xl" className="max-h-[90dvh] max-w-5xl overflow-y-auto"><DialogHeader className="mx-auto w-full max-w-3xl border-b pb-5"><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-center gap-3">{brand.logo_url && <Image unoptimized width={56} height={56} className="h-14 w-14 rounded-xl border bg-white object-contain p-1" src={brand.logo_url} alt={brand.name} />}<div><p className="mb-1 text-xs font-semibold uppercase tracking-[.14em] text-muted-foreground">{t('brand')} · {t('brandGuideline')}</p><DialogTitle className="text-3xl tracking-tight">{brand.name}</DialogTitle><div className="mt-2 flex gap-2"><Badge>{t(brand.status || 'active')}</Badge>{brand.category && <Badge variant="outline">{brand.category}</Badge>}</div></div></div><div className="flex flex-wrap gap-2"><Button nativeButton={false} render={<Link href={`/brand-catalog?brand_id=${encodeURIComponent(brand.id)}`} />} variant="outline">{t('adminProductsTitle')}</Button>{currentUser && hasPermission(currentUser, 'brands.manage') && <Button nativeButton={false} render={<Link href={`/storage/resources?brand_id=${encodeURIComponent(brand.id)}`} />} variant="outline">{language === 'vi' ? 'Tài liệu & liên kết' : 'Resources & links'}</Button>}{currentUser && hasPermission(currentUser, 'brands.manage') && <Button onClick={onEdit}><Pencil className="mr-2 h-4 w-4" />{t('edit')}</Button>}</div></div><p className="mt-4 text-sm text-muted-foreground">{t('brandProfilePageHint')}</p></DialogHeader>
+    <div className="mx-auto w-full max-w-3xl space-y-7 py-3">
       <Section title={t('description')}><p>{brand.description || '—'}</p></Section>
       <Section title={t('contactInformation')}><p>{brand.contact_person || '—'}</p><p>{brand.contact_email || '—'}</p><p>{brand.contact_phone || '—'}</p></Section>
       <Section title={t('brandGuideline')}><p className="whitespace-pre-wrap">{brand.brand_guideline || '—'}</p></Section>
@@ -35,6 +36,7 @@ export function BrandDetailDialog({ open, onOpenChange, brand, campaigns, platfo
       <ListSection title={t('restrictedClaims')} items={brand.restricted_claims} />
       <Section title={t('dosAndDonts')}><div className="grid grid-cols-2 gap-3"><List title={t('doLabel')} items={brand.dos} /><List title={t('dontLabel')} items={brand.donts} /></div></Section>
       <Section title={t('assetsDocuments')}>{brand.asset_links?.length ? brand.asset_links.map(link => <Button key={link} nativeButton={false} render={<a href={link} target="_blank" rel="noopener noreferrer" />} variant="link" className="h-auto justify-start p-0"><ExternalLink className="mr-1 h-3 w-3" />{link}</Button>) : <p>—</p>}</Section>
+      <ScopedResourceLinks open={open} scope={{ brandId: brand.id }} />
       <ListSection title={t('relatedCampaigns')} items={relatedCampaigns.map(campaign => campaign.name)} />
       <ListSection title={t('relatedPlatforms')} items={platforms.filter(platform => platformIds.has(platform.id)).map(platform => platform.name)} />
       <Section title={t('notes')}><p className="whitespace-pre-wrap">{brand.notes || '—'}</p></Section>
@@ -43,6 +45,6 @@ export function BrandDetailDialog({ open, onOpenChange, brand, campaigns, platfo
   </DialogContent></Dialog>
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) { return <Card><CardContent className="space-y-1 pt-5"><h3 className="mb-2 font-semibold">{title}</h3>{children}</CardContent></Card> }
+function Section({ title, children }: { title: string; children: React.ReactNode }) { return <section className="space-y-2 border-b border-border/70 pb-5 last:border-b-0"><h3 className="text-xs font-semibold uppercase tracking-[.12em] text-muted-foreground">{title}</h3><div className="space-y-1 text-sm leading-relaxed text-foreground">{children}</div></section> }
 function ListSection({ title, items }: { title: string; items?: string[] }) { return <Section title={title}><List items={items} /></Section> }
 function List({ title, items }: { title?: string; items?: string[] }) { return <div>{title && <p className="mb-1 text-xs font-medium text-muted-foreground">{title}</p>}{items?.length ? <ul className="list-disc space-y-1 pl-5">{items.map(item => <li key={item}>{item}</li>)}</ul> : <p>—</p>}</div> }

@@ -16,6 +16,8 @@ interface MonthViewProps {
   registrations?: ShiftRegistration[]
   onShiftClick?: (shift: Shift) => void
   onDayClick?: (date: Date) => void
+  compact?: boolean
+  complete?: boolean
 }
 
 export const MONTH_VISIBLE_EVENT_LIMITS = {
@@ -42,6 +44,8 @@ export function MonthView({
   registrations = [],
   onShiftClick,
   onDayClick,
+  compact = false,
+  complete = true,
 }: MonthViewProps) {
   const context: CalendarFilterContext = { currentDate: new Date(), brands, platforms, registrations }
   const { language, t } = useTranslation()
@@ -54,6 +58,41 @@ export function MonthView({
   for (let day = startDate; day <= endDate; day = addDays(day, 1)) {
     calendarDays.push(day)
   }
+
+  if (compact) return (
+    <div className="min-w-0" data-testid="calendar-compact-month-grid" aria-busy={!complete}>
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-t-lg border border-b-0 bg-border">
+        {Array.from({ length: 7 }, (_, index) => addDays(startDate, index)).map(day => (
+          <div className="min-w-0 bg-muted/60 px-0.5 py-1.5 text-center text-[10px] font-semibold text-muted-foreground sm:text-xs" key={format(day, 'yyyy-MM-dd')} aria-label={format(day, 'EEEE', { locale })}>
+            {format(day, 'EEE', { locale })}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-lg border bg-border">
+        {calendarDays.map(day => {
+          const date = format(day, 'yyyy-MM-dd')
+          const count = shiftsForCalendarDate(shifts, day).length
+          const currentDay = isToday(day)
+          return (
+            <button
+              type="button"
+              key={date}
+              data-testid={`calendar-compact-day-${date}`}
+              data-count={complete ? count : undefined}
+              aria-current={currentDay ? 'date' : undefined}
+              aria-label={`${t('openDaySessions', { date: format(day, 'PP', { locale }) })}, ${complete ? `${count} ${t('shifts')}` : t('loading')}`}
+              disabled={!complete}
+              onClick={() => onDayClick?.(day)}
+              className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 p-0.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-14 ${isSameMonth(day, monthStart) ? 'bg-background' : 'bg-muted/40 text-muted-foreground'} ${currentDay ? 'ring-2 ring-inset ring-primary' : ''}`}
+            >
+              <span className={`flex size-5 items-center justify-center rounded-full font-semibold ${currentDay ? 'bg-primary text-primary-foreground' : ''}`}>{format(day, 'd')}</span>
+              <span aria-hidden="true" className="text-[10px] leading-none">{complete ? count : '…'}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 
   const brandColor = (brandId: string) =>
     brands.find(brand => brand.id === brandId)?.color || '#2563EB'
@@ -109,8 +148,8 @@ export function MonthView({
                       <ShiftCard
                         key={shift.id}
                         shift={shift}
-                        variant="standard"
-                        className={visibility + ' bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border'}
+                        variant="compact"
+                        className={visibility + ' min-w-0 h-7 bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border'}
                         style={{ borderLeftColor: brandColor(shift.brand_id) }}
                         onClick={event => {
                           event.stopPropagation()

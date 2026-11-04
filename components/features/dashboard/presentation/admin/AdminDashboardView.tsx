@@ -1,8 +1,10 @@
 ﻿import React from 'react'
+import { OpsMobileHome } from '../OpsMobileHome'
 import {
   Radio, Users, Calendar, FileText, ShieldAlert, AlertTriangle,
-  Clock, CheckCircle, Eye, TrendingUp, TrendingDown,
+  Clock, CheckCircle, Eye, TrendingUp, TrendingDown, ArrowUpRight,
 } from 'lucide-react'
+import type { DashboardRecentItem } from '@/lib/ui/dashboard-recent-items'
 
 // View-Model
 
@@ -34,7 +36,17 @@ export interface AttentionItem {
   context: string
   time: string
   action: string
+  href?: string
 }
+
+export interface ApplicationOverviewMetric {
+  key: string
+  label: string
+  value: number | null
+  href: string
+}
+
+export interface DashboardLinkedItem { id: string; title: string; description: string; href: string }
 
 export interface PerformanceData {
   viewers: string
@@ -60,12 +72,25 @@ export interface AdminDashboardViewModel {
   liveCount: number
   todaysShiftsCount: number
   missingStaffCount: number | null
-  pendingCount: number
+  pendingCount: number | null
   dqAttention: AttentionItem[]
   liveShifts: LiveShiftItem[]
   todaysOperations: OperationRowItem[]
   performance: PerformanceData | null
   activityLog: ActivityLogEntry[] | null
+  t: (key: string) => string
+  applicationOverview: ApplicationOverviewMetric[]
+  recentItems: DashboardRecentItem[]
+  upcomingShifts: DashboardLinkedItem[]
+  latestReports: DashboardLinkedItem[]
+  latestBrands: DashboardLinkedItem[]
+  showUpcomingShifts: boolean
+  showLatestReports: boolean
+  showLatestBrands: boolean
+  latestReportsUnavailable: boolean
+  latestBrandsUnavailable: boolean
+  dashboardFeatureLinks?: React.ReactNode
+  userName?: string
 }
 
 // Sub-components
@@ -86,8 +111,15 @@ function KpiCard({ icon, iconBg, title, value, subtitle }: KpiCardProps) {
   )
 }
 
-interface AttentionRowProps { severity: AttentionItem['severity']; title: string; context: string; time: string; action: string }
-function AttentionRow({ severity, title, context, time, action }: AttentionRowProps) {
+function OverviewMetricCard({ metric }: { metric: ApplicationOverviewMetric }) {
+  return <a href={metric.href} className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+    <span className="block text-xs font-medium text-slate-500">{metric.label}</span>
+    <span className="mt-2 block text-2xl font-semibold text-slate-900">{metric.value === null ? '—' : metric.value.toLocaleString()}</span>
+  </a>
+}
+
+interface AttentionRowProps { severity: AttentionItem['severity']; title: string; context: string; time: string; action: string; href?: string }
+function AttentionRow({ severity, title, context, time, action, href }: AttentionRowProps) {
   const map: Record<AttentionItem['severity'], { icon: React.ReactNode; bg: string; border: string }> = {
     critical: { icon: <ShieldAlert className="w-5 h-5 text-red-600" />, bg: 'bg-red-50', border: 'border-red-100' },
     high:     { icon: <AlertTriangle className="w-5 h-5 text-orange-500" />, bg: 'bg-orange-50', border: 'border-orange-100' },
@@ -96,7 +128,7 @@ function AttentionRow({ severity, title, context, time, action }: AttentionRowPr
   }
   const s = map[severity]
   return (
-    <div className={`flex items-center justify-between px-4 py-3.5 rounded-lg border hover:border-slate-300 hover:bg-slate-50 transition-colors ${severity === 'critical' ? 'bg-red-50/30 border-red-100' : 'border-transparent'}`}>
+    <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 rounded-lg border hover:border-slate-300 hover:bg-slate-50 transition-colors ${severity === 'critical' ? 'bg-red-50/30 border-red-100' : 'border-transparent'}`}>
       <div className="flex items-center gap-4">
         <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${s.bg} ${s.border}`}>{s.icon}</div>
         <div className="flex flex-col">
@@ -106,7 +138,7 @@ function AttentionRow({ severity, title, context, time, action }: AttentionRowPr
       </div>
       <div className="flex items-center gap-5">
         <span className={`text-[12px] font-bold whitespace-nowrap ${severity === 'critical' ? 'text-red-500' : 'text-slate-500'}`}>{time}</span>
-        <button className={`px-4 py-1.5 border hover:bg-slate-50 text-[12px] font-bold rounded-md shadow-sm shrink-0 transition-colors ${severity === 'critical' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white border-slate-300 text-slate-700'}`}>{action}</button>
+        <a href={href ?? '/data-quality'} className={`inline-flex min-h-11 items-center px-4 py-1.5 border hover:bg-slate-50 text-[12px] font-bold rounded-md shadow-sm shrink-0 transition-colors ${severity === 'critical' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white border-slate-300 text-slate-700'}`}>{action}</a>
       </div>
     </div>
   )
@@ -213,37 +245,81 @@ function ActLogRow({ iconName, iconBg, title, user, time }: ActLogRowProps) {
 
 export function AdminDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
-  dqAttention, liveShifts, todaysOperations, performance, activityLog,
+  dqAttention, liveShifts, todaysOperations, performance, activityLog, userName, t, applicationOverview, recentItems,
+  upcomingShifts, latestReports, latestBrands, showUpcomingShifts, showLatestReports, showLatestBrands,
+  latestReportsUnavailable, latestBrandsUnavailable, dashboardFeatureLinks,
 }: AdminDashboardViewModel) {
+  const currentShift = todaysOperations[0]
+  const mobileAttention = [
+    ...(pendingCount !== null && pendingCount > 0 ? [{
+      key: 'pending-registration', title: pendingCount + ' đăng ký ca chờ xử lý', description: 'Mở danh sách đăng ký để xem xét', href: '/staffing?tab=registration', level: 'warning' as const,
+    }] : []),
+    ...dqAttention.map(item => ({
+      key: item.key,
+      title: item.title,
+      description: item.context,
+      href: item.href ?? '/data-quality',
+      level: item.severity === 'critical' ? 'critical' as const : 'warning' as const,
+    })),
+  ]
   return (
-    <main className="p-8 flex flex-col gap-6 overflow-y-auto">
+    <>
+    <OpsMobileHome
+      role="admin" userName={userName} shiftCount={todaysShiftsCount}
+      liveCount={liveShifts.length} pendingCount={pendingCount} attention={mobileAttention}
+      overview={{ title: t('appWideOverview'), subtitle: t('appWideOverviewSubtitle'), metrics: applicationOverview }}
+      summaries={[
+        ...(showUpcomingShifts ? [{ key: 'upcoming', title: t('upcomingShifts'), href: '/calendar?calendar_view=list', items: upcomingShifts, empty: t('noUpcomingShifts') }] : []),
+        ...(showLatestReports ? [{ key: 'reports', title: t('latestReports'), href: '/reports', items: latestReports, empty: t('noLatestReports'), unavailable: latestReportsUnavailable ? t('dashboardDataUnavailable') : null }] : []),
+        ...(showLatestBrands ? [{ key: 'brands', title: t('latestBrands'), href: '/brands', items: latestBrands, empty: t('noLatestBrands'), unavailable: latestBrandsUnavailable ? t('dashboardDataUnavailable') : null }] : []),
+      ]}
+      shift={currentShift ? { key: currentShift.brand + currentShift.shiftTime, brand: currentShift.brand, platform: currentShift.platform, time: currentShift.shiftTime, status: currentShift.status } : null}
+    />
+    <div className="hidden min-w-0 flex-col gap-6 p-4 md:flex sm:p-8">
       <div className="flex flex-col gap-1 mb-1">
-        <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">Operations Dashboard</h1>
-        <p className="text-[14px] text-slate-500 font-medium">Real-time operations overview and team performance</p>
+        <h1 className="text-[26px] font-bold tracking-tight text-slate-900 leading-tight">{t('dashboardTitle')}</h1>
+        <p className="text-[14px] text-slate-500 font-medium">{t('applicationDashboardSubtitle')}</p>
+      </div>
+      {dashboardFeatureLinks}
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
+        <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title={t('liveNow')} value={liveCount.toString()} subtitle={t('activeSessions')} />
+        <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title={t('shiftsToday')} value={todaysShiftsCount.toString()} subtitle={t('scheduledToday')} />
+        <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title={t('staffingGap')} value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle={t('needsResolution')} />
+        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title={t('pendingRegistrations')} value={pendingCount !== null ? pendingCount.toString() : '—'} subtitle={t('needsReview')} />
       </div>
 
-      <div className="grid grid-cols-4 gap-5">
-        <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title="LIVE NOW" value={liveCount.toString()} subtitle="Active sessions" />
-        <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title="TODAY'S SHIFTS" value={todaysShiftsCount.toString()} subtitle="Scheduled today" />
-        <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title="MISSING STAFF" value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle="Needs resolution" />
-        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title="PENDING" value={pendingCount.toString()} subtitle="Need review" />
-      </div>
+      <section aria-labelledby="app-wide-overview-title" className="space-y-3">
+        <div>
+          <h2 id="app-wide-overview-title" className="text-base font-bold text-slate-900">{t('appWideOverview')}</h2>
+          <p className="mt-1 text-sm text-slate-500">{t('appWideOverviewSubtitle')}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          {applicationOverview.map(metric => <OverviewMetricCard key={metric.key} metric={metric} />)}
+        </div>
+      </section>
 
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-8 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Operational Attention</h2>
+      {(showUpcomingShifts || showLatestReports || showLatestBrands) && <section aria-label={t('dashboardOperationalSummaries')} className="grid min-w-0 gap-3 lg:grid-cols-3">
+        {showUpcomingShifts && <DashboardLinkedList title={t('upcomingShifts')} href="/calendar?calendar_view=list" items={upcomingShifts} empty={t('noUpcomingShifts')} unavailable={null} t={t} />}
+        {showLatestReports && <DashboardLinkedList title={t('latestReports')} href="/reports" items={latestReports} empty={t('noLatestReports')} unavailable={latestReportsUnavailable ? t('dashboardDataUnavailable') : null} t={t} />}
+        {showLatestBrands && <DashboardLinkedList title={t('latestBrands')} href="/brands" items={latestBrands} empty={t('noLatestBrands')} unavailable={latestBrandsUnavailable ? t('dashboardDataUnavailable') : null} t={t} />}
+      </section>}
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
+        <div className="min-w-0 xl:col-span-8 flex flex-col">
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('attentionRequired')}</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 p-2">
             <div className="flex flex-col divide-y divide-slate-50 flex-1 justify-center">
               {dqAttention.length > 0 ? dqAttention.slice(0, 6).map((item) => (
-                <AttentionRow key={item.key} severity={item.severity} title={item.title} context={item.context} time={item.time} action={item.action} />
+                <AttentionRow key={item.key} severity={item.severity} title={item.title} context={item.context} time={item.time} action={item.action} href={item.href} />
               )) : (
                 <div className="text-center py-8 text-sm text-slate-500">Không có mục cần chú ý</div>
               )}
             </div>
           </div>
         </div>
-        <div className="col-span-4 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Live Now</h2>
+        <div className="min-w-0 xl:col-span-4 flex flex-col">
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('liveNow')}</h2>
           <div className="flex flex-col gap-3 flex-1">
             {liveShifts.length > 0 ? liveShifts.slice(0, 6).map((item, i) => (
               <LiveItem key={i} brand={item.brand} platform={item.platform} duration={item.duration} viewers={item.viewers} health={item.health} />
@@ -254,9 +330,43 @@ export function AdminDashboardView({
         </div>
       </div>
 
+      <section aria-labelledby="dashboard-latest-items-title" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="dashboard-latest-items-title" className="text-[16px] font-bold text-slate-900">{t('latestDashboardItems')}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t('latestDashboardItemsSubtitle')}</p>
+          </div>
+          <a href="/audit" className="inline-flex min-h-11 items-center gap-1 rounded-md px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+            {t('viewAll')} <ArrowUpRight className="size-4" aria-hidden="true" />
+          </a>
+        </div>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          {recentItems.length > 0 ? (
+            <ul className="divide-y divide-slate-100">
+              {recentItems.slice(0, 5).map(item => (
+                <li key={`${item.kind}:${item.id}`}>
+                  <a href={item.href} className="flex min-h-[64px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 sm:px-5">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-900">{item.title}</span>
+                      <span className="mt-1 block truncate text-xs text-slate-500">{item.description}</span>
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
+                      <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
+                      <span className="inline-flex items-center gap-1 font-semibold text-blue-700">{t('openFeature')} <ArrowUpRight className="size-3.5" aria-hidden="true" /></span>
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-4 py-8 text-center text-sm text-slate-500">{t('noLatestDashboardItems')}</p>
+          )}
+        </div>
+      </section>
+
       <div className="flex flex-col">
-        <h2 className="text-[16px] font-bold text-slate-900 mb-3">{"Today's Operations"}</h2>
-        <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm overflow-hidden">
+        <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('todaysOperationsTitle')}</h2>
+        <div role="region" aria-label={t('todaysOperationsTitle')} tabIndex={0} className="bg-white rounded-[12px] border border-slate-200 shadow-sm min-w-0 overflow-x-auto">
           {todaysOperations.length > 0 ? (
             <table className="w-full">
               <thead>
@@ -276,42 +386,60 @@ export function AdminDashboardView({
               </tbody>
             </table>
           ) : (
-            <div className="p-8 text-center text-sm text-slate-500">Không có ca làm việc hôm nay</div>
+            <div className="p-8 text-center text-sm text-slate-500">{t('noTodayOperations')}</div>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-6 pb-6">
-        <div className="col-span-5 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Performance</h2>
+      {(performance !== null || activityLog !== null) && <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6 pb-6">
+        {performance !== null && <div className={`min-w-0 flex flex-col ${activityLog !== null ? 'xl:col-span-5' : 'xl:col-span-12'}`}>
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('performanceTitle')}</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex-1">
-            {performance !== null ? (
-              <div className="grid grid-cols-3 gap-4 h-full">
-                <PerfMetric title="Lượt xem" value={performance.viewers} change={performance.viewersChange} positive={performance.viewersChangePositive} icon={performance.viewersChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
-                <PerfMetric title="Doanh thu" value={performance.revenue} change={performance.revenueChange} positive={performance.revenueChangePositive} icon={performance.revenueChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
-                <PerfMetric title="Tỷ lệ chuyển đổi" value={performance.conversionRate} change={performance.conversionChange} positive={performance.conversionChangePositive} icon={performance.conversionChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
-            )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <PerfMetric title={t('viewers')} value={performance.viewers} change={performance.viewersChange} positive={performance.viewersChangePositive} icon={performance.viewersChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
+              <PerfMetric title={t('revenue')} value={performance.revenue} change={performance.revenueChange} positive={performance.revenueChangePositive} icon={performance.revenueChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
+              <PerfMetric title={t('conversion')} value={performance.conversionRate} change={performance.conversionChange} positive={performance.conversionChangePositive} icon={performance.conversionChangePositive ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />} />
+            </div>
           </div>
-        </div>
-        <div className="col-span-7 flex flex-col">
-          <h2 className="text-[16px] font-bold text-slate-900 mb-3">Activity Log</h2>
+        </div>}
+        {activityLog !== null && <div className={`min-w-0 flex flex-col ${performance !== null ? 'xl:col-span-7' : 'xl:col-span-12'}`}>
+          <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('activityLogTitle')}</h2>
           <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col flex-1 p-2">
             <div className="flex flex-col divide-y divide-slate-50 flex-1 justify-center">
-              {activityLog === null ? (
-                <div className="text-center py-8 text-sm text-slate-500">Dữ liệu chưa khả dụng</div>
-              ) : activityLog.length > 0 ? activityLog.slice(0, 6).map((log, i) => (
+              {activityLog.length > 0 ? activityLog.slice(0, 6).map((log, i) => (
                 <ActLogRow key={i} iconName={log.iconName} iconBg={log.iconBg} title={log.title} user={log.user} time={log.time} />
               )) : (
-                <div className="text-center py-8 text-sm text-slate-500">Không có hoạt động gần đây</div>
+                <div className="text-center py-8 text-sm text-slate-500">{t('noRecentActivity')}</div>
               )}
             </div>
           </div>
-        </div>
-      </div>
-    <nav aria-label="Xem tất cả" className="flex flex-wrap gap-4 text-sm"><a className="underline underline-offset-4" href="/calendar">Xem tất cả: Lịch</a><a className="underline underline-offset-4" href="/reports">Xem tất cả: Báo cáo</a><a className="underline underline-offset-4" href="/notifications">Xem tất cả: Thông báo</a><a className="underline underline-offset-4" href="/data-quality">Xem tất cả: Chất lượng dữ liệu</a></nav>
-    </main>
+        </div>}
+      </div>}
+    <nav aria-label={t('viewAll')} className="flex flex-wrap gap-4 text-sm"><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/calendar">{t('dashboardAllShifts')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/reports">{t('allReports')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/notifications">{t('allNotifications')}</a><a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/data-quality">{t('allDataQuality')}</a></nav>
+    </div>
+    </>
   )
+}
+
+function DashboardLinkedList({ title, href, items, empty, unavailable, t }: {
+  title: string; href: string; items: DashboardLinkedItem[]; empty: string; unavailable: string | null; t: (key: string) => string
+}) {
+  return <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label={title}>
+    <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
+      <h2 className="truncate text-sm font-semibold text-slate-900">{title}</h2>
+      <a href={href} className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+        {t('viewAll')} <ArrowUpRight className="size-3.5" aria-hidden="true" />
+      </a>
+    </header>
+    <div>
+      {unavailable ? <p className="p-4 text-sm text-amber-700">{unavailable}</p> : items.length ? <ul className="divide-y divide-slate-100">
+        {items.slice(0, 5).map(item => <li key={item.id}>
+          <a href={item.href} className="block min-h-14 px-4 py-3 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600">
+            <span className="block truncate text-sm font-medium text-slate-800">{item.title}</span>
+            <span className="mt-1 block truncate text-xs text-slate-500">{item.description}</span>
+          </a>
+        </li>)}
+      </ul> : <p className="p-4 text-sm text-slate-500">{empty}</p>}
+    </div>
+  </section>
 }

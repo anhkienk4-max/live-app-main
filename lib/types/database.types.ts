@@ -5,6 +5,7 @@ export type AccountStatus = 'pending_email_verification' | 'pending_approval' | 
 
 export type ShiftStatus = 'scheduled' | 'preparing' | 'live' | 'paused' | 'completed' | 'cancelled'
 export type ExecutionSource = 'internal' | 'agency'
+export type AgencyCode = 'ada' | 'snap' | 'live_ai'
 export type ShiftStatusMode = 'auto' | 'manual'
 export type RegistrationStatus =
   | 'available'
@@ -266,10 +267,21 @@ export interface SwapExchangeCandidate {
   full_name: string
 }
 
+export type SupplementalShiftFieldType = 'text' | 'number' | 'boolean' | 'date' | 'time'
+
+export interface SupplementalShiftField {
+  label: string
+  type: SupplementalShiftFieldType
+  value: string | number | boolean
+}
+
+export type SupplementalShiftFields = Record<string, SupplementalShiftField>
+
 export interface Shift extends LifecycleMetadata {
   registration_conflict?: boolean
   id: string
   execution_source?: ExecutionSource | null
+  agency_code?: AgencyCode | null
   date: string
   start_time: string
   end_time: string
@@ -304,6 +316,7 @@ export interface Shift extends LifecycleMetadata {
   status_mode?: ShiftStatusMode
   live_link?: string
   product_notes?: string
+  supplemental_fields?: SupplementalShiftFields
   updated_by?: string
   created_at: string
   updated_at: string
@@ -327,6 +340,7 @@ export interface DashboardUpdate extends LifecycleMetadata {
   shares?: number
   screenshot_url?: string
   screenshot_storage_path?: string
+  screenshot_file_id?: string | null
   dashboard_platform?: ReportDashboardPlatform
   normalized_metrics?: Partial<Record<ReportMetricKey, ReportMetricValue>>
   ocr_review?: OcrReviewData
@@ -421,6 +435,8 @@ export interface ReportImage extends LifecycleMetadata {
   mime_type?: string
   size_bytes?: number
   image_type: ReportImageCategory
+  external_parent_id?: string | null
+  checksum_sha256?: string | null
   uploaded_by?: string
   created_at: string
 }
@@ -444,6 +460,8 @@ export interface LiveReportImage {
   file_name: string
   storage_file_name?: string | null
   storage_idempotency_key?: string | null
+  external_parent_id?: string | null
+  checksum_sha256?: string | null
   mime_type: string
   size_bytes: number
   sort_order: number
@@ -801,6 +819,15 @@ export interface OcrImageRecognition {
   runtime_diagnostics?: OcrRuntimeDiagnostics
 }
 
+export type SwapConflictCheckStatus = 'VERIFIED_CLEAR' | 'CONFLICT' | 'UNKNOWN'
+export type SwapConflictCheckInput = {
+  sourceRegistrationId: string
+  mode: 'replacement' | 'exchange'
+  replacementStaffId?: string | null
+  targetShiftId?: string | null
+  counterpartRegistrationId?: string | null
+}
+
 export interface SwapRequest extends LifecycleMetadata {
   id: string
   // Legacy single-shift field kept for compatibility; mirrors source_shift_id for replacement/move
@@ -902,6 +929,9 @@ export type ScheduleImportRowOutcome =
 export interface ScheduleImportRow {
   row_number: number
   execution_source?: ExecutionSource | null
+  agency_code?: AgencyCode | null
+  /** Custom columns from the import source, retained as batch provenance only. */
+  custom_fields?: Record<string, string>
   date: string
   start_time: string
   end_time: string
@@ -922,6 +952,8 @@ export interface ScheduleImportRow {
   notes?: string
   /** Source fields explicitly supplied by the imported row (defaults excluded). */
   source_presence?: Partial<Record<
+    | 'execution_source'
+    | 'agency_code'
     | 'campaign_name'
     | 'studio'
     | 'title'

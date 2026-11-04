@@ -62,10 +62,35 @@ export async function readCachedListPage<T>(
 ): Promise<ListPage<T>> {
   const key = pageCacheKey(identity, namespace, query)
   const previous = readPageCache<ListPage<T>>(key)
-  if (previous) return previous
+  const cacheEpoch = invalidationEpoch
+  const actorIsCurrent = async (): Promise<boolean> => {
+    if (!stillSameActor) return true
+    try {
+      return (await stillSameActor()) === true
+    } catch {
+      // Logout can unbind currentUserService between the request and response.
+      // Never turn an identity lookup failure into permission to use a cache.
+      return false
+    }
+  }
+  // Even a cache hit requires verified actor ownership. If an invalidation
+  // happens while the async verification is pending, discard the old hit
+  // and fetch again rather than returning a stale pre-mutation snapshot.
+  if (previous) {
+    if (!(await actorIsCurrent())) {
+      console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', { stage: 'cache_actor_changed_on_hit' })
+      invalidatePageCache(identity, namespace)
+      throw new Error('LIST_IDENTITY_CHANGED')
+    }
+    if (!signal?.aborted && cacheEpoch === invalidationEpoch) return previous
+  }
   const epoch = invalidationEpoch
   const result = await service.getPage(query, signal)
-  if (stillSameActor && !(await stillSameActor())) throw new Error('LIST_IDENTITY_CHANGED')
+  if (!(await actorIsCurrent())) {
+    console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', { stage: 'cache_actor_changed_after_read' })
+    invalidatePageCache(identity, namespace)
+    throw new Error('LIST_IDENTITY_CHANGED')
+  }
   if (!signal?.aborted && epoch === invalidationEpoch) writePageCache(key, result)
   return result
 }

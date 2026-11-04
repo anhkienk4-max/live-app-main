@@ -1,13 +1,15 @@
 'use client'
 
 import * as React from 'react'
+import { addDays, addMonths, addWeeks, format, parseISO } from 'date-fns'
 import { useListPagination } from '@/lib/hooks/useListPagination'
+import { PAGE_SIZES, type PageSize } from '@/lib/utils/pagination'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/services/operationalReferences'
 import { readTransientData } from '@/lib/services/transientDataCache'
 import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2 } from 'lucide-react'
+import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2, LayoutGrid, Table as TableIcon, List as ListIcon, CalendarDays } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
   reportImageService,
@@ -16,10 +18,12 @@ import {
   shiftService,
   currentUserService,
   isStaffedRegistration,
+  getReportObligationPage,
 } from '@/lib/services/dataService'
 import { Brand, Campaign, DeletionImpact, OperationalRole, Platform, Report, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import {
@@ -30,6 +34,7 @@ import {
 } from '@/lib/utils/excelUtils'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { ActionBar } from '@/components/ui/action-bar'
+import { CommandToolbar } from '@/components/ui/command-toolbar'
 import { deriveReportAttention } from '@/lib/ui/operational-attention'
 import { AttentionItem } from '@/components/ui/operational-status'
 import { buildReportActions } from '@/lib/ui/action-priority'
@@ -39,13 +44,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { ReportDetailModal } from './ReportDetailModal'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import type { HistoricalReportShiftContext } from '@/lib/services/operationsPageService'
 import { ReportFormModal } from './ReportFormModal'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
-import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { HistoryPagination } from '@/components/ui/history-pagination'
-import { reportQueueState, reportableShiftStatuses, sortReportableShifts } from '@/lib/utils/reportQueue'
+import { isConfirmedReportForKpi, reportQueueDisplayState, reportQueuePageRange, sortReportableShifts } from '@/lib/utils/reportQueue'
+import { collectAuthorizedReportCalendar, reportCalendarWindow, type ReportWorkspaceView, type ReportCalendarScale, type ReportCalendarEntry } from '@/lib/utils/reportMultiView'
+import { businessLocalDate } from '@/lib/utils/shiftUtils'
+import { CompactReportRows, ReportCalendarGrid } from './ReportsMultiView'
 import { clearReportShiftQuery, loadReportTarget, type ReportTarget } from '@/lib/utils/reportTarget'
 
 type Filters = {
@@ -86,11 +95,13 @@ export function ReportsList() {
   const { toast } = useToast()
   const [reports, setReports] = React.useState<Report[]>([])
   const [shifts, setShifts] = React.useState<Shift[]>([])
+  const [historicalContexts,setHistoricalContexts]=React.useState<Record<string,HistoricalReportShiftContext>>({})
+  const [selectedHistoricalReport,setSelectedHistoricalReport]=React.useState<Report|null>(null)
   const [reportTotal, setReportTotal] = React.useState(0)
   const reportPagination = useListPagination('reports', 10)
   const { page: reportPage, pageSize: reportPageSize, setPage: setReportPage, setPageSize: setReportPageSize, navigate } = reportPagination
   const [queuePage, setQueuePage] = React.useState(1)
-  const [queuePageSize, setQueuePageSize] = React.useState(20)
+  const [queuePageSize, setQueuePageSize] = React.useState<PageSize>(20)
   const [brands, setBrands] = React.useState<Brand[]>([])
   const [platforms, setPlatforms] = React.useState<Platform[]>([])
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([])
@@ -98,7 +109,38 @@ export function ReportsList() {
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
   const [candidateShifts, setCandidateShifts] = React.useState<Shift[]>([])
   const [candidateReports, setCandidateReports] = React.useState<Report[]>([])
-  const [filters, setFilters] = React.useState<Filters>(emptyFilters)
+  const [queueTotal, setQueueTotal] = React.useState(0)
+  // View and Calendar date live in the URL so back/forward and deep links are authoritative.
+  const modeParam = searchParams.get('reports_view')
+  const createdViewMode: ReportWorkspaceView = modeParam === 'table' || modeParam === 'list' || modeParam === 'calendar' ? modeParam : 'cards'
+  const scaleParam = searchParams.get('reports_calendar_scale')
+  const calendarScale: ReportCalendarScale = scaleParam === 'week' || scaleParam === 'day' ? scaleParam : 'month'
+  const requestedCalendarDate = searchParams.get('reports_calendar_date') || businessLocalDate()
+  const calendarDate = reportCalendarWindow(requestedCalendarDate, 'day') ? requestedCalendarDate : businessLocalDate()
+  const setCreatedViewMode = (view: ReportWorkspaceView) => navigate({ reports_view: view === 'cards' ? null : view })
+  const [calendarData, setCalendarData] = React.useState<{ entries: ReportCalendarEntry[]; queueTotal: number; reportTotal: number; missingShiftCount: number } | null>(null)
+  const [calendarLoading, setCalendarLoading] = React.useState(false)
+  const [calendarError, setCalendarError] = React.useState<unknown>(null)
+  const [calendarReload, setCalendarReload] = React.useState(0)
+  const [filters, setFilters] = React.useState<Filters>(() => {
+    if (typeof window === 'undefined' || !window.location || !window.location.search) return emptyFilters
+    const p = new URLSearchParams(window.location.search)
+    return {
+      search: p.get('search') || '',
+      start: p.get('start') || '',
+      end: p.get('end') || '',
+      brandIds: p.get('brandIds')?.split(',').filter(Boolean) || [],
+      platformIds: p.get('platformIds')?.split(',').filter(Boolean) || [],
+      campaignIds: p.get('campaignIds')?.split(',').filter(Boolean) || [],
+      hostIds: p.get('hostIds')?.split(',').filter(Boolean) || [],
+      supportIds: p.get('supportIds')?.split(',').filter(Boolean) || [],
+      technicalIds: p.get('technicalIds')?.split(',').filter(Boolean) || [],
+      reportStatuses: p.get('reportStatuses')?.split(',').filter(Boolean) || [],
+      metricsStatuses: p.get('metricsStatuses')?.split(',').filter(Boolean) || [],
+    }
+  })
+  const [draftFilters, setDraftFilters] = React.useState<Filters>(filters)
+  const lastUrlFilters = React.useRef(JSON.stringify(filters))
   const [showFilters, setShowFilters] = React.useState(false)
   const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
   const [showForm, setShowForm] = React.useState(false)
@@ -117,10 +159,82 @@ export function ReportsList() {
     brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
     hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds,
     reportStatuses: filters.reportStatuses, metricsStatuses: filters.metricsStatuses })
+  const encodedQueueFilters = JSON.stringify({ search: filters.search || undefined, from: filters.start || undefined, to: filters.end || undefined,
+    brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
+    hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds,
+    reportStatuses: filters.reportStatuses, metricsStatuses: filters.metricsStatuses })
+  // Apply/Reset use exactly the same URL-sourced filter contract in every view.
+  const syncFilterUrl = React.useCallback((value: Filters) => {
+    const keys: (keyof Filters)[] = ['search','start','end','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']
+    const changes: Record<string,string|null> = { reports_page: null }
+    for (const key of keys) {
+      const field = value[key]
+      changes[key] = Array.isArray(field) ? (field.length ? field.join(',') : null) : (field || null)
+    }
+    navigate(changes)
+  }, [navigate])
+  React.useEffect(() => {
+    const p = new URLSearchParams(searchParams.toString())
+    const fromUrl: Filters = {
+      search: p.get('search') || '', start: p.get('start') || '', end: p.get('end') || '',
+      brandIds: p.get('brandIds')?.split(',').filter(Boolean) || [], platformIds: p.get('platformIds')?.split(',').filter(Boolean) || [],
+      campaignIds: p.get('campaignIds')?.split(',').filter(Boolean) || [], hostIds: p.get('hostIds')?.split(',').filter(Boolean) || [],
+      supportIds: p.get('supportIds')?.split(',').filter(Boolean) || [], technicalIds: p.get('technicalIds')?.split(',').filter(Boolean) || [],
+      reportStatuses: p.get('reportStatuses')?.split(',').filter(Boolean) || [], metricsStatuses: p.get('metricsStatuses')?.split(',').filter(Boolean) || [],
+    }
+    const encoded = JSON.stringify(fromUrl)
+    if (encoded !== lastUrlFilters.current) {
+      lastUrlFilters.current = encoded
+      setFilters(fromUrl)
+      setDraftFilters(fromUrl)
+      setQueuePage(1)
+    }
+  }, [searchParams])
+  const updateFilters = React.useCallback((next: React.SetStateAction<Filters>) => {
+    setDraftFilters(next)
+  }, [])
+  const applyFilters = React.useCallback(() => {
+    if (draftFilters.start && draftFilters.end && draftFilters.start > draftFilters.end) return
+    setFilters(draftFilters)
+    syncFilterUrl(draftFilters)
+    setReportPage(1)
+    setQueuePage(1)
+  }, [draftFilters, setReportPage, syncFilterUrl])
+  const resetFilters = React.useCallback(() => {
+    setDraftFilters(emptyFilters)
+    setFilters(emptyFilters)
+    syncFilterUrl(emptyFilters)
+    setReportPage(1)
+    setQueuePage(1)
+  }, [setReportPage, syncFilterUrl])
+  const hasUnappliedChanges = JSON.stringify(draftFilters) !== JSON.stringify(filters)
+  const invalidDraftDates = Boolean(draftFilters.start && draftFilters.end && draftFilters.start > draftFilters.end)
+  const appliedFilterChips = React.useMemo(() => {
+    const labels: Record<keyof Filters, string> = {
+      search:'Tìm kiếm', start:'Từ ngày', end:'Đến ngày', brandIds:'Brand',
+      platformIds:'Nền tảng', campaignIds:'Campaign', hostIds:'Host',
+      supportIds:'Trợ live', technicalIds:'Kỹ thuật',
+      reportStatuses:'Trạng thái báo cáo', metricsStatuses:'Trạng thái số liệu',
+    }
+    return (Object.keys(filters) as (keyof Filters)[])
+      .filter(key => Array.isArray(filters[key]) ? filters[key].length > 0 : Boolean(filters[key]))
+      .map(key => {
+        const value = filters[key]
+        return { key, label: labels[key], summary: Array.isArray(value) ? value.length + ' lựa chọn' : value }
+      })
+  }, [filters])
+  const removeAppliedFilter = (key: keyof Filters) => {
+    const next = { ...filters, [key]: Array.isArray(filters[key]) ? [] : '' } as Filters
+    setDraftFilters(next)
+    setFilters(next)
+    syncFilterUrl(next)
+    setReportPage(1)
+    setQueuePage(1)
+  }
   const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const requestVersion = React.useRef(0)
-  const pageKey = identity + ':' + reportPage + ':' + reportPageSize + ':' + encodedFilters
+  const pageKey = identity + ':' + reportPage + ':' + reportPageSize + ':' + queuePage + ':' + queuePageSize + ':' + encodedFilters + ':' + encodedQueueFilters
   const loadData = React.useCallback(async (reuseCache = false) => {
     if (!currentUser || !identity) return
     const version = ++requestVersion.current
@@ -136,28 +250,32 @@ export function ReportsList() {
         }).catch(() => { /* The complete loader reports failures. */ })
         const [reportPageResult, loadedCandidates, refs, loadedReportShifts] = await Promise.all([
           pagePromise,
-          shiftService.getReportCandidates(30),
+          getReportObligationPage({ page: queuePage, pageSize: queuePageSize, filters: JSON.parse(encodedQueueFilters) }),
           getOperationalReferences(currentUser),
           pageShifts,
         ])
-        const candidateIds = loadedCandidates.map(shift => shift.id)
-        const loadedCandidateReports = await reportService.getForShifts(candidateIds)
-        const allLoadedShifts = [...loadedCandidates, ...loadedReportShifts.filter(shift => !candidateIds.includes(shift.id))]
+        const candidateIds = loadedCandidates.items.map(entry => entry.shift.id)
+        const loadedCandidateReports = loadedCandidates.items.flatMap(entry => entry.report ? [entry.report] : [])
+        const loadedCandidateShifts = loadedCandidates.items.map(entry => entry.shift)
+        const allLoadedShifts = [...loadedCandidateShifts, ...loadedReportShifts.filter(shift => !candidateIds.includes(shift.id))]
         const loadedRegistrations = await shiftRegistrationService.getForShifts(allLoadedShifts.map(shift => shift.id))
-        return {reportPageResult, loadedCandidates, refs, loadedCandidateReports, allLoadedShifts, loadedRegistrations}
+        return {reportPageResult, loadedCandidates, loadedCandidateShifts, refs, loadedCandidateReports, allLoadedShifts, loadedRegistrations}
       }, async () => {
         if (getAuthMode() !== 'supabase') return true
         const actor = await currentUserService.getCurrent()
         return !!actor && operationalReferenceIdentity(actor)===operationalReferenceIdentity(currentUser)
       })
       if (version !== requestVersion.current) return
-      const {reportPageResult,loadedCandidates,refs,loadedCandidateReports,allLoadedShifts,loadedRegistrations} = result
+      const {reportPageResult,loadedCandidates,loadedCandidateShifts,refs,loadedCandidateReports,allLoadedShifts,loadedRegistrations} = result
+      setHistoricalContexts(reportPageResult.historicalShiftContexts??{})
       setLoadedIdentity(identity)
       if (reportPageResult.page !== reportPage) navigate({ reports_page: String(reportPageResult.page) }, true)
       setReports(reportPageResult.items)
       setReportTotal(reportPageResult.total)
-      setCandidateShifts(loadedCandidates)
+      if (loadedCandidates.page !== queuePage) setQueuePage(loadedCandidates.page)
+      setCandidateShifts(loadedCandidateShifts)
       setCandidateReports(loadedCandidateReports)
+      setQueueTotal(loadedCandidates.total)
       setShifts(allLoadedShifts)
       setBrands(refs.brands)
       setPlatforms(refs.platforms)
@@ -169,7 +287,8 @@ export function ReportsList() {
     } finally {
       if (version === requestVersion.current) setLoading(false)
     }
-  }, [encodedFilters,navigate,reportPage,reportPageSize,identity,currentUser,pageKey])
+  }, [encodedFilters,encodedQueueFilters,navigate,reportPage,reportPageSize,queuePage,queuePageSize,identity,currentUser,pageKey])
+  useShiftChangeRefresh(() => loadData(false))
 
   React.useEffect(() => {
     const versionRef = requestVersion
@@ -274,6 +393,62 @@ export function ReportsList() {
     }
   }
 
+  const calendarKey = identity + ':' + calendarScale + ':' + calendarDate + ':' + encodedFilters + ':' + calendarReload
+  const appliedCalendarFilters = React.useMemo(() => JSON.parse(encodedFilters), [encodedFilters])
+  React.useEffect(() => {
+    if (createdViewMode !== 'calendar' || !currentUser || userLoading) return
+    const controller = new AbortController()
+    let active = true
+    // Schedule loading state outside the synchronous effect body (React 19 effect rule).
+    void Promise.resolve().then(() => {
+      if (!active) return
+      setCalendarLoading(true)
+      setCalendarError(null)
+      setCalendarData(null)
+    })
+    void collectAuthorizedReportCalendar(calendarDate, calendarScale, appliedCalendarFilters, {
+      getQueuePage: (query, signal) => getReportObligationPage(query, signal),
+      getReportsPage: (query, signal) => reportService.getFilteredPage(query, signal),
+      getShiftsByIds: ids => shiftService.getByIds(ids),
+    }, controller.signal).then(async result => {
+      if (!active || controller.signal.aborted) return
+      if (getAuthMode() === 'supabase') {
+        const actor = await currentUserService.getCurrent()
+        if (!actor || operationalReferenceIdentity(actor) !== operationalReferenceIdentity(currentUser)) throw new Error('LIST_IDENTITY_CHANGED')
+      }
+      if (active && !controller.signal.aborted) setCalendarData(result)
+    }).catch(error => {
+      if (active && !controller.signal.aborted) setCalendarError(error)
+    }).finally(() => {
+      if (active && !controller.signal.aborted) setCalendarLoading(false)
+    })
+    return () => { active = false; controller.abort() }
+  // The exact view/date/actor/filters are part of this key; switching view cancels requests.
+  }, [calendarKey, createdViewMode, currentUser, userLoading, calendarDate, calendarScale, appliedCalendarFilters])
+  const navigateCalendar = (direction: 'previous' | 'today' | 'next') => {
+    const next = direction === 'today' ? businessLocalDate() : format(
+      calendarScale === 'month' ? addMonths(parseISO(calendarDate), direction === 'next' ? 1 : -1) :
+      calendarScale === 'week' ? addWeeks(parseISO(calendarDate), direction === 'next' ? 1 : -1) :
+      addDays(parseISO(calendarDate), direction === 'next' ? 1 : -1), 'yyyy-MM-dd')
+    navigate({ reports_calendar_date: next })
+  }
+  const openCalendarEntry = (entry: ReportCalendarEntry) => {
+    setTargetedShift(entry.shift)
+    const report = entry.report
+    if (!report) {
+      if (currentUser && hasPermission(currentUser, 'reports.submit')) {
+        setEditingReport(undefined); setInitialShiftId(entry.shift.id); setShowForm(true)
+      }
+      return
+    }
+    const state = reportQueueDisplayState(report)
+    if ((state === 'draft' || state === 'reopened') && currentUser && hasPermission(currentUser, 'reports.submit')) {
+      setEditingReport(report); setInitialShiftId(entry.shift.id); setShowForm(true)
+    } else {
+      setEditingReport(undefined); setShowForm(false); setSelectedReport(report)
+    }
+  }
+
   const shiftById = React.useMemo(() => new Map(shifts.map(shift => [shift.id, shift])), [shifts])
   const nameById = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || '—' : '—'
@@ -287,39 +462,36 @@ export function ReportsList() {
   }
 
   const reportByShift = React.useMemo(() => new Map([...reports, ...candidateReports].map(report => [report.shift_id, report])), [candidateReports, reports])
-  const completedShifts = React.useMemo(() => sortReportableShifts(candidateShifts.filter(shift => {
-    const report = reportByShift.get(shift.id)
-    return Boolean(currentUser && hasPermission(currentUser, 'reports.submit')) &&
-      reportQueueState(report) !== 'finalized' &&
-      (Boolean(currentUser && hasPermission(currentUser, 'reports.review')) || myShiftIds.has(shift.id))
-  })), [candidateShifts, currentUser, myShiftIds, reportByShift])
+  const completedShifts = React.useMemo(() => sortReportableShifts(candidateShifts), [candidateShifts])
 
   const explicitShiftId = editingReport?.shift_id ?? initialShiftId ?? selectedReport?.shift_id
   const modalShift = targetedShift?.id === explicitShiftId ? targetedShift : shifts.find(shift => shift.id === explicitShiftId)
   const formShifts = modalShift ? [modalShift, ...completedShifts.filter(shift => shift.id !== modalShift.id)] : completedShifts
 
-  const filteredQueue = React.useMemo(() => completedShifts.filter(shift => {
-    if (!reportableShiftStatuses.includes(shift.status as typeof reportableShiftStatuses[number])) return false
-    if (filters.start && shift.date < filters.start) return false
-    if (filters.end && shift.date > filters.end) return false
-    if (!matchesMultiSelect(shift.brand_id, filters.brandIds)) return false
-    if (!matchesMultiSelect(shift.platform_id, filters.platformIds)) return false
-    if (!matchesMultiSelect(shift.campaign_id, filters.campaignIds)) return false
-    const report = reportByShift.get(shift.id)
-    const reportStatus = report?.status || (report?.metrics_confirmed ? 'confirmed' : 'draft')
-    if (filters.reportStatuses.length > 0 && !filters.reportStatuses.includes(reportStatus)) return false
-    if (!filters.search) return true
-    const query = filters.search.toLowerCase()
-    return [shift.id, shift.title, nameById(brands, shift.brand_id), nameById(platforms, shift.platform_id), nameById(campaigns, shift.campaign_id)]
-      .filter(Boolean).join(' ').toLowerCase().includes(query)
-  }), [brands, campaigns, completedShifts, filters, platforms, reportByShift])
-  const pagedQueue = filteredQueue.slice((queuePage - 1) * queuePageSize, queuePage * queuePageSize)
+  const pagedQueue = completedShifts
+  const hasQueueFilters = Boolean(filters.search || filters.start || filters.end || filters.brandIds.length || filters.platformIds.length || filters.campaignIds.length || filters.hostIds.length || filters.supportIds.length || filters.technicalIds.length || filters.reportStatuses.length || filters.metricsStatuses.length)
 
   const filteredReports = reports
 
-  const confirmed = filteredReports.filter(report => report.metrics_confirmed)
+  // Page-scoped financial KPIs only use reports with fully confirmed status AND metrics.
+  const confirmed = filteredReports.filter(isConfirmedReportForKpi)
   const totalRevenue = confirmed.reduce((sum, report) => sum + (reportRevenue(report) ?? 0), 0)
+  const confirmedOrders = confirmed.reduce((sum, report) => sum + (report.orders ?? 0), 0)
+  const averageOrderValue = confirmedOrders > 0 ? totalRevenue / confirmedOrders : null
+  const queueRange = reportQueuePageRange(queueTotal, queuePage, queuePageSize, pagedQueue.length)
+  const queueNotStartedCount = React.useMemo(() => pagedQueue.filter(s => reportQueueDisplayState(reportByShift.get(s.id)) === 'not_started').length, [pagedQueue, reportByShift])
+  const queueDraftCount = React.useMemo(() => pagedQueue.filter(s => ['draft', 'reopened'].includes(reportQueueDisplayState(reportByShift.get(s.id)))).length, [pagedQueue, reportByShift])
+  const queueNeedsReviewCount = React.useMemo(() => pagedQueue.filter(s => ['in_review', 'unconfirmed'].includes(reportQueueDisplayState(reportByShift.get(s.id)))).length, [pagedQueue, reportByShift])
+  const queueConfirmedCount = React.useMemo(() => pagedQueue.filter(s => reportQueueDisplayState(reportByShift.get(s.id)) === 'confirmed').length, [pagedQueue, reportByShift])
+  const reportsConfirmedPageCount = React.useMemo(() => filteredReports.filter(isConfirmedReportForKpi).length, [filteredReports])
+  const reportsUnconfirmedPageCount = React.useMemo(() => filteredReports.filter(report => !isConfirmedReportForKpi(report)).length, [filteredReports])
+  const queueScope = [
+    filters.start || filters.end ? `Ngày ca: ${filters.start || 'không giới hạn'} đến ${filters.end || 'không giới hạn'}` : 'Ngày ca: toàn bộ thời gian',
+    currentUser?.system_permission === 'member' ? 'Phạm vi: ca được phân công hoặc báo cáo do bạn gửi' : 'Phạm vi: theo quyền tài khoản',
+    appliedFilterChips.length ? `${appliedFilterChips.length} bộ lọc đang áp dụng` : 'Không áp dụng bộ lọc bổ sung',
+  ].join(' · ')
   const exportContext = {
+    historicalShiftContexts:historicalContexts,
     shifts,
     campaigns,
     users,
@@ -330,10 +502,11 @@ export function ReportsList() {
 
   const exportAllReports = async () => {
     try {
-      const complete = await reportService.getAllFiltered(JSON.parse(encodedFilters))
-      const exportShifts = await shiftService.getByIds(complete.map(report => report.shift_id))
+      const complete = await reportService.getAllFilteredWithHistoricalContext(JSON.parse(encodedFilters))
+      const exportShifts = await shiftService.getByIds(complete.items.map(report => report.shift_id))
       const registrations = await shiftRegistrationService.getForShifts(exportShifts.map(shift => shift.id))
-      exportReportsToExcel(complete, { ...exportContext, shifts: exportShifts, registrations })
+      exportReportsToExcel(complete.items, { ...exportContext, shifts: exportShifts,
+        historicalShiftContexts:complete.historicalShiftContexts, registrations })
     } catch (error) { toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' }) }
   }
   const exportImages = async () => {
@@ -355,31 +528,54 @@ export function ReportsList() {
     <div className="space-y-6">
       {currentUser && hasPermission(currentUser, 'reports.submit') && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
-          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? t('reportDraftReady', { count: completedShifts.length }) : t('noReportDraftReady')}</p></div>
+          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? `${completedShifts.length} ca đang hiển thị trong trang hàng đợi, không phải tổng ca có thể tạo Draft` : t('noReportDraftReady')}</p></div>
           <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
         </div>
       )}
-      <p className="text-xs text-muted-foreground">{t('currentPage')}</p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric title={t('reportCount')} value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
-        <Metric title={t('confirmedRevenue')} value={formatCurrency(totalRevenue)} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
-        <Metric title={t('averageOrderValue')} value={formatCurrency(confirmed.reduce((sum, report) => sum + (typeof report.normalized_metrics?.average_order_value === 'number' ? report.normalized_metrics.average_order_value : report.average_order_value ?? (report.orders ? (reportRevenue(report) ?? 0) / report.orders : 0)), 0))} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
-        <Metric title={t('needsReview')} value={filteredReports.filter(report => !report.metrics_confirmed).length.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
+      <p className="text-xs text-muted-foreground">KPI tài chính và báo cáo chưa xác nhận: trang Báo cáo hiện tại ({filteredReports.length} báo cáo, {reportsConfirmedPageCount} đã xác nhận) · {queueScope}. Tổng báo cáo sau bộ lọc: {reportTotal} · Tổng ca chờ xử lý mọi trang: {queueTotal}.</p>
+      <div data-testid="reports-mobile-metrics" className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
+        <Metric title="Tổng báo cáo theo bộ lọc" value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
+        <Metric title="Doanh thu đã xác nhận · trang này" value={confirmed.length ? formatCurrency(totalRevenue) : '—'} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
+        <Metric title="Giá trị đơn trung bình · trang này" value={averageOrderValue === null ? '—' : formatCurrency(averageOrderValue)} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
+        <Metric title="Báo cáo chưa xác nhận · trang này" value={reportsUnconfirmedPageCount.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
 
-      {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">{t('reportDraftCandidates', { count: completedShifts.length })}</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 text-xs" data-testid="reports-queue-breakdown">
+        <span className="font-semibold text-muted-foreground">Trạng thái hàng đợi ({pagedQueue.length} ca trên trang này):</span>
+        <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-800 font-medium">
+          Chưa có report: {loading ? '—' : queueNotStartedCount}
+        </Badge>
+        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 font-medium">
+          Đang draft: {loading ? '—' : queueDraftCount}
+        </Badge>
+        <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800 font-medium">
+          Cần review: {loading ? '—' : queueNeedsReviewCount}
+        </Badge>
+        <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 font-medium">
+          Đã hoàn tất: {loading ? '—' : queueConfirmedCount}
+        </Badge>
+        <span className="text-[11px] text-muted-foreground ml-auto">
+          Tổng ca chờ xử lý mọi trang: {loading ? '—' : queueTotal}
+        </span>
+      </div>
 
-      <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
+      {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">Đang hiển thị {completedShifts.length} ca trong trang hàng đợi, không phải toàn bộ ca chưa có báo cáo</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
+
+      <CommandToolbar label={t('filters')} className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-1 items-center gap-2">
-            <div className="relative max-w-sm flex-1">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center">
+            <div className="relative w-full min-w-0 flex-1 md:max-w-sm">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9 bg-background" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder={t('reportSearchPlaceholder')} />
+              <Input className="pl-9 bg-background" value={draftFilters.search}
+                onChange={event => updateFilters(current => ({ ...current, search: event.target.value }))}
+                onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyFilters() } }}
+                placeholder={t('reportSearchPlaceholder')} />
             </div>
-            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="shrink-0"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button>
+            <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="reports-filter-panel" className="w-full shrink-0 min-[420px]:w-auto"><Filter className="mr-2 h-4 w-4" />{t('filters')}{appliedFilterChips.length > 0 ? <span aria-label="Số bộ lọc đang áp dụng" className="ml-1.5 rounded-full bg-muted px-1.5 text-xs">{appliedFilterChips.length}</span> : null}</Button>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => setFilters(emptyFilters)} title={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="default" size="sm" onClick={applyFilters} disabled={!hasUnappliedChanges || invalidDraftDates} data-testid="reports-apply-filters">Áp dụng</Button>
+            <Button variant="outline" size="icon" onClick={resetFilters} title={t('resetFilters')} aria-label={t('resetFilters')}><RotateCcw className="h-4 w-4" /></Button>
             {currentUser && hasPermission(currentUser, 'reports.export') && (
               <>
                 <div className="hidden md:block">
@@ -416,35 +612,43 @@ export function ReportsList() {
           </div>
         </div>
 
+        {invalidDraftDates && <p role="alert" className="text-xs text-red-600">Ngày bắt đầu không được sau ngày kết thúc.</p>}
+        {hasUnappliedChanges && !invalidDraftDates && <p role="status" className="text-xs text-amber-700">Bộ lọc đang chỉnh chưa được áp dụng. Kết quả và xuất Excel vẫn theo bộ lọc đang hiệu lực.</p>}
+        {appliedFilterChips.length > 0 && <div className="flex flex-wrap gap-2" aria-label="Bộ lọc đang áp dụng" data-testid="reports-applied-filter-chips">
+          {appliedFilterChips.map(chip => <Button key={chip.key} type="button" size="sm" variant="outline" onClick={() => removeAppliedFilter(chip.key)}
+            aria-label={'Bỏ lọc ' + chip.label}>{chip.label}: {chip.summary} ×</Button>)}
+        </div>}
         {showFilters && (
           <div id="reports-filter-panel" className="grid gap-4 rounded-md bg-muted/40 p-4 md:grid-cols-4 lg:grid-cols-5">
-            <label className="text-xs font-medium text-foreground">{t('startDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.start} onChange={event => setFilters(current => ({ ...current, start: event.target.value }))} /></label>
-            <label className="text-xs font-medium text-foreground">{t('endDate')}<Input className="mt-1.5 bg-background" type="date" value={filters.end} onChange={event => setFilters(current => ({ ...current, end: event.target.value }))} /></label>
-            <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => ({ ...current, brandIds: value }))} />
-            <EntityFilter label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => ({ ...current, platformIds: value }))} />
-            <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaignIds: value }))} />
-            <EntityFilter label={t('host')} value={filters.hostIds} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, hostIds: value }))} />
-            <EntityFilter label={t('support')} value={filters.supportIds} options={users.filter(user => user.operational_roles?.includes('support')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, supportIds: value }))} />
-            <EntityFilter label={t('technical')} value={filters.technicalIds} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => setFilters(current => ({ ...current, technicalIds: value }))} />
-            <StatusFilter label={t('reportStatus')} value={filters.reportStatuses} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => setFilters(current => ({ ...current, reportStatuses: value }))} />
-            <StatusFilter label={t('metricsStatus')} value={filters.metricsStatuses} values={['confirmed', 'unconfirmed']} onChange={value => setFilters(current => ({ ...current, metricsStatuses: value }))} />
+            <label className="text-xs font-medium text-foreground">{t('startDate')}<Input className="mt-1.5 bg-background" type="date" value={draftFilters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
+            <label className="text-xs font-medium text-foreground">{t('endDate')}<Input className="mt-1.5 bg-background" type="date" value={draftFilters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>
+            <EntityFilter label={t('brand')} value={draftFilters.brandIds} options={brands} onChange={value => updateFilters(current => ({ ...current, brandIds: value }))} />
+            <EntityFilter label={t('platform')} value={draftFilters.platformIds} options={platforms} onChange={value => updateFilters(current => ({ ...current, platformIds: value }))} />
+            <EntityFilter label={t('campaign')} value={draftFilters.campaignIds} options={campaigns} onChange={value => updateFilters(current => ({ ...current, campaignIds: value }))} />
+            <EntityFilter label={t('host')} value={draftFilters.hostIds} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, hostIds: value }))} />
+            <EntityFilter label={t('support')} value={draftFilters.supportIds} options={users.filter(user => user.operational_roles?.includes('support')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, supportIds: value }))} />
+            <EntityFilter label={t('technical')} value={draftFilters.technicalIds} options={users.filter(user => user.operational_roles?.includes('technical')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, technicalIds: value }))} />
+            <StatusFilter label={t('reportStatus')} value={draftFilters.reportStatuses} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => updateFilters(current => ({ ...current, reportStatuses: value }))} />
+            <StatusFilter label={t('metricsStatus')} value={draftFilters.metricsStatuses} values={['confirmed', 'unconfirmed']} onChange={value => updateFilters(current => ({ ...current, metricsStatuses: value }))} />
           </div>
         )}
-      </div>
+      </CommandToolbar>
 
       <section aria-labelledby="needs-report-heading" className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 id="needs-report-heading" className="text-lg font-semibold">{t('needsReport')}</h2>
-            <p className="text-sm text-muted-foreground">{t('reportDraftPolicy')}</p>
+            <p className="text-sm text-muted-foreground">{t('reportDraftPolicy')} · Gồm ca chưa lập báo cáo, Draft, In Review hoặc Reopened chưa hoàn tất. Đơn vị: ca, không phải bản ghi.</p>
+            <p className="text-xs text-muted-foreground" data-testid="report02-queue-scope">{queueScope}</p>
+            <p className="text-xs text-muted-foreground" data-testid="report02-queue-page-range">{queueTotal ? `Hiển thị ca ${queueRange.start}–${queueRange.end} trong tổng ${queueTotal} ca` : 'Không có ca chờ xử lý trong phạm vi'}</p>
           </div>
-          <Badge variant="secondary">{filteredQueue.length}</Badge>
+          <Badge variant="secondary" aria-label="Tổng ca chờ xử lý theo bộ lọc">{queueTotal}</Badge>
         </div>
         <Card className="overflow-hidden shadow-none">
           {pagedQueue.length === 0 ? (
             <CardContent className="space-y-3 py-8 text-center text-muted-foreground">
-              <p>{filteredQueue.length === 0 && (filters.search || filters.start || filters.end || filters.brandIds.length || filters.platformIds.length || filters.campaignIds.length || filters.reportStatuses.length) ? t('noReportsMatchFilters') : t('noReportsNeeded')}</p>
-              {(filters.search || filters.start || filters.end || filters.brandIds.length || filters.platformIds.length || filters.campaignIds.length || filters.reportStatuses.length) && <Button type="button" variant="outline" onClick={() => setFilters(emptyFilters)}>{t('clearFilters')}</Button>}
+              <p>{queueTotal === 0 && hasQueueFilters ? t('noReportsMatchFilters') : t('noReportsNeeded')}</p>
+              {hasQueueFilters && <Button type="button" variant="outline" onClick={resetFilters}>{t('clearFilters')}</Button>}
             </CardContent>
           ) : (
             <>
@@ -453,33 +657,266 @@ export function ReportsList() {
               </div>
               {pagedQueue.map(shift => {
                 const report = reportByShift.get(shift.id)
-                const state = reportQueueState(report)
+                const state = reportQueueDisplayState(report)
+                const readOnlyQueueItem = state === 'in_review' || state === 'unconfirmed' || state === 'confirmed'
+                const stateLabel = state === 'not_started' ? t('notStarted')
+                  : state === 'in_review' ? t('inReview')
+                  : state === 'reopened' ? t('reopened')
+                  : state === 'unconfirmed' ? 'Chưa xác nhận'
+                  : state === 'confirmed' ? t('confirmed')
+                  : t('draft')
                 return <div key={shift.id} className="grid gap-3 border-b px-4 py-3 last:border-b-0 md:grid-cols-7 md:items-center">
                   <div><p className="font-medium">{shift.date}</p><p className="text-xs text-muted-foreground">{shift.start_time}–{shift.end_time}</p></div>
                   <span className="truncate">{nameById(brands, shift.brand_id)}</span>
                   <span className="truncate">{nameById(campaigns, shift.campaign_id)}</span>
                   <span className="truncate">{nameById(platforms, shift.platform_id)}</span>
                   <Badge variant="outline" className="w-fit">{t(shift.status)}</Badge>
-                  <Badge variant="secondary" className="w-fit">{state === 'draft' ? t('draft') : t('notStarted')}</Badge>
-                  <Button type="button" size="sm" variant={state === 'draft' ? 'secondary' : 'default'} onClick={() => {
-                    if (report) { setEditingReport(report); setShowForm(true) }
+                  <div className="flex flex-col gap-1"><Badge variant="secondary" className="w-fit">{stateLabel}</Badge>{report && report.metrics_confirmed !== true && <span className="text-xs text-muted-foreground">Số liệu chưa xác nhận</span>}</div>
+                  <Button type="button" size="sm" variant={state === 'not_started' ? 'default' : 'secondary'} onClick={() => {
+                    if (report && readOnlyQueueItem) { setSelectedReport(report); setShowForm(false) }
+                    else if (report) { setEditingReport(report); setShowForm(true) }
                     else { setInitialShiftId(shift.id); setShowForm(true) }
-                  }}>{state === 'draft' ? t('continueReport') : t('createFinalReport')}</Button>
+                  }}>{readOnlyQueueItem ? t('viewDetails') : state === 'not_started' ? t('createFinalReport') : t('continueReport')}</Button>
                 </div>
               })}
-              <HistoryPagination page={queuePage} pageSize={queuePageSize} total={filteredQueue.length} onPageChange={setQueuePage} onPageSizeChange={size => { setQueuePageSize(size); setQueuePage(1) }} />
+              <HistoryPagination page={queuePage} pageSize={queuePageSize} total={queueTotal} onPageChange={setQueuePage} onPageSizeChange={size => {
+                const nextSize = PAGE_SIZES.find(candidate => candidate === size)
+                if (nextSize) { setQueuePageSize(nextSize); setQueuePage(1) }
+              }} />
             </>
           )}
         </Card>
       </section>
 
-      <section aria-labelledby="created-reports-heading" className="space-y-3">
-        <h2 id="created-reports-heading" className="text-lg font-semibold">{t('createdReports')}</h2>
-      {filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noReports')}</CardContent></Card> : (
+      <section aria-labelledby="created-reports-heading" className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 id="created-reports-heading" className="text-lg font-semibold tracking-tight">{t('createdReports')}</h2>
+              <Badge variant="secondary" className="font-semibold">{reportTotal} báo cáo sau bộ lọc ({filteredReports.length} trang này)</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">Danh sách các báo cáo livestream đã lập, cập nhật chỉ số hoặc lưu trữ theo quyền phân cấp.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
+            <Button
+              type="button"
+              variant={createdViewMode === 'cards' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setCreatedViewMode('cards')}
+              className="h-8 gap-1.5 text-xs font-medium"
+              title="Chế độ thẻ"
+              aria-label="Chế độ thẻ"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Chế độ thẻ</span>
+            </Button>
+            <Button
+              type="button"
+              variant={createdViewMode === 'table' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setCreatedViewMode('table')}
+              className="h-8 gap-1.5 text-xs font-medium"
+              title="Chế độ bảng"
+              aria-label="Chế độ bảng"
+            >
+              <TableIcon className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Chế độ bảng</span>
+            </Button>
+            <Button type="button" variant={createdViewMode === 'list' ? 'secondary' : 'outline'} size="sm"
+              onClick={() => setCreatedViewMode('list')} className="h-8 gap-1.5 text-xs" aria-label="Chế độ danh sách">
+              <ListIcon className="h-3.5 w-3.5" /><span className="hidden sm:inline">Danh sách</span>
+            </Button>
+            <Button type="button" variant={createdViewMode === 'calendar' ? 'secondary' : 'outline'} size="sm"
+              onClick={() => setCreatedViewMode('calendar')} className="h-8 gap-1.5 text-xs" aria-label="Chế độ lịch">
+              <CalendarDays className="h-3.5 w-3.5" /><span className="hidden sm:inline">Lịch</span>
+            </Button>
+          </div>
+        </div>
+      {createdViewMode !== 'calendar' && filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{t('noReports')}</CardContent></Card> : (
+        createdViewMode === 'calendar' ? (
+          <div className="space-y-3" data-testid="reports-multiview-calendar">
+            <div className="flex flex-wrap items-center gap-2" aria-label="Độ chi tiết lịch">
+              {(['month', 'week', 'day'] as const).map(scale =>
+                <Button key={scale} type="button" size="sm" variant={calendarScale === scale ? 'secondary' : 'outline'}
+                  onClick={() => navigate({ reports_calendar_scale: scale === 'month' ? null : scale })}>
+                  {scale === 'month' ? 'Tháng' : scale === 'week' ? 'Tuần' : 'Ngày'}
+                </Button>)}
+            </div>
+            {calendarLoading && <p role="status" className="rounded-md border p-5 text-sm text-muted-foreground">Đang tải đủ dữ liệu lịch theo phạm vi quyền và khoảng ngày…</p>}
+            {!calendarLoading && Boolean(calendarError) && <div role="alert" className="space-y-2 rounded-md border border-destructive/40 p-4">
+              <p className="text-sm">Không thể tải đầy đủ dữ liệu lịch. Không hiển thị dữ liệu phân trang một phần.</p>
+              <Button type="button" variant="outline" onClick={() => setCalendarReload(v => v + 1)}>Thử lại</Button>
+            </div>}
+            {!calendarLoading && !calendarError && calendarData && <>
+              <p className="text-xs text-muted-foreground" data-testid="reports-calendar-completeness">
+                Đã tải đủ {calendarData.queueTotal} ca chờ xử lý và {calendarData.reportTotal} báo cáo theo khoảng ngày, bộ lọc và quyền hiện tại. Không sử dụng 20 ca của trang hàng đợi.
+              </p>
+              {calendarData.missingShiftCount > 0 && <p role="status" className="rounded-md border border-amber-300 p-3 text-xs text-amber-700">
+                Có {calendarData.missingShiftCount} báo cáo lịch sử không còn ngữ cảnh ca khả dụng để định vị trên lịch. Vẫn có thể xem chúng trong Bảng/Thẻ/Danh sách đã được phân quyền.
+              </p>}
+              <ReportCalendarGrid date={calendarDate} scale={calendarScale} entries={calendarData.entries} brands={brands} platforms={platforms}
+                onSelectDay={day => navigate({ reports_calendar_scale: 'day', reports_calendar_date: day })}
+                onSelectEntry={openCalendarEntry} onNavigate={navigateCalendar}/>
+            </>}
+          </div>
+        ) : createdViewMode === 'list' ? (
+          <CompactReportRows reports={filteredReports} shiftById={shiftById} brands={brands} platforms={platforms}
+            onHistorical={setSelectedHistoricalReport} onView={report => {
+              const state = reportQueueDisplayState(report)
+              if (state === 'draft' || state === 'reopened') { setEditingReport(report); setShowForm(true) }
+              else { setEditingReport(undefined); setSelectedReport(report); setShowForm(false) }
+            }}/>
+        ) : createdViewMode === 'table' ? (
+          <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-muted/50 text-muted-foreground border-b uppercase text-[10px] tracking-wider font-semibold">
+                <tr>
+                  <th className="px-3.5 py-2.5">Thời gian</th>
+                  <th className="px-3.5 py-2.5">Brand</th>
+                  <th className="px-3.5 py-2.5">Nền tảng</th>
+                  <th className="px-3.5 py-2.5">Chiến dịch</th>
+                  <th className="px-3.5 py-2.5">Nhân sự ca</th>
+                  <th className="px-3.5 py-2.5 text-right">Doanh thu</th>
+                  <th className="px-3.5 py-2.5 text-right">Đơn hàng</th>
+                  <th className="px-3.5 py-2.5 text-center">Trạng thái</th>
+                  <th className="px-3.5 py-2.5 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredReports.map(report => {
+                  const shift = shiftById.get(report.shift_id)
+                  if (!shift) {
+                    const context = historicalContexts[report.id]
+                    if (!context) return (
+                      <tr key={report.id} className="bg-amber-500/5" data-testid="report-history-context-missing">
+                        <td colSpan={9} className="px-3.5 py-2 text-xs text-amber-700">
+                          Không thể tải ngữ cảnh lịch sử cho báo cáo {report.id}. Ca gốc không thuộc phạm vi hiện tại.
+                        </td>
+                      </tr>
+                    )
+                    const historicalStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+                    const historicalRevenue = reportRevenue(report)
+                    return (
+                      <tr key={report.id} className="hover:bg-muted/20" data-testid="report-historical-read-only">
+                        <td className="px-3.5 py-2.5 font-medium whitespace-nowrap">{context.date} <span className="text-[10px] text-muted-foreground block">{context.start_time.slice(0,5)}–{context.end_time.slice(0,5)}</span></td>
+                        <td className="px-3.5 py-2.5 font-medium">{nameById(brands, context.brand_id)}</td>
+                        <td className="px-3.5 py-2.5 text-muted-foreground">{nameById(platforms, context.platform_id)}</td>
+                        <td className="px-3.5 py-2.5 text-muted-foreground">{nameById(campaigns, context.campaign_id ?? undefined)}</td>
+                        <td className="px-3.5 py-2.5 text-muted-foreground text-[11px]">—</td>
+                        <td className="px-3.5 py-2.5 text-right font-medium">{historicalRevenue == null ? t('noData') : formatCurrency(historicalRevenue)}</td>
+                        <td className="px-3.5 py-2.5 text-right font-medium">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</td>
+                        <td className="px-3.5 py-2.5 text-center"><Badge variant="outline" className="text-[10px]" title={"Trạng thái: " + historicalStatus}>Lịch sử · Chỉ xem</Badge></td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedHistoricalReport(report)} className="h-7 px-2 text-xs">
+                            <FileText className="mr-1 h-3.5 w-3.5" />Chi tiết
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  }
+                  const reportStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+                  const revenue = reportRevenue(report)
+                  const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
+                  const isEditableDraft = reportStatus === 'draft' || reportStatus === 'reopened'
+                  const canRemove = Boolean(currentUser && (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id))
+                  const canArchive = Boolean(currentUser && hasPermission(currentUser, 'audit.restore'))
+
+                  return (
+                    <tr key={report.id} className="hover:bg-muted/20">
+                      <td className="px-3.5 py-2.5 font-medium whitespace-nowrap">{shift.date} <span className="text-[10px] text-muted-foreground block">{shift.start_time.slice(0,5)}–{shift.end_time.slice(0,5)}</span></td>
+                      <td className="px-3.5 py-2.5 font-semibold text-foreground">{nameById(brands, shift.brand_id)}</td>
+                      <td className="px-3.5 py-2.5 text-muted-foreground">{nameById(platforms, shift.platform_id)}</td>
+                      <td className="px-3.5 py-2.5 text-muted-foreground truncate max-w-[140px]">{nameById(campaigns, shift.campaign_id)}</td>
+                      <td className="px-3.5 py-2.5 text-muted-foreground text-[11px] truncate max-w-[150px]">{roleNames(shift, 'host')}</td>
+                      <td className="px-3.5 py-2.5 text-right font-medium">{revenue == null ? t('noData') : formatCurrency(revenue)}</td>
+                      <td className="px-3.5 py-2.5 text-right font-medium">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</td>
+                      <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
+                        <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className={report.metrics_confirmed ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 text-[10px]' : 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 text-[10px]'}>
+                          {statusLabel}
+                        </Badge>
+                      </td>
+                      <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isEditableDraft ? 'secondary' : 'ghost'}
+                            className="h-7 px-2 text-xs"
+                            onClick={() => {
+                              if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
+                              else setSelectedReport(report)
+                            }}
+                          >
+                            {isEditableDraft ? t('continueReport') : t('viewDetails')}
+                          </Button>
+                          {currentUser && hasPermission(currentUser, 'reports.export') && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              title={t('exportExcel')}
+                              onClick={() => exportReportDetailToExcel(report, exportContext)}
+                            >
+                              <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                            </Button>
+                          )}
+                          {Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title={report.metrics_confirmed ? t('archiveReport') : t('deleteDraftReport')}
+                              onClick={() => void requestRemove(report)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredReports.map(report => {
             const shift = shiftById.get(report.shift_id)
-            if (!shift) return null
+            if (!shift) {
+              const context = historicalContexts[report.id]
+              if (!context) return <Card key={report.id} className="border-amber-300 p-4" data-testid="report-history-context-missing">
+                <p className="text-sm font-medium">Không thể tải ngữ cảnh lịch sử cho báo cáo này</p>
+                <p className="mt-1 text-xs text-muted-foreground">Mã báo cáo: {report.id}. Vui lòng tải lại danh sách, không mở quyền chỉnh sửa ca.</p>
+              </Card>
+              const historicalStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+              const historicalRevenue = reportRevenue(report)
+              return <Card key={report.id} className="flex flex-col border-muted shadow-none" data-testid="report-historical-read-only">
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge variant="secondary">{context.date}</Badge>
+                    <Badge variant="outline">Lịch sử · Chỉ xem</Badge>
+                  </div>
+                  <CardTitle className="mt-2 text-base">{nameById(brands,context.brand_id)}</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {nameById(platforms,context.platform_id)} · {nameById(campaigns,context.campaign_id??undefined)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{context.start_time.slice(0,5)}–{context.end_time.slice(0,5)}</p>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col gap-3 p-4 pt-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Value label={t('revenue')} value={historicalRevenue==null?t('noData'):formatCurrency(historicalRevenue)} />
+                    <Value label={t('orders')} value={report.orders==null?t('noData'):report.orders.toLocaleString()} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Trạng thái: {historicalStatus}. Ca gốc không thuộc phạm vi chỉnh sửa hiện tại.</p>
+                  <Button type="button" size="sm" variant="outline" onClick={()=>setSelectedHistoricalReport(report)}>
+                    <FileText className="mr-2 h-4 w-4" />Xem chi tiết báo cáo lịch sử
+                  </Button>
+                </CardContent>
+              </Card>
+            }
             const reportStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
             const revenue = reportRevenue(report)
             const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
@@ -552,11 +989,51 @@ export function ReportsList() {
             )
           })}
         </div>
+        )
       )}
-      <HistoryPagination page={reportPage} pageSize={reportPageSize} total={reportTotal} onPageChange={setReportPage} onPageSizeChange={size => { setReportPageSize(size); setReportPage(1) }} />
+      {createdViewMode !== 'calendar' && <HistoryPagination page={reportPage} pageSize={reportPageSize} total={reportTotal} onPageChange={setReportPage} onPageSizeChange={size => { setReportPageSize(size); setReportPage(1) }} />}
       </section>
 
       {showForm && <ReportFormModal open={showForm} onOpenChange={open => { if (!open) closeReportModal() }} initialReport={editingReport} initialShiftId={initialShiftId} completedShifts={formShifts} brands={brands} platforms={platforms} campaigns={campaigns} users={users} registrations={registrations} onSuccess={() => { void loadData(); closeReportModal() }} />}
+      <Dialog open={Boolean(selectedHistoricalReport && loadedIdentity===identity &&
+        reports.some(report=>report.id===selectedHistoricalReport.id))}
+        onOpenChange={open=>{if(!open)setSelectedHistoricalReport(null)}}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto" data-testid="historical-report-detail-read-only">
+          <DialogHeader>
+            <DialogTitle>Báo cáo lịch sử · Chỉ xem</DialogTitle>
+            <DialogDescription>Quyền xem báo cáo không cấp quyền sửa ca livestream gốc hoặc phân công nhân sự.</DialogDescription>
+          </DialogHeader>
+          {selectedHistoricalReport && historicalContexts[selectedHistoricalReport.id] && <div className="space-y-4 text-sm">
+            <dl className="grid grid-cols-2 gap-3">
+              <div><dt className="text-muted-foreground">Mã báo cáo</dt><dd className="break-all font-medium">{selectedHistoricalReport.id}</dd></div>
+              <div><dt className="text-muted-foreground">Ngày ca</dt><dd>{historicalContexts[selectedHistoricalReport.id].date}</dd></div>
+              <div><dt className="text-muted-foreground">Giờ live</dt><dd>{historicalContexts[selectedHistoricalReport.id].start_time.slice(0,5)}–{historicalContexts[selectedHistoricalReport.id].end_time.slice(0,5)}</dd></div>
+              <div><dt className="text-muted-foreground">Brand</dt><dd>{nameById(brands,historicalContexts[selectedHistoricalReport.id].brand_id)}</dd></div>
+              <div><dt className="text-muted-foreground">Platform</dt><dd>{nameById(platforms,historicalContexts[selectedHistoricalReport.id].platform_id)}</dd></div>
+              <div><dt className="text-muted-foreground">Trạng thái báo cáo</dt><dd>{selectedHistoricalReport.status||'draft'}</dd></div>
+            </dl>
+            <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
+              <Value label={t('revenue')} value={reportRevenue(selectedHistoricalReport)==null?t('noData'):formatCurrency(reportRevenue(selectedHistoricalReport)!)} />
+              <Value label={t('orders')} value={selectedHistoricalReport.orders==null?t('noData'):selectedHistoricalReport.orders.toLocaleString()} />
+            </div>
+            <section className="space-y-2">
+              <h3 className="font-medium">Các chỉ số đã lưu</h3>
+              <pre className="max-h-44 overflow-auto rounded-md bg-muted/30 p-3 text-xs whitespace-pre-wrap break-words">{JSON.stringify({
+                normalized_metrics:selectedHistoricalReport.normalized_metrics??null,
+                platform_metrics:selectedHistoricalReport.platform_metrics??null,
+              },null,2)}</pre>
+            </section>
+            <section className="space-y-2">
+              <h3 className="font-medium">Nội dung tổng kết</h3>
+              <pre className="max-h-48 overflow-auto rounded-md bg-muted/30 p-3 text-xs whitespace-pre-wrap break-words">{JSON.stringify(selectedHistoricalReport.final_recap??null,null,2)}</pre>
+            </section>
+            {currentUser && hasPermission(currentUser,'reports.export') && <Button type="button" variant="outline"
+              onClick={()=>exportReportDetailToExcel(selectedHistoricalReport,exportContext)}>
+              <Download className="mr-2 h-4 w-4" />Xuất báo cáo lịch sử
+            </Button>}
+          </div>}
+        </DialogContent>
+      </Dialog>
       {selectedReport && modalShift && <ReportDetailModal open report={selectedReport} shift={modalShift} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => { if (!open) closeReportModal() }} onUpdated={() => { void loadData(); closeReportModal() }} campaigns={campaigns} />}
       <LifecycleActionDialog open={Boolean(removeTarget)} onOpenChange={open => { if (!open) { setRemoveTarget(null); setRemoveImpact(null) } }} title={removeTarget?.metrics_confirmed ? t('archiveConfirmedReport') : t('deleteUnconfirmedReport')} impact={removeImpact} confirmText={removeTarget?.metrics_confirmed ? t('archive') : t('delete')} onConfirm={removeReport} />
     </div>
@@ -566,12 +1043,12 @@ export function ReportsList() {
 function Metric({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
   return (
     <Card className="shadow-none">
-      <CardContent className="flex items-center p-4">
-        <div className="flex-1 space-y-1">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
+      <CardContent className="flex min-w-0 items-start gap-2 p-3 md:items-center md:p-4">
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="break-words text-xs font-medium leading-snug text-muted-foreground md:text-sm">{title}</p>
+          <p className="break-all text-[15px] font-bold tracking-tight tabular-nums md:text-2xl">{value}</p>
         </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted/50">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/50 md:h-10 md:w-10">
           {icon}
         </div>
       </CardContent>

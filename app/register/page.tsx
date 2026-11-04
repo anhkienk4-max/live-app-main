@@ -67,6 +67,8 @@ export default function RegisterPage() {
         return
       }
       setCreated(true)
+    } catch {
+      setErrors({ form: t('accountRequestSubmitFailed') })
     } finally {
       setLoading(false)
     }
@@ -189,7 +191,7 @@ export default function RegisterPage() {
         </Field>}
         
         {errors.form && (
-          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="register-form-error">
+          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert" data-testid="register-form-error">
             <AlertCircle className="size-4 shrink-0" />
             <p>{errors.form}</p>
           </div>
