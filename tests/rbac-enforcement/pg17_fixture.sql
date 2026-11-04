@@ -52,10 +52,16 @@ CREATE POLICY audit_logs_read ON public.audit_logs FOR SELECT TO authenticated U
   OR (private.current_system_permission()='leader'
     AND module IN ('calendar','live','reports','campaigns','swaps','imports'))
 );
+CREATE TABLE public.swap_requests (id text PRIMARY KEY, status text NOT NULL, approved_by text);
+ALTER TABLE public.swap_requests ENABLE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON public.swap_requests TO authenticated;
+CREATE POLICY swap_requests_disposable_test_scope ON public.swap_requests
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 \i supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql
 \i supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql
 \i supabase/migrations/20261104093735_rc19_rbac03_supported_permission_enforcement.sql
+\i supabase/migrations/20261104110000_rc19_c3_scoped_action_catalog.sql
 
 DO $$
 BEGIN
@@ -68,7 +74,10 @@ BEGIN
   IF (SELECT count(*) FROM private.rbac_permission_catalog) <> 39 THEN
     RAISE EXCEPTION 'RBAC_PERMISSION_CATALOG_PARITY_FAILED';
   END IF;
-  IF EXISTS (SELECT 1 FROM private.rbac_permission_catalog WHERE permission<>'audit.view_team'
+  IF EXISTS (SELECT 1 FROM private.rbac_permission_catalog WHERE permission NOT IN (
+      'audit.view_team','shifts.view_assigned','shifts.assign_staff','shifts.import','shifts.export',
+      'reports.submit','reports.review','swaps.request','swaps.approve','attendance.record_own',
+      'storage.upload','storage.edit_own','storage.delete')
     AND (cardinality(role_override_roles)>0 OR cardinality(account_override_roles)>0 OR cardinality(account_allow_roles)>0)) THEN
     RAISE EXCEPTION 'UNENFORCED_PERMISSION_CATALOG_ENTRY_WAS_UNLOCKED';
   END IF;
@@ -76,6 +85,11 @@ BEGIN
     OR (SELECT account_override_roles FROM private.rbac_permission_catalog WHERE permission='audit.view_team') <> ARRAY['leader']::text[]
     OR (SELECT account_allow_roles FROM private.rbac_permission_catalog WHERE permission='audit.view_team') <> ARRAY['leader']::text[] THEN
     RAISE EXCEPTION 'SUPPORTED_AUDIT_PERMISSION_CATALOG_INVALID';
+  END IF;
+  IF (SELECT role_override_roles FROM private.rbac_permission_catalog WHERE permission='reports.submit') <> ARRAY['member','leader','admin']::text[]
+    OR (SELECT account_allow_roles FROM private.rbac_permission_catalog WHERE permission='reports.submit') <> ARRAY['leader']::text[]
+    OR (SELECT role_override_roles FROM private.rbac_permission_catalog WHERE permission='swaps.approve') <> ARRAY['leader','admin']::text[] THEN
+    RAISE EXCEPTION 'SCOPED_ACTION_CATALOG_INVALID';
   END IF;
 END;
 $$;

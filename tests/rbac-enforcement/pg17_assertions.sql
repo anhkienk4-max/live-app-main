@@ -210,18 +210,79 @@ SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
 SET ROLE authenticated;
 DO $$ BEGIN
   BEGIN
-    PERFORM public.rbac02_set_account_override('leader-a','reports.review','deny',
+    PERFORM public.rbac02_set_account_override('leader-a','reports.export','deny',
       'unsupported account decision',NULL,0);
     RAISE EXCEPTION 'UNSUPPORTED_ACCOUNT_OVERRIDE_WAS_ACCEPTED';
   EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
   END;
   BEGIN
-    PERFORM public.rbac01_propose_role_defaults('leader','{"reports.review":"deny"}'::jsonb,
+    PERFORM public.rbac01_propose_role_defaults('leader','{"reports.export":"deny"}'::jsonb,
       'unsupported role decision',0);
     RAISE EXCEPTION 'UNSUPPORTED_ROLE_OVERRIDE_WAS_ACCEPTED';
   EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
   END;
 END $$;
+RESET ROLE;
+
+-- The report-submit API and direct swap RPCs consume the same authenticated decision.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT (public.rbac01_propose_role_defaults('leader',
+  '{"reports.submit":"deny","swaps.request":"deny","swaps.approve":"deny"}'::jsonb,
+  'Scoped action policy test',0)->>'id')::bigint AS scoped_role_proposal_id \gset
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000012';
+SET ROLE authenticated;
+SELECT public.rbac01_approve_role_defaults(:'scoped_role_proposal_id'::bigint);
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.rbac01_activate_role_defaults(:'scoped_role_proposal_id'::bigint,0,NULL);
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF public.rbac01_effective_permission('reports.submit') IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'SCOPED_ROLE_DENY_NOT_APPLIED';
+  END IF;
+  BEGIN
+    INSERT INTO public.swap_requests(id,status) VALUES ('denied-swap','pending');
+    RAISE EXCEPTION 'SWAP_REQUEST_WITHOUT_PERMISSION_WAS_ACCEPTED';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.rbac02_set_account_override('leader-a','reports.submit','allow',
+  'Restore scoped report submission',NULL,0);
+SELECT public.rbac02_set_account_override('leader-a','swaps.request','allow',
+  'Restore scoped swap request',NULL,0);
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF public.rbac01_effective_permission('reports.submit') IS DISTINCT FROM true
+     OR public.rbac_permission_decision('reports.submit')->>'source' <> 'account_allow' THEN
+    RAISE EXCEPTION 'ACCOUNT_ALLOW_DID_NOT_RESTORE_SCOPED_REPORT_PERMISSION';
+  END IF;
+  INSERT INTO public.swap_requests(id,status) VALUES ('allowed-swap','pending');
+  BEGIN
+    UPDATE public.swap_requests SET status='approved',approved_by='leader-a' WHERE id='allowed-swap';
+    RAISE EXCEPTION 'SWAP_APPROVAL_WITHOUT_PERMISSION_WAS_ACCEPTED';
+  EXCEPTION WHEN SQLSTATE '42501' THEN NULL;
+  END;
+END $$;
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.rbac02_set_account_override('leader-a','swaps.approve','allow',
+  'Restore scoped swap approval',NULL,0);
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+UPDATE public.swap_requests SET status='approved',approved_by='leader-a' WHERE id='allowed-swap';
 RESET ROLE;
 
 -- Batch and single-permission RPCs use the same authenticated database result.
