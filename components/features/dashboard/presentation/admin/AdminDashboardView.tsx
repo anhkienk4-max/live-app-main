@@ -95,10 +95,10 @@ export interface AdminDashboardViewModel {
 
 // Sub-components
 
-interface KpiCardProps { icon: React.ReactNode; iconBg: string; title: string; value: string; subtitle: string }
-function KpiCard({ icon, iconBg, title, value, subtitle }: KpiCardProps) {
-  return (
-    <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex flex-col justify-center">
+interface KpiCardProps { icon: React.ReactNode; iconBg: string; title: string; value: string; subtitle: string; href?: string }
+function KpiCard({ icon, iconBg, title, value, subtitle, href }: KpiCardProps) {
+  const card = (
+    <div className={`bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex flex-col justify-center ${href ? 'hover:border-amber-400 hover:shadow-md transition-all cursor-pointer' : ''}`}>
       <div className="flex items-center gap-4 mb-3">
         <div className={`w-[48px] h-[48px] rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>{icon}</div>
         <div className="flex flex-col justify-center">
@@ -109,6 +109,14 @@ function KpiCard({ icon, iconBg, title, value, subtitle }: KpiCardProps) {
       <span className="text-[13px] text-slate-500 font-medium">{subtitle}</span>
     </div>
   )
+  if (href) {
+    return (
+      <a href={href} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded-[12px]">
+        {card}
+      </a>
+    )
+  }
+  return card
 }
 
 function OverviewMetricCard({ metric }: { metric: ApplicationOverviewMetric }) {
@@ -283,10 +291,10 @@ export function AdminDashboardView({
       {dashboardFeatureLinks}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
-        <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title={t('liveNow')} value={liveCount.toString()} subtitle={t('activeSessions')} />
-        <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title={t('shiftsToday')} value={todaysShiftsCount.toString()} subtitle={t('scheduledToday')} />
-        <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title={t('staffingGap')} value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle={t('needsResolution')} />
-        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title={t('pendingRegistrations')} value={pendingCount !== null ? pendingCount.toString() : '—'} subtitle={t('needsReview')} />
+        <KpiCard icon={<Radio className="w-5 h-5 text-red-600" />} iconBg="bg-red-50" title={t('liveNow')} value={liveCount.toString()} subtitle={t('activeSessions')} href="/live" />
+        <KpiCard icon={<Calendar className="w-5 h-5 text-blue-600" />} iconBg="bg-blue-50" title={t('shiftsToday')} value={todaysShiftsCount.toString()} subtitle={t('scheduledToday')} href="/calendar?calendar_view=list&calendar_time=today" />
+        <KpiCard icon={<Users className="w-5 h-5 text-amber-500" />} iconBg="bg-amber-50" title={t('staffingGap')} value={missingStaffCount !== null ? missingStaffCount.toString() : '—'} subtitle={t('needsResolution')} href="/staffing?gap=missing" />
+        <KpiCard icon={<FileText className="w-5 h-5 text-purple-600" />} iconBg="bg-purple-50" title={t('pendingRegistrations')} value={pendingCount !== null ? pendingCount.toString() : '—'} subtitle={t('needsReview')} href="/staffing?tab=registration" />
       </div>
 
       <section aria-labelledby="app-wide-overview-title" className="space-y-3">

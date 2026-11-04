@@ -200,6 +200,46 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [exportOpen, setExportOpen] = React.useState(false)
   const [showForm, setShowForm] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
+
+  const handleSelectShift = React.useCallback((shift: Shift | null) => {
+    setSelectedShift(shift)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      if (shift) {
+        url.searchParams.set('shift_id', shift.id)
+      } else {
+        url.searchParams.delete('shift_id')
+        url.searchParams.delete('shiftId')
+        url.searchParams.delete('tab')
+        url.searchParams.delete('shift_tab')
+      }
+      window.history.replaceState(null, '', url.toString())
+    }
+  }, [])
+
+  // Deep-link to a specific shift from URL query param
+  const urlShiftId = params.get('shift_id') || params.get('shiftId')
+  React.useEffect(() => {
+    if (!urlShiftId || selectedShift?.id === urlShiftId) return
+    let active = true
+    const frame = requestAnimationFrame(() => {
+      if (!active) return
+      const matched = shifts.find(s => s.id === urlShiftId)
+      if (matched) {
+        setSelectedShift(matched)
+      } else {
+        void shiftService.getById(urlShiftId).then(loaded => {
+          if (active && loaded) setSelectedShift(loaded)
+        }).catch(() => {
+          // Ignore invalid deep-link shift id
+        })
+      }
+    })
+    return () => {
+      active = false
+      cancelAnimationFrame(frame)
+    }
+  }, [urlShiftId, shifts, selectedShift?.id])
   const [previewShift, setPreviewShift] = React.useState<Shift | null>(null)
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
@@ -939,7 +979,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           users={users}
           onViewFullShift={(shift) => {
             setPreviewShift(null)
-            setSelectedShift(shift)
+            handleSelectShift(shift)
           }}
           onPrimaryAction={undefined}
         />
@@ -948,7 +988,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       {selectedShift && (
         <ShiftDetailModal
           open={!!selectedShift}
-          onOpenChange={(open) => !open && setSelectedShift(null)}
+          initialTab={params.get('tab') || params.get('shift_tab') || undefined}
+          onOpenChange={(open) => !open && handleSelectShift(null)}
           shift={selectedShift}
           brands={brands}
           platforms={platforms}
@@ -975,7 +1016,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           }}
           onDelete={() => {
             loadData()
-            setSelectedShift(null)
+            handleSelectShift(null)
           }}
         />
       )}

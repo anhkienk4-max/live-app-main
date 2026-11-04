@@ -1,5 +1,6 @@
 'use client'
 
+import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 import { format, isValid, parseISO } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
@@ -413,6 +414,8 @@ const statusStyles: Record<ShiftStatus, string> = {
 
 
 interface ShiftDetailModalProps {
+  initialTab?: 'overview' | 'staffing' | 'details' | 'attendance' | string
+  onTabChange?: (tab: string) => void
   exportFilters?: ListFilters
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -489,6 +492,8 @@ export function ShiftDetailActions({
 }
 
 export function ShiftDetailModal({
+  initialTab,
+  onTabChange,
   exportFilters,
   open,
   onOpenChange,
@@ -523,6 +528,26 @@ export function ShiftDetailModal({
   const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
   const [showSwapDialog, setShowSwapDialog] = React.useState(false)
   const [supplementalDraft, setSupplementalDraft] = React.useState<Record<string, string>>({})
+  const searchParams = useSearchParams()
+  const initialParamTab = searchParams?.get('tab') || searchParams?.get('shift_tab')
+  const validTabs = React.useMemo(() => ['overview', 'staffing', 'details', 'attendance'], [])
+  const resolvedInitialTab = initialTab && validTabs.includes(initialTab)
+    ? initialTab
+    : initialParamTab && validTabs.includes(initialParamTab)
+      ? initialParamTab
+      : 'overview'
+  const [tabOverride, setTabOverride] = React.useState<string | null>(null)
+  const currentTab = tabOverride ?? resolvedInitialTab
+
+  const handleTabChange = (nextTab: string) => {
+    setTabOverride(nextTab)
+    onTabChange?.(nextTab)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', nextTab)
+      window.history.replaceState(null, '', url.toString())
+    }
+  }
   const canDeleteShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
   const canEditStaffingLabels = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
   const canAssignStaff = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
@@ -838,7 +863,7 @@ export function ShiftDetailModal({
           </DialogHeader>
 
           <DialogBody className="mx-0 pb-1 bg-muted/5 p-0 overflow-y-auto">
-            <Tabs key={`${shift.id}:${currentUser?.id ?? ''}`} defaultValue="overview" className="min-w-0">
+            <Tabs key={`${shift.id}:${currentUser?.id ?? ''}`} value={currentTab} onValueChange={handleTabChange} className="min-w-0">
               <TabsList className="mx-4 mt-4 grid w-auto grid-cols-4 sm:mx-6" data-testid="shift-detail-permanent-tabs">
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
