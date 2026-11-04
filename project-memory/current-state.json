@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "006f45a7f2c9226f1958eb31458ecd212733c407",
+    "head": "5a69cbeacac8e4deaa340a6b8b9ef9871d5fcb48",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -87,6 +87,7 @@
       "app/api/rbac/capabilities/route.ts",
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
+      "app/api/reports/export/route.ts",
       "app/api/role-defaults/route.ts",
       "app/api/schedule-source-files/route.ts",
       "app/api/staff/invite/route.ts",
@@ -117,14 +118,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 93,
+        "app": 94,
         "components": 188,
-        "lib": 283,
+        "lib": 285,
         "scripts": 35,
-        "supabase": 134,
-        "tests": 343
+        "supabase": 135,
+        "tests": 346
       },
-      "total": 1076
+      "total": 1083
     },
     "tests": {
       "files": [
@@ -319,6 +320,7 @@
         "tests/rc19-report-view-parity-100.test.ts",
         "tests/rc19-report01-multiview.test.ts",
         "tests/rc19-reports-app-router-wiring.test.ts",
+        "tests/rc19-reports-export-authority.test.ts",
         "tests/rc19-reports-photo-groups-164.test.ts",
         "tests/rc19-self-attendance-contract.test.ts",
         "tests/rc19-staffing-availability-sql.test.ts",
@@ -345,8 +347,10 @@
         "tests/rc19-ui-functional-integration.test.tsx",
         "tests/rc19-unified-import-postgres17.test.ts",
         "tests/rc19-wave3-verification.test.ts",
+        "tests/rc19-workforce-authority.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
+        "tests/report-artifact-export-authority.test.ts",
         "tests/report-history-access.test.ts",
         "tests/report-null-semantics-consumers.test.ts",
         "tests/report-required-metrics.test.ts",
@@ -403,7 +407,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 274
+      "count": 277
     },
     "migrations": {
       "files": [
@@ -512,9 +516,10 @@
         "supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql",
         "supabase/migrations/20261104093735_rc19_rbac03_supported_permission_enforcement.sql",
         "supabase/migrations/20261104110000_rc19_c3_scoped_action_catalog.sql",
-        "supabase/migrations/20261104113000_rc19_c3_staffing_permission_guard.sql"
+        "supabase/migrations/20261104113000_rc19_c3_staffing_permission_guard.sql",
+        "supabase/migrations/20261104120000_rc19_c3_leader_brand_scope_reports.sql"
       ],
-      "count": 106
+      "count": 107
     }
   },
   "verification": {
@@ -528,5 +533,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-04T18:02:49+07:00"
+  "synced_at": "2026-11-04T23:05:27+07:00"
 }
