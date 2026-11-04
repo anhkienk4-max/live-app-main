@@ -7,6 +7,7 @@ on:
       - integration/rc19-unified-release
       - integration/rc19-unified-candidate
       - codex/rc19-batch05a43-ci-hardening
+      - codex/rc19-c3-db-enforcement
   pull_request:
     branches:
       - main
@@ -68,6 +69,8 @@ jobs:
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac01_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac01b_disposable'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac02_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac_enforcement_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_rbac_enforcement_disposable IS 'RC19_RBAC_ENFORCEMENT_DISPOSABLE_TEST_DATABASE'"
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_restore_disposable TEMPLATE template0'
           psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_restore_disposable IS 'RC19_RESTORE_DISPOSABLE_TEST_DATABASE'"
           marker="$(psql -h localhost -U rc19_ci -d postgres -Atqc "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = 'rc19_concurrency_disposable'")"
@@ -118,7 +121,9 @@ jobs:
             -f tests/rbac01b/pg17_fixture.sql -f tests/rbac01b/pg17_assertions.sql
           psql -h localhost -U rc19_ci -d rc19_rbac02_disposable -v ON_ERROR_STOP=1 \
             -f tests/rbac02/pg17_fixture.sql -f tests/rbac02/pg17_assertions.sql
-          echo "RBAC SQL fixtures are review-only contracts; no Supabase migration was added or applied." >> "$GITHUB_STEP_SUMMARY"
+          psql -h localhost -U rc19_ci -d rc19_rbac_enforcement_disposable -v ON_ERROR_STOP=1 \
+            -f tests/rbac-enforcement/pg17_fixture.sql -f tests/rbac-enforcement/pg17_assertions.sql
+          echo "Deployable RBAC migrations applied and exercised against isolated PostgreSQL 17; legacy review-only contract suites ran separately." >> "$GITHUB_STEP_SUMMARY"
 
       - name: PostgreSQL 17 Multi-Connection Concurrency Gate
         env:
