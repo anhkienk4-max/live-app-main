@@ -269,11 +269,17 @@ function LoginPagePending() {
   return (
     <AuthLayout variant="login" title={t('signIn')} subtitle={t('loginSubtitle')}>
       <div role="status" aria-busy="true" aria-label={t('loading')} data-testid="login-pending" className="space-y-5">
-        <div className="h-4 w-20 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" />
-        <div className="h-12 w-full animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />
-        <div className="h-4 w-24 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" />
-        <div className="h-12 w-full animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />
-        <div className="h-12 w-full animate-pulse rounded-lg bg-blue-100 motion-reduce:animate-none" />
+        <div className="space-y-2">
+          <label htmlFor="email-pending" className="text-sm font-semibold text-slate-700">{t('email')}</label>
+          <Input id="email-pending" name="email" type="email" disabled placeholder="ten@congty.com" className="h-12 border-slate-200 bg-slate-50" />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="password-pending" className="text-sm font-semibold text-slate-700">{t('password')}</label>
+          <Input id="password-pending" name="password" type="password" disabled placeholder="••••••••" className="h-12 border-slate-200 bg-slate-50" />
+        </div>
+        <Button disabled className="h-12 w-full bg-blue-600 text-white font-semibold">
+          {t('signIn')}
+        </Button>
       </div>
     </AuthLayout>
   )

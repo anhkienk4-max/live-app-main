@@ -342,7 +342,7 @@ export function BrandCatalogWorkspace() {
   if (error && !catalog) {
     if (error === 'BRAND01_SCHEMA_NOT_INSTALLED') {
       return (
-        <main data-testid="brand-catalog-schema-pending" role="status" className="mx-auto max-w-3xl p-4 md:p-8">
+        <section data-testid="brand-catalog-schema-pending" role="status" aria-label={t('brandCatalogSchemaPendingTitle')} className="mx-auto max-w-3xl p-4 md:p-8">
           <section className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-5 md:p-7">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Brand / Campaign</p>
@@ -354,7 +354,7 @@ export function BrandCatalogWorkspace() {
               <Button nativeButton={false} render={<Link href="/admin" />} variant="outline">{t('brandCatalogOpenAdmin')}</Button>
             </div>
           </section>
-        </main>
+        </section>
       )
     }
     return <PageLoadError error={error} onRetry={() => void load()} />
@@ -480,7 +480,7 @@ export function BrandCatalogWorkspace() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl space-y-5 p-4 md:p-6" data-testid="brand-catalog">
+    <section className="mx-auto max-w-7xl space-y-5 p-4 md:p-6" data-testid="brand-catalog" aria-label="Danh mục sản phẩm và SKU">
       {/* Context Path & Brand Selector Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-3 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
@@ -1841,7 +1841,7 @@ export function BrandCatalogWorkspace() {
           </Card>
         </div>
       )}
-    </main>
+    </section>
   )
 }
 

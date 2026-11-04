@@ -166,7 +166,7 @@ export function PayrollPeriodManager({
 
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
-      <CardHeader className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <CardHeader className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between w-full min-w-0">
         <div>
           <CardTitle className="text-base font-bold text-slate-900">
             Quản lý chu kỳ quyết toán lương
@@ -175,7 +175,7 @@ export function PayrollPeriodManager({
             Khởi tạo, theo dõi tiến độ phê duyệt và chọn chu kỳ để đối soát chi tiết.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -199,7 +199,7 @@ export function PayrollPeriodManager({
 
       <CardContent className="p-4 space-y-4">
         {/* Filters */}
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 w-full min-w-0">
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Trạng thái
@@ -263,7 +263,7 @@ export function PayrollPeriodManager({
         </div>
 
         {/* Table */}
-        <div role="region" aria-label="Bảng dữ liệu, cuộn ngang / Scroll horizontally" tabIndex={0} className="max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <div role="region" aria-label="Bảng dữ liệu, cuộn ngang / Scroll horizontally" tabIndex={0} className="w-full min-w-0 max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <table className="w-full text-left text-xs">
             <thead className="border-b bg-slate-50 font-semibold text-slate-600">
               <tr>

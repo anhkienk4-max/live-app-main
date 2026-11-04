@@ -60,7 +60,7 @@ export function OpsMobileHome({
     { href: '/notifications', title: t('allNotifications'), Icon: Bell, color: 'text-amber-600', background: 'bg-amber-50' },
   ]
   return (
-    <main data-testid="ada-reference-mobile-home" data-role={role} className="min-w-0 bg-[#F7F9FE] pb-7 md:hidden">
+    <section aria-label={t('shiftsToday')} data-testid="ada-reference-mobile-home" data-role={role} className="min-w-0 bg-[#F7F9FE] pb-7 md:hidden">
       <div className="flex min-h-[82px] items-center gap-3 bg-[#081F4A] px-4 pb-5 pt-4 text-white">
         <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full border border-white/25 bg-blue-500 text-[14px] font-bold">{initial}</span>
         <div className="min-w-0 flex-1">
@@ -168,6 +168,6 @@ export function OpsMobileHome({
         </section>
         <Link href="/reports" className="inline-flex min-h-11 items-center gap-2 text-[12px] font-semibold text-[#155EF2]">{t('allReports')} <ArrowRight className="size-4" aria-hidden="true" /></Link>
       </div>
-    </main>
+    </section>
   )
 }

@@ -17,7 +17,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -99,15 +100,23 @@ export function AdminWorkspace() {
     : 'checking'
   if (authorizationState !== 'allowed') {
     const denied = authorizationState === 'denied'
-    return <main className="mx-auto max-w-6xl space-y-4 p-4 md:p-6" data-testid="admin-workspace-gate">
+    return <section className="mx-auto max-w-6xl space-y-4 p-4 md:p-6" data-testid="admin-workspace-gate" aria-label={t('adminWorkspaceTitle')}>
       <h1 className="text-2xl font-semibold">{t('adminWorkspaceTitle')}</h1>
       {authorizationState === 'checking' ? <p role="status" className="rounded-lg border p-4 text-sm text-muted-foreground">{t('adminCheckingAccess')}</p>
-        : denied ? <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">{t('adminAccessDenied')}</p>
+        : denied ? (
+          <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" data-testid="admin-access-denied-box">
+            <p role="alert" className="font-medium">{t('adminAccessDenied')}</p>
+            <p className="text-xs text-amber-800/80">Khu vực dành riêng cho Quản trị viên (Admin). Bạn có thể quay lại trang chủ.</p>
+            <Link href="/" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "bg-white hover:bg-amber-100/60 border-amber-300")}>
+              Về trang chủ
+            </Link>
+          </div>
+        )
           : <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-900"><p role="alert">{t('adminAccessError')}</p><Button className="mt-3" variant="outline" onClick={() => setRetry(value => value + 1)}>{t('tryAgain')}</Button></div>}
-    </main>
+    </section>
   }
 
-  return <main className="mx-auto max-w-6xl space-y-5 p-4 md:p-6" data-testid="admin-workspace">
+  return <section className="mx-auto max-w-6xl space-y-5 p-4 md:p-6" data-testid="admin-workspace" aria-label={t('adminWorkspaceTitle')}>
     <header className="space-y-2">
       <p className="text-sm font-medium text-blue-700">{t('adminWorkspaceEyebrow')}</p>
       <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t('adminWorkspaceTitle')}</h1>
@@ -153,5 +162,5 @@ export function AdminWorkspace() {
           </div>
         </section>
       })}
-  </main>
+  </section>
 }

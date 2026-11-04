@@ -921,7 +921,7 @@
 /* ADA OPS RC19 mobile visual system. Presentation only, not business permissions.
    PageShell marks eligible workspaces; desktop and login are not restyled. */
 @media (max-width: 767px) {
-  .ada-pwa-shell .ada-workspace-page {
+  .ada-pwa-shell :is(.ada-workspace-page, .ada-payroll-page) {
     --ada-mobile-card-radius: 14px;
     --ada-mobile-control-height: 44px;
     min-width: 0;
@@ -933,7 +933,7 @@
     letter-spacing: -.02em;
     overflow-wrap: anywhere;
   }
-  .ada-pwa-shell .ada-workspace-page :is([data-slot="card"], [data-slot="tabs-content"]) { min-width: 0; max-width: 100%; }
+  .ada-pwa-shell :is(.ada-workspace-page, .ada-payroll-page) :is([data-slot="card"], [data-slot="tabs-content"]) { min-width: 0; max-width: 100%; }
   .ada-pwa-shell .ada-workspace-page [data-slot="card"] { border-radius: var(--ada-mobile-card-radius); }
   .ada-pwa-shell .ada-workspace-page :is([data-slot="button"], [data-slot="tabs-trigger"], [data-slot="select-trigger"]) {
     min-height: var(--ada-mobile-control-height);

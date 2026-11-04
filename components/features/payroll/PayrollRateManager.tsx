@@ -210,7 +210,7 @@ export function PayrollRateManager() {
 
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
-      <CardHeader className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <CardHeader className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between w-full min-w-0">
         <div>
           <CardTitle className="text-base font-bold text-slate-900">
             Khung lương & Đơn giá được phê duyệt
@@ -219,7 +219,7 @@ export function PayrollRateManager() {
             Quản lý đơn giá theo giờ và hệ số tăng ca được duyệt cho từng vai trò hoặc nhân sự cụ thể.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -243,7 +243,7 @@ export function PayrollRateManager() {
 
       <CardContent className="p-4 space-y-4">
         {/* Filters */}
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 w-full min-w-0">
           <div>
             <MultiSelectFilter label="Vai trò" placeholder="Tất cả vai trò" testId="payroll-rate-role-filter"
               value={roleFilter} onChange={value => { setRoleFilter(value as WorkforceRole[]); setPage(1) }}
@@ -285,7 +285,7 @@ export function PayrollRateManager() {
         </div>
 
         {/* Rates Table */}
-        <div role="region" aria-label="Bảng dữ liệu, cuộn ngang / Scroll horizontally" tabIndex={0} className="max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <div role="region" aria-label="Bảng dữ liệu, cuộn ngang / Scroll horizontally" tabIndex={0} className="w-full min-w-0 max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <table className="w-full text-left text-xs">
             <thead className="border-b bg-slate-50 font-semibold text-slate-600">
               <tr>

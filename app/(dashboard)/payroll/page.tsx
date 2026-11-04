@@ -179,7 +179,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
 
       {readError && <p role="alert">{readError}</p>}
       {/* Main Tabs */}
-      <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="w-full min-w-0 max-w-full space-y-4">
         <TabsList className="grid group-data-[orientation=horizontal]/tabs:h-auto w-full grid-cols-2 sm:grid-cols-4 bg-slate-100 p-1 rounded-lg">
           <TabsTrigger value="workspace" className="min-h-11 min-w-0 whitespace-normal px-2 py-1.5 text-xs font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Không gian đối soát
@@ -196,7 +196,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
         </TabsList>
 
         {/* WORKSPACE TAB */}
-        <TabsContent value="workspace" className="space-y-6 mt-0">
+        <TabsContent value="workspace" className="w-full min-w-0 max-w-full space-y-6 mt-0">
           <PayrollOverview
             period={selectedPeriod}
             lines={lines}
@@ -235,7 +235,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
         </TabsContent>
 
         {/* PERIODS TAB */}
-        <TabsContent value="periods" className="mt-0">
+        <TabsContent value="periods" className="w-full min-w-0 max-w-full mt-0">
           <PayrollPeriodManager
             selectedPeriodId={selectedPeriod?.id || null}
             onSelectPeriod={(period) => {
@@ -246,12 +246,12 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
         </TabsContent>
 
         {/* RATES TAB */}
-        <TabsContent value="rates" className="mt-0">
+        <TabsContent value="rates" className="w-full min-w-0 max-w-full mt-0">
           <PayrollRateManager />
         </TabsContent>
 
         {/* READ-ONLY POLICY CASE REVIEW: NO AUTOMATIC PAYROLL DEDUCTIONS */}
-        <TabsContent value="room_rules" className="mt-0">
+        <TabsContent value="room_rules" className="w-full min-w-0 max-w-full mt-0">
           <PayrollRoomRules period={selectedPeriod} />
         </TabsContent>
       </Tabs>

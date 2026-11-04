@@ -119,7 +119,7 @@ export function StorageResourceRegistry() {
     if (result?.ok) setForm(current => ({ ...current, canonical_id: '', canonical_url: '', title: '', owner_id: '' }))
   }
 
-  return <main className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
+  return <section aria-label={tr('Tài liệu và liên kết', 'Resources and links')} className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-semibold">{tr('Tài liệu và liên kết', 'Resources and links')}</h1><p className="text-sm text-muted-foreground">{tr('Quản lý liên kết metadata theo phạm vi. Kiểm tra xác minh tích hợp phía máy chủ, không thay thế quyền truy cập của bạn.', 'Manage metadata links by scope. Verification checks server integration and does not grant you provider access.')}</p></div>
       <Link className="rounded-md border px-3 py-2 text-sm" href="/storage">{tr('Kho file vận hành', 'Operational files')}</Link>
@@ -177,5 +177,5 @@ export function StorageResourceRegistry() {
       </article>)}
       {!visible.length && !loadFailed && <p className="rounded border p-6 text-sm text-muted-foreground">{tr('Không có tài nguyên phù hợp với bộ lọc.', 'No resources match these filters.')}</p>}
     </section>
-  </main>
+  </section>
 }
