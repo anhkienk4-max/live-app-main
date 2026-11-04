@@ -192,6 +192,7 @@
     "tests/rc19-report01-multiview.test.ts",
     "tests/rc19-reports-app-router-wiring.test.ts",
     "tests/rc19-reports-photo-groups-164.test.ts",
+    "tests/rc19-schedule-source-storage-service.test.ts",
     "tests/rc19-self-attendance-contract.test.ts",
     "tests/rc19-staffing-availability-sql.test.ts",
     "tests/rc19-staffing-candidate-contract.test.ts",
