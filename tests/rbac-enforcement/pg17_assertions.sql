@@ -172,6 +172,30 @@ DO $$ BEGIN
 END $$;
 RESET ROLE;
 
+-- Re-activate a second version then revoke it to legacy defaults.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT (public.rbac01_propose_role_defaults('leader','{"audit.view_team":"deny"}'::jsonb,
+  'Second role version',0)->>'id')::bigint AS role_proposal_id_2 \gset
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000012';
+SET ROLE authenticated;
+SELECT public.rbac01_approve_role_defaults(:'role_proposal_id_2'::bigint);
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000011';
+SET ROLE authenticated;
+SELECT public.rbac01_activate_role_defaults(:'role_proposal_id_2'::bigint,0,NULL);
+SELECT public.rbac01_revoke_role_defaults('leader',2,'Revoke role policy');
+RESET ROLE;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000021';
+SET ROLE authenticated;
+DO $$ BEGIN
+  IF public.rbac01_effective_permission('audit.view_team') IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'ROLE_REVOKE_DID_NOT_RESTORE_LEGACY';
+  END IF;
+END $$;
+RESET ROLE;
+
 -- Anonymous execution and direct history writes remain unavailable.
 DO $$ BEGIN
   IF has_function_privilege('anon','public.rbac_permission_decision(text)','EXECUTE')

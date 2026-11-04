@@ -99,7 +99,7 @@ CREATE TABLE private.rbac01_role_default_events (
   before_state jsonb NOT NULL DEFAULT '{}'::jsonb,
   after_state jsonb NOT NULL DEFAULT '{}'::jsonb,
   CHECK ((event_type IN ('activation','revocation','rollback')) = (effective_at IS NOT NULL)),
-  CHECK (event_type NOT IN ('activation','rollback') OR resulting_version_id IS NOT NULL),
+  CHECK (event_type <> 'activation' OR resulting_version_id IS NOT NULL),
   CHECK (event_type <> 'revocation' OR resulting_version_id IS NULL)
 );
 
