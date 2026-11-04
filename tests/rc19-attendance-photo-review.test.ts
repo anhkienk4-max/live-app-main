@@ -107,9 +107,9 @@ test('review UI keeps decisions independent from Actual and Payroll, and prevent
   const ui = readFileSync(new URL('../components/features/attendance/AttendancePhotoReviewPanel.tsx',import.meta.url),'utf8')
   assert.match(ui,/does not approve Actual Staffing or Payroll/)
   assert.match(ui,/correction_requested/)
-  assert.match(ui,/reason\[item\.id\]\?\.trim\(\)\.length\?\?0\)<8/)
-  assert.match(ui,/expected_version:item\.version/)
-  assert.match(ui,/expected_evidence_revision:item\.evidence_revision/)
+  assert.match(ui,/reason\[item\.id\]\?\.trim\(\)\.length\s*\?\?\s*0\s*\)\s*<\s*8/)
+  assert.match(ui,/expected_version\s*:\s*item\.version/)
+  assert.match(ui,/expected_evidence_revision\s*:\s*item\.evidence_revision/)
   assert.match(ui,/crypto\.randomUUID\(\)/)
 })
 
