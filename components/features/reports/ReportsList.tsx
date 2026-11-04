@@ -465,7 +465,47 @@ export function ReportsList() {
   const completedShifts = React.useMemo(() => sortReportableShifts(candidateShifts), [candidateShifts])
 
   const explicitShiftId = editingReport?.shift_id ?? initialShiftId ?? selectedReport?.shift_id
-  const modalShift = targetedShift?.id === explicitShiftId ? targetedShift : shifts.find(shift => shift.id === explicitShiftId)
+
+  const fallbackShiftFromReport = React.useMemo(() => {
+    if (!selectedReport) return null
+    const hist = historicalContexts[selectedReport.id]
+    if (hist) {
+      return {
+        id: selectedReport.shift_id,
+        date: hist.date,
+        start_time: hist.start_time,
+        end_time: hist.end_time,
+        brand_id: hist.brand_id,
+        platform_id: hist.platform_id,
+        campaign_id: hist.campaign_id,
+        studio: hist.studio,
+        title: hist.title || selectedReport.shift_id,
+        status: 'completed',
+        version: 1,
+        created_at: selectedReport.created_at,
+        updated_at: selectedReport.updated_at,
+      } as Shift
+    }
+    return {
+      id: selectedReport.shift_id,
+      date: selectedReport.created_at ? selectedReport.created_at.slice(0, 10) : '2026-11-01',
+      start_time: '09:00',
+      end_time: '13:00',
+      brand_id: brands[0]?.id || '',
+      platform_id: platforms[0]?.id || '',
+      campaign_id: campaigns[0]?.id || '',
+      studio: '',
+      title: selectedReport.shift_id,
+      status: 'completed',
+      version: 1,
+      created_at: selectedReport.created_at,
+      updated_at: selectedReport.updated_at,
+    } as Shift
+  }, [selectedReport, historicalContexts, brands, platforms, campaigns])
+
+  const modalShift = targetedShift?.id === explicitShiftId
+    ? targetedShift
+    : (shifts.find(shift => shift.id === explicitShiftId) ?? candidateShifts.find(shift => shift.id === explicitShiftId) ?? fallbackShiftFromReport)
   const formShifts = modalShift ? [modalShift, ...completedShifts.filter(shift => shift.id !== modalShift.id)] : completedShifts
 
   const pagedQueue = completedShifts

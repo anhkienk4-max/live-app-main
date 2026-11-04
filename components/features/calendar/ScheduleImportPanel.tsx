@@ -26,7 +26,7 @@ import {
   agencyDisplayLabel,
   parseScheduleRows,
 } from '@/lib/utils/excelUtils'
-import { executionSourceDisplayLabel, executionSourceForAgency } from '@/lib/utils/executionSource'
+import { executionSourceDisplayLabel, executionSourceForAgency, normalizeAgencyCode } from '@/lib/utils/executionSource'
 import {
   applyImportColumnMappings,
   operationalImportFields,
@@ -856,11 +856,15 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       if (filterStudio !== 'all' && (preview.row.studio || '') !== filterStudio) return false
       if (filterCampaign !== 'all' && (preview.row.campaign_name || '') !== filterCampaign) return false
       if (filterAgency !== 'all') {
-        const rowAgency = (preview.row.custom_fields?.Agency || (preview.row.agency_code ? preview.row.agency_code.toUpperCase() : '')).trim()
+        const rowAgencyRaw = (preview.row.custom_fields?.Agency || (preview.row.agency_code ? preview.row.agency_code : '')).trim()
+        const rowAgencyCode = normalizeAgencyCode(rowAgencyRaw)
+        const targetCode = normalizeAgencyCode(filterAgency)
         if (filterAgency === 'none') {
-          if (rowAgency && rowAgency !== '—' && rowAgency !== '') return false
+          if (rowAgencyRaw && rowAgencyRaw !== '—' && rowAgencyCode !== null) return false
+        } else if (targetCode && rowAgencyCode) {
+          if (targetCode !== rowAgencyCode) return false
         } else {
-          if (!rowAgency.toLowerCase().includes(filterAgency.toLowerCase())) return false
+          if (!rowAgencyRaw.toLowerCase().includes(filterAgency.toLowerCase())) return false
         }
       }
       if (filterDate.trim() && !preview.row.date.includes(filterDate.trim())) return false
@@ -1134,8 +1138,8 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
             </div>
 
             {selectedRowNumbers.size > 0 && (() => {
-              const isAllDraft = mappedResult ? selectedRowNumbers.size === mappedResult.rows.length : false
-              const isAllFiltered = visiblePreviews.length > 0 && selectedRowNumbers.size === visiblePreviews.length && (!mappedResult || visiblePreviews.length < mappedResult.rows.length)
+              const isAllDraft = mappedResult ? mappedResult.rows.length > 0 && mappedResult.rows.every(p => selectedRowNumbers.has(p.row.row_number)) : false
+              const isAllFiltered = visiblePreviews.length > 0 && visiblePreviews.every(p => selectedRowNumbers.has(p.row.row_number)) && (!mappedResult || visiblePreviews.length < mappedResult.rows.length)
               return (
               <div className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-sm text-blue-950" data-testid="schedule-import-bulk-bar">
                 <span className="font-semibold" data-testid="schedule-import-selection-scope">

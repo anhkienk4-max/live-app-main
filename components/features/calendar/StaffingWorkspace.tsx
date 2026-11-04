@@ -8,6 +8,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { Download, Eye, Filter, LayoutGrid, RefreshCw, Search, Table as TableIcon, Users, UserCheck, X } from 'lucide-react'
 import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
+import { safeSpreadsheetValue } from '@/lib/utils/calendarExport'
 import { brandService, campaignService, platformService, shiftService, userService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import type { Brand, Campaign, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
@@ -58,7 +59,11 @@ export function StaffingWorkspace() {
       const missing = caps.reduce((sum, c) => sum + c.remaining, 0)
       const bName = data.brands.find(b => b.id === shift.brand_id)?.name || ''
       const pName = data.platforms.find(p => p.id === shift.platform_id)?.name || ''
-      const escape = (val: string | number) => `"${String(val).replace(/"/g, '""')}"`
+      const escape = (val: string | number | null | undefined) => {
+        const sanitized = safeSpreadsheetValue(val ?? '')
+        const str = sanitized === null || sanitized === undefined ? '' : String(sanitized)
+        return `"${str.replace(/"/g, '""')}"`
+      }
       csvRows.push([
         escape(shift.id),
         escape(shift.date),
@@ -92,11 +97,21 @@ export function StaffingWorkspace() {
     })
   }
 
+  const allVisibleSelected = visible.length > 0 && visible.every(s => selectedShiftIds.has(s.id))
+
   const toggleSelectAll = () => {
-    if (selectedShiftIds.size >= visible.length) {
-      setSelectedShiftIds(new Set())
+    if (allVisibleSelected) {
+      setSelectedShiftIds(prev => {
+        const next = new Set(prev)
+        visible.forEach(s => next.delete(s.id))
+        return next
+      })
     } else {
-      setSelectedShiftIds(new Set(visible.map(s => s.id)))
+      setSelectedShiftIds(prev => {
+        const next = new Set(prev)
+        visible.forEach(s => next.add(s.id))
+        return next
+      })
     }
   }
   const pagination = useListPagination('staffing', 20)
@@ -291,7 +306,7 @@ export function StaffingWorkspace() {
           </div>
           {selectedShiftIds.size > 0 && (
             <div className="flex items-center gap-2 text-xs">
-              <span className="font-medium text-blue-700">Đã chọn {selectedShiftIds.size} ca</span>
+              <span className="font-medium text-blue-700">Đã chọn {selectedShiftIds.size} ca ({visible.filter(s => selectedShiftIds.has(s.id)).length}/{visible.length} trên trang này)</span>
               <Button
                 type="button"
                 size="sm"
@@ -488,8 +503,8 @@ export function StaffingWorkspace() {
       <BulkStaffingApprovalDialog
         open={showBulkApproval}
         onOpenChange={setShowBulkApproval}
-        registrations={data.registrations}
-        shifts={data.shifts}
+        registrations={selectedShiftIds.size > 0 ? data.registrations.filter(r => selectedShiftIds.has(r.shift_id)) : data.registrations}
+        shifts={selectedShiftIds.size > 0 ? data.shifts.filter(s => selectedShiftIds.has(s.id)) : data.shifts}
         users={data.users}
         currentUser={currentUser}
         onChanged={load}
