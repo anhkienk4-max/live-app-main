@@ -5,15 +5,15 @@ import { z } from 'zod'
 import { requireUser, requireRole, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
-import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
-import { resolveGoogleDriveAuthMode } from '@/lib/server/googleDriveAuth'
-import { assertPrivateAttendanceDriveRoot } from '@/lib/server/attendanceDriveAcl'
 import { AttendanceDriveAclError } from '@/lib/utils/attendanceDriveAcl'
-import { createFileStorageService } from '@/lib/services/fileStorageService'
+import { inspectAttendanceDriveRoot } from '@/lib/server/attendanceDriveAcl'
 import { readFormDataBody, RequestBodyError, consumeRateLimit, rateLimitResponse } from '@/lib/server/apiSecurity'
-import { attendancePhotoFolder, attendancePhotoName } from '@/lib/utils/attendancePhotoNaming'
+import { attendancePhotoName } from '@/lib/utils/attendancePhotoNaming'
 import { decodeSelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
 import { isFeatureEnabled } from '@/lib/flags'
+import { createAttendancePhotoDrive, prepareAttendancePhotoDestination } from '@/lib/server/attendancePhotoDrive'
+import { OperationalStoragePlacementError } from '@/lib/files/operationalStoragePlacementResolver'
+import { createOperationalStorageDomainRouteRepository } from '@/lib/server/operationalStorageRouteRepository'
 
 const LIMIT=4*1024*1024
 const UUID=z.string().uuid()
@@ -52,26 +52,6 @@ function hasExactOrigin(request:Request) {
   const origin=request.headers.get('origin')
   return Boolean(origin&&origin===new URL(request.url).origin)
 }
-function photoProvider() {
-  const root=process.env.GOOGLE_DRIVE_ATTENDANCE_FOLDER_ID?.trim()
-  if(!root||!/^[a-zA-Z0-9_-]{12,120}$/.test(root))
-    throw new Error('ATTENDANCE_DRIVE_FOLDER_NOT_CONFIGURED')
-  // Use the same OAuth/service-account identity that the operational report
-  // provider already uses. No dedicated token or secret is required solely for
-  // attendance when those server-only credentials are configured in runtime.
-  // Health-check root ACLs after verifying the exact auth-mode prerequisites
-  // so an absent credential is not misreported as a missing folder permission.
-  const env: Record<string,string|undefined>={...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root}
-  const authMode=resolveGoogleDriveAuthMode(env)
-  const credentialKeys=authMode==='oauth_refresh_token'
-    ? ['GOOGLE_DRIVE_CLIENT_ID','GOOGLE_DRIVE_CLIENT_SECRET','GOOGLE_DRIVE_REFRESH_TOKEN']
-    : ['GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL','GOOGLE_DRIVE_PRIVATE_KEY']
-  if(!credentialKeys.every(key=>Boolean(env[key]?.trim())))
-    throw new Error('ATTENDANCE_DRIVE_NOT_CONFIGURED')
-  // Isolate attendance photos from the operational report root. This MUST be
-  // the operator-verified existing CHECK IN/OUT root with private Drive ACLs.
-  return {root,drive:createGoogleDriveFileProvider({env})}
-}
 function contextSnapshot(info:z.infer<typeof contextSchema>) {
   return {shift_id:info.shift_id,shift_date:info.date,live_start:info.start_at,
     live_end:info.end_at,start_time:info.start_time,end_time:info.end_time,
@@ -82,7 +62,7 @@ function contextSnapshot(info:z.infer<typeof contextSchema>) {
 export async function POST(request:Request) {
   let uploadedId:string|null=null
   let committedMetadata=false
-  let drive:ReturnType<typeof createGoogleDriveFileProvider>|null=null
+  let drive:ReturnType<typeof createAttendancePhotoDrive>['drive']|null=null
   let currentEventKind:'check_in'|'check_out'='check_in'
   try {
     if(!hasExactOrigin(request))return failed('ATTENDANCE_PHOTO_ORIGIN_INVALID',403)
@@ -132,7 +112,7 @@ export async function POST(request:Request) {
       if(retry.data) {
         if(retry.data.attendance_event_id!==correctionEventId||retry.data.submitted_by!==actor.businessUserId)
           return failed('ATTENDANCE_PHOTO_REQUEST_REUSED',409)
-        const {drive:priorDrive}=photoProvider()
+        const {drive:priorDrive}=createAttendancePhotoDrive(retry.data.external_parent_id)
         const stored=await priorDrive.getMetadata(retry.data.external_file_id)
         if(stored.id!==retry.data.external_file_id||stored.parent_ids?.[0]!==retry.data.external_parent_id||
           stored.name!==retry.data.file_name||stored.size_bytes!==retry.data.size_bytes)
@@ -177,7 +157,7 @@ export async function POST(request:Request) {
     // A retry must not finalize check-in if the previously reserved Drive
     // image was removed, replaced or moved after the first upload.
     if(existing.data) {
-      const {drive:priorDrive}=photoProvider()
+      const {drive:priorDrive}=createAttendancePhotoDrive(existing.data.external_parent_id)
       const stored=await priorDrive.getMetadata(existing.data.external_file_id)
       if(stored.id!==existing.data.external_file_id ||
         stored.parent_ids?.[0]!==existing.data.external_parent_id ||
@@ -224,32 +204,6 @@ export async function POST(request:Request) {
           return failed('ATTENDANCE_PHOTO_CONTEXT_INVALID',409)
         prepared=parsed.data
       }
-      const {root,drive:provider}=photoProvider()
-      drive=provider
-      // No writes outside the explicitly configured attendance root.
-      const health=await drive.healthCheck()
-      // Unknown write capability is not proof of permission. Never create
-      // subfolders or upload staff photos without confirmed provider ACL.
-      if(!health.ok||health.root_readable!==true||
-        health.root_can_add_children!==true)
-        return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
-      // A public Drive ACL is operator-accepted ONLY with the explicit
-      // attendance-specific runtime opt-in. It remains externally accessible;
-      // never confuse this flag with employee privacy or permission to write.
-      try {
-        await assertPrivateAttendanceDriveRoot(root,{
-          ...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root,
-        })
-      } catch(error) {
-        if(error instanceof AttendanceDriveAclError)
-          return failed(error.code,error.code==='ATTENDANCE_DRIVE_ACL_PUBLIC'?409:503)
-        return failed('ATTENDANCE_DRIVE_ACL_UNVERIFIED',503)
-      }
-      let parentId=root
-      const folderSegments=attendancePhotoFolder(kind,prepared.date)
-      for(const segment of folderSegments) {
-        parentId=(await drive.ensureFolder(parentId,segment)).id
-      }
       const fileName=attendancePhotoName({
         shiftDate:prepared.date,shiftId:prepared.shift_id,studio:prepared.studio,
         brand:prepared.brand,platform:prepared.platform,
@@ -270,21 +224,32 @@ export async function POST(request:Request) {
       if(oppositeEvidence.data&&oppositeEvidence.data.checksum_sha256===hash) {
         return failed('ATTENDANCE_PHOTO_DUPLICATE_ACROSS_EVENTS',409)
       }
+      let destination
+      try {
+        destination=await prepareAttendancePhotoDestination(admin,{
+          shiftId:prepared.shift_id,shiftDate:prepared.date,role:kind,eventKind,fileName,
+          actorBusinessUserId:actor.businessUserId,
+        })
+      } catch(error) {
+        if(error instanceof OperationalStoragePlacementError)return failed(error.code,503)
+        if(error instanceof Error&&error.message.startsWith('ATTENDANCE_DRIVE_'))return failed(error.message,503)
+        throw error
+      }
+      drive=destination.drive
       // Use the SAME checked file-storage gateway used by operational report
       // images and data files. Its metadata/MIME/size contract applies even
       // though attendance has a separate authorized Drive root and photo flag.
       // The exact provider parent prevents accidental logical-path traversal.
-      const storage=createFileStorageService({provider:drive})
-      const uploaded=await storage.upload({
+      const uploaded=await destination.storage.upload({
         name:fileName,mime_type:'image/jpeg',size_bytes:cleanBytes.byteLength,
         content:cleanBytes,checksum_sha256:hash,
         entity_type:'shift',entity_id:shiftId,created_by:actor.businessUserId,
-        logical_path:folderSegments.join('/'),external_parent_id:parentId,
-        destination:{provider:'google_drive',external_folder_id:parentId},
+        logical_path:destination.folderPath,external_parent_id:destination.parentId,
+        destination:{provider:'google_drive',external_folder_id:destination.parentId},
       })
       uploadedId=uploaded.asset.external_file_id
       if(uploaded.asset.provider!=='google_drive'||
-        uploaded.asset.external_parent_id!==parentId||
+        uploaded.asset.external_parent_id!==destination.parentId||
         uploaded.asset.name!==fileName||
         uploaded.asset.mime_type!=='image/jpeg'||
         uploaded.asset.size_bytes!==cleanBytes.length||!uploadedId)
@@ -303,7 +268,7 @@ export async function POST(request:Request) {
           p_previous_request_id:correctionContext.previous_request_id,
           p_request_id:requestId,
           p_external_file_id:uploadedId,
-          p_external_parent_id:parentId,
+          p_external_parent_id:destination.parentId,
           p_file_name:fileName,
           p_size_bytes:cleanBytes.byteLength,
           p_checksum_sha256:hash,
@@ -339,7 +304,7 @@ export async function POST(request:Request) {
       const saved=await admin.from('self_attendance_photo_evidence').insert({
         request_id:requestId,shift_id:shiftId,staff_id:actor.businessUserId,
         operational_role:kind,event_kind:eventKind,provider:'google_drive',external_file_id:uploadedId,
-        external_parent_id:parentId,file_name:fileName,mime_type:'image/jpeg',
+        external_parent_id:destination.parentId,file_name:fileName,mime_type:'image/jpeg',
         size_bytes:cleanBytes.byteLength,checksum_sha256:hash,
         shift_context:contextSnapshot(prepared),capture_source:captureSource,
       }).select('request_id').single()
@@ -401,18 +366,42 @@ export async function GET(request:Request) {
       if(visible.error||!visible.data)return failed('PERMISSION_DENIED',403)
     }
     const requestedId=url.searchParams.get('request_id')
-    const requestId=requestedId?UUID.parse(requestedId):event.data.request_id
-    const isBase=requestId===event.data.request_id
-    const baseMetadata=isBase?await admin.from('self_attendance_photo_evidence')
-      .select('external_file_id,mime_type,size_bytes,checksum_sha256')
-      .eq('request_id',requestId).maybeSingle():{data:null,error:null}
-    const addendumMetadata=isBase?{data:null,error:null}:await admin.from('self_attendance_photo_evidence_addenda')
-      .select('external_file_id,mime_type,size_bytes,checksum_sha256,event_id')
-      .eq('request_id',requestId).maybeSingle()
-    if(baseMetadata.error||addendumMetadata.error)return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
-    const metadata=baseMetadata.data??addendumMetadata.data
+    if(requestedId&&revisionValue!==null)return failed('ATTENDANCE_PHOTO_REQUEST_INVALID',400)
+    let metadata:{provider:string;external_file_id:string;external_parent_id:string;file_name:string;mime_type:string;size_bytes:number;checksum_sha256:string;event_id?:string;attendance_event_id?:string}|null=null
+    let metadataError:unknown=null
+    if(requestedId) {
+      const requestId=UUID.parse(requestedId)
+      const isBase=requestId===event.data.request_id
+      const result=isBase?await admin.from('self_attendance_photo_evidence')
+        .select('provider,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256')
+        .eq('request_id',requestId).maybeSingle():await admin.from('self_attendance_photo_evidence_addenda')
+        .select('provider,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256,event_id')
+        .eq('request_id',requestId).maybeSingle()
+      metadata=result.data
+      metadataError=result.error
+    } else if(revision===1) {
+      const result=await admin.from('self_attendance_photo_evidence')
+        .select('provider,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256')
+        .eq('request_id',event.data.request_id).maybeSingle()
+      metadata=result.data
+      metadataError=result.error
+    } else {
+      const result=await admin.from('self_attendance_photo_evidence_revisions')
+        .select('provider,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256,attendance_event_id')
+        .eq('attendance_event_id',eventId).eq('revision',revision).maybeSingle()
+      metadata=result.data
+      metadataError=result.error
+      if(metadata?.attendance_event_id!==eventId)
+        return failed('ATTENDANCE_PHOTO_NOT_FOUND',404)
+    }
+    if(metadataError)return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
     if(!metadata||('event_id' in metadata&&metadata.event_id!==eventId))return failed('ATTENDANCE_PHOTO_NOT_FOUND',404)
-    const {drive}=photoProvider()
+    if(metadata.provider!=='google_drive')return failed('ATTENDANCE_PHOTO_INTEGRITY_FAILED',409)
+    const {drive}=createAttendancePhotoDrive(metadata.external_parent_id)
+    const stored=await drive.getMetadata(metadata.external_file_id)
+    if(stored.id!==metadata.external_file_id||stored.parent_ids?.[0]!==metadata.external_parent_id||
+      stored.name!==metadata.file_name||stored.size_bytes!==metadata.size_bytes)
+      return failed('ATTENDANCE_PHOTO_INTEGRITY_FAILED',409)
     const bytes=await drive.read(metadata.external_file_id)
     if(bytes.byteLength!==metadata.size_bytes||
       mimeFromBytes(bytes)?.mime!==metadata.mime_type ||
@@ -448,10 +437,16 @@ export async function GET_PREFLIGHT(request:Request) {
     const active=await session.rpc('get_my_self_attendance',{p_shift_id:null,p_limit:1})
     if(active.error)return failed('PERMISSION_DENIED',403)
 
-    let drive:ReturnType<typeof createGoogleDriveFileProvider>
+    let drive:ReturnType<typeof createAttendancePhotoDrive>['drive']
     let root:string
     try {
-      ({root,drive}=photoProvider())
+      const routes=createOperationalStorageDomainRouteRepository({client:createSupabaseAdminClient()})
+      const checkIn=await routes.resolveAttendancePhotoBasePlacement('check_in','preflight.jpg')
+      const checkOut=await routes.resolveAttendancePhotoBasePlacement('check_out','preflight.jpg')
+      if(checkIn.baseFolderId===checkOut.baseFolderId)return failed('STORAGE_ROUTE_CONFIG_INVALID',503)
+      const configured=createAttendancePhotoDrive(checkIn.baseFolderId)
+      root=configured.root
+      drive=configured.drive
     } catch {
       return failed('ATTENDANCE_DRIVE_NOT_CONFIGURED',503)
     }
@@ -466,13 +461,13 @@ export async function GET_PREFLIGHT(request:Request) {
     }
     let publicAccess=false
     try {
-      const acl=await assertPrivateAttendanceDriveRoot(root,{
+      const acl=await inspectAttendanceDriveRoot(root,{
         ...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root,
       })
       publicAccess=acl.publicAccess
     } catch(error) {
       if(error instanceof AttendanceDriveAclError)
-        return failed(error.code,error.code==='ATTENDANCE_DRIVE_ACL_PUBLIC'?409:503)
+        return failed(error.code,503)
       return failed('ATTENDANCE_DRIVE_ACL_UNVERIFIED',503)
     }
     return Response.json({
@@ -481,7 +476,6 @@ export async function GET_PREFLIGHT(request:Request) {
       root_readable:true,
       root_can_add_children:true,
       public_access:publicAccess,
-      public_access_approved:publicAccess&&process.env.ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS==='true',
       feature_enabled:process.env.FEATURE_SELF_ATTENDANCE_PHOTO==='true',
     },{headers:ERROR_HEADERS})
   }catch(error) {

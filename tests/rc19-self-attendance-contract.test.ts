@@ -178,6 +178,7 @@ test('check-in photo SQL is immutable, private, matched to actor and excludes bi
 
 test('self attendance photo handler gates evidence by session, Drive root and original shift',()=>{
   const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+  const photoDrive=readFileSync(new URL('../lib/server/attendancePhotoDrive.ts',import.meta.url),'utf8')
   const route=readFileSync(new URL('../app/api/workforce/self-attendance-photo/route.ts',import.meta.url),'utf8')
   const panel=readFileSync(new URL('../components/features/attendance/SelfAttendancePanel.tsx',import.meta.url),'utf8')
   const modal=readFileSync(new URL('../components/features/shifts/ShiftDetailModal.tsx',import.meta.url),'utf8')
@@ -186,27 +187,26 @@ test('self attendance photo handler gates evidence by session, Drive root and or
   assert.match(handler,/await requireUser\(request\)/)
   assert.match(handler,/actor\.businessUserId/)
   assert.match(handler,/get_self_attendance_photo_context/)
-  assert.match(handler,/GOOGLE_DRIVE_ATTENDANCE_FOLDER_ID/)
-  assert.match(handler,/createGoogleDriveFileProvider/)
-  assert.match(handler,/resolveGoogleDriveAuthMode\(env\)/)
-  assert.match(handler,/GOOGLE_DRIVE_CLIENT_ID/)
-  assert.match(handler,/GOOGLE_DRIVE_CLIENT_SECRET/)
-  assert.match(handler,/GOOGLE_DRIVE_REFRESH_TOKEN/)
-  assert.match(handler,/GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL/)
-  assert.match(handler,/GOOGLE_DRIVE_PRIVATE_KEY/)
-  assert.match(handler,/credentialKeys\.every\(key=>Boolean\(env\[key\]\?\.trim\(\)\)\)/)
-  assert.match(handler,/throw new Error\('ATTENDANCE_DRIVE_NOT_CONFIGURED'\)/)
+  assert.match(photoDrive,/createGoogleDriveFileProvider/)
+  assert.match(photoDrive,/resolveGoogleDriveAuthMode\(env\)/)
+  assert.match(photoDrive,/GOOGLE_DRIVE_CLIENT_ID/)
+  assert.match(photoDrive,/GOOGLE_DRIVE_CLIENT_SECRET/)
+  assert.match(photoDrive,/GOOGLE_DRIVE_REFRESH_TOKEN/)
+  assert.match(photoDrive,/GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL/)
+  assert.match(photoDrive,/GOOGLE_DRIVE_PRIVATE_KEY/)
+  assert.match(photoDrive,/credentialKeys\.every/)
+  assert.match(photoDrive,/ATTENDANCE_DRIVE_NOT_CONFIGURED/)
 
-  assert.match(handler,/createFileStorageService/)
+  assert.match(photoDrive,/createFileStorageService/)
   assert.match(handler,/if\(process\.env\.FILE_STORAGE_ENABLED!=='true'\)/)
-  assert.match(handler,/const storage=createFileStorageService\(\{provider:drive\}\)/)
-  assert.match(handler,/const uploaded=await storage\.upload\(\{/)
-  assert.match(handler,/logical_path:folderSegments\.join\('\/'\)/)
+  assert.match(photoDrive,/createFileStorageService/)
+  assert.match(handler,/const uploaded=await destination\.storage\.upload\(\{/)
+  assert.match(handler,/logical_path:destination\.folderPath/)
   assert.doesNotMatch(handler,/await drive\.upload\(/)
   assert.match(handler,/uploaded\.asset\.name!==fileName/)
   assert.match(handler,/uploaded\.asset\.mime_type!=='image\/jpeg'/)
-  assert.match(handler,/health\.root_can_add_children!==true/)
-  assert.match(handler,/health\.root_readable!==true/)
+  assert.match(photoDrive,/health\.root_can_add_children\s*!==\s*true/)
+  assert.match(photoDrive,/health\.root_readable\s*!==\s*true/)
   assert.match(handler,/shiftId:prepared\.shift_id,studio:prepared\.studio/)
   assert.match(handler,/mimeFromBytes\(bytes\)/)
   assert.match(handler,/sharp\(bytes,\{limitInputPixels:24_000_000,failOn:'error'\}\)/)
@@ -304,16 +304,16 @@ test('Admin Payroll shows one explicit, non-mutating Drive readiness action',()=
   assert.match(ui,/Giữ khóa check-in ảnh/)
   assert.match(ui,/ATTENDANCE_DRIVE_NOT_CONFIGURED/)
   assert.match(ui,/ATTENDANCE_DRIVE_PERMISSION_DENIED/)
-  assert.match(ui,/ATTENDANCE_DRIVE_ACL_PUBLIC/)
-  assert.match(ui,/ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS/)
+  assert.match(ui,/public_access/)
   assert.match(ui,/setBlockedReason/)
-  assert.match(ui,/Cần cấu hình bảo mật trên Vercel/)
+  assert.match(ui,/Cần xác minh cấu hình runtime/)
   assert.doesNotMatch(ui,/method:'POST'|\.upload\(|\.delete\(|new FormData\(/)
 })
 
 
 test('attendance evidence uses the operational file gateway contract, not direct unsafe provider bypass',()=>{
   const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+  const photoDrive=readFileSync(new URL('../lib/server/attendancePhotoDrive.ts',import.meta.url),'utf8')
   const gateway=readFileSync(new URL('../lib/services/fileStorageService.ts',import.meta.url),'utf8')
   const validation=readFileSync(new URL('../lib/files/fileValidation.ts',import.meta.url),'utf8')
   assert.match(gateway,/validateFileUploadInput\(input\)/)
@@ -321,70 +321,68 @@ test('attendance evidence uses the operational file gateway contract, not direct
   assert.match(validation,/ALLOWED_FILE_MIME_TYPES/)
   assert.match(validation,/FILE_METADATA_INVALID/)
   assert.match(handler,/entity_type:'shift',entity_id:shiftId,created_by:actor\.businessUserId/)
-  assert.match(handler,/external_parent_id:parentId/)
-  assert.match(handler,/destination:\{provider:'google_drive',external_folder_id:parentId\}/)
+  assert.match(handler,/external_parent_id:destination\.parentId/)
+  assert.match(handler,/destination:\{provider:'google_drive',external_folder_id:destination\.parentId\}/)
+  assert.match(photoDrive,/createOperationalStorageFolderMaterializer\(/)
   assert.match(handler,/FEATURE_SELF_ATTENDANCE_PHOTO!=='true'/)
   assert.match(handler,/FILE_STORAGE_ENABLED!=='true'/)
   assert.doesNotMatch(handler,/FILE_STORAGE_ENABLED:'true'/)
 })
 
 
-test('sensitive check-in photos reject link-public and domain-wide Google Drive folder permissions',async()=>{
-  const {assertPrivateAttendanceDrivePermissions,AttendanceDriveAclError}=
+test('attendance Drive ACL inspection reports public sharing without changing or gating app permissions',async()=>{
+  const {inspectAttendanceDrivePermissions,AttendanceDriveAclError}=
     await import('../lib/utils/attendanceDriveAcl.ts')
-  assert.doesNotThrow(()=>assertPrivateAttendanceDrivePermissions([
+  assert.deepEqual(inspectAttendanceDrivePermissions([
     {type:'user',role:'owner'},{type:'user',role:'writer'},{type:'group',role:'reader'},
-  ],true))
-  for(const type of ['anyone','domain']){
-    for(const role of ['writer','reader']){
-      assert.throws(()=>assertPrivateAttendanceDrivePermissions([
-        {type:'user',role:'owner'},{type,role},
-      ],true),(error:unknown)=>error instanceof AttendanceDriveAclError&&error.code==='ATTENDANCE_DRIVE_ACL_PUBLIC')
-    }
-  }
-  assert.throws(()=>assertPrivateAttendanceDrivePermissions([],true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
-  assert.throws(()=>assertPrivateAttendanceDrivePermissions([{type:'user',role:'owner'}],false),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
-  assert.throws(()=>assertPrivateAttendanceDrivePermissions([{type:'anyone',role:null}],true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  ],true),{publicAccess:false})
+  assert.deepEqual(inspectAttendanceDrivePermissions([
+    {type:'user',role:'owner'},{type:'anyone',role:'writer'},{type:'domain',role:'reader'},
+  ],true),{publicAccess:true})
+  assert.throws(()=>inspectAttendanceDrivePermissions([],true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  assert.throws(()=>inspectAttendanceDrivePermissions([{type:'user',role:'owner'}],false),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  assert.throws(()=>inspectAttendanceDrivePermissions([{type:'anyone',role:null}],true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  assert.throws(()=>inspectAttendanceDrivePermissions([{type:'unknown',role:'writer'}],true),
+    (error:unknown)=>error instanceof AttendanceDriveAclError&&error.code==='ATTENDANCE_DRIVE_ACL_UNVERIFIED')
 })
 
-test('both upload and Admin read-only preflight block staff photos into publicly shared Drive root',()=>{
+test('Admin read-only preflight reports public sharing while app upload stays authorization-bound',()=>{
   const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
   const acl=readFileSync(new URL('../lib/server/attendanceDriveAcl.ts',import.meta.url),'utf8')
   const guard=readFileSync(new URL('../lib/utils/attendanceDriveAcl.ts',import.meta.url),'utf8')
-  assert.match(handler,/await assertPrivateAttendanceDriveRoot\(root,/g)
-  assert.equal((handler.match(/await assertPrivateAttendanceDriveRoot\(root,/g)??[]).length,2)
-  assert.match(handler,/ATTENDANCE_DRIVE_ACL_PUBLIC/)
-  assert.match(handler,/return failed\(error\.code,error\.code==='ATTENDANCE_DRIVE_ACL_PUBLIC'\?409:503\)/)
+  assert.match(handler,/await inspectAttendanceDriveRoot\(root,/g)
+  assert.equal((handler.match(/await inspectAttendanceDriveRoot\(root,/g)??[]).length,1)
+  const photoDrive=readFileSync(new URL('../lib/server/attendancePhotoDrive.ts',import.meta.url),'utf8')
+  assert.doesNotMatch(photoDrive,/assertPrivateAttendanceDriveRoot|permissions\.create\(|permissions\.delete\(/)
+  assert.match(photoDrive,/canWriteOperationalStoragePlacement/)
+  assert.match(handler,/return failed\(error\.code,503\)/)
   assert.match(acl,/drive\.permissions\.list\(\{/)
   assert.match(acl,/nextPageToken/)
   assert.match(acl,/all\.push\(\.\.\.data\.permissions\)/)
-  assert.match(acl,/assertPrivateAttendanceDrivePermissions\(all,complete,publicGrantApproved\)/)
+  assert.match(acl,/inspectAttendanceDrivePermissions\(all,complete\)/)
   assert.match(guard,/permission\.type==='anyone' \|\| permission\.type==='domain'/)
   assert.doesNotMatch(acl,/permissions\.create\(|permissions\.delete\(|files\.create\(/)
 })
 
 
-test('public Drive sharing is allowed ONLY with explicit operator override; incomplete ACL still fails',async()=>{
-  const {assertPrivateAttendanceDrivePermissions,AttendanceDriveAclError}=
+test('public Drive ACL is reported separately from ADA Ops app authorization',async()=>{
+  const {inspectAttendanceDrivePermissions,AttendanceDriveAclError}=
     await import('../lib/utils/attendanceDriveAcl.ts')
   const publicRoot=[{type:'user',role:'owner'},{type:'anyone',role:'writer'}]
-  assert.throws(()=>assertPrivateAttendanceDrivePermissions(publicRoot,true),
-    (error:unknown)=>error instanceof AttendanceDriveAclError&&error.code==='ATTENDANCE_DRIVE_ACL_PUBLIC')
-  assert.deepEqual(assertPrivateAttendanceDrivePermissions(publicRoot,true,true),{publicAccess:true})
-  assert.deepEqual(assertPrivateAttendanceDrivePermissions([{type:'user',role:'owner'}],true,true),{publicAccess:false})
-  assert.throws(()=>assertPrivateAttendanceDrivePermissions(publicRoot,false,true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
-  assert.throws(()=>assertPrivateAttendanceDrivePermissions([{type:'unknown',role:'writer'}],true,true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
-  assert.throws(()=>assertPrivateAttendanceDrivePermissions([{type:'anyone',role:'invalid'}],true,true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  assert.deepEqual(inspectAttendanceDrivePermissions(publicRoot,true),{publicAccess:true})
+  assert.deepEqual(inspectAttendanceDrivePermissions([{type:'user',role:'owner'}],true),{publicAccess:false})
+  assert.throws(()=>inspectAttendanceDrivePermissions(publicRoot,false),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
+  assert.throws(()=>inspectAttendanceDrivePermissions([{type:'unknown',role:'writer'}],true),
+    (error:unknown)=>error instanceof AttendanceDriveAclError&&error.code==='ATTENDANCE_DRIVE_ACL_UNVERIFIED')
+  assert.throws(()=>inspectAttendanceDrivePermissions([{type:'anyone',role:'invalid'}],true),/ATTENDANCE_DRIVE_ACL_UNVERIFIED/)
   const server=readFileSync(new URL('../lib/server/attendanceDriveAcl.ts',import.meta.url),'utf8')
   const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
   const ui=readFileSync(new URL('../components/features/payroll/AttendanceDrivePreflight.tsx',import.meta.url),'utf8')
-  assert.match(server,/env\.ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS==='true'/)
-  assert.match(server,/assertPrivateAttendanceDrivePermissions\(all,complete,publicGrantApproved\)/)
+  assert.match(server,/inspectAttendanceDrivePermissions\(all,complete\)/)
   assert.match(handler,/public_access:publicAccess/)
-  assert.match(handler,/public_access_approved:publicAccess&&process\.env\.ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS==='true'/)
   assert.match(ui,/typeof result\.public_access!=='boolean'/)
-  assert.match(ui,/result\.public_access===true&&result\.public_access_approved!==true/)
-  assert.match(ui,/ảnh check-in và thông tin nhân sự trong file vẫn có thể bị người có liên kết Drive truy cập/)
+  assert.match(ui,/if\(result\.ok!==true/)
+  assert.match(ui,/người có liên kết Drive vẫn có thể truy cập trực tiếp/)
   assert.doesNotMatch(server,/\.permissions\.create\(|\.permissions\.delete\(/)
 })
 
@@ -516,6 +514,17 @@ test('U14.1 self attendance photo handler enforces separate check-out photo, rej
   assert.match(handler,/ATTENDANCE_PHOTO_CHECKOUT_PENDING_RECONCILIATION/)
   assert.match(handler,/ATTENDANCE_PHOTO_CHECKOUT_RESPONSE_MISMATCH/)
   assert.match(handler,/!\['check_in','check_out'\]\.includes\(event\.data\.event_kind\)/)
+})
+
+test('attendance photo GET reads the requested immutable correction revision',()=>{
+  const handler=readFileSync(new URL('../lib/server/selfAttendancePhotoHandler.ts',import.meta.url),'utf8')
+  assert.match(handler,/from\('self_attendance_photo_evidence_revisions'\)/)
+  assert.match(handler,/\.eq\('attendance_event_id',eventId\)\.eq\('revision',revision\)/)
+  assert.match(handler,/metadata\?\.attendance_event_id!==eventId/)
+  assert.match(handler,/stored\.parent_ids\?\.\[0\]!==metadata\.external_parent_id/)
+  assert.match(handler,/stored\.id!==metadata\.external_file_id/)
+  assert.match(handler,/createHash\('sha256'\)\.update\(bytes\)\.digest\('hex'\)!==metadata\.checksum_sha256/)
+  assert.match(handler,/if\(requestedId&&revisionValue!==null\)return failed\('ATTENDANCE_PHOTO_REQUEST_INVALID',400\)/)
 })
 
 test('U14.1 UI renders distinct camera, preview, and evidence for both check-in and check-out',()=>{

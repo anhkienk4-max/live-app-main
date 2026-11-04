@@ -456,7 +456,7 @@ function safeProviderErrorMessage(code: string) {
 
 type UploadPlacementDependencies = {
   routeResolver: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
-  domainRouteResolver: OperationalStorageDomainRouteRepository
+  domainRouteResolver: Pick<OperationalStorageDomainRouteRepository, 'resolveDomainCategoryPlacement' | 'resolveReportArtifactGroupPlacement'>
   materializeFolders: (placement: OperationalStoragePlacement) => Promise<string>
   routingMode: OperationalStorageRoutingMode
 }
@@ -813,7 +813,7 @@ export function createReportImageRouteHandler(dependencies: {
   createClient?: () => Promise<SupabaseClient>
   storage?: StorageGateway
   routeResolver?: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
-  domainRouteResolver?: OperationalStorageDomainRouteRepository
+  domainRouteResolver?: Pick<OperationalStorageDomainRouteRepository, 'resolveDomainCategoryPlacement' | 'resolveReportArtifactGroupPlacement'>
   materializeFolders?: (placement: OperationalStoragePlacement) => Promise<string>
   routingMode?: OperationalStorageRoutingMode
 } = {}) {

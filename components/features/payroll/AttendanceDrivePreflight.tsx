@@ -11,7 +11,7 @@ export function AttendanceDrivePreflight() {
   const [status,setStatus] = React.useState<Result>('idle')
   const [enabled,setEnabled] = React.useState(false)
   const [publicAccess,setPublicAccess] = React.useState(false)
-  const [blockedReason,setBlockedReason] = React.useState<'credentials'|'permission'|'public'|'unknown'>('unknown')
+  const [blockedReason,setBlockedReason] = React.useState<'credentials'|'permission'|'unknown'>('unknown')
   const lock = React.useRef(false)
 
   async function verify() {
@@ -36,8 +36,7 @@ export function AttendanceDrivePreflight() {
           }
         } catch {/* Return generic safe status for invalid payloads. */}
         setBlockedReason(code==='ATTENDANCE_DRIVE_NOT_CONFIGURED'?'credentials':
-          code==='ATTENDANCE_DRIVE_PERMISSION_DENIED'?'permission':
-          code==='ATTENDANCE_DRIVE_ACL_PUBLIC'?'public':'unknown')
+          code==='ATTENDANCE_DRIVE_PERMISSION_DENIED'?'permission':'unknown')
         setStatus('blocked')
         return
       }
@@ -49,9 +48,7 @@ export function AttendanceDrivePreflight() {
       if(result.ok!==true||result.provider!=='google_drive'||
         result.root_readable!==true||result.root_can_add_children!==true||
         typeof result.feature_enabled!=='boolean'||
-        typeof result.public_access!=='boolean'||
-        typeof result.public_access_approved!=='boolean'||
-        (result.public_access===true&&result.public_access_approved!==true)){
+        typeof result.public_access!=='boolean'){
         setStatus('blocked');return
       }
       setEnabled(result.feature_enabled)
@@ -75,21 +72,19 @@ export function AttendanceDrivePreflight() {
       </Button>
       {status==='idle'&&<span role="status" className="text-xs text-slate-600">Chưa kiểm tra</span>}
       {status==='ready'&&!publicAccess&&<span role="status" className="text-xs text-green-800">
-        Đã xác nhận quyền đọc/ghi thư mục riêng tư. Tính năng check-in ảnh {enabled?'đang bật':'đang tắt'}.
+        Đã xác nhận quyền đọc/ghi và không thấy chia sẻ Drive công khai. Tính năng check-in ảnh {enabled?'đang bật':'đang tắt'}.
       </span>}
       {status==='ready'&&publicAccess&&<span role="alert" className="text-xs text-amber-800">
-        Quyền ghi Drive đã xác nhận. Admin đã chấp thuận thư mục chia sẻ công khai;
-        ảnh check-in và thông tin nhân sự trong file vẫn có thể bị người có liên kết Drive truy cập.
+        Quyền ghi Drive đã xác nhận. Quyền chia sẻ Drive hiện có được giữ nguyên;
+        người có liên kết Drive vẫn có thể truy cập trực tiếp, độc lập với quyền chỉnh sửa trong ADA Ops.
         Tính năng check-in ảnh {enabled?'đang bật':'đang tắt'}.
       </span>}
       {status==='blocked'&&<span role="alert" className="text-xs text-rose-800">
         {blockedReason==='credentials'
-          ? 'Ứng dụng thiếu kết nối OAuth Google Drive trên môi trường này. Cần cấu hình bảo mật trên Vercel trước khi bật check-in ảnh.'
+          ? 'Ứng dụng thiếu kết nối OAuth Google Drive trên môi trường hiện tại. Cần xác minh cấu hình runtime trước khi bật check-in ảnh.'
           : blockedReason==='permission'
             ? 'OAuth chưa có quyền tạo file trong thư mục CHECK IN/OUT. Kiểm tra quyền Writer của tài khoản ứng dụng.'
-            : blockedReason==='public'
-              ? 'Quyền chia sẻ công khai đang tồn tại. Admin chỉ có thể tiếp tục nếu đã cấu hình chấp thuận riêng ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS trên đúng môi trường; đây không phải thư mục riêng tư.'
-              : 'Chưa xác nhận được quyền Drive của ứng dụng. Giữ khóa check-in ảnh và kiểm tra cấu hình Admin.'}
+            : 'Chưa xác nhận được quyền Drive của ứng dụng. Giữ khóa check-in ảnh và kiểm tra cấu hình Admin.'}
       </span>}
     </div>
   </div>

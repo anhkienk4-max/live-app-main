@@ -10,7 +10,7 @@ import { classifyResourceVerificationError, validateCanonicalResourceReference }
 
 const id = z.string().trim().min(1).max(180)
 const provider = z.enum(['google_drive', 'onedrive'])
-const visibility = z.enum(['admin_only', 'owner_only', 'granted_users'])
+const visibility = z.enum(['admin_only', 'owner_only', 'granted_users', 'public'])
 const resourceType = z.enum([
   'root_folder', 'google_sheet', 'report_data', 'product_document', 'sku_document',
   'kv', 'image', 'livecut', 'marketing_asset', 'campaign_scheme', 'script',
@@ -35,6 +35,8 @@ const actionInput = z.union([
     .strict().refine(value => (value.canonical_id === undefined) === (value.canonical_url === undefined)),
   z.object({ action: z.literal('attach_scope'), resource_id: id, scope }).strict(),
   z.object({ action: z.literal('grant'), resource_id: id, user_id: id, active: z.boolean() }).strict(),
+  z.object({ action: z.literal('set_edit_grant'), resource_id: id, user_id: id, decision: z.enum(['allow', 'deny']).nullable() }).strict(),
+  z.object({ action: z.literal('edit'), resource_id: id, title: z.string().trim().min(1).max(200) }).strict(),
   z.object({ action: z.literal('verify'), resource_id: id }).strict(),
 ])
 
@@ -58,17 +60,36 @@ export function createStorageResourceRegistryHandler(resolveUser?: ServerUserRes
         const { data, error } = await supabase.from('storage_resources')
           .select('*, storage_resource_scopes(*)').order('updated_at', { ascending: false })
         if (error) throw error
-        return Response.json({ ok: true, resources: data ?? [] }, { headers: { 'Cache-Control': 'no-store' } })
+        const { data: editable, error: editError } = await supabase.rpc('storage_resource_registry_editable_ids')
+        if (editError) throw editError
+        const editableIds = new Set(((editable ?? []) as Array<{ resource_id: string }>).map(row => row.resource_id))
+        return Response.json({ ok: true, resources: (data ?? []).map(resource => ({
+          ...resource,
+          can_edit: editableIds.has(resource.id),
+        })) }, { headers: { 'Cache-Control': 'no-store' } })
       } catch (error) { return responseError(error) }
     },
     async POST(request: Request) {
       try {
-        const actor = await requireRole(request, 'admin', resolveUser)
-        const actorId = actor.businessUserId
-        if (!actorId) return Response.json({ ok: false, error: 'BUSINESS_USER_REQUIRED' }, { status: 403 })
+        if (request.headers.get('origin') !== new URL(request.url).origin) {
+          return Response.json({ ok: false, error: 'ORIGIN_INVALID' }, { status: 403, headers: { 'Cache-Control': 'no-store' } })
+        }
         const parsed = actionInput.safeParse(await readJsonBody(request, 16 * 1024))
         if (!parsed.success) return Response.json({ ok: false, error: 'STORAGE_RESOURCE_INPUT_INVALID' }, { status: 400 })
         const input = parsed.data
+        if (input.action === 'edit') {
+          const actor = await requireUser(request, resolveUser)
+          if (!actor.businessUserId) return Response.json({ ok: false, error: 'BUSINESS_USER_REQUIRED' }, { status: 403 })
+          const supabase = await createClient()
+          const { data, error } = await supabase.rpc('storage_resource_registry_edit', {
+            p_resource_id: input.resource_id, p_title: input.title,
+          })
+          if (error) throw error
+          return Response.json({ ok: true, resource: data }, { headers: { 'Cache-Control': 'no-store' } })
+        }
+        const actor = await requireRole(request, 'admin', resolveUser)
+        const actorId = actor.businessUserId
+        if (!actorId) return Response.json({ ok: false, error: 'BUSINESS_USER_REQUIRED' }, { status: 403 })
         const supabase = await createClient()
         if (input.action === 'create') {
           const { canonicalUrl } = validateCanonicalResourceReference(input.provider, input.canonical_url, input.canonical_id)
@@ -129,6 +150,13 @@ export function createStorageResourceRegistryHandler(resolveUser?: ServerUserRes
         if (input.action === 'grant') {
           const { error } = await supabase.rpc('storage_resource_registry_set_grant', {
             p_resource_id: input.resource_id, p_user_id: input.user_id, p_active: input.active,
+          })
+          if (error) throw error
+          return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
+        }
+        if (input.action === 'set_edit_grant') {
+          const { error } = await supabase.rpc('storage_resource_registry_set_edit_grant', {
+            p_resource_id: input.resource_id, p_user_id: input.user_id, p_decision: input.decision,
           })
           if (error) throw error
           return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })

@@ -6,7 +6,7 @@ import { Client } from 'pg'
 
 const databaseUrl = process.env.DATABASE_URL
 const proposalRoot = path.resolve('supabase/proposals/rc19-sto02-resource-registry')
-const migration = fs.readFileSync(path.join(proposalRoot, '20261027150000_rc19_sto02_resource_registry.sql'), 'utf8')
+const migration = fs.readFileSync(path.resolve('supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql'), 'utf8')
 const preflight = fs.readFileSync(path.join(proposalRoot, 'preflight.sql'), 'utf8')
 const disposableName = 'rc19_sto02_disposable'
 
@@ -43,7 +43,7 @@ test('STO-02 registry migration enforces PostgreSQL 17 visibility, privacy, and 
     await client.query('begin')
     await client.query('drop schema public cascade; create schema public; create schema private;')
     await client.query(`
-      create role anon nologin; create role authenticated nologin;
+      create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
       create table public.business_users(id text primary key, full_name text, system_permission text);
       insert into public.business_users values ('admin','Admin','admin'),('owner','Owner','member'),('member','Member','member');
       create table public.brands(id text primary key);
@@ -78,16 +78,24 @@ test('STO-02 registry migration enforces PostgreSQL 17 visibility, privacy, and 
                ('google_drive','granted','https://drive.google.com/drive/folders/b','Granted','google_sheet','admin','granted_users','admin','admin'),
                ('google_drive','scope-only','https://drive.google.com/drive/folders/s','Scope only','root_folder','admin','admin_only','admin','admin'),
                ('google_drive','owner','https://drive.google.com/drive/folders/c','Owner','contract','owner','owner_only','admin','admin'),
-               ('onedrive','attendance','https://tenant.sharepoint.com/sites/private/attendance','Attendance','attendance_evidence','owner','owner_only','admin','admin');
+               ('onedrive','attendance','https://tenant.sharepoint.com/sites/private/attendance','Attendance','attendance_evidence','owner','owner_only','admin','admin'),
+               ('google_drive','public-resource','https://drive.google.com/drive/folders/public-resource','Public resource','image','admin','public','admin','admin');
       insert into public.storage_resource_scopes(resource_id,brand_id,created_by)
         select id,'brand-a','admin' from public.storage_resources where canonical_id in ('granted','scope-only');
       insert into public.storage_resource_user_grants(resource_id,user_id,granted_by)
         select id,'member','admin' from public.storage_resources where canonical_id='granted';
+      insert into public.storage_resource_edit_grants(resource_id,user_id,decision,granted_by)
+        select id,'member','allow','admin' from public.storage_resources where canonical_id='public-resource';
     `)
     await client.query('set local role authenticated')
     await client.query("select set_config('sto02.actor','member',true)")
     const memberRows = await client.query('select canonical_id from public.storage_resources order by canonical_id')
-    assert.deepEqual(memberRows.rows.map(row => row.canonical_id), ['granted'])
+    assert.deepEqual(memberRows.rows.map(row => row.canonical_id), ['granted', 'public-resource'])
+    const editableIds = await client.query('select resource_id from public.storage_resource_registry_editable_ids()')
+    assert.equal(editableIds.rowCount, 1, 'Only explicitly granted resource scope is editable')
+    const publicResourceId = (await client.query("select id from public.storage_resources where canonical_id='public-resource'")).rows[0]?.id
+    const edited = await client.query('select (public.storage_resource_registry_edit($1,$2)).title as title', [publicResourceId, 'Member edited title'])
+    assert.equal(edited.rows[0]?.title, 'Member edited title', 'Explicit account grant allows only the in-app edit RPC')
     const rejectedWrite = await client.query("update public.storage_resources set title='forged' where canonical_id='granted'")
     assert.equal(rejectedWrite.rowCount, 0, 'Member must not edit registry metadata')
     await client.query('savepoint rejected_member_insert')
@@ -100,6 +108,9 @@ test('STO-02 registry migration enforces PostgreSQL 17 visibility, privacy, and 
     assert.equal(memberAudit.rowCount, 0, 'Audit history is Admin-only')
     const memberGrantRows = await client.query('select resource_id from public.storage_resource_user_grants')
     assert.equal(memberGrantRows.rowCount, 0, 'Members cannot inspect grant rows or their resource IDs')
+    const memberEditGrantRows = await client.query('select resource_id from public.storage_resource_edit_grants')
+    assert.equal(memberEditGrantRows.rowCount, 0, 'Members cannot inspect edit grants')
+    await assert.rejects(client.query('select folder_id from public.attendance_photo_drive_folders'), (error: { code?: string }) => error.code === '42501')
     const memberGrantUpdate = await client.query(`update public.storage_resource_user_grants set revoked_at=now() where user_id='member'`)
     assert.equal(memberGrantUpdate.rowCount, 0, 'Member cannot change grants through direct REST')
     const memberScopeUpdate = await client.query(`update public.storage_resource_scopes set sku_key='forged' where resource_id=(select id from public.storage_resources where canonical_id='granted')`)
@@ -116,10 +127,38 @@ test('STO-02 registry migration enforces PostgreSQL 17 visibility, privacy, and 
       (error: { code?: string }) => error.code === '42501',
     )
     await client.query('rollback to savepoint rejected_member_scope_insert; release savepoint rejected_member_scope_insert')
+    await client.query("select set_config('sto02.actor','admin',true)")
+    await client.query('savepoint public_view_independent_of_account_grants')
+    await assert.rejects(
+      client.query("select public.storage_resource_registry_set_grant($1,'member',true)", [publicResourceId]),
+      (error: { code?: string }) => error.code === '23514',
+    )
+    await client.query('rollback to savepoint public_view_independent_of_account_grants; release savepoint public_view_independent_of_account_grants')
+    assert.equal((await client.query('select visibility from public.storage_resources where id=$1', [publicResourceId])).rows[0]?.visibility, 'public')
+    await client.query("select public.storage_resource_registry_set_edit_grant($1,'member','deny')", [publicResourceId])
+    await client.query("select set_config('sto02.actor','member',true)")
+    await client.query('savepoint denied_account_edit')
+    await assert.rejects(
+      client.query('select public.storage_resource_registry_edit($1,$2)', [publicResourceId, 'Denied title']),
+      (error: { code?: string }) => error.code === '42501',
+    )
+    await client.query('rollback to savepoint denied_account_edit; release savepoint denied_account_edit')
+    assert.equal((await client.query('select title from public.storage_resources where id=$1', [publicResourceId])).rows[0]?.title, 'Member edited title', 'Explicit deny preserves current metadata')
+    await client.query("select set_config('sto02.actor','admin',true)")
+    await client.query("select public.storage_resource_registry_set_edit_grant($1,'member',null)", [publicResourceId])
+    await client.query("select set_config('sto02.actor','member',true)")
+    assert.equal((await client.query('select count(*)::int as count from public.storage_resource_registry_editable_ids()')).rows[0]?.count, 0, 'Revoking the edit grant removes access')
     await client.query("select set_config('sto02.actor','owner',true)")
     const ownerRows = await client.query("select canonical_id from public.storage_resources where canonical_id='owner'")
     assert.equal(ownerRows.rowCount, 1)
     await client.query("select set_config('sto02.actor','admin',true)")
+    const ownerOnlyResourceId = (await client.query("select id from public.storage_resources where canonical_id='owner'")).rows[0]?.id
+    await client.query('savepoint rejected_nonowner_owner_only_edit_grant')
+    await assert.rejects(
+      client.query("select public.storage_resource_registry_set_edit_grant($1,'member','allow')", [ownerOnlyResourceId]),
+      (error: { code?: string }) => error.code === '23514',
+    )
+    await client.query('rollback to savepoint rejected_nonowner_owner_only_edit_grant; release savepoint rejected_nonowner_owner_only_edit_grant')
     await client.query('savepoint rejected_attendance_scope')
     await assert.rejects(
       client.query(`insert into public.storage_resource_scopes(resource_id,brand_id,created_by) select id,'brand-a','admin' from public.storage_resources where canonical_id='attendance'`),
@@ -189,8 +228,11 @@ test('STO-02 registry migration enforces PostgreSQL 17 visibility, privacy, and 
     await assert.rejects(client.query(`select public.storage_resource_registry_set_grant('granted','member',true)`), (error: { code?: string }) => error.code === '42501')
     await client.query('rollback to savepoint rejected_member_rpc_grant; release savepoint rejected_member_rpc_grant')
     await client.query('reset role')
+    await client.query('set local role anon')
+    await assert.rejects(client.query('select canonical_url from public.storage_resources where visibility=\'public\''), (error: { code?: string }) => error.code === '42501')
+    await client.query('reset role')
     const audit = await client.query('select action from public.storage_resource_audit_events')
-    assert.ok(['resource_insert', 'scope_insert', 'grant_insert'].every(action => audit.rows.some(row => row.action === action)))
+    assert.ok(['resource_insert', 'scope_insert', 'grant_insert', 'edit_grant_insert', 'edit_grant_update', 'resource_update'].every(action => audit.rows.some(row => row.action === action)))
     const routes = await client.query('select root_folder_id from public.operational_storage_routes where id=\'approved-route\'')
     assert.equal(routes.rows[0]?.root_folder_id, 'approved-root', 'registry must preserve approved upload route')
   } finally {

@@ -8,7 +8,7 @@ const databaseUrl = process.env.DATABASE_URL
 const databaseName = 'rc19_brand01_disposable'
 const setup = fs.readFileSync(path.resolve('tests/brand01/postgres17_setup.sql'), 'utf8')
 const brandProposal = fs.readFileSync(path.resolve('supabase/proposals/rc19-brand01/20261030120000_rc19_brand01_catalog_review_only.sql'), 'utf8')
-const stoProposal = fs.readFileSync(path.resolve('supabase/proposals/rc19-sto02-resource-registry/20261027150000_rc19_sto02_resource_registry.sql'), 'utf8')
+const stoProposal = fs.readFileSync(path.resolve('supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql'), 'utf8')
 const stoPreflight = fs.readFileSync(path.resolve('supabase/proposals/rc19-sto02-resource-registry/preflight.sql'), 'utf8')
 const assertions = fs.readFileSync(path.resolve('tests/brand01/postgres17_assertions.sql'), 'utf8')
 

@@ -374,7 +374,7 @@ async function persistUploadedArtifact(input: {
   reportVersion?: number | null
   provider: CloudProvider
   routingMode: OperationalStorageRoutingMode
-  domainRouteResolver: OperationalStorageDomainRouteRepository
+  domainRouteResolver: Pick<OperationalStorageDomainRouteRepository, 'resolveDomainCategoryPlacement' | 'resolveReportArtifactGroupPlacement'>
   artifactGroup: ReportArtifactGroup
   routeResolver: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
   materializeFolders: (placement: OperationalStoragePlacement) => Promise<string>
@@ -508,7 +508,7 @@ export function createReportArtifactRouteHandler(dependencies: {
   createClient?: () => SupabaseClient
   storage?: StorageGateway
   routeResolver?: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
-  domainRouteResolver?: OperationalStorageDomainRouteRepository
+  domainRouteResolver?: Pick<OperationalStorageDomainRouteRepository, 'resolveDomainCategoryPlacement' | 'resolveReportArtifactGroupPlacement'>
   materializeFolders?: (placement: OperationalStoragePlacement) => Promise<string>
   routingMode?: OperationalStorageRoutingMode
 } = {}) {

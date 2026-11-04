@@ -291,6 +291,8 @@ test('domain-first report artifact upload uses the persisted ADA/internal Shift 
     routeResolver: { async resolvePlacement() { throw new Error('legacy route must not be used') } },
     domainRouteResolver: {
       async resolveDomainCategoryPlacement() { throw new Error('category route must not be used') },
+      async resolveAttendancePhotoBasePlacement() { throw new Error('attendance route must not be used') },
+      async resolveAttendancePhotoPlacement() { throw new Error('attendance route must not be used') },
       async resolveReportArtifactGroupPlacement(input) {
         group = input.group
         assert.equal(input.agencyCode, 'ada')

@@ -1,11 +1,4 @@
-/**
- * Permission audit for the operator-approved employee check-in folder.
- * The default rejects any public/domain grant. A separately configured,
- * explicit operator acceptance can permit that EXISTING exposure, but never
- * an unreadable, incomplete or malformed ACL.
- *
- * IMPORTANT: accepted public access does NOT make employee images private.
- */
+/** Reports existing Drive sharing without treating it as ADA Ops write authorization. */
 export type AttendanceDrivePermission = {
   type?: string | null
   role?: string | null
@@ -16,16 +9,15 @@ export type AttendanceDriveAclStatus = {
 }
 
 export class AttendanceDriveAclError extends Error {
-  constructor(readonly code: 'ATTENDANCE_DRIVE_ACL_PUBLIC'|'ATTENDANCE_DRIVE_ACL_UNVERIFIED') {
+  constructor(readonly code: 'ATTENDANCE_DRIVE_ACL_UNVERIFIED') {
     super(code)
     this.name='AttendanceDriveAclError'
   }
 }
 
-export function assertPrivateAttendanceDrivePermissions(
+export function inspectAttendanceDrivePermissions(
   permissions: AttendanceDrivePermission[],
   complete: boolean,
-  allowPublicAccess=false,
 ): AttendanceDriveAclStatus {
   if(!complete || !Array.isArray(permissions) || permissions.length===0) {
     throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
@@ -48,7 +40,5 @@ export function assertPrivateAttendanceDrivePermissions(
       throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
     }
   }
-  if(publicAccess&&!allowPublicAccess)
-    throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_PUBLIC')
   return {publicAccess}
 }

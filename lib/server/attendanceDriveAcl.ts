@@ -2,7 +2,7 @@ import 'server-only'
 
 import { google } from 'googleapis'
 import { createGoogleDriveAuth, type GoogleDriveEnvironment } from '@/lib/server/googleDriveAuth'
-import { assertPrivateAttendanceDrivePermissions, AttendanceDriveAclError,
+import { inspectAttendanceDrivePermissions, AttendanceDriveAclError,
   type AttendanceDrivePermission, type AttendanceDriveAclStatus } from '@/lib/utils/attendanceDriveAcl'
 
 type PermissionPage = {
@@ -21,11 +21,8 @@ type DrivePermissionsClient = {
   }
 }
 
-/** Read-only, fail-closed check under the SAME runtime account as uploads.
- * Covers pagination, public-link readers/writers and broad domain grants.
- * Never returns Google user emails, folder IDs or permission details to clients.
- */
-export async function assertPrivateAttendanceDriveRoot(
+/** Read-only ACL inventory under the same runtime identity; this never changes Drive sharing. */
+export async function inspectAttendanceDriveRoot(
   rootId:string,
   env:GoogleDriveEnvironment=process.env,
   client?:DrivePermissionsClient,
@@ -60,8 +57,5 @@ export async function assertPrivateAttendanceDriveRoot(
     visited.add(data.nextPageToken)
     pageToken=data.nextPageToken
   }
-  // Exact opt-in, OFF by default. An explicitly accepted public ACL is
-  // reported to the Admin UI, never mislabeled as private or safe by default.
-  const publicGrantApproved=env.ATTENDANCE_DRIVE_ALLOW_PUBLIC_ACCESS==='true'
-  return assertPrivateAttendanceDrivePermissions(all,complete,publicGrantApproved)
+  return inspectAttendanceDrivePermissions(all,complete)
 }

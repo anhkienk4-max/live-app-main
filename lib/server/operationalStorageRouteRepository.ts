@@ -7,13 +7,18 @@ import { agencyReportFolderSegments } from '@/lib/files/operationalAgencyStorage
 import type { OperationalFileCategory } from '@/lib/files/operationalFileCatalog'
 import {
   ADA_OPS_REPORT_ROOT_ID,
+  domainFolderForAttendanceGroup,
+  domainFolderForAttendancePhoto,
   domainFolderAncestors,
   domainFolderForCategory,
   domainFolderForPath,
   domainFolderForReportGroup,
   reportArtifactGroupFolder,
   type ReportArtifactGroup,
+  type AttendancePhotoEventKind,
+  type AttendanceDriveFolderGroup,
 } from '@/lib/files/operationalStorageDomainMap'
+import type { PhotoRole } from '@/lib/utils/attendancePhotoNaming'
 import {
   noRouteErrorForBrand,
   OperationalStoragePlacementError,
@@ -43,6 +48,20 @@ interface OperationalStorageRouteRepositoryOptions {
 
 export interface OperationalStorageDomainRouteRepository {
   resolveDomainCategoryPlacement(category: OperationalFileCategory, fileName: string): Promise<OperationalStoragePlacement>
+  resolveAttendancePhotoBasePlacement(eventKind: AttendancePhotoEventKind, fileName: string): Promise<OperationalStoragePlacement>
+  resolveAttendancePhotoPlacement(input: {
+    shiftId: string
+    shiftDate: string
+    operationalRole: PhotoRole
+    eventKind: AttendancePhotoEventKind
+    fileName: string
+  }): Promise<OperationalStoragePlacement>
+  resolveAttendanceDriveFolderPlacement(input: {
+    group: AttendanceDriveFolderGroup
+    shiftId: string
+    shiftDate: string
+    fileName: string
+  }): Promise<OperationalStoragePlacement>
   resolveReportArtifactGroupPlacement(input: {
     group: ReportArtifactGroup
     shiftId: string
@@ -183,6 +202,65 @@ export function createOperationalStorageDomainRouteRepository(
     return { ...domainFolderForPath(path), accessClassification }
   }
 
+  async function resolveAttendanceShiftScope(shiftId: string, shiftDate: string) {
+    const result = await client.from('shifts')
+      .select('id,date,brand_id,platform_id,agency_code,execution_source')
+      .eq('id', shiftId)
+      .is('deleted_at', null)
+      .is('archived_at', null)
+      .maybeSingle()
+    if (result.error || !result.data) {
+      throw new OperationalStoragePlacementError('STORAGE_ROUTE_LOOKUP_FAILED')
+    }
+    const shift = result.data as {
+      id?: unknown
+      date?: unknown
+      brand_id?: unknown
+      platform_id?: unknown
+      agency_code?: unknown
+      execution_source?: unknown
+    }
+    if (shift.id !== shiftId || typeof shift.date !== 'string' || shift.date !== shiftDate
+      || typeof shift.brand_id !== 'string' || typeof shift.platform_id !== 'string') {
+      throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
+    }
+    const { year, month, compactDate } = dateParts(shift.date)
+    return {
+      folderSegments: [
+        ...agencyReportFolderSegments(shift.agency_code, shift.execution_source),
+        safeScopeSegment(shift.brand_id),
+        safeScopeSegment(shift.platform_id),
+        year,
+        month,
+        'SHIFT_' + compactDate + '__' + safeScopeSegment(shift.id),
+      ],
+      year,
+      month,
+    }
+  }
+
+  async function resolveAttendancePhotoBasePlacement(eventKind: AttendancePhotoEventKind, fileName: string) {
+    const route = domainFolderForAttendancePhoto(eventKind)
+    const folder = await verifyRegistryPath(route.path)
+    if (folder.folderId !== route.folderId) {
+      throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
+    }
+    return {
+      provider: 'google_drive' as const,
+      storageProfile: 'DOMAIN_CATEGORY_FOLDER' as const,
+      rootFolderId: route.rootFolderId,
+      baseFolderId: route.folderId,
+      folderSegments: [],
+      folderPath: route.path,
+      expectedBaseParentId: route.parentFolderId,
+      accessClassification: folder.accessClassification,
+      sensitive: route.sensitive,
+      fileName: sanitizeFileName(fileName),
+      logicalCategory: 'live_visual' as const,
+      periodLabel: '',
+    }
+  }
+
   return {
     async resolveDomainCategoryPlacement(category, fileName) {
       const route = domainFolderForCategory(category)
@@ -203,6 +281,44 @@ export function createOperationalStorageDomainRouteRepository(
         fileName: sanitizeFileName(fileName),
         logicalCategory: 'data_source',
         periodLabel: '',
+      }
+    },
+
+    resolveAttendancePhotoBasePlacement,
+
+    async resolveAttendancePhotoPlacement(input) {
+      const scope = await resolveAttendanceShiftScope(input.shiftId, input.shiftDate)
+      const base = await resolveAttendancePhotoBasePlacement(input.eventKind, input.fileName)
+      const roles: Record<PhotoRole, string> = { host: 'HOST', support: 'TRO', technical: 'KY_THUAT' }
+      const folderSegments = [...scope.folderSegments, roles[input.operationalRole]]
+      return {
+        ...base,
+        folderSegments,
+        folderPath: folderSegments.join('/'),
+        periodLabel: scope.month + '/' + scope.year,
+      }
+    },
+
+    async resolveAttendanceDriveFolderPlacement(input) {
+      const route = domainFolderForAttendanceGroup(input.group)
+      const folder = await verifyRegistryPath(route.path)
+      if (folder.folderId !== route.folderId) {
+        throw new OperationalStoragePlacementError('STORAGE_ROUTE_CONFIG_INVALID')
+      }
+      const scope = await resolveAttendanceShiftScope(input.shiftId, input.shiftDate)
+      return {
+        provider: 'google_drive',
+        storageProfile: 'DOMAIN_CATEGORY_FOLDER',
+        rootFolderId: route.rootFolderId,
+        baseFolderId: route.folderId,
+        folderSegments: scope.folderSegments,
+        folderPath: scope.folderSegments.join('/'),
+        expectedBaseParentId: route.parentFolderId,
+        accessClassification: folder.accessClassification,
+        sensitive: route.sensitive,
+        fileName: sanitizeFileName(input.fileName),
+        logicalCategory: 'data_source',
+        periodLabel: scope.month + '/' + scope.year,
       }
     },
 

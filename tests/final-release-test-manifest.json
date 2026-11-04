@@ -169,6 +169,7 @@
     "tests/rc19-catalog-import-regression.test.ts",
     "tests/rc19-command-toolbar.test.tsx",
     "tests/rc19-filter01a-shifts.test.ts",
+    "tests/rc19-g2-inapp-camera.test.ts",
     "tests/rc19-my-payslip.test.ts",
     "tests/rc19-owner23-segmented-staffing.test.ts",
     "tests/rc19-postgres17-concurrency.integration.test.ts",

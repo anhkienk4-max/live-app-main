@@ -7,6 +7,24 @@ export const ADA_OPS_REPORT_ROOT_PATH = '00_ADA_OPS_PLATFORM/03_LIVE_REPORTS'
 export const ADA_OPS_REPORT_ROOT_ID = routeMap.report_root_id
 export const REPORT_ARTIFACT_GROUPS = Object.keys(routeMap.report_artifact_groups) as Array<keyof typeof routeMap.report_artifact_groups>
 export type ReportArtifactGroup = keyof typeof routeMap.report_artifact_groups
+export type AttendancePhotoEventKind = 'check_in' | 'check_out'
+export const ATTENDANCE_DRIVE_FOLDER_GROUPS = {
+  late_no_show: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/03_LATE_NO_SHOW_EVIDENCE',
+  review_corrections: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/04_REVIEW_AND_CORRECTIONS',
+  manifest_checksums: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/05_FILE_MANIFESTS_CHECKSUMS',
+  check_in_events: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/01_CHECKIN_EVENT_SNAPSHOTS',
+  check_out_events: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/02_CHECKOUT_EVENT_SNAPSHOTS',
+  review_decisions: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/03_REVIEW_DECISION_SNAPSHOTS',
+  approved_actual_hours: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/04_APPROVED_ACTUAL_HOURS_SNAPSHOTS',
+  reconciliation_audit: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/05_RECONCILIATION_AUDIT',
+  exports: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/06_EXPORTS',
+} as const
+export type AttendanceDriveFolderGroup = keyof typeof ATTENDANCE_DRIVE_FOLDER_GROUPS
+
+const attendancePhotoPaths: Record<AttendancePhotoEventKind, string> = {
+  check_in: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/01_CHECKIN_PHOTOS',
+  check_out: '00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/02_CHECKOUT_PHOTOS',
+}
 
 export type DomainFolderRoute = {
   path: string
@@ -77,6 +95,14 @@ export function domainFolderForReportGroup(group: ReportArtifactGroup): DomainFo
     sensitive: true,
     requiresSubtype: true,
   }
+}
+
+export function domainFolderForAttendancePhoto(eventKind: AttendancePhotoEventKind): DomainFolderRoute {
+  return { ...domainFolderForPath(attendancePhotoPaths[eventKind]), sensitive: true, requiresSubtype: true }
+}
+
+export function domainFolderForAttendanceGroup(group: AttendanceDriveFolderGroup): DomainFolderRoute {
+  return { ...domainFolderForPath(ATTENDANCE_DRIVE_FOLDER_GROUPS[group]), sensitive: true, requiresSubtype: true }
 }
 
 export function reportArtifactGroupFolder(group: ReportArtifactGroup): string {

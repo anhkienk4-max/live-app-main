@@ -8,7 +8,10 @@ import { OPERATIONAL_FILE_CATEGORIES } from '@/lib/files/operationalFileCatalog'
 import registry from '@/docs/storage/ADA_OPS_FOLDER_REGISTRY_20261102.json'
 import routeMap from '@/docs/storage/ADA_OPS_STORAGE_ROUTE_MAP_V1.json'
 import {
+  ATTENDANCE_DRIVE_FOLDER_GROUPS,
   canWriteOperationalStoragePlacement,
+  domainFolderForAttendanceGroup,
+  domainFolderForAttendancePhoto,
   domainFolderAncestors,
   domainFolderForCategory,
   domainFolderForReportGroup,
@@ -23,10 +26,22 @@ import { createScheduleSourceStorageHandler } from '@/lib/server/scheduleSourceS
 
 const files = new Map(registry.folders.map(folder => [folder.path, folder]))
 
-function registryClient(overrides: Record<string, Partial<(typeof registry.folders)[number]>> = {}) {
+function registryClient(
+  overrides: Record<string, Partial<(typeof registry.folders)[number]>> = {},
+  shift = { id: 'shift-123', date: '2026-11-01', brand_id: 'brand-shared', platform_id: 'platform-shared', agency_code: 'snap', execution_source: 'agency' },
+) {
   const requestedPaths: string[][] = []
   const client = {
     from(table: string) {
+      if (table === 'shifts') {
+        const query = {
+          select() { return query },
+          eq() { return query },
+          is() { return query },
+          async maybeSingle() { return { error: null, data: shift } },
+        }
+        return query
+      }
       assert.equal(table, 'operational_storage_domain_folders')
       const query = {
         select() { return query },
@@ -116,6 +131,110 @@ test('new report artifacts are isolated by persisted Shift agency without changi
   assert.equal(ai.sensitive, true)
 })
 
+test('attendance photo folders resolve from the persisted parent Shift and exact check-in/out registry roots', async () => {
+  const state = registryClient()
+  const resolver = createOperationalStorageDomainRouteRepository({ client: state.client })
+  const base = { shiftId: 'shift-123', shiftDate: '2026-11-01', fileName: 'synthetic.jpg' }
+  const checkIn = await resolver.resolveAttendancePhotoPlacement({
+    ...base, operationalRole: 'host', eventKind: 'check_in',
+  })
+  const checkOut = await resolver.resolveAttendancePhotoPlacement({
+    ...base, operationalRole: 'support', eventKind: 'check_out',
+  })
+
+  assert.equal(checkIn.baseFolderId, domainFolderForAttendancePhoto('check_in').folderId)
+  assert.equal(checkOut.baseFolderId, domainFolderForAttendancePhoto('check_out').folderId)
+  assert.notEqual(checkIn.baseFolderId, checkOut.baseFolderId)
+  assert.deepEqual(checkIn.folderSegments, [
+    'EXTERNAL', 'SNAP', 'brand-shared', 'platform-shared', '2026', '11', 'SHIFT_20261101__shift-123', 'HOST',
+  ])
+  assert.deepEqual(checkOut.folderSegments, [
+    'EXTERNAL', 'SNAP', 'brand-shared', 'platform-shared', '2026', '11', 'SHIFT_20261101__shift-123', 'TRO',
+  ])
+  assert.equal(checkIn.sensitive, true)
+  assert.equal(canWriteOperationalStoragePlacement(checkIn.accessClassification ?? '', checkIn.sensitive ?? false), false)
+  assert.ok(state.requestedPaths.some(paths => paths.at(-1)?.endsWith('/01_CHECKIN_PHOTOS')))
+  assert.ok(state.requestedPaths.some(paths => paths.at(-1)?.endsWith('/02_CHECKOUT_PHOTOS')))
+})
+
+test('attendance placement preserves ADA paths, rejects unknown agency, and does not roll overnight shift dates', async () => {
+  const internal = createOperationalStorageDomainRouteRepository({ client: registryClient({}, {
+    id: 'parent-shift', date: '2026-11-01', brand_id: 'brand-a', platform_id: 'platform-a',
+    agency_code: 'ada', execution_source: 'internal',
+  }).client })
+  const placement = await internal.resolveAttendancePhotoPlacement({
+    shiftId: 'parent-shift', shiftDate: '2026-11-01', operationalRole: 'technical',
+    eventKind: 'check_out', fileName: 'checkout.jpg',
+  })
+  assert.deepEqual(placement.folderSegments, [
+    'brand-a', 'platform-a', '2026', '11', 'SHIFT_20261101__parent-shift', 'KY_THUAT',
+  ])
+
+  const missingAgency = createOperationalStorageDomainRouteRepository({ client: registryClient({}, {
+    id: 'shift-123', date: '2026-11-01', brand_id: 'brand-a', platform_id: 'platform-a',
+    agency_code: null, execution_source: 'agency',
+  }).client })
+  await assert.rejects(missingAgency.resolveAttendancePhotoPlacement({
+    shiftId: 'shift-123', shiftDate: '2026-11-01', operationalRole: 'host',
+    eventKind: 'check_in', fileName: 'checkin.jpg',
+  }), /STORAGE_EXECUTION_SOURCE_NOT_CONFIGURED/u)
+
+  await assert.rejects(internal.resolveAttendancePhotoPlacement({
+    shiftId: 'parent-shift', shiftDate: '2026-11-02', operationalRole: 'host',
+    eventKind: 'check_in', fileName: 'checkin.jpg',
+  }), /STORAGE_ROUTE_CONFIG_INVALID/u)
+})
+
+test('attendance placement isolates two Agencies, Brands, and Platforms and keeps the persisted overnight shift date', async () => {
+  const paths = new Set<string>()
+  for (const agency of [
+    { code: 'ada', execution: 'internal' as const },
+    { code: 'snap', execution: 'agency' as const },
+  ]) {
+    for (const brand of ['brand-a', 'brand-b']) {
+      for (const platform of ['platform-a', 'platform-b']) {
+        const shiftId = `${agency.code}-${brand}-${platform}`
+        const resolver = createOperationalStorageDomainRouteRepository({ client: registryClient({}, {
+          id: shiftId, date: '2026-12-31', start_time: '23:00', end_time: '02:00',
+          brand_id: brand, platform_id: platform, agency_code: agency.code, execution_source: agency.execution,
+        }).client })
+        const placement = await resolver.resolveAttendancePhotoPlacement({
+          shiftId, shiftDate: '2026-12-31', operationalRole: 'host',
+          eventKind: 'check_in', fileName: 'synthetic.jpg',
+        })
+        const expectedPrefix = agency.execution === 'agency' ? ['EXTERNAL', 'SNAP'] : []
+        assert.deepEqual(placement.folderSegments.slice(0, expectedPrefix.length), expectedPrefix)
+        assert.ok(placement.folderSegments.includes(brand))
+        assert.ok(placement.folderSegments.includes(platform))
+        assert.ok(placement.folderSegments.includes('2026') && placement.folderSegments.includes('12'))
+        assert.ok(placement.folderSegments.includes('SHIFT_20261231__' + shiftId))
+        assert.equal(placement.folderSegments.at(-1), 'HOST')
+        paths.add(placement.folderPath)
+      }
+    }
+  }
+  assert.equal(paths.size, 8)
+})
+
+test('attendance event and review folder groups use only the Owner registry paths and remain sensitive', async () => {
+  const state = registryClient()
+  const routes = createOperationalStorageDomainRouteRepository({ client: state.client })
+  for (const group of Object.keys(ATTENDANCE_DRIVE_FOLDER_GROUPS) as Array<keyof typeof ATTENDANCE_DRIVE_FOLDER_GROUPS>) {
+    const expected = domainFolderForAttendanceGroup(group)
+    const placement = await routes.resolveAttendanceDriveFolderPlacement({
+      group, shiftId: 'shift-123', shiftDate: '2026-11-01', fileName: 'manifest.json',
+    })
+    assert.equal(placement.baseFolderId, expected.folderId, group)
+    assert.equal(placement.expectedBaseParentId, expected.parentFolderId, group)
+    assert.deepEqual(placement.folderSegments, [
+      'EXTERNAL', 'SNAP', 'brand-shared', 'platform-shared', '2026', '11', 'SHIFT_20261101__shift-123',
+    ], group)
+    assert.equal(placement.sensitive, true, group)
+    assert.equal(canWriteOperationalStoragePlacement(placement.accessClassification ?? '', true), false, group)
+    assert.ok(state.requestedPaths.some(paths => paths.at(-1) === expected.path), group)
+  }
+})
+
 test('new report routing fails closed for missing, mismatched or unknown Agency instead of using SNAP', async () => {
   const resolver = createOperationalStorageDomainRouteRepository({ client: registryClient().client })
   const base = {
@@ -189,6 +308,113 @@ test('domain materialization requires positive Google Drive write capability on 
     async id => ({ id, kind: 'folder', parent_ids: [placement.expectedBaseParentId!], capabilities: { canAddChildren: false } }),
   )
   await assert.rejects(() => materialize(placement), /GOOGLE_DRIVE_FOLDER_NOT_WRITABLE/u)
+})
+
+test('folder materializer reports the actual Drive parent and leaf IDs for persistence', async () => {
+  const placement = await createOperationalStorageDomainRouteRepository({ client: registryClient().client })
+    .resolveAttendancePhotoPlacement({
+      shiftId: 'shift-123', shiftDate: '2026-11-01', operationalRole: 'host',
+      eventKind: 'check_in', fileName: 'synthetic.jpg',
+    })
+  const parents = new Map<string, string[]>([[placement.baseFolderId, [placement.expectedBaseParentId!]]])
+  let nextId = 0
+  const folders: Array<{ id: string; parentId: string; name: string; logicalPath: string; isLeaf: boolean }> = []
+  const materialize = createOperationalStorageFolderMaterializer(
+    async (parentId, name, provider) => {
+      const id = `drive-folder-${++nextId}`
+      parents.set(id, [parentId])
+      return { id, parentId, name, provider }
+    },
+    async id => ({ id, kind: 'folder', parent_ids: parents.get(id), capabilities: { canAddChildren: true } }),
+  )
+  const leafId = await materialize(placement, async folder => { folders.push(folder) })
+  assert.equal(leafId, folders.at(-1)?.id)
+  assert.equal(folders.at(-1)?.parentId, `drive-folder-${placement.folderSegments.length - 1}`)
+  assert.equal(folders.at(-1)?.logicalPath, placement.folderPath)
+  assert.equal(folders.at(-1)?.isLeaf, true)
+  assert.equal(folders.length, placement.folderSegments.length)
+})
+
+test('attendance folder materialization reuses verified shift prefixes across photo roles', async () => {
+  const routes = createOperationalStorageDomainRouteRepository({ client: registryClient().client })
+  const [host, support] = await Promise.all([
+    routes.resolveAttendancePhotoPlacement({
+      shiftId: 'shift-123', shiftDate: '2026-11-01', operationalRole: 'host',
+      eventKind: 'check_in', fileName: 'host.jpg',
+    }),
+    routes.resolveAttendancePhotoPlacement({
+      shiftId: 'shift-123', shiftDate: '2026-11-01', operationalRole: 'support',
+      eventKind: 'check_in', fileName: 'support.jpg',
+    }),
+  ])
+  const parents = new Map<string, string[]>([[host.baseFolderId, [host.expectedBaseParentId!]]])
+  const folders = new Map<string, { id: string; parentId: string; name: string; provider: 'google_drive' }>()
+  let ensures = 0
+  let metadataReads = 0
+  const leaves: Array<{ id: string; logicalPath: string; isLeaf: boolean }> = []
+  const materialize = createOperationalStorageFolderMaterializer(
+    async (parentId, name, provider) => {
+      ensures += 1
+      const key = JSON.stringify([provider, parentId, name])
+      let folder = folders.get(key)
+      if (!folder) {
+        const id = `drive-folder-${folders.size + 1}`
+        folder = { id, parentId, name, provider }
+        folders.set(key, folder)
+        parents.set(id, [parentId])
+      }
+      return folder
+    },
+    async id => {
+      metadataReads += 1
+      return { id, kind: 'folder', parent_ids: parents.get(id), capabilities: { canAddChildren: true } }
+    },
+    true,
+  )
+
+  const hostId = await materialize(host, async folder => { if (folder.isLeaf) leaves.push(folder) })
+  const supportId = await materialize(support, async folder => { if (folder.isLeaf) leaves.push(folder) })
+
+  assert.notEqual(hostId, supportId)
+  assert.equal(ensures, host.folderSegments.length * 2, 'Both routes still use provider ensureFolder for duplicate checks')
+  assert.equal(metadataReads, host.folderSegments.length + 2, 'Verified metadata is reused for shared path segments')
+  assert.deepEqual(leaves.map(folder => folder.logicalPath), [host.folderPath, support.folderPath])
+})
+
+test('concurrent attendance folder retries share each in-flight Drive folder create', async () => {
+  const placement = await createOperationalStorageDomainRouteRepository({ client: registryClient().client })
+    .resolveAttendancePhotoPlacement({
+      shiftId: 'shift-123', shiftDate: '2026-11-01', operationalRole: 'host',
+      eventKind: 'check_in', fileName: 'synthetic.jpg',
+    })
+  const parents = new Map<string, string[]>([[placement.baseFolderId, [placement.expectedBaseParentId!]]])
+  const folders = new Map<string, { id: string; parentId: string; name: string; provider: 'google_drive' }>()
+  let providerEnsures = 0
+  const ensureFolder = async (parentId: string, name: string, provider: 'google_drive') => {
+    providerEnsures += 1
+    await new Promise(resolve => setTimeout(resolve, 1))
+    const key = JSON.stringify([provider, parentId, name])
+    let folder = folders.get(key)
+    if (!folder) {
+      folder = { id: `drive-folder-${folders.size + 1}`, parentId, name, provider }
+      folders.set(key, folder)
+      parents.set(folder.id, [parentId])
+    }
+    return folder
+  }
+  const materializeA = createOperationalStorageFolderMaterializer(
+    ensureFolder,
+    async id => ({ id, kind: 'folder', parent_ids: parents.get(id), capabilities: { canAddChildren: true } }),
+  )
+  const materializeB = createOperationalStorageFolderMaterializer(
+    ensureFolder,
+    async id => ({ id, kind: 'folder', parent_ids: parents.get(id), capabilities: { canAddChildren: true } }),
+  )
+
+  const [leafA, leafB] = await Promise.all([materializeA(placement), materializeB(placement)])
+  assert.equal(leafA, leafB)
+  assert.equal(folders.size, placement.folderSegments.length)
+  assert.equal(providerEnsures, placement.folderSegments.length)
 })
 
 test('all nine report groups remain sensitive until every registered ancestor is verified restricted', async () => {
@@ -308,6 +534,8 @@ test('schedule-source API requires no shift or execution_source and serves only 
           accessClassification: 'restricted_verified', sensitive: true, fileName: 'original.xlsx',
           logicalCategory: 'data_source', periodLabel: '' }
       },
+      async resolveAttendancePhotoBasePlacement() { throw new Error('attendance route must not be used') },
+      async resolveAttendancePhotoPlacement() { throw new Error('attendance route must not be used') },
       async resolveReportArtifactGroupPlacement() { throw new Error('unused') },
     },
     materializeFolders: async () => 'schedule-folder',
@@ -355,6 +583,8 @@ test('schedule-source API requires no shift or execution_source and serves only 
     storage: storage as never,
     domainRoutes: {
       async resolveDomainCategoryPlacement() { throw new Error('not reached') },
+      async resolveAttendancePhotoBasePlacement() { throw new Error('not reached') },
+      async resolveAttendancePhotoPlacement() { throw new Error('not reached') },
       async resolveReportArtifactGroupPlacement() { throw new Error('not reached') },
     },
   })
@@ -389,6 +619,8 @@ test('schedule-source upload cannot register provider-verified metadata for a mi
           accessClassification: 'restricted_verified', sensitive: true, fileName: 'original.xlsx',
           logicalCategory: 'data_source', periodLabel: '' }
       },
+      async resolveAttendancePhotoBasePlacement() { throw new Error('attendance route must not be used') },
+      async resolveAttendancePhotoPlacement() { throw new Error('attendance route must not be used') },
       async resolveReportArtifactGroupPlacement() { throw new Error('unused') },
     },
     materializeFolders: async () => 'schedule-folder',
@@ -416,6 +648,8 @@ test('schedule-source upload fails closed while the route ACL remains pending', 
           accessClassification: 'pending_restriction_no_sensitive_upload', sensitive: true,
           fileName: 'original.xlsx', logicalCategory: 'data_source', periodLabel: '' }
       },
+      async resolveAttendancePhotoBasePlacement() { throw new Error('attendance route must not be used') },
+      async resolveAttendancePhotoPlacement() { throw new Error('attendance route must not be used') },
       async resolveReportArtifactGroupPlacement() { throw new Error('unused') },
     },
   })

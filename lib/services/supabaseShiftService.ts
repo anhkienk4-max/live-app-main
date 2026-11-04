@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { requestAttendanceFolderMaterialization } from '@/lib/services/attendanceFolderMaterializationClient'
 import { withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
 
 import { createClient } from '@/lib/supabase/client'
@@ -472,11 +473,15 @@ export function createSupabaseShiftRepository(
       }
       const payload = createPayload(effectiveData, routingMode)
       const result = await client.rpc('create_shift', { p_data: payload }).single()
-      return shiftFromRow(
+      const shift = shiftFromRow(
         requiredRow('shift create', result) as unknown as ShiftRow,
         routingMode,
         effectiveData.execution_source,
       )
+      if (typeof window !== 'undefined' && !await requestAttendanceFolderMaterialization([shift.id])) {
+        console.warn('ATTENDANCE_FOLDER_MATERIALIZATION_PENDING')
+      }
+      return shift
     },
 
     async update(id, data, confirmImpact = false, expectedVersion) {
