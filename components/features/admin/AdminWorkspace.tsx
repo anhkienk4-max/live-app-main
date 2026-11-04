@@ -42,7 +42,7 @@ const items: WorkspaceItem[] = [
   { id: 'resources', group: 'resources', title: 'adminResourcesTitle', description: 'adminResourcesDescription', href: '/storage', icon: FileStack, state: 'ready' },
   { id: 'staff', group: 'access', title: 'adminStaffTitle', description: 'adminStaffDescription', href: '/staff', icon: Users, state: 'ready' },
   { id: 'role-defaults', group: 'access', title: 'adminRoleDefaultsTitle', description: 'adminRoleDefaultsDescription', href: '/settings?tab=system', icon: ShieldCheck, state: 'ready' },
-  { id: 'account-overrides', group: 'access', title: 'adminAccountOverridesTitle', description: 'adminAccountOverridesDescription', icon: UserCog, state: 'pending' },
+  { id: 'account-overrides', group: 'access', title: 'adminAccountOverridesTitle', description: 'adminAccountOverridesDescription', href: '/settings?tab=accountPermissions', icon: UserCog, state: 'ready' },
   { id: 'audit', group: 'access', title: 'adminAuditTitle', description: 'adminAuditDescription', href: '/audit', icon: ClipboardList, state: 'ready' },
 ]
 

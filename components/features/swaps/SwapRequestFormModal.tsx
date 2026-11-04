@@ -602,9 +602,21 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                     </div>
                   )}
                   {(replacementCheckStatus === 'UNKNOWN' || replacementCheckStatus === 'FAILED') && (
-                    <div role="alert" className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
-                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                      <span>{conflict?.error || copy('Chưa thể xác minh lịch ca; vui lòng thử lại hoặc liên hệ Quản lý/Leader để xác nhận trước khi gửi.', 'Schedule could not be verified; please retry or contact Manager/Leader to verify before submitting.')}</span>
+                    <div role="alert" className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2 font-medium">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                        <span>{conflict?.error || copy('Chưa thể xác minh lịch ca; vui lòng thử lại hoặc liên hệ Quản lý/Leader để xác nhận trước khi gửi.', 'Schedule could not be verified; please retry or contact Manager/Leader to verify before submitting.')}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px] shrink-0 bg-white"
+                        onClick={() => setConflictSnapshot(null)}
+                      >
+                        <RotateCcw className="mr-1 h-3 w-3" />
+                        {copy('Thử lại', 'Retry')}
+                      </Button>
                     </div>
                   )}
                   {replacementCheckStatus === 'VERIFIED_CLEAR' && (
@@ -765,9 +777,21 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                         </div>
                       )}
                       {(exchangeCheckStatus === 'UNKNOWN' || exchangeCheckStatus === 'FAILED') && (
-                        <div role="alert" className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
-                          <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                          <span>{exchangeConflict?.error || copy('Chưa thể xác minh lịch ca; vui lòng thử lại hoặc liên hệ Quản lý/Leader để xác nhận trước khi gửi.', 'Schedule could not be verified; please retry or contact Manager/Leader to verify before submitting.')}</span>
+                        <div role="alert" className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2 font-medium">
+                          <div className="flex items-center gap-2">
+                            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                            <span>{exchangeConflict?.error || copy('Chưa thể xác minh lịch ca; vui lòng thử lại hoặc liên hệ Quản lý/Leader để xác nhận trước khi gửi.', 'Schedule could not be verified; please retry or contact Manager/Leader to verify before submitting.')}</span>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px] shrink-0 bg-white"
+                            onClick={() => setExchangeConflictSnapshot(null)}
+                          >
+                            <RotateCcw className="mr-1 h-3 w-3" />
+                            {copy('Thử lại', 'Retry')}
+                          </Button>
                         </div>
                       )}
                       {exchangeCheckStatus === 'VERIFIED_CLEAR' && (

@@ -463,7 +463,33 @@ export function ReportsList() {
   const completedShifts = React.useMemo(() => sortReportableShifts(candidateShifts), [candidateShifts])
 
   const explicitShiftId = editingReport?.shift_id ?? initialShiftId ?? selectedReport?.shift_id
-  const modalShift = targetedShift?.id === explicitShiftId ? targetedShift : shifts.find(shift => shift.id === explicitShiftId)
+
+  const fallbackShiftFromReport = React.useMemo(() => {
+    if (!selectedReport) return null
+    const hist = historicalContexts[selectedReport.id]
+    if (hist) {
+      return {
+        id: selectedReport.shift_id,
+        date: hist.date,
+        start_time: hist.start_time,
+        end_time: hist.end_time,
+        brand_id: hist.brand_id,
+        platform_id: hist.platform_id,
+        campaign_id: hist.campaign_id,
+        studio: hist.studio,
+        title: hist.title || selectedReport.shift_id,
+        status: 'completed',
+        version: 1,
+        created_at: selectedReport.created_at,
+        updated_at: selectedReport.updated_at,
+      } as Shift
+    }
+    return null
+  }, [selectedReport, historicalContexts])
+
+  const modalShift = targetedShift?.id === explicitShiftId
+    ? targetedShift
+    : (shifts.find(shift => shift.id === explicitShiftId) ?? candidateShifts.find(shift => shift.id === explicitShiftId) ?? fallbackShiftFromReport)
   const formShifts = modalShift ? [modalShift, ...completedShifts.filter(shift => shift.id !== modalShift.id)] : completedShifts
 
   const pagedQueue = completedShifts

@@ -24,7 +24,7 @@ import { PageShell, PageHeader, PageHeaderContent } from '@/components/ui/archet
 
 const roles: OperationalRole[] = ['host', 'support', 'technical']
 type SettingsTab = 'personal' | 'team' | 'system' | 'integrations' | 'audit' | 'accountPermissions'
-const accountOverridesUiEnabled = process.env.NEXT_PUBLIC_FEATURE_RBAC02_ACCOUNT_OVERRIDES === 'true'
+const accountOverridesUiEnabled = process.env.NEXT_PUBLIC_FEATURE_RBAC02_ACCOUNT_OVERRIDES !== 'false'
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
 

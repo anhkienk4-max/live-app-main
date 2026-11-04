@@ -537,6 +537,11 @@ export function ShiftDetailModal({
       ? initialParamTab
       : 'overview'
   const [tabOverride, setTabOverride] = React.useState<string | null>(null)
+  const [lastShiftId, setLastShiftId] = React.useState(shift.id)
+  if (shift.id !== lastShiftId) {
+    setLastShiftId(shift.id)
+    setTabOverride(null)
+  }
   const currentTab = tabOverride ?? resolvedInitialTab
 
   const handleTabChange = (nextTab: string) => {
