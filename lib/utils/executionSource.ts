@@ -49,6 +49,13 @@ export function normalizeAgencyCode(value: unknown): AgencyCode | null {
   return null
 }
 
+export function matchesAgencyFilter(value: unknown, filter: string): boolean {
+  if (filter === 'all') return true
+  const raw = String(value ?? '').trim()
+  if (filter === 'none') return raw === '' || raw === '—'
+  return normalizeAgencyCode(raw) === filter
+}
+
 export function normalizeStudio(value: unknown): string {
   return typeof value === 'string'
     ? value.normalize('NFKC').trim().toLocaleLowerCase('en-US').replace(/\s+/gu, ' ')

@@ -85,6 +85,10 @@ export function removeRowDraft(draft: DraftRows, rowNumber: number): DraftRows {
   ) as DraftRows
 }
 
+export function selectionMatchesRows(selection: ReadonlySet<number>, rowNumbers: readonly number[]): boolean {
+  return rowNumbers.length > 0 && selection.size === rowNumbers.length && rowNumbers.every(rowNumber => selection.has(rowNumber))
+}
+
 export function rowDraftValue(
   draft: DraftRows,
   rowNumber: number,

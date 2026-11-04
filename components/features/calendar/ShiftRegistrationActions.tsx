@@ -34,24 +34,33 @@ export function ShiftRegistrationActions({
   brandName,
   platformName,
 }: ShiftRegistrationActionsProps) {
-  const { t } = useTranslation()
+  const { language, t } = useTranslation()
   const enrichedShift = shift as Shift & { brand_name?: string; platform_name?: string }
   const [busyRole, setBusyRole] = React.useState<OperationalRole | null>(null)
   const [confirmRole, setConfirmRole] = React.useState<RegistrationCtaResult | null>(null)
   const [loadedBrand, setLoadedBrand] = React.useState<{ id: string; name: string } | null>(null)
   const [loadedPlatform, setLoadedPlatform] = React.useState<{ id: string; name: string } | null>(null)
+  const [brandFetchDone, setBrandFetchDone] = React.useState(false)
+  const [platformFetchDone, setPlatformFetchDone] = React.useState(false)
   const resolvedBrandName = brandName ?? enrichedShift.brand_name
     ?? (loadedBrand?.id === shift.brand_id ? loadedBrand.name : undefined)
   const resolvedPlatformName = platformName ?? enrichedShift.platform_name
     ?? (loadedPlatform?.id === shift.platform_id ? loadedPlatform.name : undefined)
+  const isBrandResolving = !brandName && !enrichedShift.brand_name && !brandFetchDone
+  const isPlatformResolving = !platformName && !enrichedShift.platform_name && !platformFetchDone
 
   React.useEffect(() => {
     if (brandName || enrichedShift.brand_name) return
     let cancelled = false
     void brandService.getAll().then(all => {
       const match = all.find(b => b.id === shift.brand_id)
-      if (!cancelled && match) setLoadedBrand({ id: shift.brand_id, name: match.name })
-    }).catch(() => {})
+      if (!cancelled) {
+        if (match) setLoadedBrand({ id: shift.brand_id, name: match.name })
+        setBrandFetchDone(true)
+      }
+    }).catch(() => {
+      if (!cancelled) setBrandFetchDone(true)
+    })
     return () => { cancelled = true }
   }, [brandName, shift.brand_id, enrichedShift.brand_name])
 
@@ -60,8 +69,13 @@ export function ShiftRegistrationActions({
     let cancelled = false
     void platformService.getAll().then(all => {
       const match = all.find(p => p.id === shift.platform_id)
-      if (!cancelled && match) setLoadedPlatform({ id: shift.platform_id, name: match.name })
-    }).catch(() => {})
+      if (!cancelled) {
+        if (match) setLoadedPlatform({ id: shift.platform_id, name: match.name })
+        setPlatformFetchDone(true)
+      }
+    }).catch(() => {
+      if (!cancelled) setPlatformFetchDone(true)
+    })
     return () => { cancelled = true }
   }, [platformName, shift.platform_id, enrichedShift.platform_name])
 
@@ -159,9 +173,13 @@ export function ShiftRegistrationActions({
         </DialogHeader>
         <dl className="grid grid-cols-[90px_1fr] gap-x-3 gap-y-2 text-sm">
           <dt className="text-muted-foreground">Brand</dt>
-          <dd>{resolvedBrandName || brandName || enrichedShift.brand_name || shift.brand_id}</dd>
+          <dd data-testid="registration-confirm-brand-name">
+            {resolvedBrandName || (isBrandResolving ? (language === 'vi' ? 'Đang tải...' : 'Loading...') : (language === 'vi' ? '— Chưa phân loại —' : '— Unassigned —'))}
+          </dd>
           <dt className="text-muted-foreground">Platform</dt>
-          <dd>{resolvedPlatformName || platformName || enrichedShift.platform_name || shift.platform_id}</dd>
+          <dd data-testid="registration-confirm-platform-name">
+            {resolvedPlatformName || (isPlatformResolving ? (language === 'vi' ? 'Đang tải...' : 'Loading...') : (language === 'vi' ? '— Chưa phân loại —' : '— Unassigned —'))}
+          </dd>
           <dt className="text-muted-foreground">Ngày</dt>
           <dd>{shift.date}</dd>
           <dt className="text-muted-foreground">Giờ</dt>
