@@ -1,6 +1,24 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { storageResourceRegistryDatabaseErrorResponse } from '@/lib/server/storageResourceRegistryErrorResponse'
+import { createStorageResourceRegistryHandler } from '@/lib/server/storageResourceRegistryHandler'
+
+test('registry API requires an authenticated admin for valid same-origin writes', async () => {
+  const handler = createStorageResourceRegistryHandler(async () => null)
+  const response = await handler.POST(new Request('https://ops.test/api/storage-resources', {
+    method: 'POST',
+    headers: { origin: 'https://ops.test', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      action: 'create', provider: 'google_drive', canonical_id: 'forged',
+      canonical_url: 'https://drive.google.com/drive/folders/forged',
+      title: 'Forged', resource_type: 'root_folder', visibility: 'admin_only',
+    }),
+  }))
+  assert.equal(response.status, 401)
+  assert.deepEqual(await response.json(), {
+    ok: false, error: { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
+  })
+})
 
 test('registry API fails explicitly when its proposal schema or RPC is not installed', async () => {
   for (const code of ['42P01', 'PGRST202', 'PGRST205']) {

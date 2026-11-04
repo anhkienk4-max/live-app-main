@@ -106,7 +106,7 @@ test('Storage resource registry: duplicate attach preserves existing access and 
   await expect.poll(() => actions.map(action => action.action)).toEqual(['create', 'attach_scope'])
 })
 
-test('Storage resource registry hides Admin controls for Member and rejects forged unauthenticated writes', async ({ page, request }) => {
+test('Storage resource registry hides Admin controls for Member and rejects writes without an Origin header', async ({ page, request }) => {
   await page.addInitScript(() => {
     localStorage.setItem('livestream-ops-current-user', '3')
     localStorage.setItem('livestream-ops-language', 'en')
@@ -116,7 +116,8 @@ test('Storage resource registry hides Admin controls for Member and rejects forg
   await expect(page.getByRole('heading', { name: 'Resources and links' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add link metadata' })).toHaveCount(0)
   const forged = await request.post('/api/storage-resources', { data: { action: 'create' } })
-  expect(forged.status()).toBe(401)
+  expect(forged.status()).toBe(403)
+  expect(await forged.json()).toEqual({ ok: false, error: 'ORIGIN_INVALID' })
 })
 
 test('Storage resource registry reports an uninstalled schema without showing an empty success state', async ({ page }) => {
