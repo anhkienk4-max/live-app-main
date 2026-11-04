@@ -1,7 +1,5 @@
 \set ON_ERROR_STOP on
 \i tests/rbac01b/pg17_fixture.sql
-\i docs/rbac01/RC19_RBAC01_REVIEW_ONLY.sql
-\i docs/rbac01/RC19_RBAC01B_AUDIT_TEAM_REVIEW_ONLY.sql
 \i docs/rbac02/RC19_RBAC02_ACCOUNT_OVERRIDES_REVIEW_ONLY.sql
 DO $fixture$
 BEGIN

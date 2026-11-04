@@ -47,3 +47,5 @@ GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated,anon;
 GRANT EXECUTE ON FUNCTION private.current_business_user_id(),
  private.current_system_permission(),private.is_leader_or_admin() TO authenticated;
 GRANT SELECT ON public.audit_logs TO authenticated;
+\i docs/rbac01/RC19_RBAC01_REVIEW_ONLY.sql
+\i docs/rbac01/RC19_RBAC01B_AUDIT_TEAM_REVIEW_ONLY.sql
