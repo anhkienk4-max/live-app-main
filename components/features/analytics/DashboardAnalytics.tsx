@@ -29,15 +29,15 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { reportService, shiftRegistrationService, shiftService, type AnalyticsSnapshot } from '@/lib/services/dataService'
+import { reportService, shiftRegistrationService, type AnalyticsSnapshot } from '@/lib/services/dataService'
 import { Brand, Campaign, OperationalRole, Platform, Report, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatChartAxis, formatDimensionTick } from '@/lib/utils/chartLabels'
 import { ReportDetailModal } from '@/components/features/reports/ReportDetailModal'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { hasPermission } from '@/lib/permissions'
-import { exportReportsToExcel } from '@/lib/utils/excelUtils'
+import { canExportReports } from '@/lib/permissions'
+import { downloadReportExport } from '@/lib/services/reportExportService'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -122,22 +122,13 @@ export function DashboardAnalytics() {
   }, [personalViewKey])
 
   const exportComplete = async () => {
-    if (!filters || !currentUser || !hasPermission(currentUser, 'reports.export')) return
+    if (!filters || !canExportReports(currentUser)) return
     try {
       const complete = await reportService.getAllFiltered({
         from: filters.start, to: filters.end, brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
         hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds, reportStatuses: ['confirmed'], metricsStatuses: ['confirmed']
       })
-      const shifts = await shiftService.getAllFiltered({
-        from: filters.start, to: filters.end, brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
-        hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds
-      })
-      const exportRegistrations = await shiftRegistrationService.getForShifts(shifts.map(shift => shift.id))
-      exportReportsToExcel(complete, {
-        shifts, campaigns, users, registrations: exportRegistrations,
-        brands: new Map(brands.map(b => [b.id, b.name])),
-        platforms: new Map(platforms.map(p => [p.id, p.name]))
-      })
+      await downloadReportExport('reports', complete.map(report => report.id))
     } catch (error) {
       toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
     }
@@ -424,7 +415,7 @@ export function DashboardAnalytics() {
             <Filter className="mr-1.5 h-3.5 w-3.5" />
             {t('filters')}
           </Button>
-          {hasPermission(currentUser, 'reports.export') && (
+          {canExportReports(currentUser) && (
             <Button variant="outline" size="sm" onClick={exportComplete} className="text-xs">
               <Download className="mr-1.5 h-3.5 w-3.5" />
               {tr('export', 'Xuất Excel', 'Export')}

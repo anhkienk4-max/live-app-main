@@ -62,7 +62,7 @@ import {
   resolveHybridMetric,
 } from '@/lib/utils/visionOcrHybrid'
 import { toVisionPlatform, type HybridMetricResult } from '@/lib/visionOcr/types'
-import { hasPermission } from '@/lib/permissions'
+import { canExportReports, hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
@@ -946,9 +946,14 @@ export function ReportFormModal({
                         <p className="text-xs text-muted-foreground">{artifact.folder_path}</p>
                       </div>
                       <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => window.open(reportArtifactService.getAccessUrl(artifact.id), '_blank')}>
-                          Tải xuống
-                        </Button>
+                        {(artifact.logical_category === 'data_report'
+                          ? canExportReports(currentUser)
+                          : canExportReports(currentUser) || (currentUser && resolveSystemPermission(currentUser) === 'member'
+                            && initialReport?.submitted_by === currentUser.id)) && (
+                          <Button type="button" size="sm" variant="outline" onClick={() => window.open(reportArtifactService.getAccessUrl(artifact.id), '_blank')}>
+                            Tải xuống
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           size="sm"

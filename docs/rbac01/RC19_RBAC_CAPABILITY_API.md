@@ -27,7 +27,7 @@ Success:
 }
 ```
 
-The API resolves every catalog entry through the shared server permission resolver. It reports `legacy_default`, `hard_restriction`, and the resolver explanation for static decisions. `accountOverrideGrantable` is derived from an explicit catalog; at this SHA only `audit.view_team` has paired RPC/RLS support. For Leaders, `audit.view_team` is read from the signed-user `rbac01_effective_permission` RPC when `FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT=true`. The current RPC returns only a boolean, so its `database` source explanation explicitly does not claim whether a role version, account decision, expiry, or revocation produced it. RPC failure returns `503 RBAC_CAPABILITIES_UNAVAILABLE`; the route does not use a cached result.
+With `FEATURE_RBAC_DYNAMIC_ENFORCEMENT=true`, the API obtains the complete signed-user decision set from `rbac_permission_decisions()`. It reports the same allow/source/reason/expiry/effective timestamp consumed by `requirePermission()`. Missing, duplicate, malformed, identity-mismatched, incomplete, or failed DB decisions return `503 RBAC_CAPABILITIES_UNAVAILABLE`; no static fallback is used. When the flag is off, the legacy matrix remains the default, with the isolated audit compatibility path available only under its separate flag. All feature and database runtime gates default off.
 
 Errors: `401 AUTHENTICATION_REQUIRED`, `403 PERMISSION_DENIED` for an unmapped business identity, or `503 RBAC_CAPABILITIES_UNAVAILABLE`.
 
@@ -35,7 +35,7 @@ Errors: `401 AUTHENTICATION_REQUIRED`, `403 PERMISSION_DENIED` for an unmapped b
 
 `GET /api/role-defaults` returns the catalog, current legacy matrix, feature state, and at most the versions exposed by the database RPC.
 
-`POST /api/role-defaults` accepts one of:
+`POST /api/role-defaults` accepts propose, approve, activate, revoke, and rollback actions when its Admin mutation flag is enabled. SQL enforces version checks and independent approval. Proposal `allow` decisions cannot exceed the legacy permission for the target role. Only permissions with an unlocked catalog entry are mutable; hard Finance/Admin/bootstrap permissions stay locked.
 
 ```json
 { "action": "propose", "role": "leader", "decisions": { "audit.view_team": "deny" }, "comment": "Reason" }
@@ -45,20 +45,18 @@ Errors: `401 AUTHENTICATION_REQUIRED`, `403 PERMISSION_DENIED` for an unmapped b
 { "action": "rollback", "versionId": 12 }
 ```
 
-Approval currently returns `409 RBAC01_ENFORCEMENT_NOT_ATTESTED`; draft decisions do not alter effective permissions.
-
 ## Account overrides
 
-`GET /api/rbac/account-overrides` returns entries plus a typed `permissionCatalog` with explicit `grantable` state only when the server feature flag and reviewed database gate are available. The default-off API returns `404 RBAC02_DISABLED`. Mutation validation is a `z.enum` generated from the finite grantable tuple; unsupported permissions, including Payroll and Admin capabilities, are rejected before RPC.
+`GET /api/rbac/account-overrides` returns entries plus a typed `permissionCatalog` with explicit `grantable` state only when the server feature flag is enabled. The default-off API returns `404 RBAC02_DISABLED`. Mutation validation is a `z.enum` generated from the finite grantable tuple; unsupported permissions, including Payroll and Admin capabilities, are rejected before RPC.
 
 `POST /api/rbac/account-overrides` accepts:
 
 ```json
-{ "action": "set", "targetId": "business-user-id", "permission": "audit.view_team", "decision": "deny", "reason": "Reason for change", "expiresAt": null, "expectedVersion": 0 }
+{ "action": "set", "targetId": "business-user-id", "permission": "reports.submit", "decision": "allow", "reason": "Restore scoped report submission", "expiresAt": null, "expectedVersion": 0 }
 ```
 
 ```json
-{ "action": "reset", "targetId": "business-user-id", "permission": "audit.view_team", "reason": "Return to role default", "expectedVersion": 1 }
+{ "action": "reset", "targetId": "business-user-id", "permission": "reports.submit", "reason": "Return to role policy", "expectedVersion": 1 }
 ```
 
-Errors include `400 RBAC02_INPUT_INVALID`, `404 RBAC02_DISABLED`, `409 RBAC02_UPDATE_REJECTED`, and `503 RBAC02_SCHEMA_UNAVAILABLE` / `RBAC02_UNAVAILABLE`. Current support is deliberately limited to the reviewed audit-team permission; the API does not grant permissions for other modules.
+Errors include `400 RBAC02_INPUT_INVALID`, `404 RBAC02_DISABLED`, `409 RBAC02_UPDATE_REJECTED`, and `503 RBAC02_SCHEMA_UNAVAILABLE` / `RBAC02_UNAVAILABLE`. Account Allow is supported only for the finite catalog in `lib/rbac/accountOverrideCatalog.ts` and only for its configured roles; it may restore a permission after role Deny, but it does not bypass business scope. Report export and unscoped workforce overview remain locked pending an authoritative server/RPC scope contract.

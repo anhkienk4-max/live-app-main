@@ -16,6 +16,7 @@ const user = {
   businessUserId: 'business-1',
   systemPermission: 'leader' as const,
 }
+const admin = { ...user, id: 'auth-admin', systemPermission: 'admin' as const }
 
 const report = {
   id: 'report-1',
@@ -228,6 +229,9 @@ test('DATA/SOURCE upload resolves canonical folder, writes provider bytes, and s
 
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-1'], error: null } }) as never,
     createClient: () => db.client,
     storage: storage as never,
     routeResolver: routeResolver(routeInputs),
@@ -286,6 +290,9 @@ test('domain-first report artifact upload uses the persisted ADA/internal Shift 
   let group = ''
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-1'], error: null } }) as never,
     createClient: () => db.client,
     storage: storage as never,
     routeResolver: { async resolvePlacement() { throw new Error('legacy route must not be used') } },
@@ -350,6 +357,9 @@ test('same DATA/SOURCE content is idempotent and skips a second provider upload'
   let uploads = 0
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-1'], error: null } }) as never,
     createClient: () => db.client,
     storage: {
       async upload() { uploads += 1; throw new Error('should not upload') },
@@ -377,6 +387,9 @@ test('confirmed reports reject DATA/SOURCE mutation before provider upload', asy
   let uploads = 0
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
+    createScopeClient: async () => ({ rpc: async (name: string) => name === 'rbac_permission_decision'
+      ? { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      : { data: ['brand-1'], error: null } }) as never,
     createClient: () => db.client,
     storage: {
       async upload() { uploads += 1; throw new Error('should not upload') },
@@ -411,7 +424,7 @@ test('confirmed report generates XLSX into canonical DATA/REPORT and persists on
   const uploads: FileUploadInput[] = []
   const providerFiles = new Map<string, Uint8Array>()
   const handler = createReportArtifactRouteHandler({
-    resolveUser: async () => user,
+    resolveUser: async () => admin,
     createClient: () => db.client,
     storage: {
       async upload(input: FileUploadInput): Promise<FileUploadResult> {
@@ -489,7 +502,7 @@ test('unconfirmed report cannot generate DATA/REPORT', async () => {
   const db = fakeClient()
   let uploads = 0
   const handler = createReportArtifactRouteHandler({
-    resolveUser: async () => user,
+    resolveUser: async () => admin,
     createClient: () => db.client,
     storage: {
       async upload() { uploads += 1; throw new Error('should not upload') },
@@ -512,7 +525,7 @@ test('unconfirmed report cannot generate DATA/REPORT', async () => {
   assert.equal(uploads, 0)
 })
 
-test('artifact delete removes provider object first and soft-deletes metadata', async () => {
+test('artifact delete verifies the recorded parent before deleting the provider object', async () => {
   const existing = {
     id: 'stored-delete',
     provider: 'google_drive',
@@ -534,14 +547,39 @@ test('artifact delete removes provider object first and soft-deletes metadata', 
     updated_at: '2026-10-08T00:00:00.000Z',
     deleted_at: null,
   }
-  const db = fakeClient({ existing })
+  for (const scenario of ['wrong-parent', 'revoked', 'valid'] as const) {
+  const db = fakeClient({ existing: { ...existing } })
   const deletes: string[] = []
+  let grantActive = true
   const handler = createReportArtifactRouteHandler({
     resolveUser: async () => user,
-    createClient: () => db.client,
+    createScopeClient: async () => ({ rpc: async (name: string, args: Record<string, unknown>) => {
+      if (name === 'rbac_permission_decision') return { data: { actor_business_user_id: 'business-1', role: 'leader', allowed: true }, error: null }
+      if (name === 'rc19_claim_report_artifact_deletion') return { data: {
+        status: 'pending', operation_id: 'operation-1', lease_owner: args.p_lease_owner, fencing_version: 1,
+        provider: 'google_drive', external_file_id: 'drive-delete', external_parent_id: 'source-parent',
+      }, error: null }
+      if (name === 'rc19_begin_report_artifact_deletion') return { data: {
+        operation_id: 'operation-1', provider: 'google_drive', external_file_id: 'drive-delete', external_parent_id: 'source-parent',
+      }, error: null }
+      if (name === 'rc19_release_report_artifact_delete_claim') return { data: 'retryable_failure', error: null }
+      return { data: grantActive ? ['brand-1'] : [], error: null }
+    } }) as never,
+    createClient: () => ({ ...(db.client as object), rpc: async (name: string) => {
+      if (name === 'rc19_record_report_artifact_delete_outcome') return { data: 'provider_deleted', error: null }
+      if (name === 'rc19_finalize_report_artifact_deletion') {
+        db.rows[0].deleted_at = '2026-11-05T00:00:00Z'
+        return { data: 'completed', error: null }
+      }
+      return { data: null, error: new Error('unexpected RPC') }
+    } }) as never,
     storage: {
       async upload() { throw new Error('unused') },
       async read() { return new Uint8Array() },
+      async getMetadata() {
+        if (scenario === 'revoked') grantActive = false
+        return { id: 'drive-delete', kind: 'file', parent_ids: [scenario === 'wrong-parent' ? 'wrong-parent' : 'source-parent'] }
+      },
       async delete(reference: { provider: string; external_file_id: string }) {
         deletes.push(`${reference.provider}:${reference.external_file_id}`)
       },
@@ -552,12 +590,14 @@ test('artifact delete removes provider object first and soft-deletes metadata', 
     routingMode: 'database',
   })
 
-  const response = await handler.DELETE(new Request('https://example.test/api/report-artifacts', {
+  const deleteRequest = () => new Request('https://example.test/api/report-artifacts', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ file_id: 'stored-delete' }),
-  }))
-  assert.equal(response.status, 200)
-  assert.deepEqual(deletes, ['google_drive:drive-delete'])
-  assert.equal(typeof db.rows[0].deleted_at, 'string')
+  })
+  const response = await handler.DELETE(deleteRequest())
+  assert.equal(response.status, scenario === 'valid' ? 200 : scenario === 'revoked' ? 404 : 409)
+  assert.deepEqual(deletes, scenario === 'valid' ? ['google_drive:drive-delete'] : [])
+  assert.equal(typeof db.rows[0].deleted_at, scenario === 'valid' ? 'string' : 'object')
+  }
 })

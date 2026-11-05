@@ -84,7 +84,7 @@ test('Analytics UI continues using the existing scoped snapshot and permission-g
   const ui = await readFile(new URL('../components/features/analytics/DashboardAnalytics.tsx', import.meta.url), 'utf8')
   assert.match(ui, /reportService\.getAnalyticsSnapshot/)
   assert.match(ui, /reportStatuses: \['confirmed'\], metricsStatuses: \['confirmed'\]/)
-  assert.match(ui, /hasPermission\(currentUser, 'reports\.export'\)/)
+  assert.match(ui, /canExportReports\(currentUser\)/)
   assert.match(ui, /biPersonalViewStorageKey\(currentUser\.id\)/)
   assert.match(ui, /data-testid="analytics-add-chart"/)
   assert.match(ui, /<option value="pie">/)

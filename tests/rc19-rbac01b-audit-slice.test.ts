@@ -25,10 +25,10 @@ test('RBAC-01B: legacy defaults for ALL roles remain unchanged without approved 
   assert.equal(pending['audit.view_team'].allowed,true,'a proposed deny is not an active deny')
 })
 
-test('RBAC-01B: API/TS/SQL proposal contract is inherit or deny only, no privilege allow',()=>{
+test('RBAC-01B: role proposal allows only catalogued legacy grants, never escalation',()=>{
   assert.deepEqual(validateRoleDefaultProposal('leader', {'audit.view_team':'deny'}),{ok:true})
   assert.deepEqual(validateRoleDefaultProposal('leader', {'audit.view_team':'inherit'}),{ok:true})
-  assert.deepEqual(validateRoleDefaultProposal('leader', {'audit.view_team':'allow'}),{ok:false,code:'RBAC01_APPROVAL_BLOCKED'})
+  assert.deepEqual(validateRoleDefaultProposal('leader', {'audit.view_team':'allow'}),{ok:true})
   assert.deepEqual(validateRoleDefaultProposal('member', {'audit.view_team':'deny'}),{ok:false,code:'NOT_A_LEGACY_GRANT'})
   assert.deepEqual(validateRoleDefaultProposal('member', {'audit.view_team':'allow'}),{ok:false,code:'PRIVILEGE_ESCALATION_DENIED'})
   assert.deepEqual(validateRoleDefaultProposal('admin', {'permissions.manage':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})

@@ -10,27 +10,32 @@ export type RoleDefaultsCatalogItem = {
   action: RoleDefaultsAction
   /** Locked permissions are not mutable until server + every relevant DB policy is proven. */
   locked: boolean
+  configurableRoles?: readonly SystemPermission[]
   reason?: string
 }
 const item = (permission: Permission, module: RoleDefaultsDomain, action: RoleDefaultsAction, reason?: string): RoleDefaultsCatalogItem =>
   ({ permission, module, action, locked: true, ...(reason ? { reason } : {}) })
+const configurable = (permission: Permission, module: RoleDefaultsDomain, action: RoleDefaultsAction,
+  roles: readonly SystemPermission[]): RoleDefaultsCatalogItem =>
+  ({ ...item(permission, module, action), locked: false, configurableRoles: roles })
 
 /**
  * Explicit complete mapping of the RC19 matrix. Catalog does NOT create
- * independent grants. Every item is locked for live activation until its
- * API, RLS/RPC and privileged-service paths are validated and approved.
+ * independent grants. Only permissions with authenticated server/RPC checks
+ * and retained business scope are mutable; finance and bootstrap rights stay locked.
  */
 export const ROLE_DEFAULTS_CATALOG: readonly RoleDefaultsCatalogItem[] = [
-  item('shifts.view_assigned', 'shifts', 'view'), item('shifts.view_open', 'shifts', 'view'),
+  configurable('shifts.view_assigned', 'shifts', 'view', ['member','leader','admin']), item('shifts.view_open', 'shifts', 'view'),
   item('shifts.register', 'shifts', 'create'), item('shifts.cancel_registration', 'shifts', 'delete'),
-  item('shifts.approve_registration', 'shifts', 'approve'), item('shifts.assign_staff', 'shifts', 'edit'),
+  item('shifts.approve_registration', 'shifts', 'approve'), configurable('shifts.assign_staff', 'shifts', 'edit', ['leader','admin']),
   item('shifts.edit', 'shifts', 'edit'), item('shifts.delete', 'shifts', 'delete'),
-  item('shifts.lock', 'shifts', 'lock'), item('shifts.import', 'shifts', 'create'),
-  item('shifts.export', 'shifts', 'export'),
-  item('reports.submit', 'reports', 'create', 'REPORTS #84 RLS/RPC scope must remain intact'),
-  item('reports.review', 'reports', 'approve', 'REPORTS #84 RLS/RPC scope must remain intact'),
-  item('reports.export', 'reports', 'export', 'REPORTS #84 export and artifacts policy'),
-  item('swaps.request', 'swaps', 'request'), item('swaps.approve', 'swaps', 'approve'),
+  item('shifts.lock', 'shifts', 'lock'), configurable('shifts.import', 'shifts', 'create', ['leader','admin']),
+  configurable('shifts.export', 'shifts', 'export', ['leader','admin']),
+  configurable('reports.submit', 'reports', 'create', ['member','leader','admin']),
+  configurable('reports.review', 'reports', 'approve', ['leader','admin']),
+  configurable('reports.export', 'reports', 'export', ['leader','admin']),
+  configurable('swaps.request', 'swaps', 'request', ['member','leader','admin']),
+  configurable('swaps.approve', 'swaps', 'approve', ['leader','admin']),
   item('swaps.export', 'swaps', 'export'), item('profile.edit_own', 'profile', 'edit'),
   item('staff.manage', 'staff', 'manage', 'Admin management and last-admin protection'),
   item('brands.manage', 'catalog', 'manage'), item('platforms.manage', 'catalog', 'manage'),
@@ -38,12 +43,14 @@ export const ROLE_DEFAULTS_CATALOG: readonly RoleDefaultsCatalogItem[] = [
   item('settings.member', 'settings', 'view'), item('settings.leader', 'settings', 'view'),
   item('settings.admin', 'settings', 'manage', 'Bootstrap privilege locked'),
   item('permissions.manage', 'settings', 'manage', 'Bootstrap privilege locked; no self-escalation'),
-  item('audit.view', 'audit', 'view'), { ...item('audit.view_team', 'audit', 'view'), locked: false },
+  item('audit.view', 'audit', 'view'), { ...item('audit.view_team', 'audit', 'view'), locked: false, configurableRoles: ['leader'] },
   item('audit.restore', 'audit', 'restore', 'Audit integrity boundary locked'), item('audit.review', 'audit', 'approve', 'Audit approval boundary locked'),
   item('data.force_delete', 'data', 'delete', 'Destructive capability locked'),
-  item('attendance.record_own', 'attendance', 'create', 'Self-only check-in/out and correction RPCs remain authoritative'),
-  item('storage.upload', 'storage', 'upload'), item('storage.edit_own', 'storage', 'edit', 'Resource ownership is still checked by the database RPC'),
-  item('storage.delete', 'storage', 'delete'), item('storage.resource_manage', 'storage', 'manage', 'Resource scope and ACL checks remain in the database RPC'),
+  configurable('attendance.record_own', 'attendance', 'create', ['member','leader','admin']),
+  configurable('storage.upload', 'storage', 'upload', ['member','leader','admin']),
+  configurable('storage.edit_own', 'storage', 'edit', ['member','leader','admin']),
+  configurable('storage.delete', 'storage', 'delete', ['leader','admin']),
+  item('storage.resource_manage', 'storage', 'manage', 'Resource scope and ACL checks remain in the database RPC'),
   item('payroll.view_own', 'payroll', 'view', 'Self-only locked payslip reads remain authoritative'),
   item('payroll.manage', 'payroll', 'manage', 'Payroll administration is isolated from account overrides'),
 ] as const
@@ -89,12 +96,11 @@ export function validateRoleDefaultProposal(
     const permission = key as Permission
     const entry = catalog.get(permission)
     if (!entry || !['inherit', 'allow', 'deny'].includes(String(value))) return { ok: false, code: 'PERMISSION_INVALID' }
-    // Non-privileged deny proposals may be saved for review but NEVER become effective
-    // while the DB/server enforcement attestation gate remains disabled.
-    if (entry.reason && value === 'deny') return { ok: false, code: 'SECURITY_BOUNDARY_LOCKED' }
     if (value === 'allow' && !permissionMatrix[role].has(permission)) return { ok: false, code: 'PRIVILEGE_ESCALATION_DENIED' }
-    if (value === 'allow') return { ok: false, code: 'RBAC01_APPROVAL_BLOCKED' }
     if (value === 'deny' && !permissionMatrix[role].has(permission)) return { ok: false, code: 'NOT_A_LEGACY_GRANT' }
+    if (entry.locked || (entry.configurableRoles && !entry.configurableRoles.includes(role))) {
+      return { ok: false, code: 'SECURITY_BOUNDARY_LOCKED' }
+    }
   }
   return { ok: true }
 }

@@ -63,10 +63,35 @@ test('RBAC02 exposes typed grantability and keeps unsupported account permission
   const body = await response.json()
   assert.equal(response.status, 200)
   const audit = body.permissionCatalog.find((entry: { permission: string }) => entry.permission === 'audit.view_team')
+  const reportSubmit = body.permissionCatalog.find((entry: { permission: string }) => entry.permission === 'reports.submit')
+  const reportExport = body.permissionCatalog.find((entry: { permission: string }) => entry.permission === 'reports.export')
   const administration = body.permissionCatalog.find((entry: { permission: string }) => entry.permission === 'permissions.manage')
   assert.equal(audit.grantable, true)
+  assert.equal(reportSubmit.grantable, true)
+  assert.equal(reportExport.grantable, false)
   assert.equal(administration.grantable, false)
   assert.equal(body.permissionCatalog.length, ROLE_DEFAULTS_CATALOG.length)
+})
+
+test('RBAC02 accepts a catalog-approved scoped report grant', async () => {
+  let rpcArgs: unknown
+  const handler = createRbac02AccountOverridesHandler({
+    enabled: () => true,
+    resolveUser: identity('admin', 'business-admin'),
+    createClient: async () => ({ rpc: async (_name: string, args: unknown) => {
+      rpcArgs = args
+      return { data: { version: 1 }, error: null }
+    } }) as never,
+  })
+  const response = await handler.POST(request(undefined, {
+    action: 'set', targetId: 'leader-a', permission: 'reports.submit', decision: 'allow',
+    reason: 'Restore scoped report submission', expiresAt: null, expectedVersion: 0,
+  }))
+  assert.equal(response.status, 200)
+  assert.deepEqual(rpcArgs, {
+    p_target_business_user_id: 'leader-a', p_permission: 'reports.submit', p_decision: 'allow',
+    p_reason: 'Restore scoped report submission', p_expires_at: null, p_expected_version: 0,
+  })
 })
 
 test('RBAC02 denies Member, unauthenticated and unmapped identities before RPC', async () => {
@@ -114,4 +139,20 @@ test('RBAC02 reset is a distinct RPC and database conflicts are not reported as 
   }))
   assert.equal(response.status, 409)
   assert.deepEqual(names, ['rbac02_reset_account_override'])
+})
+
+test('RBAC02 revoke is distinct from reset and records an explicit revoke event', async () => {
+  const names: string[] = []
+  const handler = createRbac02AccountOverridesHandler({
+    enabled: () => true, resolveUser: identity('admin', 'business-admin'),
+    createClient: async () => ({ rpc: async (name: string) => {
+      names.push(name); return { data: { decision: 'revoke' }, error: null }
+    } }) as never,
+  })
+  const response = await handler.POST(request(undefined, {
+    action: 'revoke', targetId: 'leader-a', permission: 'audit.view_team',
+    reason: 'revoke expired grant', expectedVersion: 4,
+  }))
+  assert.equal(response.status, 200)
+  assert.deepEqual(names, ['rbac02_revoke_account_override'])
 })

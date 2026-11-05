@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import * as XLSX from 'xlsx'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -112,6 +112,49 @@ function publicArtifact(row: Record<string, unknown>) {
   }
 }
 
+async function artifactHasDeletion(client: SupabaseClient, fileId: string): Promise<boolean> {
+  const result = await client.from('rc19_report_artifact_deletions')
+    .select('operation_id').eq('stored_file_id', fileId).maybeSingle()
+  if (result.error) throw result.error
+  return Boolean(result.data)
+}
+
+async function verifyLegacyReportParent(
+  storage: StorageGateway,
+  resolver: Pick<OperationalStorageDomainRouteRepository, 'resolveReportArtifactGroupPlacement'>,
+  row: Record<string, unknown>,
+  shift: Shift & ReportShiftContext,
+): Promise<string | null> {
+  if (typeof row.file_name !== 'string' || typeof row.folder_path !== 'string'
+    || typeof row.external_file_id !== 'string') return null
+  const placements = await Promise.all(REPORT_ARTIFACT_GROUPS.map(group => resolver.resolveReportArtifactGroupPlacement({
+    group, shiftId: shift.id, shiftDate: shift.date, brandId: shift.brand_id, platformId: shift.platform_id,
+    agencyCode: shift.agency_code ?? null, executionSource: shift.execution_source ?? null, fileName: row.file_name as string,
+  })))
+  const matches = placements.filter(placement => placement.folderPath === row.folder_path)
+  if (matches.length !== 1) return null
+  const placement = matches[0]
+  if (!placement.expectedBaseParentId
+    || !canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false)) return null
+  const read = (id: string) => storage.getMetadata({ provider: 'google_drive', external_file_id: id })
+  const file = await read(row.external_file_id)
+  if (file.id !== row.external_file_id || file.name !== row.file_name || file.kind !== 'file'
+    || file.trashed === true || file.parent_ids?.length !== 1) return null
+  const parentId = file.parent_ids[0]
+  let currentId = parentId
+  for (const segment of [...placement.folderSegments].reverse()) {
+    const folder = await read(currentId)
+    if (folder.id !== currentId || folder.kind !== 'folder' || folder.name !== segment
+      || folder.trashed === true || folder.parent_ids?.length !== 1) return null
+    currentId = folder.parent_ids[0]
+  }
+  if (currentId !== placement.baseFolderId) return null
+  const base = await read(currentId)
+  if (base.id !== currentId || base.kind !== 'folder' || base.trashed === true
+    || base.parent_ids?.length !== 1 || base.parent_ids[0] !== placement.expectedBaseParentId) return null
+  return parentId
+}
+
 async function entityLabel(
   client: SupabaseClient,
   table: 'brands' | 'platforms',
@@ -131,6 +174,7 @@ async function reportContext(
   reportId: string,
   user: AuthenticatedServerUser,
   routingMode: OperationalStorageRoutingMode,
+  createScopeClient: () => Promise<Pick<SupabaseClient, 'rpc'>>,
 ): Promise<{ report: Report; shift: Shift & ReportShiftContext }> {
   const reportResult = await client.from('reports')
     .select('*')
@@ -154,6 +198,23 @@ async function reportContext(
   if (!shiftResult.data) throw new Error('REPORT_SHIFT_CONTEXT_NOT_FOUND')
 
   const rawShift = shiftResult.data as unknown as Shift
+  if (user.systemPermission === 'leader') {
+    if (!user.businessUserId || !rawShift.brand_id) throw new Error('REPORT_PERMISSION_DENIED')
+    const scopeClient = await createScopeClient()
+    const [decision, review, submit] = await Promise.all([
+      scopeClient.rpc('rbac_permission_decision', { p_permission: 'reports.submit' }),
+      scopeClient.rpc('rc19_current_leader_brand_ids', { p_scope_key: 'reports.review' }),
+      scopeClient.rpc('rc19_current_leader_brand_ids', { p_scope_key: 'reports.submit' }),
+    ])
+    const identity = decision.data as { actor_business_user_id?: unknown; role?: unknown; allowed?: unknown } | null
+    if (decision.error || review.error || submit.error || identity?.actor_business_user_id !== user.businessUserId
+      || identity.role !== 'leader' || identity.allowed !== true
+      || !Array.isArray(review.data) || !Array.isArray(submit.data)
+      || !(review.data.includes(rawShift.brand_id)
+        || (report.submitted_by === user.businessUserId && submit.data.includes(rawShift.brand_id)))) {
+      throw new Error('REPORT_PERMISSION_DENIED')
+    }
+  }
   const platformId = rawShift.platform_id || null
   const labels = routingMode === 'compat'
     ? await Promise.all([
@@ -417,6 +478,9 @@ async function persistUploadedArtifact(input: {
     input.artifactKey,
   )
   if (existing) {
+    if (typeof existing.id !== 'string' || await artifactHasDeletion(input.client, existing.id)) {
+      throw new Error('REPORT_ARTIFACT_DELETE_IN_PROGRESS')
+    }
     if (existing.provider !== input.provider) throw new Error('REPORT_ARTIFACT_PROVIDER_CONFLICT')
     await verifyProviderArtifact(input.storage, existing, input.provider, parentId, checksum, input.bytes.byteLength)
     return publicArtifact(existing)
@@ -506,6 +570,7 @@ async function persistUploadedArtifact(input: {
 export function createReportArtifactRouteHandler(dependencies: {
   resolveUser?: ServerUserResolver
   createClient?: () => SupabaseClient
+  createScopeClient?: () => Promise<Pick<SupabaseClient, 'rpc'>>
   storage?: StorageGateway
   routeResolver?: Pick<OperationalStorageRouteRepository, 'resolvePlacement'>
   domainRouteResolver?: Pick<OperationalStorageDomainRouteRepository, 'resolveDomainCategoryPlacement' | 'resolveReportArtifactGroupPlacement'>
@@ -513,6 +578,7 @@ export function createReportArtifactRouteHandler(dependencies: {
   routingMode?: OperationalStorageRoutingMode
 } = {}) {
   const clientFactory = dependencies.createClient || createSupabaseAdminClient
+  const createScopeClient = dependencies.createScopeClient || (async () => (await import('@/lib/supabase/server')).createClient())
   const storage = dependencies.storage || fileStorageService
   const routingMode = dependencies.routingMode ?? resolveOperationalStorageRoutingMode()
   let defaultRouteResolver: OperationalStorageRouteRepository | undefined
@@ -549,6 +615,9 @@ export function createReportArtifactRouteHandler(dependencies: {
         const client = clientFactory()
         const fileId = params.get('file_id')?.trim()
         if (fileId) {
+          if (user.systemPermission === 'leader') {
+            return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
+          }
           const fileResult = await client.from('stored_files')
             .select('*')
             .eq('id', fileId)
@@ -557,7 +626,16 @@ export function createReportArtifactRouteHandler(dependencies: {
           if (fileResult.error) throw fileResult.error
           if (!fileResult.data) return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
           const row = fileResult.data as Record<string, unknown>
-          await reportContext(client, String(row.report_id), user, routingMode)
+          if (row.logical_category === 'data_report') {
+            const exportUser = await requirePermission(request, 'reports.export', dependencies.resolveUser)
+            if (exportUser.systemPermission !== 'admin' || exportUser.id !== user.id) {
+              return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
+            }
+          }
+          await reportContext(client, String(row.report_id), user, routingMode, createScopeClient)
+          if (typeof row.id !== 'string' || await artifactHasDeletion(client, row.id)) {
+            return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
+          }
           const provider = row.provider
           const externalFileId = row.external_file_id
           if ((provider !== 'google_drive' && provider !== 'onedrive') || typeof externalFileId !== 'string') {
@@ -587,22 +665,33 @@ export function createReportArtifactRouteHandler(dependencies: {
 
         const reportId = params.get('report_id')?.trim()
         if (!reportId) return errorResponse('REPORT_ARTIFACT_REQUEST_INVALID', 'A report id is required.', 400)
-        await reportContext(client, reportId, user, routingMode)
+        if (user.systemPermission === 'leader') {
+          return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
+        }
+        await reportContext(client, reportId, user, routingMode, createScopeClient)
         const result = await client.from('stored_files')
           .select('*')
           .eq('report_id', reportId)
           .is('deleted_at', null)
           .order('created_at', { ascending: true })
         if (result.error) throw result.error
+        const rows = (result.data ?? []) as Record<string, unknown>[]
+        const ids = rows.map(row => row.id).filter((id): id is string => typeof id === 'string')
+        const deletions = ids.length
+          ? await client.from('rc19_report_artifact_deletions').select('stored_file_id').in('stored_file_id', ids)
+          : { data: [], error: null }
+        if (deletions.error) throw deletions.error
+        const hidden = new Set((deletions.data ?? []).map(row => row.stored_file_id))
         return Response.json({
           ok: true,
-          files: (result.data ?? []).map(row => publicArtifact(row as Record<string, unknown>)),
+          files: rows.filter(row => typeof row.id === 'string' && !hidden.has(row.id)).map(publicArtifact),
         }, { headers: { 'Cache-Control': 'no-store' } })
       } catch (error) {
         if (isAuthorizationError(error)) return authorizationErrorResponse(error)
         const code = error instanceof Error ? error.message : ''
-        if (code === 'REPORT_PERMISSION_DENIED') return errorResponse('PERMISSION_DENIED', 'You do not have permission to access this report.', 403)
-        if (code === 'REPORT_NOT_FOUND') return errorResponse(code, 'The report was not found.', 404)
+        if (code === 'REPORT_PERMISSION_DENIED' || code === 'REPORT_NOT_FOUND' || code === 'REPORT_SHIFT_CONTEXT_NOT_FOUND') {
+          return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
+        }
         return errorResponse('REPORT_ARTIFACT_READ_FAILED', 'The report artifact could not be read.', 502)
       }
     },
@@ -625,7 +714,7 @@ export function createReportArtifactRouteHandler(dependencies: {
             return errorResponse('REPORT_ARTIFACT_REQUEST_INVALID', 'The source file request is invalid.', 400)
           }
 
-          const { report, shift } = await reportContext(client, parsed.data.report_id, user, routingMode)
+          const { report, shift } = await reportContext(client, parsed.data.report_id, user, routingMode, createScopeClient)
           if (report.metrics_confirmed || report.status === 'confirmed') {
             return errorResponse('REPORT_CONFIRMED', 'Reopen the confirmed report before changing source files.', 409)
           }
@@ -664,7 +753,12 @@ export function createReportArtifactRouteHandler(dependencies: {
           return errorResponse('REPORT_ARTIFACT_REQUEST_INVALID', 'The report artifact request is invalid.', 400)
         }
 
-        const { report, shift } = await reportContext(client, parsed.data.report_id, user, routingMode)
+        const exportUser = await requirePermission(request, 'reports.export', dependencies.resolveUser)
+        if (exportUser.systemPermission !== 'admin' || exportUser.id !== user.id) {
+          return errorResponse('REPORT_EXPORT_SCOPE_UNAVAILABLE', 'Leader Brand scope is not configured.', 403)
+        }
+
+        const { report, shift } = await reportContext(client, parsed.data.report_id, user, routingMode, createScopeClient)
         if (!report.metrics_confirmed || report.status !== 'confirmed') {
           return errorResponse('REPORT_NOT_CONFIRMED', 'Confirm the report before generating its data report file.', 409)
         }
@@ -701,8 +795,9 @@ export function createReportArtifactRouteHandler(dependencies: {
         if (code === 'REPORT_ARTIFACT_CONFIDENTIAL_STORAGE_NOT_APPROVED') {
           return errorResponse(code, 'Report artifacts require a restricted Drive destination.', 423)
         }
-        if (code === 'REPORT_PERMISSION_DENIED') return errorResponse('PERMISSION_DENIED', 'You do not have permission to modify this report.', 403)
-        if (code === 'REPORT_NOT_FOUND') return errorResponse(code, 'The report was not found.', 404)
+        if (code === 'REPORT_PERMISSION_DENIED' || code === 'REPORT_NOT_FOUND' || code === 'REPORT_SHIFT_CONTEXT_NOT_FOUND') {
+          return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
+        }
         if (code === 'REPORT_ARTIFACT_PROVIDER_CONFLICT') {
           return errorResponse(code, 'This report artifact already exists on a different provider.', 409)
         }
@@ -724,44 +819,209 @@ export function createReportArtifactRouteHandler(dependencies: {
         const result = await client.from('stored_files')
           .select('*')
           .eq('id', parsed.data.file_id)
-          .is('deleted_at', null)
           .maybeSingle()
         if (result.error) throw result.error
         if (!result.data) return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
         const row = result.data as Record<string, unknown>
-        const { report } = await reportContext(client, String(row.report_id), user, routingMode)
+        const { report, shift } = await reportContext(client, String(row.report_id), user, routingMode, createScopeClient)
+        if (row.shift_id !== report.shift_id) {
+          return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
+        }
         if (report.metrics_confirmed || report.status === 'confirmed') {
           return errorResponse('REPORT_CONFIRMED', 'Reopen the confirmed report before deleting report data files.', 409)
         }
         if (user.systemPermission === 'member' && row.uploaded_by !== user.businessUserId) {
           return errorResponse('PERMISSION_DENIED', 'You can only remove files that you uploaded.', 403)
         }
+        const actionUser = await requirePermission(request,
+          user.systemPermission === 'member' ? 'storage.edit_own' : 'storage.delete', dependencies.resolveUser)
+        if (actionUser.id !== user.id || actionUser.businessUserId !== user.businessUserId
+          || actionUser.systemPermission !== user.systemPermission) {
+          return errorResponse('PERMISSION_DENIED', 'You do not have permission to remove this file.', 403)
+        }
         const provider = row.provider
         const externalFileId = row.external_file_id
-        if ((provider !== 'google_drive' && provider !== 'onedrive') || typeof externalFileId !== 'string') {
+        const parentId = row.external_parent_id
+        if ((provider !== 'google_drive' && provider !== 'onedrive') || typeof externalFileId !== 'string'
+          || !externalFileId.trim()) {
           return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
         }
 
-        await storage.delete({ provider, external_file_id: externalFileId })
-        const updated = await client.from('stored_files')
-          .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq('id', parsed.data.file_id)
-          .is('deleted_at', null)
-          .select('id')
-          .maybeSingle()
-        if (updated.error || !updated.data) {
-          return errorResponse(
-            'REPORT_ARTIFACT_METADATA_DELETE_FAILED',
-            'The provider file was deleted, but its metadata could not be marked deleted.',
-            502,
-          )
+        const leaseOwner = randomUUID()
+        const scopeClient = await createScopeClient()
+        const claim = await scopeClient.rpc('rc19_claim_report_artifact_deletion', {
+          p_file_id: parsed.data.file_id, p_lease_owner: leaseOwner,
+        })
+        if (claim.error || !claim.data || typeof claim.data !== 'object') {
+          return errorResponse('REPORT_ARTIFACT_DELETE_AUTHORIZATION_FAILED', 'The report artifact could not be deleted.', 403)
+        }
+        const operation = claim.data as Record<string, unknown>
+        if (operation.status === 'completed') return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
+        if (operation.status === 'in_progress') {
+          return errorResponse('REPORT_ARTIFACT_DELETE_IN_PROGRESS', 'Deletion is already in progress.', 409)
+        }
+        if (operation.status === 'retryable_failure') {
+          return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 409)
+        }
+        if (typeof parentId !== 'string' || !parentId.trim()) {
+          if (operation.status === 'manual_review' && user.systemPermission === 'admin'
+            && user.businessUserId && provider === 'google_drive' && routingMode === 'domain_first'
+            && typeof operation.operation_id === 'string' && typeof operation.fencing_version === 'number') {
+            const verifiedParent = await verifyLegacyReportParent(storage, domainRouteResolver, row, shift)
+            if (verifiedParent) {
+              const latest = await requirePermission(request, 'storage.delete', dependencies.resolveUser)
+              const latestSubmit = await requirePermission(request, 'reports.submit', dependencies.resolveUser)
+              if (latest.id === user.id && latest.businessUserId === user.businessUserId && latest.systemPermission === 'admin'
+                && latestSubmit.id === user.id && latestSubmit.businessUserId === user.businessUserId
+                && latestSubmit.systemPermission === 'admin') {
+                const { report: verifiedReport } = await reportContext(client, String(row.report_id), user, routingMode, createScopeClient)
+                if (verifiedReport.shift_id === row.shift_id && !verifiedReport.metrics_confirmed && verifiedReport.status !== 'confirmed') {
+                  const backfill = await client.rpc('rc19_backfill_report_artifact_parent', {
+                    p_operation_id: operation.operation_id, p_fencing_version: operation.fencing_version,
+                    p_provider: provider, p_external_file_id: externalFileId, p_external_parent_id: verifiedParent,
+                    p_actor_business_user_id: user.businessUserId,
+                  })
+                  if (!backfill.error && backfill.data === 'retryable_failure') {
+                    return errorResponse('REPORT_ARTIFACT_PARENT_VERIFIED_RETRY', 'The storage reference was verified; retry deletion.', 409)
+                  }
+                }
+              }
+            }
+          }
+          return errorResponse('REPORT_ARTIFACT_LEGACY_REVIEW_REQUIRED', 'The report artifact requires storage verification.', 409)
+        }
+        if (typeof operation.operation_id !== 'string' || typeof operation.lease_owner !== 'string'
+          || typeof operation.fencing_version !== 'number' || operation.provider !== provider
+          || operation.external_file_id !== externalFileId || operation.external_parent_id !== parentId) {
+          return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
+        }
+        const operationArgs = { p_operation_id: operation.operation_id, p_lease_owner: operation.lease_owner,
+          p_fencing_version: operation.fencing_version }
+        if (operation.status === 'manual_review') {
+          if (user.systemPermission !== 'admin' || !user.businessUserId || provider !== 'google_drive') {
+            return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 409)
+          }
+          const observed = await storage.getMetadata({ provider, external_file_id: externalFileId })
+          if (observed.id !== externalFileId || observed.kind !== 'file' || observed.trashed !== true
+            || !observed.parent_ids?.includes(parentId)) {
+            return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 409)
+          }
+          const latest = await requirePermission(request, 'storage.delete', dependencies.resolveUser)
+          const latestSubmit = await requirePermission(request, 'reports.submit', dependencies.resolveUser)
+          if (latest.id !== user.id || latest.businessUserId !== user.businessUserId || latest.systemPermission !== 'admin') {
+            return errorResponse('PERMISSION_DENIED', 'You do not have permission to remove this file.', 403)
+          }
+          if (latestSubmit.id !== user.id || latestSubmit.businessUserId !== user.businessUserId
+            || latestSubmit.systemPermission !== 'admin') {
+            return errorResponse('PERMISSION_DENIED', 'You do not have permission to remove this file.', 403)
+          }
+          const { report: latestReport } = await reportContext(client, String(row.report_id), user, routingMode, createScopeClient)
+          if (latestReport.shift_id !== row.shift_id || latestReport.metrics_confirmed || latestReport.status === 'confirmed') {
+            return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 409)
+          }
+          const reconciled = await client.rpc('rc19_reconcile_report_artifact_deleted', {
+            ...operationArgs, p_provider: provider, p_external_file_id: externalFileId, p_external_parent_id: parentId,
+            p_actor_business_user_id: user.businessUserId,
+          })
+          if (reconciled.error || reconciled.data !== 'provider_deleted') {
+            return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 409)
+          }
+          const finalized = await client.rpc('rc19_finalize_report_artifact_deletion', operationArgs)
+          if (finalized.error || finalized.data !== 'completed') {
+            return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 502)
+          }
+          return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
+        }
+        if (operation.status === 'provider_deleted') {
+          const finalized = await client.rpc('rc19_finalize_report_artifact_deletion', operationArgs)
+          if (finalized.error || finalized.data !== 'completed') {
+            return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 502)
+          }
+          return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
+        }
+        if (operation.status !== 'pending' || operation.lease_owner !== leaseOwner) {
+          return errorResponse('REPORT_ARTIFACT_DELETE_IN_PROGRESS', 'Deletion is already in progress.', 409)
+        }
+        const releaseClaim = async (needsReview: boolean) => {
+          await scopeClient.rpc('rc19_release_report_artifact_delete_claim', { ...operationArgs, p_needs_review: needsReview })
+        }
+        let metadata: Awaited<ReturnType<StorageGateway['getMetadata']>>
+        try {
+          metadata = await storage.getMetadata({ provider, external_file_id: externalFileId })
+        } catch (error) {
+          await releaseClaim(false)
+          throw error
+        }
+        if (metadata.id !== externalFileId || metadata.kind !== 'file' || metadata.trashed === true
+          || !metadata.parent_ids?.includes(parentId)) {
+          await releaseClaim(true)
+          return errorResponse('REPORT_ARTIFACT_REFERENCE_STALE', 'The report artifact is no longer in its recorded folder.', 409)
+        }
+        let latestReport: Report
+        try {
+          ;({ report: latestReport } = await reportContext(client, String(row.report_id), user, routingMode, createScopeClient))
+        } catch (error) {
+          await releaseClaim(false)
+          throw error
+        }
+        if (latestReport.shift_id !== row.shift_id) {
+          await releaseClaim(true)
+          return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
+        }
+        if (latestReport.metrics_confirmed || latestReport.status === 'confirmed') {
+          await releaseClaim(false)
+          return errorResponse('REPORT_CONFIRMED', 'Reopen the confirmed report before deleting report data files.', 409)
+        }
+        let latestSubmit: AuthenticatedServerUser
+        let latestUser: AuthenticatedServerUser
+        try {
+          latestSubmit = await requirePermission(request, 'reports.submit', dependencies.resolveUser)
+          latestUser = await requirePermission(request,
+            user.systemPermission === 'member' ? 'storage.edit_own' : 'storage.delete', dependencies.resolveUser)
+        } catch (error) {
+          await releaseClaim(false)
+          throw error
+        }
+        if (latestSubmit.id !== user.id || latestSubmit.businessUserId !== user.businessUserId
+          || latestSubmit.systemPermission !== user.systemPermission
+          || latestUser.id !== user.id || latestUser.businessUserId !== user.businessUserId
+          || latestUser.systemPermission !== user.systemPermission) {
+          await releaseClaim(false)
+          return errorResponse('PERMISSION_DENIED', 'You do not have permission to remove this file.', 403)
+        }
+        const begun = await scopeClient.rpc('rc19_begin_report_artifact_deletion', operationArgs)
+        if (begun.error || !begun.data || typeof begun.data !== 'object') {
+          await releaseClaim(false)
+          return errorResponse('REPORT_ARTIFACT_DELETE_CLAIM_INVALID', 'The deletion claim is no longer valid.', 409)
+        }
+        const authorized = begun.data as Record<string, unknown>
+        if (authorized.operation_id !== operation.operation_id || authorized.provider !== provider
+          || authorized.external_file_id !== externalFileId || authorized.external_parent_id !== parentId) {
+          await client.rpc('rc19_record_report_artifact_delete_outcome', { ...operationArgs, p_success: false })
+          return errorResponse('REPORT_ARTIFACT_REFERENCE_INVALID', 'The report artifact reference is invalid.', 409)
+        }
+        try {
+          await storage.delete({ provider, external_file_id: externalFileId })
+        } catch {
+          await client.rpc('rc19_record_report_artifact_delete_outcome', { ...operationArgs, p_success: false })
+          return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 502)
+        }
+        const outcome = await client.rpc('rc19_record_report_artifact_delete_outcome', { ...operationArgs, p_success: true })
+        if (outcome.error || outcome.data !== 'provider_deleted') {
+          return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 502)
+        }
+        const finalized = await client.rpc('rc19_finalize_report_artifact_deletion', operationArgs)
+        if (finalized.error || finalized.data !== 'completed') {
+          return errorResponse('REPORT_ARTIFACT_DELETE_RECONCILIATION_REQUIRED', 'Deletion requires reconciliation.', 502)
         }
         return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
       } catch (error) {
         if (isAuthorizationError(error)) return authorizationErrorResponse(error)
         if (error instanceof RequestBodyError) return errorResponse(error.code, error.message, error.status)
         const code = error instanceof Error ? error.message : ''
-        if (code === 'REPORT_PERMISSION_DENIED') return errorResponse('PERMISSION_DENIED', 'You do not have permission to modify this report.', 403)
+        if (code === 'REPORT_PERMISSION_DENIED' || code === 'REPORT_NOT_FOUND' || code === 'REPORT_SHIFT_CONTEXT_NOT_FOUND') {
+          return errorResponse('REPORT_ARTIFACT_NOT_FOUND', 'The report artifact was not found.', 404)
+        }
         return errorResponse('REPORT_ARTIFACT_DELETE_FAILED', 'The report data file could not be deleted.', 502)
       }
     },

@@ -1,5 +1,6 @@
 import type { SystemPermission } from '@/lib/types/database.types'
 import { permissionMatrix, type Permission } from '@/lib/permissions'
+import { isAccountOverrideGrantableForRole } from '@/lib/rbac/accountOverrideCatalog'
 
 export type EffectivePermissionSource =
   | 'legacy_default'
@@ -121,10 +122,10 @@ export function resolveEffectivePermission(input: {
       roleResult = { ...roleResult, source: 'expired', reason: 'The account override expired; the role default applies.' }
     } else if (accountOverride.decision === 'deny') {
       roleResult = { allowed: false, source: 'account_deny', reason: 'An active account deny takes precedence.', version: accountOverride.version }
-    } else if (!roleResult.allowed) {
-      roleResult = { allowed: false, source: 'account_allow', reason: 'Account allow cannot exceed the effective role grant.', version: accountOverride.version }
+    } else if (!roleResult.allowed && !isAccountOverrideGrantableForRole(permission, role)) {
+      roleResult = { allowed: false, source: 'account_allow', reason: 'This permission is not approved for an account-level grant.', version: accountOverride.version }
     } else {
-      roleResult = { allowed: true, source: 'account_allow', reason: 'An active account allow applies within the role grant.', version: accountOverride.version }
+      roleResult = { allowed: true, source: 'account_allow', reason: 'An active catalog-approved account action applies.', version: accountOverride.version }
     }
   }
 

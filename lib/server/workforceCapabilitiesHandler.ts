@@ -13,10 +13,11 @@ export function createWorkforceCapabilitiesHandler(options:{
       const enabled=options.enabled??isFeatureEnabled
       const workforce=enabled('actual_staffing')
       const supervisor=user.systemPermission==='admin'||user.systemPermission==='leader'
+      const teamScopeAvailable=user.systemPermission==='admin'
       return Response.json({ok:true,capabilities:{
         actual_staffing:workforce&&supervisor,
         self_attendance_review:enabled('self_attendance_review')&&supervisor,
-        team_performance:workforce&&supervisor,
+        team_performance:workforce&&teamScopeAvailable,
         own_performance:workforce&&Boolean(user.businessUserId),
         payroll:user.systemPermission==='admin'&&enabled('payroll'),
       }},{headers:{'Cache-Control':'no-store'}})

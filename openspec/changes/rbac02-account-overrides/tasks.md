@@ -1,6 +1,6 @@
-- [ ] Add proposal-only PostgreSQL schema, RPCs, and shared effective authorization path.
-- [ ] Add Admin-only server API with default-off, no-database behavior.
-- [ ] Add Admin settings UI for supported account overrides and reset.
-- [ ] Add API negative tests and PostgreSQL 17 role/security tests.
-- [ ] Add exact-branch Preview suppression and focused CI gate.
-- [ ] Run available gates; keep unexecuted gates explicitly blocked.
+- [x] Add versioned PostgreSQL role/account policy, decision RPCs, audit history, and scope-bounded catalog.
+- [x] Add default-off Admin APIs for proposal, independent approval, activation, account set/reset/revoke.
+- [ ] Enable and activate the Admin settings UI only after integrated release acceptance.
+- [x] Add API negative tests and disposable PostgreSQL 17 migration/RLS/concurrency assertions.
+- [x] Keep all server/database activation flags off; Production migration remains out of scope.
+- [ ] Complete workforce-view and report-export scope contracts, then repeat exact-SHA full CI.

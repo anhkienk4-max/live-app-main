@@ -6,11 +6,11 @@ Administrators need an auditable, time-bounded way to deny or restore a supporte
 
 ## Scope
 
-- Support only `audit.view_team`, the permission already enforced by RBAC-01B.
-- Apply overrides to active Leader accounts only; Admin access and Member denial remain hard boundaries.
-- Preserve role-default decisions as the baseline. An account DENY wins over a baseline grant. An account ALLOW cannot override a role-level DENY or grant a permission absent from the role baseline.
-- Keep the feature disabled by default and keep SQL review-only outside `supabase/migrations`.
+- Support the explicit scoped action catalog: `audit.view_team`, `reports.submit`, `reports.review`, `swaps.request`, `swaps.approve`, `attendance.record_own`, and `storage.upload`.
+- Apply overrides only to active non-Admin accounts and the roles listed per permission. Admin access and hard Finance/Admin/bootstrap boundaries remain immutable.
+- Preserve role defaults as the fallback. An account Deny wins; an account Allow may restore a role-denied permission only when both the DB catalog and matching authenticated handler/RPC allow it. Existing shift, report, swap, and self-identity checks remain authoritative.
+- Keep server and database activation gates disabled by default. Migrations are deployable additive changes but must not be applied to Production by this change.
 
 ## Out of scope
 
-No other permission catalog entries, Finance, Payroll, provider access, Storage ACLs, Production migration, or feature activation.
+Report export, Workforce team overview without verified Leader scope, Finance, Payroll administration, Admin/bootstrap access, provider access, public Drive ACL changes, Production migration, and feature activation.

@@ -118,15 +118,19 @@ export function hasAnyPermission(
   return permissions.some(permission => hasPermission(user, permission))
 }
 
+export function canExportReports(
+  actor: Pick<User, 'role' | 'system_permission'> | null | undefined,
+): boolean {
+  return Boolean(actor && hasPermission(actor, 'reports.export'))
+}
+
 /**
- * Reports detail export is intentionally narrower than report submission.
- * A Member may export only a report they personally submitted; Leaders/Admins
- * require the explicit reports.export permission. Never default to allow
- * while the authenticated actor is unavailable.
+ * Server export authorization enforces Leader Brand scope for every request.
  */
 export function canExportReportDetail(
-  actor: Pick<User, 'id' | 'role' | 'system_permission'> | null | undefined,
-  submittedBy: string | null | undefined,
+  actor: Pick<User, 'role' | 'system_permission'> | null | undefined,
+  _submittedBy?: string | null,
 ): boolean {
-  return Boolean(actor && (hasPermission(actor, 'reports.export') || Boolean(submittedBy && submittedBy === actor.id)))
+  void _submittedBy
+  return canExportReports(actor)
 }

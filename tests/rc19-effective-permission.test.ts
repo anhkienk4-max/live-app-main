@@ -24,7 +24,7 @@ test('effective permission resolver keeps legacy fallback and independent approv
   assert.equal(denied.source, 'role_override')
 })
 
-test('account deny wins; allow cannot exceed role baseline; reset, expiry and revoke fall back', () => {
+test('account Deny wins; only catalog-approved account Allow exceeds role policy; reset, expiry and revoke fall back', () => {
   const denied = resolveEffectivePermission({ ...base, roleOverride: { ...approvedRoleDeny, decision: 'allow' },
     accountOverride: { decision: 'deny', version: 2, currentVersion: 2 } })
   assert.equal(denied.allowed, false)
@@ -34,6 +34,18 @@ test('account deny wins; allow cannot exceed role baseline; reset, expiry and re
     accountOverride: { decision: 'allow', version: 1, currentVersion: 1 } })
   assert.equal(noBaseline.allowed, false)
   assert.equal(noBaseline.source, 'account_allow')
+
+  const extraLeaderAction = resolveEffectivePermission({ role: 'leader', permission: 'audit.view_team', now: base.now,
+    roleOverride: { ...approvedRoleDeny, decision: 'deny' },
+    accountOverride: { decision: 'allow', version: 1, currentVersion: 1 } })
+  assert.equal(extraLeaderAction.allowed, true)
+  assert.equal(extraLeaderAction.source, 'account_allow')
+
+  const scopedReportGrant = resolveEffectivePermission({ role: 'leader', permission: 'reports.submit', now: base.now,
+    roleOverride: { ...approvedRoleDeny, decision: 'deny' },
+    accountOverride: { decision: 'allow', version: 1, currentVersion: 1 } })
+  assert.equal(scopedReportGrant.allowed, true)
+  assert.equal(scopedReportGrant.source, 'account_allow')
 
   for (const [override, expectedSource] of [
     [{ decision: 'deny', version: 1, currentVersion: 1, expiresAt: '2026-11-03T00:00:00Z' }, 'expired'],
@@ -64,7 +76,10 @@ test('hard restrictions, stale versions, self-approval and business scope fail c
 })
 
 test('account override grantability is explicit and excludes hard admin permissions', () => {
-  assert.deepEqual(ACCOUNT_OVERRIDE_GRANTABLE_PERMISSIONS, ['audit.view_team'])
+  assert.deepEqual(ACCOUNT_OVERRIDE_GRANTABLE_PERMISSIONS, [
+    'audit.view_team','reports.submit','reports.review','swaps.request','swaps.approve',
+    'attendance.record_own','storage.upload',
+  ])
   assert.equal(ACCOUNT_OVERRIDE_CATALOG.some(item => item.permission === 'permissions.manage' && item.grantable), false)
   assert.equal(ACCOUNT_OVERRIDE_CATALOG.some(item => item.permission === 'payroll.manage' && item.grantable), false)
   assert.equal(ACCOUNT_OVERRIDE_CATALOG.length, ROLE_DEFAULTS_CATALOG.length)
