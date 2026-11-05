@@ -6,9 +6,10 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { BarChart3, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { filterNav, getNavigationForRole, groupNavigation } from '@/lib/ui/role-ux'
+import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 import { resolveActiveNavigation } from './shellConfig'
 import { AccountMenu } from './AccountMenu'
 
@@ -16,9 +17,9 @@ export function Sidebar() {
   const pathname = usePathname()
   const search = useSearchParams()
   const { t } = useTranslation()
-  const { currentUser } = useCurrentUser()
+  const { currentUser, capabilities } = useWorkforceCapabilities()
   const permission = resolveSystemPermission(currentUser)
-  const navigation = filterNav(getNavigationForRole(permission), currentUser)
+  const navigation = filterWorkforceNavigation(filterNav(getNavigationForRole(permission), currentUser), capabilities)
   const activeHref = resolveActiveNavigation(navigation, pathname, search)
   const [collapsed, setCollapsed] = useState<string[]>([])
   const [preferencesKey, setPreferencesKey] = useState('')

@@ -218,7 +218,7 @@ test('An Admin who corrected payroll cannot review their own correction evidence
 })
 
 
-test('A delayed overview response cannot restore data from the previous month', async ({page}) => {
+test('A delayed overview request cannot restore data from the previous month', async ({page}) => {
   await fixture(page)
   let delayed: import('@playwright/test').Route | undefined
   const summary = {staffId:'Latest evidence',role:'host',assignedShifts:0,verifiedShifts:0,unknownAttendanceShifts:0,approvedNoShows:0,approvedWorkedShifts:0,approvedActualMinutes:0,lateShifts:0,onTimeShifts:0,attendanceCoveragePct:null,punctualityPct:null,knownReliabilityPct:null,isComplete:false}
@@ -229,11 +229,16 @@ test('A delayed overview response cannot restore data from the previous month', 
   })
   await page.goto('/workforce')
   await expect.poll(() => Boolean(delayed)).toBe(true)
+  const obsoleteUrl = delayed!.request().url()
+  const obsoleteRequestFailed = page.waitForEvent('requestfailed', request => request.url() === obsoleteUrl)
+  const currentResponse = page.waitForResponse(r => r.url().includes('/overview') && new URL(r.url()).searchParams.get('period') === '2026-08')
   await page.locator('input[type=month]').fill('2026-08')
+  const obsoleteRequest = await obsoleteRequestFailed
+  await currentResponse
+  expect(obsoleteRequest.failure()).toBeTruthy()
+  await page.getByRole('tab',{name:'Bảng',exact:true}).click()
   await expect(page.getByText('Latest evidence',{exact:true}).first()).toBeVisible()
-  const received = page.waitForResponse(r => r.url().includes('/overview') && !r.url().includes('2026-08'))
-  await delayed!.fulfill({json:response('Obsolete evidence')})
-  await received
+  await expect(page.locator('input[type=month]')).toHaveValue('2026-08')
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())))
   await expect(page.getByText('Latest evidence',{exact:true}).first()).toBeVisible()
   await expect(page.getByText('Obsolete evidence',{exact:true})).toHaveCount(0)

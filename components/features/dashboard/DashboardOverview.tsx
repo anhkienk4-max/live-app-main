@@ -15,7 +15,7 @@ import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageLoadError } from '@/components/ui/page-load-error'
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getSwapUiActions } from '@/lib/utils/swapUi'
@@ -24,6 +24,7 @@ import { deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { selectLatestDashboardItems } from '@/lib/ui/dashboard-recent-items'
 import { getAllIssues } from '@/lib/utils/dataQuality'
 import { filterNav, getNavigationForRole } from '@/lib/ui/role-ux'
+import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { AdminDashboardView } from './presentation/admin/AdminDashboardView'
 import { LeaderDashboardView } from './presentation/leader/LeaderDashboardView'
@@ -179,7 +180,7 @@ function DashboardRoleSkeleton({ role }: { role: string }) {
 }
 
 export function DashboardOverview() {
-  const {currentUser} = useCurrentUser()
+  const {currentUser, capabilities} = useWorkforceCapabilities()
   const [data,setData] = React.useState<DashboardDataset | null>(null)
   const [loading,setLoading] = React.useState(true)
   const [isRefreshing,setIsRefreshing] = React.useState(false)
@@ -380,6 +381,7 @@ export function DashboardOverview() {
       <DashboardWorkspace
         data={data}
         currentUser={currentUser}
+        workforceCapabilities={capabilities}
         onUpdate={() => loadData(false)}
         filterState={filters}
         onFilterChange={setFilters}
@@ -393,6 +395,7 @@ export function DashboardOverview() {
 export function DashboardWorkspace({
   data,
   currentUser,
+  workforceCapabilities,
   onUpdate,
   filterState,
   onFilterChange,
@@ -400,6 +403,7 @@ export function DashboardWorkspace({
 }: {
   data: DashboardDataset
   currentUser: User
+  workforceCapabilities?: ReturnType<typeof useWorkforceCapabilities>['capabilities']
   onUpdate: () => void | Promise<void>
   filterState?: Filters | null
   onFilterChange?: React.Dispatch<React.SetStateAction<Filters | null>>
@@ -416,7 +420,7 @@ export function DashboardWorkspace({
   React.useEffect(()=>{const frame=requestAnimationFrame(()=>setLocalFilters(initialFilters()));return ()=>cancelAnimationFrame(frame)},[])
   if (!filters) return <ContentSkeleton />
   const role = resolveSystemPermission(currentUser)
-  const visibleFeatures = filterNav(getNavigationForRole(role), currentUser).filter(item => item.href.split('?')[0] !== '/')
+  const visibleFeatures = filterWorkforceNavigation(filterNav(getNavigationForRole(role), currentUser), workforceCapabilities).filter(item => item.href.split('?')[0] !== '/')
   const dashboardFeatureLinks = <DashboardFeatureLinks items={visibleFeatures} t={(key, variables) => t(key as TranslationKey, variables)} />
   const setPreset = (preset:Preset)=>setFilters(current=>current ? {...current,preset,...(preset==='custom'?{}:rangeFor(preset))} : current)
   const props: CommonProps = {

@@ -5,9 +5,10 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { filterNav, getNavigationForRole, mobilePrimaryNavigation } from '@/lib/ui/role-ux'
+import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 import { resolveActiveNavigation } from './shellConfig'
 import { NavigationDrawer } from './NavigationDrawer'
 
@@ -15,8 +16,8 @@ export function BottomNav() {
   const pathname = usePathname()
   const search = useSearchParams()
   const { t } = useTranslation()
-  const { currentUser } = useCurrentUser()
-  const roleNav = filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser)
+  const { currentUser, capabilities } = useWorkforceCapabilities()
+  const roleNav = filterWorkforceNavigation(filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser), capabilities)
   const activeHref = resolveActiveNavigation(roleNav, pathname, search)
   const primaryNav = mobilePrimaryNavigation(roleNav)
   const moreActive = !!activeHref && !primaryNav.some(item => item.href === activeHref)

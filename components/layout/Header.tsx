@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button'
 import { GlobalSearch } from '@/components/features/search/GlobalSearch'
 import { NotificationCenter } from '@/components/features/notifications/NotificationCenter'
 import { useTranslation } from '@/lib/i18n'
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { filterNav, getNavigationForRole } from '@/lib/ui/role-ux'
+import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveNavigation } from './shellConfig'
 import { Menu } from 'lucide-react'
@@ -18,8 +19,8 @@ function MobileNavMenu() {
   const pathname = usePathname()
   const search = useSearchParams()
   const { t } = useTranslation()
-  const { currentUser } = useCurrentUser()
-  const roleNav = filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser)
+  const { currentUser, capabilities } = useWorkforceCapabilities()
+  const roleNav = filterWorkforceNavigation(filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser), capabilities)
   const activeHref = resolveActiveNavigation(roleNav, pathname, search)
 
   return <div className="mr-2 hidden md:flex lg:hidden">
