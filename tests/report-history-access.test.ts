@@ -139,7 +139,7 @@ test('desktop/mobile Calendar and report page wire exact targets without an eage
   assert.match(form, /targetUnavailable && <p role="alert"/)
 })
 
-test('Report detail download stays Admin-only until Leader Brand scope is authoritative', () => {
+test('Report detail export affordance allows approved Leaders; server enforces Brand scope', () => {
   const leader = { id: 'leader', role: 'leader', system_permission: 'leader' } as User
   assert.equal(canExportReportDetail(null, 'member'), false)
   assert.equal(canExportReportDetail(undefined, undefined), false)
@@ -147,7 +147,7 @@ test('Report detail download stays Admin-only until Leader Brand scope is author
   assert.equal(canExportReportDetail(member, null), false)
   assert.equal(canExportReportDetail(member, 'other-member'), false)
   assert.equal(canExportReportDetail(member, member.id), false)
-  assert.equal(canExportReportDetail(leader, 'other-member'), false)
+  assert.equal(canExportReportDetail(leader, 'other-member'), true)
   assert.equal(canExportReportDetail(admin, 'other-member'), true)
 })
 

@@ -47,7 +47,8 @@ test('RBAC-01 rejects escalation, service role injection, admin bootstrap and un
  assert.deepEqual(validateRoleDefaultProposal('leader',{'shifts.assign_staff':'allow'}),{ok:true})
  assert.deepEqual(validateRoleDefaultProposal('leader',{'reports.submit':'allow'}),{ok:true})
  assert.deepEqual(validateRoleDefaultProposal('member',{'shifts.assign_staff':'allow'}),{ok:false,code:'PRIVILEGE_ESCALATION_DENIED'})
- assert.deepEqual(validateRoleDefaultProposal('leader',{'reports.export':'deny'}),{ok:false,code:'SECURITY_BOUNDARY_LOCKED'})
+ assert.deepEqual(validateRoleDefaultProposal('leader',{'reports.export':'deny'}),{ok:true})
+ assert.deepEqual(validateRoleDefaultProposal('member',{'reports.export':'allow'}),{ok:false,code:'PRIVILEGE_ESCALATION_DENIED'})
 })
 test('RBAC-01 denies unauthenticated and forged Member/Leader API POST before RPC',async()=>{
  let rpcCalls=0
