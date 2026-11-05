@@ -364,7 +364,7 @@ export function WorkforceIndividualView({
             <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-800">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
               <span>
-                {en ? `${summary.unknownAttendanceShifts} assigned shifts have no approved attendance. They remain unknown until reviewed.` : <><strong>Cảnh báo minh chứng chưa hoàn tất:</strong> Trong tháng có {summary.unknownAttendanceShifts} ca làm việc chưa có dữ liệu chấm công được phê duyệt. Hệ thống không tự động tính là 0 công hoặc vắng mặt; vui lòng hoàn tất chấm công tại mục Chi tiết ca.</>}
+                {en ? `${summary.unknownAttendanceShifts} assigned shifts have incomplete attendance verification.` : <><strong>Chưa đầy đủ chứng từ xác minh:</strong> Trong tháng có {summary.unknownAttendanceShifts} ca làm việc chưa có dữ liệu chấm công được phê duyệt. Hệ thống không tự động tính là 0 công hoặc vắng mặt; vui lòng hoàn tất chấm công tại mục Chi tiết ca.</>}
               </span>
             </div>
           )}

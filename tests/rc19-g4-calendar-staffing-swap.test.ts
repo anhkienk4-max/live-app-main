@@ -3,7 +3,6 @@ import test from 'node:test'
 import { shiftsForCalendarDate } from '../components/features/calendar/MonthView'
 import { shiftsForGridDate } from '../lib/utils/timeGrid'
 import { getShiftRoleCapacities } from '../lib/services/dataService'
-import { parseCanonicalDate, parseTimeRange } from '../lib/workforce/historicalAttendanceParser'
 import type { Shift, ShiftRegistration } from '../lib/types/database.types'
 
 // Mock Shifts

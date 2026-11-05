@@ -388,7 +388,7 @@ export function PayrollRateManager() {
 
       {/* Register Rate Modal */}
       <Dialog open={isRegisterOpen} onOpenChange={setIsRegisterOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-slate-900">
               Đăng ký & Phê duyệt khung lương mới
@@ -409,7 +409,7 @@ export function PayrollRateManager() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Phạm vi áp dụng</label>
                 <Select value={regScope} onValueChange={(val: RateScope) => setRegScope(val)}>
@@ -454,7 +454,7 @@ export function PayrollRateManager() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label htmlFor="payrollratemanager-field-4" className="text-xs font-semibold text-slate-700">
                   Đơn giá cơ bản (VND / giờ) <span className="text-rose-500">*</span>
@@ -507,7 +507,7 @@ export function PayrollRateManager() {
                     {formatCurrency(previewCalculation.netVnd)}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 font-mono">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600 font-mono">
                   <div>Lương cơ bản (120p): {formatCurrency(previewCalculation.regularVnd)}</div>
                   <div>Tăng ca (30p OT): {formatCurrency(previewCalculation.overtimeVnd)}</div>
                 </div>
@@ -517,7 +517,7 @@ export function PayrollRateManager() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label htmlFor="payrollratemanager-field-6" className="text-xs font-semibold text-slate-700">
                   Hiệu lực từ ngày (Effective From) <span className="text-rose-500">*</span>

@@ -179,6 +179,8 @@
     "tests/rc19-filter01a-shifts.test.ts",
     "tests/rc19-g2-inapp-camera.test.ts",
     "tests/rc19-g3-import-bulk-export-registration.test.ts",
+    "tests/rc19-g4-calendar-staffing-swap.test.ts",
+    "tests/rc19-g5-final-ui-completion.test.ts",
     "tests/rc19-my-payslip.test.ts",
     "tests/rc19-owner23-segmented-staffing.test.ts",
     "tests/rc19-postgres17-concurrency.integration.test.ts",

@@ -97,8 +97,6 @@ export function StaffingWorkspace() {
     })
   }
 
-  const allVisibleSelected = visible.length > 0 && visible.every(s => selectedShiftIds.has(s.id))
-
   const toggleSelectAll = () => {
     if (allVisibleSelected) {
       setSelectedShiftIds(prev => {
@@ -192,6 +190,7 @@ export function StaffingWorkspace() {
   const fullyStaffedCount=baseFiltered.filter(shift=>{const capacities=getShiftRoleCapacities(shift,data.registrations).filter(capacity=>capacity.required>0);return capacities.length>0&&capacities.every(capacity=>capacity.remaining===0)}).length
   const safePage=page
   const visible=filtered
+  const allVisibleSelected = visible.length > 0 && visible.every(s => selectedShiftIds.has(s.id))
   const selected=filtered.find(shift=>shift.id===selectedId)??visible[0]
   if(error&&identity===loadedIdentity&&identity===referenceIdentity) return <PageLoadError error={error} onRetry={()=>{setError(null);setLoading(true);setLoadedIdentity('');setReferenceIdentity('');setReferenceReload(value=>value+1);void load()}} />
   if(loading||identity!==loadedIdentity||identity!==referenceIdentity) return <p className="p-8 text-center">{t('loading')}</p>

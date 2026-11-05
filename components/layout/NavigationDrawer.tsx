@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, type ReactElement } from 'react'
+import { useRef, useEffect, useCallback, type ReactElement } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -23,15 +23,15 @@ export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile'
     pushed.current = false
   }
 
-  const resolveTrigger = () => {
+  const resolveTrigger = useCallback(() => {
     if (triggerRef.current) return triggerRef.current
     if (menuId === 'mobile') {
       return document.querySelector('[data-testid="nav-menu-more"]') as HTMLElement | null
     }
     return document.querySelector('header button[aria-label="' + t('navMain') + '"]') as HTMLElement | null
-  }
+  }, [menuId, t])
 
-  const restoreFocus = () => {
+  const restoreFocus = useCallback(() => {
     if (timerRef.current !== null) clearTimeout(timerRef.current)
     const focusTarget = () => {
       const el = resolveTrigger()
@@ -42,7 +42,7 @@ export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile'
     focusTarget()
     window.requestAnimationFrame(focusTarget)
     timerRef.current = setTimeout(focusTarget, 50)
-  }
+  }, [resolveTrigger])
 
   useEffect(() => {
     const onPopState = () => {
@@ -57,17 +57,21 @@ export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile'
       window.removeEventListener('popstate', onPopState)
       if (timerRef.current !== null) clearTimeout(timerRef.current)
     }
-  }, [menuId])
+  }, [menuId, restoreFocus])
 
   const changeOpen = (next: boolean) => {
     if (next) {
-      const url = new URL(window.location.href)
-      url.searchParams.set('nav_menu', menuId)
-      window.history.pushState(null, '', url)
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href)
+        url.searchParams.set('nav_menu', menuId)
+        window.history.pushState(null, '', url)
+      }
       pushed.current = true
+    } else if (pushed.current) {
+      pushed.current = false
+      if (typeof window !== 'undefined') window.history.back()
     } else {
       removeMarker()
-      restoreFocus()
     }
   }
 
