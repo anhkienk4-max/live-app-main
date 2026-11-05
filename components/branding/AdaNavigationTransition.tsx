@@ -194,7 +194,9 @@ export function AdaNavigationTransition({ children }: { children: ReactNode }): 
       if (destination.origin !== window.location.origin || destination.pathname === currentPath.current) return
       beginTransition(currentPath.current)
     }
-    const onPopState = () => beginTransition(currentPath.current)
+    const onPopState = () => {
+      if (window.location.pathname !== currentPath.current) beginTransition(currentPath.current)
+    }
     document.addEventListener('click', onClick, true)
     window.addEventListener('popstate', onPopState)
     return () => {

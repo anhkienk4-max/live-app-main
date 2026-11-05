@@ -222,11 +222,11 @@ export function StaffList() {
   }
 
   return <>
-    <div className="mb-3 flex min-w-0 flex-col gap-3 rounded-xl border bg-white p-3 md:flex-row md:items-center md:justify-between md:px-4 md:py-3">
+    <div className="mb-3 flex min-w-0 flex-col gap-3 rounded-xl border bg-white p-3 xl:flex-row xl:items-center xl:justify-between xl:px-4 xl:py-3">
       <div className="min-w-0"><h1 className="text-lg font-semibold leading-tight md:text-xl">{t('staffManagement')}</h1><p className="mt-1 text-[13px] leading-relaxed text-muted-foreground md:text-sm">{t('staffManagementSubtitle')}</p></div>
-      {canManage && <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto">
-        <Button className="h-auto min-h-11 w-full whitespace-normal px-3 py-2 text-[13px] leading-snug md:w-auto" variant="outline" onClick={() => setShowArchived(value => !value)} data-testid="toggle-archived-staff"><Archive className="mr-2 h-4 w-4" />{t(showArchived ? 'active' : 'archivedRecords')}</Button>
-        {!showArchived && <Button className="h-auto min-h-11 w-full whitespace-normal px-3 py-2 text-[13px] leading-snug md:w-auto" onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
+      {canManage && <div className="grid w-full grid-cols-2 gap-2 xl:flex xl:w-auto">
+        <Button className="h-auto min-h-11 w-full whitespace-normal px-3 py-2 text-[13px] leading-snug xl:w-auto" variant="outline" onClick={() => setShowArchived(value => !value)} data-testid="toggle-archived-staff"><Archive className="mr-2 h-4 w-4" />{t(showArchived ? 'active' : 'archivedRecords')}</Button>
+        {!showArchived && <Button className="h-auto min-h-11 w-full whitespace-normal px-3 py-2 text-[13px] leading-snug xl:w-auto" onClick={() => { setSelectedStaff(null); setIsFormOpen(true) }} data-testid="add-staff-btn"><UserPlus className="mr-2 h-4 w-4" />{t('addStaff')}</Button>}
       </div>}
     </div>
     <p className="mb-2 text-xs text-muted-foreground">{t('currentPage')}</p>

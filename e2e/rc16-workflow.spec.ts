@@ -239,7 +239,7 @@ test('Member workforce requests only own identity and keeps absent performance a
     await route.fulfill({ json: { ok: true, performance: { staffId: '3', role: 'host', assignedShifts: 0, verifiedShifts: 0, unknownAttendanceShifts: 0, approvedNoShows: 0, approvedWorkedShifts: 0, approvedActualMinutes: 0, lateShifts: 0, onTimeShifts: 0, attendanceCoveragePct: null, punctualityPct: null, knownReliabilityPct: null, isComplete: false, warning: 'INCOMPLETE_ATTENDANCE_EVIDENCE' } } })
   })
   await page.goto('/workforce')
-  await expect(page.getByText('Chưa đầy đủ chứng từ xác minh')).toBeVisible()
+  await expect(page.getByText('Chưa đầy đủ chứng từ xác minh', { exact: true })).toBeVisible()
   await expect(page.getByText('N/A - Chưa có dữ liệu').first()).toBeVisible()
   expect(reads.length).toBeGreaterThan(0); expect(reads.every(id => id === '3')).toBe(true)
   await expect(page.getByRole('tab', { name: /Tổng quan đội ngũ/ })).toHaveCount(0)

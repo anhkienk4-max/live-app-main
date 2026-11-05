@@ -335,14 +335,16 @@ export function StaffingWorkspace() {
             <table className="w-full min-w-[760px] text-left text-xs">
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
-                  <th className="w-8 px-3 py-2">
-                    <input
-                      type="checkbox"
-                      aria-label="Chọn tất cả ca trên trang"
-                      checked={visible.length > 0 && visible.every(s => selectedShiftIds.has(s.id))}
-                      onChange={toggleSelectAll}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
+                  <th className="w-14 px-1 py-1">
+                    <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
+                      <input
+                        type="checkbox"
+                        aria-label="Chọn tất cả ca trên trang"
+                        checked={visible.length > 0 && visible.every(s => selectedShiftIds.has(s.id))}
+                        onChange={toggleSelectAll}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </label>
                   </th>
                   <th className="px-3 py-2">{t('date')}</th>
                   <th className="px-3 py-2">{t('time')}</th>
@@ -365,14 +367,16 @@ export function StaffingWorkspace() {
                       key={shift.id}
                       className={selected?.id === shift.id ? 'bg-blue-50/60' : 'hover:bg-slate-50'}
                     >
-                      <td className="w-8 px-3 py-2">
-                        <input
-                          type="checkbox"
-                          aria-label={'Chọn ca ' + (shift.title || shift.id)}
-                          checked={selectedShiftIds.has(shift.id)}
-                          onChange={() => toggleSelectShift(shift.id)}
-                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        />
+                      <td className="w-14 px-1 py-1">
+                        <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
+                          <input
+                            type="checkbox"
+                            aria-label={'Chọn ca ' + (shift.title || shift.id)}
+                            checked={selectedShiftIds.has(shift.id)}
+                            onChange={() => toggleSelectShift(shift.id)}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </label>
                       </td>
                       <td className="whitespace-nowrap px-3 py-2">{shift.date}</td>
                       <td className="whitespace-nowrap px-3 py-2">{formatShiftTimeRange(shift)}</td>
@@ -437,13 +441,15 @@ export function StaffingWorkspace() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        aria-label={'Chọn ca ' + (shift.title || shift.id)}
-                        checked={selectedShiftIds.has(shift.id)}
-                        onChange={() => toggleSelectShift(shift.id)}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
+                      <label className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          aria-label={'Chọn ca ' + (shift.title || shift.id)}
+                          checked={selectedShiftIds.has(shift.id)}
+                          onChange={() => toggleSelectShift(shift.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </label>
                       <span className="text-xs font-semibold">{shift.date}</span>
                     </div>
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">

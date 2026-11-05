@@ -21,7 +21,7 @@ for(const role of ['1','2','3']) test('responsive route matrix role '+role, asyn
    await page.waitForTimeout(200)
    const geometry=await page.evaluate(()=>{
     const main=document.querySelector('main')!; const box=main.getBoundingClientRect()
-    const visible=(e:Element)=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden'&&getComputedStyle(e).opacity!=='0'&&!(r.width<=1||r.height<=1)}
+    const visible=(e:Element)=>{const r=e.getBoundingClientRect();const style=getComputedStyle(e);return r.width>0&&r.height>0&&style.visibility!=='hidden'&&style.opacity!=='0'&&style.pointerEvents!=='none'&&!(r.width<=1||r.height<=1)}
     const controls=[...main.querySelectorAll('button,a,input,select,[role=combobox],[role=tab]')].filter(visible)
     const shortTargets=controls.filter(e=>{let r=e.getBoundingClientRect();if(e instanceof HTMLInputElement && (e.type==='checkbox'||e.type==='radio')){const label=e.labels?.[0];if(label)r=label.getBoundingClientRect()}return r.height<43.5||r.width<43.5}).slice(0,40).map(e=>({tag:e.tagName,text:(e.textContent||e.getAttribute('aria-label')||'').slice(0,85),testId:e.getAttribute('data-testid'),height:e.getBoundingClientRect().height,width:e.getBoundingClientRect().width}))
     const escaped=controls.filter(e=>{const r=e.getBoundingClientRect();if(r.left>=box.left-1&&r.right<=box.right+1)return false;for(let p=e.parentElement;p&&p!==main;p=p.parentElement){if(/auto|scroll/.test(getComputedStyle(p).overflowX)&&p.scrollWidth>p.clientWidth)return false}return true}).slice(0,15).map(e=>({tag:e.tagName,text:(e.textContent||'').slice(0,70)}))
