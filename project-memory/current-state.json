@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "3405fb94b5f4f93b3265c1f9e8a440a94ba58d11",
+    "head": "41523bdb3a8ed52e6c73b3012e58978e80af3d1e",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -122,10 +122,10 @@
         "components": 188,
         "lib": 285,
         "scripts": 35,
-        "supabase": 136,
+        "supabase": 137,
         "tests": 347
       },
-      "total": 1085
+      "total": 1086
     },
     "tests": {
       "files": [
@@ -518,9 +518,10 @@
         "supabase/migrations/20261104110000_rc19_c3_scoped_action_catalog.sql",
         "supabase/migrations/20261104113000_rc19_c3_staffing_permission_guard.sql",
         "supabase/migrations/20261104120000_rc19_c3_leader_brand_scope_reports.sql",
-        "supabase/migrations/20261104174527_rc19_c3_report_artifact_deletion.sql"
+        "supabase/migrations/20261104174527_rc19_c3_report_artifact_deletion.sql",
+        "supabase/migrations/20261105120000_rc19_c3_scoped_report_export.sql"
       ],
-      "count": 108
+      "count": 109
     }
   },
   "verification": {
@@ -534,5 +535,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-05T10:53:10+07:00"
+  "synced_at": "2026-11-05T13:39:20+07:00"
 }
