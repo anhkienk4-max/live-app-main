@@ -11,8 +11,12 @@ async function mockAuthError(page: import('@playwright/test').Page, code: string
  await page.route('**/auth/v1/token*', route => route.fulfill({status:400,contentType:'application/json',json:{code,error_code:code,msg:'private provider response detail'}}))
 }
 async function useEnglish(page: import('@playwright/test').Page) {
- const toggle=page.getByRole('button',{name:'English',exact:true})
- if(await toggle.isVisible())await toggle.click()
+ await page.addInitScript(() => window.localStorage.setItem('livestream-ops-language','en'))
+ await page.reload()
+ await expect(page.locator('html')).toHaveAttribute('lang','en')
+}
+function visibleLoginError(page: import('@playwright/test').Page) {
+ return page.locator('[data-testid="login-error"]:visible')
 }
 
 test('Supabase-mode public auth is responsive and Google stays disabled without a provider',async({page},info)=>{
@@ -23,10 +27,10 @@ test('Supabase-mode public auth is responsive and Google stays disabled without 
   for(const width of widths){await page.setViewportSize({width,height:width===375?811:1000});await page.waitForTimeout(150);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if([375,768,1440].includes(width))await page.screenshot({path:info.outputPath(route.slice(1)+'-'+width+'.png'),fullPage:true})}
  }
  await page.goto('/login');await expect(page.getByTestId('google-unavailable')).toBeVisible();await expect(page.getByTestId('google-login-btn')).toHaveCount(0)
- await mockAuthError(page,'invalid_credentials');await fillLogin(page);await expect(page.getByTestId('login-error')).toContainText('Email or password is incorrect.');await expect(page.getByTestId('email-login-btn')).toBeEnabled()
- await page.goto('/login?reason=session_expired&next=%2Fcalendar');await expect(page.getByTestId('login-error')).toBeVisible()
- await page.goto('/login?reason=approval_required');await expect(page.getByTestId('login-error')).toContainText('This account does not have approved access.')
- await page.goto('/login?reason=oauth_failed');await expect(page.getByTestId('login-error')).toBeVisible()
+ await mockAuthError(page,'invalid_credentials');await fillLogin(page);await expect(visibleLoginError(page)).toContainText('Email or password is incorrect.');await expect(page.getByTestId('email-login-btn')).toBeEnabled()
+ await page.goto('/login?reason=session_expired&next=%2Fcalendar');await expect(visibleLoginError(page)).toContainText('Your session expired. Please sign in again.')
+ await page.goto('/login?reason=approval_required');await expect(visibleLoginError(page)).toContainText('This account does not have approved access.')
+ await page.goto('/login?reason=oauth_failed');await expect(visibleLoginError(page)).toContainText('Google sign-in could not be completed.')
  expect(errors).toEqual([])
 })
 
