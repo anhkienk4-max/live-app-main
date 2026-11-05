@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "14d35108dff883250cc2ca6e6d38514010f85a10",
+    "head": "9405495bdff80f5f28fb05e5772dcfcec287a0ef",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -87,6 +87,7 @@
       "app/api/rbac/capabilities/route.ts",
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
+      "app/api/reports/export/route.ts",
       "app/api/role-defaults/route.ts",
       "app/api/schedule-source-files/route.ts",
       "app/api/staff/invite/route.ts",
@@ -117,14 +118,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 93,
+        "app": 94,
         "components": 188,
-        "lib": 283,
+        "lib": 285,
         "scripts": 35,
-        "supabase": 129,
-        "tests": 341
+        "supabase": 137,
+        "tests": 351
       },
-      "total": 1069
+      "total": 1090
     },
     "tests": {
       "files": [
@@ -302,10 +303,13 @@
         "tests/rc19-c3-mutation-authorization.test.ts",
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
+        "tests/rc19-dynamic-rbac-server-guard.test.ts",
         "tests/rc19-effective-permission.test.ts",
         "tests/rc19-filter01a-shifts.test.ts",
         "tests/rc19-g2-inapp-camera.test.ts",
         "tests/rc19-g3-import-bulk-export-registration.test.ts",
+        "tests/rc19-g4-calendar-staffing-swap.test.ts",
+        "tests/rc19-g5-final-ui-completion.test.ts",
         "tests/rc19-my-payslip.test.ts",
         "tests/rc19-owner23-segmented-staffing.test.ts",
         "tests/rc19-postgres17-concurrency.integration.test.ts",
@@ -319,7 +323,9 @@
         "tests/rc19-report-view-parity-100.test.ts",
         "tests/rc19-report01-multiview.test.ts",
         "tests/rc19-reports-app-router-wiring.test.ts",
+        "tests/rc19-reports-export-authority.test.ts",
         "tests/rc19-reports-photo-groups-164.test.ts",
+        "tests/rc19-schedule-source-storage-service.test.ts",
         "tests/rc19-self-attendance-contract.test.ts",
         "tests/rc19-staffing-availability-sql.test.ts",
         "tests/rc19-staffing-candidate-contract.test.ts",
@@ -345,8 +351,10 @@
         "tests/rc19-ui-functional-integration.test.tsx",
         "tests/rc19-unified-import-postgres17.test.ts",
         "tests/rc19-wave3-verification.test.ts",
+        "tests/rc19-workforce-authority.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
+        "tests/report-artifact-export-authority.test.ts",
         "tests/report-history-access.test.ts",
         "tests/report-null-semantics-consumers.test.ts",
         "tests/report-required-metrics.test.ts",
@@ -403,7 +411,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 274
+      "count": 281
     },
     "migrations": {
       "files": [
@@ -507,9 +515,17 @@
         "supabase/migrations/20261102190000_rc19_batch01_1_agency_code.sql",
         "supabase/migrations/20261102200000_rc19_batch01_3_shift_identity_index.sql",
         "supabase/migrations/20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
-        "supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql"
+        "supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+        "supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql",
+        "supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql",
+        "supabase/migrations/20261104093735_rc19_rbac03_supported_permission_enforcement.sql",
+        "supabase/migrations/20261104110000_rc19_c3_scoped_action_catalog.sql",
+        "supabase/migrations/20261104113000_rc19_c3_staffing_permission_guard.sql",
+        "supabase/migrations/20261104120000_rc19_c3_leader_brand_scope_reports.sql",
+        "supabase/migrations/20261104174527_rc19_c3_report_artifact_deletion.sql",
+        "supabase/migrations/20261105120000_rc19_c3_scoped_report_export.sql"
       ],
-      "count": 101
+      "count": 109
     }
   },
   "verification": {
@@ -523,5 +539,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-05T00:13:11+07:00"
+  "synced_at": "2026-11-05T15:50:43+07:00"
 }
