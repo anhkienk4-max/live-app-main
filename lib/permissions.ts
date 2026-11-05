@@ -121,11 +121,11 @@ export function hasAnyPermission(
 export function canExportReports(
   actor: Pick<User, 'role' | 'system_permission'> | null | undefined,
 ): boolean {
-  return Boolean(actor && resolveSystemPermission(actor) === 'admin' && hasPermission(actor, 'reports.export'))
+  return Boolean(actor && hasPermission(actor, 'reports.export'))
 }
 
 /**
- * Reports downloads are Admin-only until Leader Brand scope is authoritative.
+ * Server export authorization enforces Leader Brand scope for every request.
  */
 export function canExportReportDetail(
   actor: Pick<User, 'role' | 'system_permission'> | null | undefined,

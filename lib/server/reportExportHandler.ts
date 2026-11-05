@@ -67,7 +67,7 @@ export function createReportExportHandler(dependencies: {
   return { async POST(request: Request): Promise<Response> {
     try {
       const actor = await requirePermission(request, 'reports.export', dependencies.resolveUser, dependencies.createPermissionClient)
-      if (actor.systemPermission !== 'admin') return fail('REPORT_EXPORT_SCOPE_UNAVAILABLE', 403)
+      if (!actor.businessUserId || !['admin', 'leader'].includes(actor.systemPermission)) return fail('REPORT_EXPORT_SCOPE_UNAVAILABLE', 403)
 
       const input = inputSchema.parse(await readJsonBody(request, 1024 * 1024))
       if (input.kind === 'report' && input.report_ids.length !== 1) return fail('REPORT_EXPORT_REQUEST_INVALID', 400)
@@ -75,11 +75,63 @@ export function createReportExportHandler(dependencies: {
         ? await dependencies.createClient()
         : await (await import('@/lib/supabase/server')).createClient()
 
-      const reportRows = await readByIds(input.report_ids, async (ids, from, to) => {
+      let reportRows: Record<string, unknown>[]
+      let shifts: Record<string, unknown>[]
+      let registrations: Record<string, unknown>[]
+      let images: ReportImage[] | null = null
+      let brands: Record<string, unknown>[]
+      let platforms: Record<string, unknown>[]
+      let campaigns: Record<string, unknown>[]
+      let users: Record<string, unknown>[]
+      if (actor.systemPermission === 'leader') {
+        const rpc = await client.rpc('rc19_export_report_bundle', { p_report_ids: input.report_ids, p_kind: input.kind })
+        const bundle = rpc.data as Record<string, unknown> | null
+        if (rpc.error || !bundle || !Array.isArray(bundle.reports) || !Array.isArray(bundle.shifts)
+          || !Array.isArray(bundle.registrations) || !Array.isArray(bundle.images) || !Array.isArray(bundle.brands)
+          || !Array.isArray(bundle.platforms) || !Array.isArray(bundle.campaigns) || !Array.isArray(bundle.users)) {
+          return fail('REPORT_EXPORT_SCOPE_DENIED', 403)
+        }
+        reportRows = bundle.reports as Record<string, unknown>[]
+        shifts = bundle.shifts as Record<string, unknown>[]
+        registrations = bundle.registrations as Record<string, unknown>[]
+        images = bundle.images as ReportImage[]
+        brands = bundle.brands as Record<string, unknown>[]
+        platforms = bundle.platforms as Record<string, unknown>[]
+        campaigns = bundle.campaigns as Record<string, unknown>[]
+        users = bundle.users as Record<string, unknown>[]
+      } else {
+        const adminRows = await readByIds(input.report_ids, async (ids, from, to) => {
         const result = await client.from('reports').select('*', { count: 'exact' }).in('id', ids).is('deleted_at', null)
           .order('id', { ascending: true }).range(from, to)
         return { data: result.data as unknown[] | null, count: result.count, error: result.error }
-      }, 'REPORT_EXPORT_READ_INCOMPLETE')
+        }, 'REPORT_EXPORT_READ_INCOMPLETE')
+        reportRows = adminRows
+        const reports = reportRows.map(row => reportFromRow(row as never))
+        const shiftIds = [...new Set(reports.map(report => report.shift_id))]
+        shifts = await readByIds(shiftIds, async (ids, from, to) => {
+          const result = await client.from('shifts').select('*', { count: 'exact' }).in('id', ids).order('id', { ascending: true }).range(from, to)
+          return { data: result.data as unknown[] | null, count: result.count, error: result.error }
+        }, 'REPORT_EXPORT_CONTEXT_INCOMPLETE')
+        registrations = await readByIds(shiftIds, async (ids, from, to) => {
+          const result = await client.from('shift_registrations').select('*', { count: 'exact' }).in('shift_id', ids).order('id', { ascending: true }).range(from, to)
+          return { data: result.data as unknown[] | null, count: result.count, error: result.error }
+        }, 'REPORT_EXPORT_CONTEXT_INCOMPLETE')
+        const refs = [...new Set([...reports.map(report => report.submitted_by ?? ''), ...shifts.flatMap(s => [String(s.host_id ?? ''), String(s.support_id ?? ''), String(s.technical_id ?? '')]), ...registrations.map(r => String(r.user_id ?? ''))].filter(Boolean))]
+        const readNamed = async (table: 'brands' | 'platforms' | 'campaigns' | 'business_users', column: 'name' | 'full_name', ids: string[]) => readByIds(ids, async (chunk, from, to) => {
+          const result = await client.from(table).select(`id,${column}`, { count: 'exact' }).in('id', chunk).order('id', { ascending: true }).range(from, to)
+          return { data: result.data as unknown[] | null, count: result.count, error: result.error }
+        }, 'REPORT_EXPORT_CONTEXT_INCOMPLETE')
+        ;[brands, platforms, campaigns, users] = await Promise.all([
+          readNamed('brands', 'name', shifts.map(s => String(s.brand_id ?? ''))),
+          readNamed('platforms', 'name', shifts.map(s => String(s.platform_id ?? ''))),
+          readNamed('campaigns', 'name', shifts.map(s => String(s.campaign_id ?? ''))),
+          readNamed('business_users', 'full_name', refs),
+        ])
+        if (input.kind === 'images') images = await readByIds(input.report_ids, async (ids, from, to) => {
+          const result = await client.from('report_images').select('id,report_id,image_url,storage_path,original_name,mime_type,size_bytes,image_type,created_at', { count: 'exact' }).in('report_id', ids).is('deleted_at', null).order('id', { ascending: true }).range(from, to)
+          return { data: result.data as unknown[] | null, count: result.count, error: result.error }
+        }, 'REPORT_EXPORT_CONTEXT_INCOMPLETE') as unknown as ReportImage[]
+      }
       const requestedIds = new Set(input.report_ids)
       if (reportRows.length !== requestedIds.size
         || new Set(reportRows.map(row => String(row.id))).size !== requestedIds.size
@@ -88,41 +140,14 @@ export function createReportExportHandler(dependencies: {
       }
       const reports = reportRows.map(row => reportFromRow(row as never))
       const shiftIds = [...new Set(reports.map(report => report.shift_id))]
-      const shifts = await readByIds(shiftIds, async (ids, from, to) => {
-        const result = await client.from('shifts').select('*', { count: 'exact' }).in('id', ids)
-          .order('id', { ascending: true }).range(from, to)
-        return { data: result.data as unknown[] | null, count: result.count, error: result.error }
-      }, 'REPORT_EXPORT_CONTEXT_INCOMPLETE')
       if (shifts.length !== shiftIds.length) throw new ReportExportError('REPORT_EXPORT_CONTEXT_INCOMPLETE')
-
-      const registrations = await readByIds(shiftIds, async (ids, from, to) => {
-        const result = await client.from('shift_registrations').select('*', { count: 'exact' }).in('shift_id', ids)
-          .order('id', { ascending: true }).range(from, to)
-        return { data: result.data as unknown[] | null, count: result.count, error: result.error }
-      }, 'REPORT_EXPORT_CONTEXT_INCOMPLETE')
-      const allReferenceIds = (field: string) => [...new Set([
-        ...reports.map(report => String((report as unknown as Record<string, unknown>)[field] ?? '')),
-        ...shifts.flatMap(shift => [String(shift.host_id ?? ''), String(shift.support_id ?? ''), String(shift.technical_id ?? '')]),
-        ...registrations.map(row => String(row.user_id ?? '')),
-      ].filter(Boolean))]
-      const userIds = [...new Set([
-        ...allReferenceIds('submitted_by'), ...allReferenceIds('confirmed_by'),
-        ...allReferenceIds('reviewed_by'), ...allReferenceIds('updated_by'),
-      ])]
-      const readNamed = async (table: 'brands' | 'platforms' | 'campaigns' | 'business_users', column: 'name' | 'full_name', ids: string[]) =>
-        readByIds(ids, async (chunk, from, to) => {
-          const result = await client.from(table).select(`id,${column}`, { count: 'exact' }).in('id', chunk)
-            .order('id', { ascending: true }).range(from, to)
-          return { data: result.data as unknown[] | null, count: result.count, error: result.error }
-        }, 'REPORT_EXPORT_CONTEXT_INCOMPLETE')
-
-      const brandIds = [...new Set(shifts.map(row => String(row.brand_id ?? '')).filter(Boolean))]
-      const platformIds = [...new Set(shifts.map(row => String(row.platform_id ?? '')).filter(Boolean))]
-      const campaignIds = [...new Set(shifts.map(row => String(row.campaign_id ?? '')).filter(Boolean))]
-      const [brands, platforms, campaigns, users] = await Promise.all([
-        readNamed('brands', 'name', brandIds), readNamed('platforms', 'name', platformIds),
-        readNamed('campaigns', 'name', campaignIds), readNamed('business_users', 'full_name', userIds),
-      ])
+      if (actor.systemPermission === 'leader') {
+        const latest = await requirePermission(request, 'reports.export', dependencies.resolveUser, dependencies.createPermissionClient)
+        const latestScope = await (await (dependencies.createPermissionClient ?? (async () => client))()).rpc('rc19_current_leader_brand_ids', { p_scope_key: 'reports.export' })
+        const latestIds = new Set(Array.isArray(latestScope.data) ? latestScope.data : [])
+        if (latest.id !== actor.id || latest.businessUserId !== actor.businessUserId || latest.systemPermission !== 'leader'
+          || latestScope.error || shifts.some(shift => !latestIds.has(shift.brand_id))) return fail('REPORT_EXPORT_SCOPE_CHANGED', 409)
+      }
       const context = {
         shifts: shifts as unknown as Shift[], campaigns: campaigns as unknown as ReportExportContext['campaigns'],
         users: users as unknown as User[], registrations: registrations as unknown as ShiftRegistration[],
@@ -133,13 +158,7 @@ export function createReportExportHandler(dependencies: {
       let sheetName: string
       let fileName: string
       if (input.kind === 'images') {
-        const images = await readByIds(input.report_ids, async (ids, from, to) => {
-          const result = await client.from('report_images')
-            .select('id,report_id,image_url,storage_path,original_name,mime_type,size_bytes,image_type,created_at', { count: 'exact' })
-            .in('report_id', ids).is('deleted_at', null).order('id', { ascending: true }).range(from, to)
-          return { data: result.data as unknown[] | null, count: result.count, error: result.error }
-        }, 'REPORT_EXPORT_CONTEXT_INCOMPLETE') as unknown as ReportImage[]
-        rows = buildReportImageMetadataRows(images, reports)
+        rows = buildReportImageMetadataRows(images ?? [], reports)
         sheetName = 'Images'
         fileName = `report_images_${new Date().toISOString().slice(0, 10)}.xlsx`
       } else {
@@ -150,13 +169,18 @@ export function createReportExportHandler(dependencies: {
           : `reports_filtered_${new Date().toISOString().slice(0, 10)}.xlsx`
       }
 
-      const latestActor = await requirePermission(request, 'reports.export', dependencies.resolveUser, dependencies.createPermissionClient)
-      if (latestActor.systemPermission !== 'admin' || latestActor.id !== actor.id
-        || latestActor.businessUserId !== actor.businessUserId) return fail('REPORT_EXPORT_SCOPE_CHANGED', 409)
       const bytes = buildWorkbookBytes([{
         name: sheetName, rows,
         ...(input.kind === 'images' ? {} : { currencyColumns: REPORT_CURRENCY_COLUMNS }),
       }])
+      const latestActor = await requirePermission(request, 'reports.export', dependencies.resolveUser, dependencies.createPermissionClient)
+      if (latestActor.systemPermission !== actor.systemPermission || latestActor.id !== actor.id
+        || latestActor.businessUserId !== actor.businessUserId) return fail('REPORT_EXPORT_SCOPE_CHANGED', 409)
+      if (actor.systemPermission === 'leader') {
+        const latestScope = await (await (dependencies.createPermissionClient ?? (async () => client))()).rpc('rc19_current_leader_brand_ids', { p_scope_key: 'reports.export' })
+        const latestIds = new Set(Array.isArray(latestScope.data) ? latestScope.data : [])
+        if (latestScope.error || shifts.some(shift => !latestIds.has(shift.brand_id))) return fail('REPORT_EXPORT_SCOPE_CHANGED', 409)
+      }
       return new Response(bytes as BodyInit, { headers: {
         'Cache-Control': 'private, no-store',
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

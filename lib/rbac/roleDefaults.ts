@@ -33,7 +33,7 @@ export const ROLE_DEFAULTS_CATALOG: readonly RoleDefaultsCatalogItem[] = [
   configurable('shifts.export', 'shifts', 'export', ['leader','admin']),
   configurable('reports.submit', 'reports', 'create', ['member','leader','admin']),
   configurable('reports.review', 'reports', 'approve', ['leader','admin']),
-  item('reports.export', 'reports', 'export', 'Leader Brand scope is not backed by an authoritative database relation.'),
+  configurable('reports.export', 'reports', 'export', ['leader','admin']),
   configurable('swaps.request', 'swaps', 'request', ['member','leader','admin']),
   configurable('swaps.approve', 'swaps', 'approve', ['leader','admin']),
   item('swaps.export', 'swaps', 'export'), item('profile.edit_own', 'profile', 'edit'),

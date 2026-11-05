@@ -51,14 +51,62 @@ test('Member cannot export, even their own submitted report', async () => {
 })
 
 test('Leaders from separate identities fail closed before report or Brand reads', async () => {
-  let queries = 0
+  let rpcCalls = 0
   for (const actor of [leader('leader-ada'), leader('leader-snap')]) {
-    const response = await staticHandler(actor, database({}), () => { queries += 1 })
+    const client = { ...database({}), rpc: async () => { rpcCalls += 1; return { data: null, error: { message: 'REPORT_EXPORT_SCOPE_DENIED' } } } } as unknown as SupabaseClient
+    const response = await staticHandler(actor, client)
       .POST(request({ kind: 'report', report_ids: ['report-from-another-brand'] }))
     assert.equal(response.status, 403)
-    assert.equal((await response.json()).error.code, 'REPORT_EXPORT_SCOPE_UNAVAILABLE')
+    assert.equal((await response.json()).error.code, 'REPORT_EXPORT_SCOPE_DENIED')
   }
-  assert.equal(queries, 0)
+  assert.equal(rpcCalls, 2, 'authenticated session RPC performs the authoritative scope denial')
+})
+
+test('Leader export-only RPC workbook contains only active-Brand reports and image metadata', async () => {
+  const reports = [
+    { id: 'ada-report-1', shift_id: 'ada-shift-1', revenue: 100, gmv: 100, orders: 2, dashboard_platform: 'other',
+      metrics_confirmed: true, status: 'confirmed', submitted_by: 'staff-a', confirmed_by: 'staff-a', deleted_at: null,
+      created_at: '2026-11-02T12:00:00Z', updated_at: '2026-11-02T12:00:00Z', version_number: 1 },
+    { id: 'ada-report-2', shift_id: 'ada-shift-2', revenue: 200, gmv: 200, orders: 4, dashboard_platform: 'other',
+      metrics_confirmed: true, status: 'confirmed', submitted_by: 'staff-a', confirmed_by: 'staff-a', deleted_at: null,
+      created_at: '2026-11-02T13:00:00Z', updated_at: '2026-11-02T13:00:00Z', version_number: 1 },
+  ]
+  const bundle = {
+    reports, shifts: reports.map((r, i) => ({ id: r.shift_id, date: '2026-11-02', start_time: '10:00', end_time: '12:00',
+      brand_id: 'brand-a', platform_id: 'platform-a', campaign_id: null, host_id: 'staff-a', support_id: null, technical_id: null, studio: `Studio ${i}` })),
+    registrations: [], images: [{ id: 'image-a', report_id: 'ada-report-1', image_url: 'https://example.test/a', storage_path: 'a.jpg',
+      original_name: 'a.jpg', mime_type: 'image/jpeg', size_bytes: 10, image_type: 'dashboard', created_at: '2026-11-02T14:00:00Z' }],
+    brands: [{ id: 'brand-a', name: 'Brand A' }], platforms: [{ id: 'platform-a', name: 'TikTok' }], campaigns: [],
+    users: [{ id: 'staff-a', full_name: 'Staff A' }],
+  }
+  let calls = 0
+  const base = database({}) as unknown as { from: SupabaseClient['from']; rpc?: unknown }
+  const client = { ...base, rpc: async (name: string, args?: { p_report_ids?: string[] }) => {
+    calls++
+    if (name === 'rc19_export_report_bundle') {
+      const ids = new Set(args?.p_report_ids ?? [])
+      const selectedReports = bundle.reports.filter(report => ids.has(report.id))
+      const shiftIds = new Set(selectedReports.map(report => report.shift_id))
+      return { data: { ...bundle, reports: selectedReports, shifts: bundle.shifts.filter(shift => shiftIds.has(shift.id)),
+        images: bundle.images.filter(image => ids.has(image.report_id)) }, error: null }
+    }
+    return { data: ['brand-a'], error: null }
+  } } as unknown as SupabaseClient
+  const response = await staticHandler(leader('leader-a'), client).POST(request({ kind: 'reports', report_ids: ['ada-report-1', 'ada-report-2'] }))
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('Content-Type') ?? '', /spreadsheet/)
+  const workbook = XLSX.read(new Uint8Array(await response.arrayBuffer()), { type: 'array' })
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Reports, { header: 1 }) as unknown[][]
+  assert.deepEqual(rows.slice(1).map(row => row[0]), ['ada-report-1', 'ada-report-2'])
+  const headers = rows[0] as string[]
+  assert.equal((rows[1] as unknown[])[headers.indexOf('Brand')], 'Brand A')
+  assert.equal((rows.slice(1) as unknown[][]).reduce((sum, row) => sum + Number(row[headers.indexOf('Revenue')]), 0), 300)
+  const imageResponse = await staticHandler(leader('leader-a'), client).POST(request({ kind: 'images', report_ids: ['ada-report-1'] }))
+  assert.equal(imageResponse.status, 200)
+  const imageWorkbook = XLSX.read(new Uint8Array(await imageResponse.arrayBuffer()), { type: 'array' })
+  const imageRows = XLSX.utils.sheet_to_json(imageWorkbook.Sheets.Images, { header: 1 }) as unknown[][]
+  assert.deepEqual(imageRows[1]?.slice(0, 3), ['ada-report-1', 'dashboard', 'a.jpg'])
+  assert.equal(calls, 6, 'each mode checks the bundle and current Brand grants before and after workbook generation')
 })
 
 test('Expired or revoked reports.export decisions deny before reading report data', async t => {
@@ -178,5 +226,21 @@ test('C3 Leader scope migration is additive, DB-owned, versioned and applied to 
   assert.doesNotMatch(sql, /WHEN actor_role = 'leader' THEN true/i)
 
   const exportPermission = ROLE_DEFAULTS_CATALOG.find(item => item.permission === 'reports.export')
-  assert.equal(exportPermission?.locked, true, 'reports.export stays locked until the DB and scope evidence is exact-SHA verified')
+  assert.equal(exportPermission?.locked, false)
+  assert.deepEqual(exportPermission?.configurableRoles, ['leader', 'admin'])
+})
+
+test('Export bundle RPC is actor-bound, Brand-scoped and cannot grant direct Data API reads', () => {
+  const sql = readFileSync(new URL('../supabase/migrations/20261105120000_rc19_c3_scoped_report_export.sql', import.meta.url), 'utf8')
+  assert.match(sql, /SECURITY DEFINER[\s\S]*?SET search_path = ''/i)
+  assert.match(sql, /private\.current_business_user_id\(\)/i)
+  assert.match(sql, /private\.current_business_user_is_active\(\)/i)
+  assert.match(sql, /rbac01_effective_permission\('reports\.export'\)/i)
+  assert.match(sql, /private\.rc19_has_leader_brand_scope\(s\.brand_id,'reports\.export'\)/i)
+  assert.match(sql, /LEFT JOIN public\.shifts s ON s\.id=r\.shift_id/i)
+  assert.match(sql, /cardinality\(p_report_ids\) > 500/i)
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.rc19_export_report_bundle[\s\S]*?FROM PUBLIC, anon, service_role/i)
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.rc19_export_report_bundle[\s\S]*?TO authenticated/i)
+  assert.match(sql, /rc19_report_export_audit[\s\S]*?report_count[\s\S]*?export_kind/i)
+  assert.doesNotMatch(sql, /CREATE POLICY|GRANT SELECT ON public\.(reports|report_revisions|report_images|live_report_images|stored_files)/i)
 })
