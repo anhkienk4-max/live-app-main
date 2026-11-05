@@ -6,6 +6,7 @@ on:
       - gemini/rc19-batch01.3.1-unified-release
       - integration/rc19-unified-release
       - integration/rc19-unified-candidate
+      - integration/rc19-c4-candidate
       - codex/rc19-batch05a43-ci-hardening
       - codex/rc19-c3-db-enforcement
   pull_request:

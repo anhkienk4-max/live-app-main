@@ -1,5 +1,7 @@
 name: RC17D responsive and approved auth gate
 on:
+  push:
+    branches: [integration/rc19-c4-candidate]
   pull_request:
     branches: [main]
   workflow_dispatch:
