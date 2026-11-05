@@ -182,10 +182,24 @@ export function deriveAutomaticShiftStatus(
   return 'scheduled'
 }
 
+const timezoneFormatters = new Map<string, Intl.DateTimeFormat>()
+
+function timezoneFormatter(timezone: string): Intl.DateTimeFormat {
+  let formatter = timezoneFormatters.get(timezone)
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    })
+    timezoneFormatters.set(timezone, formatter)
+  }
+  return formatter
+}
+
 export function isValidIanaTimeZone(value: unknown): value is string {
   if (typeof value !== 'string' || !value.trim()) return false
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: value }).format()
+    timezoneFormatter(value).format()
     return true
   } catch {
     return false
@@ -243,10 +257,7 @@ export function zonedWallTimeToUtc(date: string, time: string, timezone: string)
   const wallTimestamp = Date.UTC(year, month - 1, day, hour, minute)
   let candidate = new Date(wallTimestamp)
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-    }).formatToParts(candidate)
+    const parts = timezoneFormatter(timezone).formatToParts(candidate)
     const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)]))
     const representedWallTimestamp = Date.UTC(values.year, values.month - 1, values.day, values.hour, values.minute)
     const offset = representedWallTimestamp - candidate.getTime()
