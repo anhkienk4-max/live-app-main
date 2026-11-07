@@ -1,10 +1,13 @@
--- RC19 Additive Migration: Shift Operational Notes (P1 Durability)
+-- RC19 Additive Migration: Shift Operational Notes (P1 Durability + Brand Security)
 -- Category tags: normal, attendance, swap, incident, sales, other
 -- Durability contract:
 --   - Exact shift and business_date alignment
 --   - Required fields: shift_id, business_date, category, actual_event_time, affected_role, affected_user_id, note, author_id, version
---   - Scoped RLS via private.can_read_shift(shift_id) ensuring brand isolation
---   - Explicit author_id derivation in server RPC
+--   - Fail-closed authorization:
+--       * Admin: system-wide read and write
+--       * Leader: strictly assigned Brand scope via rc19_leader_brand_scopes (shifts.read / shifts.manage)
+--       * Member: only notes on shifts they are assigned to (host/support/technical or approved/manually_assigned registration)
+--   - Explicit server-derived author_id in server RPC
 
 create table if not exists public.shift_operational_notes (
   id text primary key default gen_random_uuid()::text,
@@ -34,19 +37,145 @@ create index if not exists shift_operational_notes_date_cat_idx
 
 alter table public.shift_operational_notes enable row level security;
 
--- Brand-scoped RLS: notes are visible only to actors permitted to read the parent shift
+-- Brand-scoped Read Authorization
+create or replace function private.can_read_shift_operational_notes(p_shift_id text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id text := private.current_business_user_id();
+  v_permission text := private.current_system_permission();
+  v_shift record;
+begin
+  if v_actor_id is null or not private.current_business_user_is_active() then
+    return false;
+  end if;
+
+  if v_permission = 'admin' then
+    return true;
+  end if;
+
+  select id, brand_id, host_id, support_id, technical_id, deleted_at, archived_at
+  into v_shift
+  from public.shifts
+  where id = p_shift_id;
+
+  if not found or v_shift.deleted_at is not null or v_shift.archived_at is not null then
+    return false;
+  end if;
+
+  -- Leader: strictly scoped to Brand via rc19_leader_brand_scopes
+  if v_permission = 'leader' then
+    return coalesce(
+      private.rc19_has_any_leader_brand_scope(v_shift.brand_id, array['shifts.read', 'shifts.manage']::text[]),
+      false
+    );
+  end if;
+
+  -- Member: only permitted if actively assigned to the shift
+  if v_permission = 'member' then
+    return coalesce(
+      (
+        v_actor_id = v_shift.host_id
+        or v_actor_id = v_shift.support_id
+        or v_actor_id = v_shift.technical_id
+        or exists (
+          select 1 from public.shift_registrations r
+          where r.shift_id = p_shift_id
+            and r.user_id = v_actor_id
+            and r.status in ('approved', 'manually_assigned')
+        )
+      ),
+      false
+    );
+  end if;
+
+  return false;
+end;
+$$;
+
+-- Brand-scoped Write Authorization
+create or replace function private.can_write_shift_operational_notes(p_shift_id text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id text := private.current_business_user_id();
+  v_permission text := private.current_system_permission();
+  v_shift record;
+begin
+  if v_actor_id is null or not private.current_business_user_is_active() then
+    return false;
+  end if;
+
+  if v_permission = 'admin' then
+    return true;
+  end if;
+
+  select id, brand_id, host_id, support_id, technical_id, deleted_at, archived_at
+  into v_shift
+  from public.shifts
+  where id = p_shift_id;
+
+  if not found or v_shift.deleted_at is not null or v_shift.archived_at is not null then
+    return false;
+  end if;
+
+  -- Leader: strictly scoped to Brand via rc19_leader_brand_scopes
+  if v_permission = 'leader' then
+    return coalesce(
+      private.rc19_has_any_leader_brand_scope(v_shift.brand_id, array['shifts.manage', 'shifts.read']::text[]),
+      false
+    );
+  end if;
+
+  -- Member: only permitted if actively assigned to the shift
+  if v_permission = 'member' then
+    return coalesce(
+      (
+        v_actor_id = v_shift.host_id
+        or v_actor_id = v_shift.support_id
+        or v_actor_id = v_shift.technical_id
+        or exists (
+          select 1 from public.shift_registrations r
+          where r.shift_id = p_shift_id
+            and r.user_id = v_actor_id
+            and r.status in ('approved', 'manually_assigned')
+        )
+      ),
+      false
+    );
+  end if;
+
+  return false;
+end;
+$$;
+
+revoke all on function private.can_read_shift_operational_notes(text) from public, anon, service_role;
+revoke all on function private.can_write_shift_operational_notes(text) from public, anon, service_role;
+grant execute on function private.can_read_shift_operational_notes(text) to authenticated;
+grant execute on function private.can_write_shift_operational_notes(text) to authenticated;
+
+-- Row Level Security Policies
+drop policy if exists shift_operational_notes_select_policy on public.shift_operational_notes;
 create policy shift_operational_notes_select_policy on public.shift_operational_notes
   for select to authenticated
   using (
     deleted_at is null
-    and (select private.can_read_shift(shift_id))
+    and private.can_read_shift_operational_notes(shift_id)
   );
 
--- Brand-scoped RLS insert: actor must be able to read shift, and author must be self or leader/admin
+drop policy if exists shift_operational_notes_insert_policy on public.shift_operational_notes;
 create policy shift_operational_notes_insert_policy on public.shift_operational_notes
   for insert to authenticated
   with check (
-    (select private.can_read_shift(shift_id))
+    private.can_write_shift_operational_notes(shift_id)
     and (
       author_id = (select auth.uid()::text)
       or exists (
@@ -77,26 +206,49 @@ declare
   v_actor_id text;
   v_actor_name text;
   v_actor_role text;
+  v_shift record;
   v_new_note public.shift_operational_notes;
-  v_shift_exists boolean;
 begin
   v_actor_id := private.require_shift_actor(false);
-
-  if not private.can_read_shift(p_shift_id) then
-    raise exception 'PERMISSION_DENIED';
+  if v_actor_id is null then
+    raise exception 'AUTHENTICATION_REQUIRED' using errcode = '42501';
   end if;
 
-  select exists (
-    select 1 from public.shifts s
-    where s.id = p_shift_id and s.deleted_at is null and s.archived_at is null
-  ) into v_shift_exists;
+  if not private.can_write_shift_operational_notes(p_shift_id) then
+    raise exception 'PERMISSION_DENIED' using errcode = '42501';
+  end if;
 
-  if not v_shift_exists then
-    raise exception 'SHIFT_NOT_FOUND';
+  select * into v_shift
+  from public.shifts
+  where id = p_shift_id and deleted_at is null and archived_at is null;
+
+  if not found then
+    raise exception 'SHIFT_NOT_FOUND' using errcode = 'P0002';
+  end if;
+
+  if p_business_date is null or v_shift.date <> p_business_date then
+    raise exception 'BUSINESS_DATE_MISMATCH' using errcode = '22023';
+  end if;
+
+  if p_category is null or p_category not in ('normal', 'attendance', 'swap', 'incident', 'sales', 'other') then
+    raise exception 'INVALID_CATEGORY' using errcode = '22023';
   end if;
 
   if btrim(coalesce(p_note, '')) = '' then
-    raise exception 'NOTE_EMPTY';
+    raise exception 'NOTE_EMPTY' using errcode = '22023';
+  end if;
+
+  if p_affected_role is not null and p_affected_role not in ('host', 'support', 'technical') then
+    raise exception 'INVALID_AFFECTED_ROLE' using errcode = '22023';
+  end if;
+
+  if p_affected_user_id is not null then
+    if not exists (
+      select 1 from public.business_users u
+      where u.id = p_affected_user_id and u.status = 'active'
+    ) then
+      raise exception 'AFFECTED_USER_NOT_FOUND' using errcode = '22023';
+    end if;
   end if;
 
   select full_name, coalesce(role, 'staff')
@@ -137,3 +289,6 @@ begin
   return v_new_note;
 end;
 $$;
+
+revoke all on function public.add_shift_operational_note(text, date, text, text, timestamptz, text, text) from public, anon, service_role;
+grant execute on function public.add_shift_operational_note(text, date, text, text, timestamptz, text, text) to authenticated;
