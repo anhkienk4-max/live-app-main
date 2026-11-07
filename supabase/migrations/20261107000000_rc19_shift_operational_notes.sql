@@ -9,7 +9,32 @@
 --       * Member: only notes on shifts they are assigned to (host/support/technical or approved/manually_assigned registration)
 --   - Explicit server-derived author_id in server RPC
 
-create table if not exists public.shift_operational_notes (
+BEGIN;
+
+DO $$
+BEGIN
+  IF to_regclass('public.shifts') IS NULL
+    OR to_regclass('public.business_users') IS NULL
+    OR to_regclass('public.shift_registrations') IS NULL
+    OR to_regclass('public.rc19_leader_brand_scopes') IS NULL
+    OR to_regprocedure('private.current_business_user_id()') IS NULL
+    OR to_regprocedure('private.current_system_permission()') IS NULL
+    OR to_regprocedure('private.current_business_user_is_active()') IS NULL
+    OR to_regprocedure('private.require_shift_actor(boolean)') IS NULL
+    OR to_regprocedure('private.rc19_has_any_leader_brand_scope(text,text[])') IS NULL THEN
+    RAISE EXCEPTION 'SHIFT_NOTES_DEPENDENCIES_MISSING: apply C3 Leader Brand Scope and shift identity dependencies first';
+  END IF;
+
+  IF to_regclass('public.shift_operational_notes') IS NOT NULL
+    OR to_regprocedure('private.can_read_shift_operational_notes(text)') IS NOT NULL
+    OR to_regprocedure('private.can_write_shift_operational_notes(text)') IS NOT NULL
+    OR to_regprocedure('public.add_shift_operational_note(text,date,text,text,timestamp with time zone,text,text)') IS NOT NULL THEN
+    RAISE EXCEPTION 'SHIFT_NOTES_UNEXPECTED_OBJECT: reconcile existing shift note objects before applying this migration';
+  END IF;
+END;
+$$;
+
+create table public.shift_operational_notes (
   id text primary key default gen_random_uuid()::text,
   shift_id text not null references public.shifts(id) on delete cascade,
   business_date date not null,
@@ -29,16 +54,16 @@ create table if not exists public.shift_operational_notes (
   deleted_at timestamptz null
 );
 
-create index if not exists shift_operational_notes_shift_idx
+create index shift_operational_notes_shift_idx
   on public.shift_operational_notes (shift_id, created_at desc);
 
-create index if not exists shift_operational_notes_date_cat_idx
+create index shift_operational_notes_date_cat_idx
   on public.shift_operational_notes (business_date, category);
 
 alter table public.shift_operational_notes enable row level security;
 
 -- Brand-scoped Read Authorization
-create or replace function private.can_read_shift_operational_notes(p_shift_id text)
+create function private.can_read_shift_operational_notes(p_shift_id text)
 returns boolean
 language plpgsql
 stable
@@ -98,7 +123,7 @@ end;
 $$;
 
 -- Brand-scoped Write Authorization
-create or replace function private.can_write_shift_operational_notes(p_shift_id text)
+create function private.can_write_shift_operational_notes(p_shift_id text)
 returns boolean
 language plpgsql
 stable
@@ -158,37 +183,22 @@ end;
 $$;
 
 revoke all on function private.can_read_shift_operational_notes(text) from public, anon, service_role;
-revoke all on function private.can_write_shift_operational_notes(text) from public, anon, service_role;
+revoke all on function private.can_write_shift_operational_notes(text) from public, anon, authenticated, service_role;
 grant execute on function private.can_read_shift_operational_notes(text) to authenticated;
-grant execute on function private.can_write_shift_operational_notes(text) to authenticated;
 
--- Row Level Security Policies
-drop policy if exists shift_operational_notes_select_policy on public.shift_operational_notes;
+-- Row-level reads are scoped; all writes must pass through the actor-derived RPC below.
 create policy shift_operational_notes_select_policy on public.shift_operational_notes
   for select to authenticated
   using (
     deleted_at is null
     and private.can_read_shift_operational_notes(shift_id)
-  );
+);
 
-drop policy if exists shift_operational_notes_insert_policy on public.shift_operational_notes;
-create policy shift_operational_notes_insert_policy on public.shift_operational_notes
-  for insert to authenticated
-  with check (
-    private.can_write_shift_operational_notes(shift_id)
-    and (
-      author_id = (select auth.uid()::text)
-      or exists (
-        select 1 from public.business_users u
-        where u.id = (select auth.uid()::text) and u.role in ('admin', 'lead', 'team_leader')
-      )
-    )
-  );
-
-grant select, insert, update on public.shift_operational_notes to authenticated;
+revoke all on table public.shift_operational_notes from public, anon, authenticated, service_role;
+grant select on table public.shift_operational_notes to authenticated;
 
 -- Authoritative server RPC for adding shift operational notes
-create or replace function public.add_shift_operational_note(
+create function public.add_shift_operational_note(
   p_shift_id text,
   p_business_date date,
   p_category text,
@@ -292,3 +302,5 @@ $$;
 
 revoke all on function public.add_shift_operational_note(text, date, text, text, timestamptz, text, text) from public, anon, service_role;
 grant execute on function public.add_shift_operational_note(text, date, text, text, timestamptz, text, text) to authenticated;
+
+COMMIT;

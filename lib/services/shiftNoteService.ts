@@ -148,14 +148,46 @@ export const shiftNoteService = {
 
     const shiftId = input.shiftId || input.shift_id || ''
     const businessDate = input.businessDate || input.business_date || input.date || new Date().toISOString().slice(0, 10)
-    const authorId = input.authorId || input.author_id || ''
-    const authorName = input.authorName || input.author_name || 'Nhân sự'
-    const authorRole = input.authorRole || input.author_role || 'staff'
     const now = new Date().toISOString()
     const actualEventTime = input.actualEventTime || input.actual_event_time || input.eventTime || input.event_time || now
     const affectedRole = input.affectedRole !== undefined ? input.affectedRole : input.affected_role ?? null
     const affectedUserId = input.affectedUserId !== undefined ? input.affectedUserId : input.affected_user_id ?? null
 
+    if (getAuthMode() === 'supabase') {
+      const { data, error } = await createClient().rpc('add_shift_operational_note', {
+        p_shift_id: shiftId,
+        p_business_date: businessDate,
+        p_category: input.category,
+        p_note: trimmed,
+        p_actual_event_time: actualEventTime,
+        p_affected_role: affectedRole,
+        p_affected_user_id: affectedUserId,
+      })
+      if (error) {
+        const isMissingSchema =
+          error.code === '42P01' ||
+          error.code === '42883' ||
+          error.code === 'PGRST202' ||
+          error.message?.includes('shift_operational_notes') ||
+          error.message?.includes('add_shift_operational_note')
+        throw new ShiftNoteServiceError(
+          isMissingSchema
+            ? 'SCHEMA_NOT_DEPLOYED: Tính năng Ghi chú vận hành chưa được triển khai trên môi trường này.'
+            : `SHIFT_NOTE_CREATE_FAILED: ${error.message}`,
+          isMissingSchema ? 'SCHEMA_NOT_DEPLOYED' : 'CREATE_FAILED',
+        )
+      }
+
+      const persisted = (Array.isArray(data) ? data[0] : data) as ShiftOperationalNote | null
+      if (!persisted?.id || !persisted.author_id || persisted.shift_id !== shiftId) {
+        throw new ShiftNoteServiceError('SHIFT_NOTE_CREATE_FAILED: Invalid persisted note receipt.', 'INVALID_RECEIPT')
+      }
+      return persisted
+    }
+
+    const authorId = input.authorId || input.author_id || ''
+    const authorName = input.authorName || input.author_name || 'Nhân sự'
+    const authorRole = input.authorRole || input.author_role || 'staff'
     const newNote: ShiftOperationalNote = {
       id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       shift_id: shiftId,
@@ -173,49 +205,6 @@ export const shiftNoteService = {
       version: 1,
       created_at: now,
       updated_at: now,
-    }
-
-    if (getAuthMode() === 'supabase') {
-      const client = createClient()
-      const { data, error } = await client
-        .from('shift_operational_notes')
-        .insert({
-          id: newNote.id,
-          shift_id: newNote.shift_id,
-          business_date: newNote.business_date,
-          date: newNote.business_date,
-          category: newNote.category,
-          note: newNote.note,
-          author_id: newNote.author_id,
-          author_name: newNote.author_name,
-          author_role: newNote.author_role,
-          actual_event_time: newNote.actual_event_time,
-          event_time: newNote.actual_event_time,
-          affected_role: newNote.affected_role,
-          affected_user_id: newNote.affected_user_id,
-          version: 1,
-        })
-        .select()
-        .single()
-      if (error) {
-        const isMissingRelation =
-          error.code === '42P01' ||
-          error.message?.includes('relation "public.shift_operational_notes" does not exist')
-        throw new ShiftNoteServiceError(
-          isMissingRelation
-            ? 'SCHEMA_NOT_DEPLOYED: Tính năng Ghi chú vận hành chưa được triển khai trên môi trường này.'
-            : `SHIFT_NOTE_CREATE_FAILED: ${error.message}`,
-          isMissingRelation ? 'SCHEMA_NOT_DEPLOYED' : 'CREATE_FAILED',
-        )
-      }
-      return {
-        ...data,
-        business_date: data.business_date || data.date,
-        date: data.date || data.business_date,
-        actual_event_time: data.actual_event_time || data.event_time,
-        event_time: data.event_time || data.actual_event_time,
-        version: data.version ?? 1,
-      } as ShiftOperationalNote
     }
 
     inMemoryNotes.unshift(newNote)

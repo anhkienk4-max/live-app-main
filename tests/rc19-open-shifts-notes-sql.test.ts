@@ -28,6 +28,7 @@ async function setupBaseSchema(db: PGlite) {
 
     create schema if not exists private;
     create schema if not exists auth;
+    grant usage on schema private to authenticated;
 
     create or replace function auth.uid() returns uuid as $$
       select null::uuid;
@@ -174,7 +175,7 @@ async function setActor(db: PGlite, userId: string, permission: 'admin' | 'leade
   `)
 }
 
-test('PostgreSQL 17 runtime verification', async () => {
+test('PGlite SQL compatibility fixture uses the PostgreSQL 17 engine', async () => {
   const db = new PGlite()
   const res = await db.query<{ version: string }>('select version();')
   assert.match(res.rows[0].version, /PostgreSQL 17\./)
@@ -349,6 +350,9 @@ test('P1 — Shift operational notes fail-closed brand security and server RPC v
     values
       ('user-admin-1', 'Admin One', 'admin', 'admin'),
       ('user-leader-1', 'Leader Alpha Scope', 'lead', 'leader'),
+      ('user-leader-empty', 'Leader Without Scope', 'lead', 'leader'),
+      ('user-leader-revoked', 'Leader With Revoked Scope', 'lead', 'leader'),
+      ('user-leader-expired', 'Leader With Expired Scope', 'lead', 'leader'),
       ('user-member-assigned', 'Member Assigned', 'staff', 'member'),
       ('user-member-outsider', 'Member Outsider', 'staff', 'member');
 
@@ -359,6 +363,14 @@ test('P1 — Shift operational notes fail-closed brand security and server RPC v
       'user-leader-1', 'brand-a', 'shifts.manage', 'active', statement_timestamp() - interval '1 day',
       'user-admin-1', 'user-admin-1'
     );
+
+    insert into public.rc19_leader_brand_scopes (
+      leader_business_user_id, brand_id, scope_key, status, valid_from, valid_until, revoked_at, granted_by, updated_by
+    ) values
+      ('user-leader-revoked', 'brand-b', 'shifts.manage', 'revoked', statement_timestamp() - interval '2 days', null,
+        statement_timestamp() - interval '1 day', 'user-admin-1', 'user-admin-1'),
+      ('user-leader-expired', 'brand-b', 'shifts.manage', 'active', statement_timestamp() - interval '2 days',
+        statement_timestamp() - interval '1 day', null, 'user-admin-1', 'user-admin-1');
 
     -- Shift A belongs to Brand Alpha
     insert into public.shifts (
@@ -392,6 +404,11 @@ test('P1 — Shift operational notes fail-closed brand security and server RPC v
   assert.ok(adminNote.id, 'Admin can insert note')
   assert.equal(adminNote.category, 'normal')
   assert.equal(adminNote.note, 'Admin verified live start')
+  await db.query(`
+    select * from public.add_shift_operational_note(
+      'shift-brand-b', '2026-11-20'::date, 'normal', 'Admin verified Brand Beta'
+    );
+  `)
 
   // 2. LEADER BRAND SECURITY:
   // Leader has scope on brand-a -> can read & write on shift-brand-a
@@ -424,6 +441,64 @@ test('P1 — Shift operational notes fail-closed brand security and server RPC v
     },
     /PERMISSION_DENIED/,
     'Leader cannot add note to unassigned brand shift'
+  )
+
+  assert.equal(
+    (await db.query<{ allowed: boolean }>(`
+      select private.rc19_has_any_leader_brand_scope('brand-b', array['shifts.read', 'shifts.manage']) as allowed;
+    `)).rows[0].allowed,
+    false,
+    'Revoked and expired Brand B grants do not combine into effective scope'
+  )
+
+  await db.exec('set role authenticated;')
+  const leaderRows = await db.query<{ shift_id: string }>(
+    'select shift_id from public.shift_operational_notes order by shift_id;'
+  )
+  assert.ok(leaderRows.rows.length > 0)
+  assert.ok(leaderRows.rows.every(row => row.shift_id === 'shift-brand-a'), 'Leader RLS exposes only authorized Brand A rows')
+  await assert.rejects(
+    () => db.query(`
+      insert into public.shift_operational_notes (shift_id, business_date, date, category, note, author_id)
+      values ('shift-brand-a', '2026-11-20', '2026-11-20', 'normal', 'Forged author', 'user-admin-1');
+    `),
+    /permission denied/i,
+    'Authenticated clients cannot bypass the RPC with a forged author'
+  )
+  const leaderRoutedNote = (await db.query<{ author_id: string }>(`
+    select author_id from public.add_shift_operational_note(
+      'shift-brand-a', '2026-11-20'::date, 'normal', 'Authenticated RPC note', statement_timestamp(), null, null
+    );
+  `)).rows[0]
+  assert.equal(leaderRoutedNote.author_id, 'user-leader-1', 'Authenticated RPC derives author from the actor')
+  await db.exec('reset role;')
+
+  for (const [leaderId, label] of [
+    ['user-leader-empty', 'empty Brand scope'],
+    ['user-leader-revoked', 'revoked Brand grant'],
+    ['user-leader-expired', 'expired Brand grant'],
+  ] as const) {
+    await setActor(db, leaderId, 'leader')
+    await assert.rejects(
+      () => db.query(`
+        select * from public.add_shift_operational_note(
+          'shift-brand-b', '2026-11-20'::date, 'normal', 'Unauthorized scoped note'
+        );
+      `),
+      /PERMISSION_DENIED/,
+      `Leader with ${label} cannot create a note`
+    )
+  }
+
+  await setActor(db, 'user-leader-1', 'member')
+  await assert.rejects(
+    () => db.query(`
+      select * from public.add_shift_operational_note(
+        'shift-brand-a', '2026-11-20'::date, 'normal', 'Downgraded Leader note'
+      );
+    `),
+    /PERMISSION_DENIED/,
+    'A downgraded Leader role cannot retain the Brand grant'
   )
 
   // 3. MEMBER PERMISSIONS:
@@ -540,5 +615,44 @@ test('P1 — Shift operational notes fail-closed brand security and server RPC v
     },
     /AFFECTED_USER_NOT_FOUND/,
     'Rejects non-existent affected user'
+  )
+})
+
+test('P1 — Shift notes migration checks C3 dependencies and rolls back partial DDL', async () => {
+  const missingDependencyDb = new PGlite()
+  await setupBaseSchema(missingDependencyDb)
+  await missingDependencyDb.exec('drop function private.rc19_has_any_leader_brand_scope(text, text[]);')
+  await assert.rejects(() => missingDependencyDb.exec(notesSql), /SHIFT_NOTES_DEPENDENCIES_MISSING/)
+  await missingDependencyDb.exec('rollback;')
+  assert.equal(
+    (await missingDependencyDb.query("select to_regclass('public.shift_operational_notes') is not null as exists;")).rows[0].exists,
+    false,
+    'Missing C3 authority blocks the notes migration before creating objects'
+  )
+
+  const existingObjectDb = new PGlite()
+  await setupBaseSchema(existingObjectDb)
+  await existingObjectDb.exec('create table public.shift_operational_notes (legacy_marker text);')
+  await assert.rejects(() => existingObjectDb.exec(notesSql), /SHIFT_NOTES_UNEXPECTED_OBJECT/)
+  await existingObjectDb.exec('rollback;')
+  assert.equal(
+    (await existingObjectDb.query("select count(*)::int as columns from information_schema.columns where table_schema='public' and table_name='shift_operational_notes';")).rows[0].columns,
+    1,
+    'An existing table is preserved unchanged for explicit reconciliation'
+  )
+
+  const atomicDb = new PGlite()
+  await setupBaseSchema(atomicDb)
+  const injectedSql = notesSql.replace(
+    'create index shift_operational_notes_shift_idx',
+    'select 1 / 0;\ncreate index shift_operational_notes_shift_idx'
+  )
+  assert.notEqual(injectedSql, notesSql, 'Failure injection marker is present')
+  await assert.rejects(() => atomicDb.exec(injectedSql), /division by zero/i)
+  await atomicDb.exec('rollback;')
+  assert.equal(
+    (await atomicDb.query("select to_regclass('public.shift_operational_notes') is not null as exists;")).rows[0].exists,
+    false,
+    'DDL before the injected failure rolls back atomically'
   )
 })
