@@ -8,7 +8,7 @@ test.use({
 
 const user = { userId: '3', role: 'host' }
 
-async function setupAndOpenShift(page: Page, lang: 'vi' | 'en' = 'vi') {
+async function setupAndOpenShift(page: Page, lang: 'vi' | 'en' = 'vi', mockAttendanceEvents: boolean = true) {
   await page.addInitScript(({ id, language }) => {
     localStorage.setItem('livestream-ops-current-user', id)
     localStorage.setItem('livestream-ops-language', language)
@@ -28,8 +28,20 @@ async function setupAndOpenShift(page: Page, lang: 'vi' | 'en' = 'vi') {
     })
   )
 
+  if (mockAttendanceEvents) {
+    await page.route('**/rest/v1/rpc/get_my_self_attendance', route => route.fulfill({ json: [] }))
+  }
+
   await page.goto('/calendar')
-  await page.getByTestId('calendar-event-s1').click()
+  const isMobile = (page.viewportSize()?.width ?? 1000) < 768
+  if (isMobile) {
+    const fullCalendarBtn = page.getByRole('button', { name: /Lịch đầy đủ|Full calendar/i })
+    await fullCalendarBtn.click()
+  }
+
+  const eventBtn = page.getByTestId('calendar-event-s1')
+  await eventBtn.scrollIntoViewIfNeeded()
+  await eventBtn.click()
   await page.getByRole('button', { name: /View Full Shift|Xem chi tiết ca/i }).click()
   await expect(page.getByTestId('shift-detail-modal')).toBeVisible()
   await page.getByRole('tab', { name: /Check-in \/ Check-out|Chấm công cá nhân/i }).click()
@@ -64,7 +76,7 @@ test.describe('RC19 G2 In-App Camera and Attendance Lifecycle', () => {
       return route.fulfill({ json: { ok: true, event: responseEvent } })
     })
 
-    await setupAndOpenShift(page, 'vi')
+    await setupAndOpenShift(page, 'vi', false)
     await expect(page.getByTestId('self-attendance-panel')).toBeVisible()
     await expect(page.getByTestId('self-attendance-status')).toContainText('Chưa check-in')
 
@@ -122,7 +134,7 @@ test.describe('RC19 G2 In-App Camera and Attendance Lifecycle', () => {
   })
 
   test('Camera dialog closes cleanly on cancel and unmount without background activity', async ({ page }) => {
-    await setupAndOpenShift(page, 'en')
+    await setupAndOpenShift(page, 'en', true)
     await page.getByTestId('attendance-open-camera-btn').click()
     const cameraModal = page.getByTestId('attendance-camera-capture')
     await expect(cameraModal).toBeVisible()
@@ -134,7 +146,7 @@ test.describe('RC19 G2 In-App Camera and Attendance Lifecycle', () => {
 
   test('Mobile responsive layout test at 390px', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await setupAndOpenShift(page, 'vi')
+    await setupAndOpenShift(page, 'vi', true)
 
     await page.getByTestId('attendance-open-camera-btn').click()
     const cameraModal = page.getByTestId('attendance-camera-capture')

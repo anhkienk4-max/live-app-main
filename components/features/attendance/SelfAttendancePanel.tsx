@@ -425,15 +425,26 @@ export function SelfAttendancePanel({
 
       {/* Gated message when photo feature is OFF */}
       {nextAction && !photoFeatureReady ? (
-        <p role="status" className="text-xs text-amber-700">
-          {nextAction === 'check_in'
-            ? en
-              ? 'Photo check-in awaits verified Google Drive access. Check-in cannot be recorded yet.'
-              : 'Check-in ảnh đang chờ xác nhận quyền lưu trên Google Drive. Chưa thể ghi nhận check-in.'
-            : en
-            ? 'Photo check-out awaits verified Google Drive access. Check-out cannot be recorded yet.'
-            : 'Check-out ảnh đang chờ xác nhận quyền lưu trên Google Drive. Chưa thể ghi nhận check-out.'}
-        </p>
+        <div
+          role="status"
+          className="rounded-md border border-amber-200 bg-amber-50/50 p-3 space-y-1"
+          data-testid="self-attendance-photo-disabled"
+        >
+          <p className="text-xs font-medium text-amber-900">
+            {nextAction === 'check_in'
+              ? en
+                ? 'Photo check-in awaits verified Google Drive access. Check-in cannot be recorded yet.'
+                : 'Check-in ảnh đang chờ xác nhận quyền lưu trên Google Drive. Chưa thể ghi nhận check-in.'
+              : en
+              ? 'Photo check-out awaits verified Google Drive access. Check-out cannot be recorded yet.'
+              : 'Check-out ảnh đang chờ xác nhận quyền lưu trên Google Drive. Chưa thể ghi nhận check-out.'}
+          </p>
+          <p className="text-[11px] text-amber-800">
+            {en
+              ? 'Feature flag NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO is disabled or Google Drive persistence is unavailable.'
+              : 'Cấu hình NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO đang tắt hoặc đường dẫn lưu trữ Google Drive chưa được kích hoạt.'}
+          </p>
+        </div>
       ) : null}
 
       {/* Camera / Photo Capture UI for nextAction */}

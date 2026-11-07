@@ -882,7 +882,7 @@ export function ShiftDetailModal({
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="attendance" data-testid="tab-attendance">
-                  {language === 'en' ? 'Attendance' : 'Chấm công thực tế'}
+                  {myAttendanceRegistration ? 'Check-in / Check-out' : language === 'en' ? 'Attendance' : 'Chấm công thực tế'}
                 </TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="notes" data-testid="tab-operational-notes">
                   {language === 'en' ? 'Notes' : 'Ghi chú'}
@@ -976,6 +976,25 @@ export function ShiftDetailModal({
                       }}
                     />
                   </section>
+                ) : myRegistration && process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE !== 'true' ? (
+                  <div role="status" className="rounded-md border border-amber-200 bg-amber-50/50 p-4 text-sm text-amber-900" data-testid="self-attendance-unavailable">
+                    <p className="font-medium">
+                      {language === 'en'
+                        ? 'Personal Check-in / Check-out is disabled in this environment.'
+                        : 'Tính năng Chấm công cá nhân (Check-in / Check-out) chưa khả dụng trong môi trường này.'}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      {language === 'en'
+                        ? 'Feature flag NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE is disabled. Attendance photo persistence requires verified Google Drive configuration.'
+                        : 'Cấu hình NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE đang tắt. Chấm công ảnh yêu cầu định tuyến Google Drive đã xác thực.'}
+                    </p>
+                  </div>
+                ) : myRegistration && !attendanceShiftEligible ? (
+                  <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
+                    {language === 'en'
+                      ? 'This shift is not eligible for check-in / check-out.'
+                      : 'Ca này không đủ điều kiện check-in / check-out.'}
+                  </div>
                 ) : myAttendanceRegistration && !myRegistration ? (
                   <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
                     {language === 'en'

@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { addMonths, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
-import { CalendarDays, ChevronLeft, ChevronRight, Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
+import { CalendarDays, Camera, ChevronLeft, ChevronRight, Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   shiftRegistrationService,
   shiftService,
@@ -206,6 +206,12 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const calendarError = currentCalendarResult && 'error' in currentCalendarResult ? currentCalendarResult.error : null
   const calendarLoading = !calendarRangeInvalid && !currentCalendarResult
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
+  const [detailInitialTab, setDetailInitialTab] = React.useState<string | undefined>(undefined)
+
+  const handleOpenDetail = (shift: Shift, initialTab?: string) => {
+    setDetailInitialTab(initialTab)
+    setDetailShift(shift)
+  }
   const [exportShiftId, setExportShiftId] = React.useState<string | null>(null)
   const [exportOpen, setExportOpen] = React.useState(false)
   const [showFilters, setShowFilters] = React.useState(false)
@@ -564,11 +570,11 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
       ) : mode === 'mine' ? (
         viewMode === 'table' ? (
-          <MyShiftTable entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftTable entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={handleOpenDetail} />
         ) : viewMode === 'compact' ? (
-          <MyShiftCompactList entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCompactList entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={handleOpenDetail} />
         ) : (
-          <MyShiftCards entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCards entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={handleOpenDetail} />
         )
       ) : viewMode === 'table' ? (
         <ShiftSummaryTable
@@ -694,8 +700,9 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       {detailShift && loadedKey === requestKey && (
         <ShiftDetailModal
           open
-          onOpenChange={open => { if (!open) setDetailShift(null) }}
+          onOpenChange={open => { if (!open) { setDetailShift(null); setDetailInitialTab(undefined) } }}
           shift={detailShift}
+          initialTab={detailInitialTab}
           brands={brands}
           platforms={platforms}
           campaigns={campaigns}
@@ -747,41 +754,109 @@ type MyShiftViewProps = {
   brands: Brand[]
   platforms: Platform[]
   campaigns: Campaign[]
-  onManage: (shift: Shift) => void
+  onManage: (shift: Shift, initialTab?: string) => void
 }
 
 function MyShiftCards({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
-  const { t } = useTranslation()
+  const { language, t } = useTranslation()
   return <div className="grid grid-cols-1 gap-5 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
-    {entries.map(({ shift, registrations }) => <Card key={shift.id} data-testid={`my-shift-card-${shift.id}`}>
-      <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div>
-        <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
-        <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}</p>
-      </div><div className="flex flex-wrap gap-1">{registrations.map(registration => <Badge key={registration.id} variant="secondary">{t(registration.operational_role)}</Badge>)}</div></div></CardHeader>
-      <CardContent className="space-y-3"><div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
-        <Info label={t('brand')} value={brandName(brands, shift.brand_id)} /><Info label={t('platform')} value={platformName(platforms, shift.platform_id)} />
-        <Info label={t('campaign')} value={campaignName(campaigns, shift.campaign_id)} /><Info label={t('status')} value={registrations.map(registration => registrationLabel(registration, t)).join(', ')} />
-      </div><div className="flex justify-end"><Button data-testid={`open-my-shift-detail-card-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewShiftDetail')}</Button></div></CardContent>
-    </Card>)}
+    {entries.map(({ shift, registrations }) => {
+      const isStaffed = registrations.some(r =>
+        ['approved', 'manually_assigned'].includes(r.status) &&
+        ['host', 'support', 'technical'].includes(r.operational_role)
+      )
+      return (
+        <Card key={shift.id} data-testid={`my-shift-card-${shift.id}`}>
+          <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div>
+            <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}</p>
+          </div><div className="flex flex-wrap gap-1">{registrations.map(registration => <Badge key={registration.id} variant="secondary">{t(registration.operational_role)}</Badge>)}</div></div></CardHeader>
+          <CardContent className="space-y-3"><div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+            <Info label={t('brand')} value={brandName(brands, shift.brand_id)} /><Info label={t('platform')} value={platformName(platforms, shift.platform_id)} />
+            <Info label={t('campaign')} value={campaignName(campaigns, shift.campaign_id)} /><Info label={t('status')} value={registrations.map(registration => registrationLabel(registration, t)).join(', ')} />
+          </div><div className="flex flex-wrap items-center justify-end gap-2">
+            {isStaffed && (
+              <Button
+                data-testid={`open-my-shift-attendance-${shift.id}`}
+                size="sm"
+                variant="default"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => onManage(shift, 'attendance')}
+              >
+                <Camera className="mr-1.5 h-3.5 w-3.5" />
+                {language === 'en' ? 'Attendance' : 'Chấm công'}
+              </Button>
+            )}
+            <Button data-testid={`open-my-shift-detail-card-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewShiftDetail')}</Button>
+          </div></CardContent>
+        </Card>
+      )
+    })}
   </div>
 }
 
 function MyShiftCompactList({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
-  const { t } = useTranslation()
-  return <div className="space-y-3">{entries.map(({ shift, registrations }) => <Card key={shift.id} data-testid={`my-shift-compact-${shift.id}`}><CardContent className="grid gap-3 pt-5 md:grid-cols-[minmax(220px,1.5fr)_minmax(100px,.7fr)_minmax(120px,.8fr)_auto] md:items-center">
-    <div className="min-w-0"><p className="truncate font-semibold">{shift.title || `${brandName(brands, shift.brand_id)} live`}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {platformName(platforms, shift.platform_id)}</p><p className="truncate text-xs text-muted-foreground">{campaignName(campaigns, shift.campaign_id)}</p></div>
-    <Info label={t('role')} value={registrations.map(registration => t(registration.operational_role)).join(', ')} /><Info label={t('status')} value={registrations.map(registration => registrationLabel(registration, t)).join(', ')} />
-    <div className="flex items-center gap-2 md:justify-end"><Button data-testid={`open-my-shift-detail-compact-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div>
-  </CardContent></Card>)}</div>
+  const { language, t } = useTranslation()
+  return <div className="space-y-3">{entries.map(({ shift, registrations }) => {
+    const isStaffed = registrations.some(r =>
+      ['approved', 'manually_assigned'].includes(r.status) &&
+      ['host', 'support', 'technical'].includes(r.operational_role)
+    )
+    return (
+      <Card key={shift.id} data-testid={`my-shift-compact-${shift.id}`}><CardContent className="grid gap-3 pt-5 md:grid-cols-[minmax(220px,1.5fr)_minmax(100px,.7fr)_minmax(120px,.8fr)_auto] md:items-center">
+        <div className="min-w-0"><p className="truncate font-semibold">{shift.title || `${brandName(brands, shift.brand_id)} live`}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {platformName(platforms, shift.platform_id)}</p><p className="truncate text-xs text-muted-foreground">{campaignName(campaigns, shift.campaign_id)}</p></div>
+        <Info label={t('role')} value={registrations.map(registration => t(registration.operational_role)).join(', ')} /><Info label={t('status')} value={registrations.map(registration => registrationLabel(registration, t)).join(', ')} />
+        <div className="flex items-center gap-2 md:justify-end">
+          {isStaffed && (
+            <Button
+              data-testid={`open-my-shift-attendance-compact-${shift.id}`}
+              size="sm"
+              variant="default"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => onManage(shift, 'attendance')}
+            >
+              <Camera className="mr-1.5 h-3.5 w-3.5" />
+              {language === 'en' ? 'Attendance' : 'Chấm công'}
+            </Button>
+          )}
+          <Button data-testid={`open-my-shift-detail-compact-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button>
+        </div>
+      </CardContent></Card>
+    )
+  })}</div>
 }
 
 function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
-  const { t } = useTranslation()
+  const { language, t } = useTranslation()
   return <Card><CardContent className="overflow-x-auto pt-5"><table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b text-left">
     <th className="p-2">{t('date')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('role')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('actions')}</th>
-  </tr></thead><tbody>{entries.map(({ shift, registrations }) => <tr className="border-b" key={shift.id} data-testid={`my-shift-row-${shift.id}`}>
-    <td className="whitespace-nowrap p-2">{shift.date} · {formatShiftTimeRange(shift)}</td><td className="p-2 font-medium">{shift.title || '—'}</td><td className="p-2">{brandName(brands, shift.brand_id)}</td><td className="p-2">{platformName(platforms, shift.platform_id)}</td><td className="p-2">{campaignName(campaigns, shift.campaign_id)}</td><td className="p-2">{registrations.map(registration => t(registration.operational_role)).join(', ')}</td><td className="p-2">{registrations.map(registration => <Badge className="mr-1" key={registration.id} variant="outline">{registrationLabel(registration, t)}</Badge>)}</td><td className="p-2"><Button data-testid={`open-my-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></td>
-  </tr>)}</tbody></table></CardContent></Card>
+  </tr></thead><tbody>{entries.map(({ shift, registrations }) => {
+    const isStaffed = registrations.some(r =>
+      ['approved', 'manually_assigned'].includes(r.status) &&
+      ['host', 'support', 'technical'].includes(r.operational_role)
+    )
+    return (
+      <tr className="border-b" key={shift.id} data-testid={`my-shift-row-${shift.id}`}>
+        <td className="whitespace-nowrap p-2">{shift.date} · {formatShiftTimeRange(shift)}</td><td className="p-2 font-medium">{shift.title || '—'}</td><td className="p-2">{brandName(brands, shift.brand_id)}</td><td className="p-2">{platformName(platforms, shift.platform_id)}</td><td className="p-2">{campaignName(campaigns, shift.campaign_id)}</td><td className="p-2">{registrations.map(registration => t(registration.operational_role)).join(', ')}</td><td className="p-2">{registrations.map(registration => <Badge className="mr-1" key={registration.id} variant="outline">{registrationLabel(registration, t)}</Badge>)}</td><td className="p-2">
+          <div className="flex items-center gap-1.5">
+            {isStaffed && (
+              <Button
+                data-testid={`open-my-shift-attendance-table-${shift.id}`}
+                size="sm"
+                variant="default"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => onManage(shift, 'attendance')}
+              >
+                <Camera className="mr-1 h-3.5 w-3.5" />
+                {language === 'en' ? 'Attendance' : 'Chấm công'}
+              </Button>
+            )}
+            <Button data-testid={`open-my-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button>
+          </div>
+        </td>
+      </tr>
+    )
+  })}</tbody></table></CardContent></Card>
 }
 
 

@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['rc19-attendance-photo-methods.spec.ts'],
+  testMatch: ['rc19-attendance-photo-methods.spec.ts', 'rc19-g2-camera-attendance.spec.ts'],
   workers: 1,
   timeout: 90_000,
   expect: { timeout: 20_000 },
