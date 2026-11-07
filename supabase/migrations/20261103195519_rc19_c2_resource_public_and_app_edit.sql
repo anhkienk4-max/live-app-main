@@ -1,5 +1,133 @@
--- STO-02 proposal: metadata-only links; never changes approved upload routing.
-create table public.storage_resources (
+-- RC19 C2 Production reconciliation. Original source is archived with its SHA-256.
+-- This replacement is gated to the verified STO-02 catalog and migration ledger.
+BEGIN;
+SET LOCAL search_path = pg_catalog, public;
+DO $c2_reconciliation_preflight$
+DECLARE
+  expected record;
+  relation_oid oid;
+  actual text;
+  expected_function record;
+  function_oid oid;
+BEGIN
+  IF current_user <> 'postgres' THEN
+    RAISE EXCEPTION 'C2_RECONCILIATION_REQUIRES_POSTGRES_ROLE';
+  END IF;
+  IF to_regclass('supabase_migrations.schema_migrations') IS NULL
+     OR EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version='20261103195519') THEN
+    RAISE EXCEPTION 'C2_RECONCILIATION_MIGRATION_HISTORY_CONFLICT';
+  END IF;
+
+  FOR expected IN
+    SELECT * FROM (VALUES
+      ('storage_resources','105ec8409832205206cd22adbadf0bba','f0791d291f707f95c4d8ee24ae13f865','f22d57d29b6e69408ee54753618b0fb2','6456f697a2150fdd3a283d5b0b9d0eac','cefd04f743fd0e1b1089dda10aacaf0b'),
+      ('storage_resource_scopes','a7532f2b3dd3735c597ec0abe9e83911','bf371993f1afa96cca9af1ee600912f7','224327c5d4095bb2cba1590710de640e','d34dabdb26f9d126af03c7fdcfd523cd','79190cb4cdf0373e69e3201cbc5fa888'),
+      ('storage_resource_user_grants','ab8841118f6f0e993b71ce321caef224','bace05a1da4e5593016feded01fef940','916f125b888fcbbe322f035f223632b0','aaa71533b6d0c4235bbda4c369336118','75633994753540dea13c0d86b7e318e0'),
+      ('storage_resource_audit_events','98a587f00edebef18c85cdb9a411206b','d0f877092579d65540cb05751b9c46ef','072f191d054b4765610316251a1c7a71','1c969ec4d6a86828abaf104674a13315','')
+    ) AS b(table_name, columns_fp, constraints_fp, indexes_fp, policies_fp, triggers_fp)
+  LOOP
+    relation_oid := to_regclass(format('public.%I', expected.table_name));
+    IF relation_oid IS NULL OR NOT EXISTS (
+      SELECT 1 FROM pg_class WHERE oid=relation_oid AND relrowsecurity
+        AND NOT relforcerowsecurity AND pg_get_userbyid(relowner)='postgres'
+    ) THEN
+      RAISE EXCEPTION 'C2_RECONCILIATION_TABLE_SECURITY_MISMATCH:%', expected.table_name;
+    END IF;
+    SELECT md5(string_agg(a.attnum||'|'||a.attname||'|'||format_type(a.atttypid,a.atttypmod)||'|'||
+      a.attnotnull::text||'|'||coalesce(pg_get_expr(d.adbin,d.adrelid),''), E'\n' ORDER BY a.attnum))
+      INTO actual FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+      WHERE a.attrelid=relation_oid AND a.attnum>0 AND NOT a.attisdropped;
+    IF actual IS DISTINCT FROM expected.columns_fp THEN
+      RAISE EXCEPTION 'C2_RECONCILIATION_COLUMNS_MISMATCH:%', expected.table_name;
+    END IF;
+    SELECT md5(string_agg(conname||'|'||contype::text||'|'||pg_get_constraintdef(oid,true),
+      E'\n' ORDER BY conname)) INTO actual FROM pg_constraint WHERE conrelid=relation_oid;
+    IF actual IS DISTINCT FROM expected.constraints_fp OR EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conrelid=relation_oid AND NOT convalidated
+    ) THEN
+      RAISE EXCEPTION 'C2_RECONCILIATION_CONSTRAINTS_MISMATCH:%', expected.table_name;
+    END IF;
+    SELECT md5(string_agg(indexrelid::regclass::text||'|'||pg_get_indexdef(indexrelid),
+      E'\n' ORDER BY indexrelid::regclass::text)) INTO actual FROM pg_index WHERE indrelid=relation_oid;
+    IF actual IS DISTINCT FROM expected.indexes_fp THEN
+      RAISE EXCEPTION 'C2_RECONCILIATION_INDEXES_MISMATCH:%', expected.table_name;
+    END IF;
+    SELECT md5(string_agg(p.polname||'|'||p.polcmd::text||'|'||p.polpermissive::text||'|'||
+      (SELECT array_to_string(array_agg(r.rolname ORDER BY r.rolname),',')
+       FROM unnest(p.polroles) x(role_oid) JOIN pg_roles r ON r.oid=x.role_oid)||'|'||
+      coalesce(pg_get_expr(p.polqual,p.polrelid,true),'')||'|'||
+      coalesce(pg_get_expr(p.polwithcheck,p.polrelid,true),''), E'\n' ORDER BY p.polname))
+      INTO actual FROM pg_policy p WHERE p.polrelid=relation_oid;
+    IF actual IS DISTINCT FROM expected.policies_fp THEN
+      RAISE EXCEPTION 'C2_RECONCILIATION_POLICIES_MISMATCH:%', expected.table_name;
+    END IF;
+    SELECT md5(string_agg(tgname||'|'||pg_get_triggerdef(oid,true)||'|'||tgenabled::text,
+      E'\n' ORDER BY tgname)) INTO actual
+      FROM pg_trigger WHERE tgrelid=relation_oid AND NOT tgisinternal;
+    IF actual IS DISTINCT FROM nullif(expected.triggers_fp,'') THEN
+      RAISE EXCEPTION 'C2_RECONCILIATION_TRIGGERS_MISMATCH:%', expected.table_name;
+    END IF;
+  END LOOP;
+
+  IF to_regclass('public.storage_resource_edit_grants') IS NOT NULL
+     OR to_regclass('public.attendance_photo_drive_folders') IS NOT NULL
+     OR to_regclass('public.operational_storage_folder_locks') IS NOT NULL
+     OR to_regprocedure('private.current_user_can_edit_storage_resource(text)') IS NOT NULL
+     OR to_regprocedure('public.storage_resource_registry_editable_ids()') IS NOT NULL
+     OR to_regprocedure('public.storage_resource_registry_set_edit_grant(text,text,text)') IS NOT NULL
+     OR to_regprocedure('public.storage_resource_registry_edit(text,text)') IS NOT NULL
+     OR to_regprocedure('public.acquire_operational_storage_folder_lock(text,uuid,integer)') IS NOT NULL
+     OR to_regprocedure('public.release_operational_storage_folder_lock(text,uuid)') IS NOT NULL THEN
+    RAISE EXCEPTION 'C2_RECONCILIATION_UNEXPECTED_PARTIAL_OBJECTS';
+  END IF;
+
+  -- Supabase's recorded Production bodies retain CRLF; normalize line endings only.
+  FOR expected_function IN
+    SELECT * FROM (VALUES
+      ('private.guard_storage_resource_scope()','a7e953c68e8ca93f8b64dee8b448a56b',true,'{postgres=X/postgres}'),
+      ('private.guard_storage_resource_attendance()','f2bc24fa1ba4de9abd1ce6c65f1a5794',true,'{postgres=X/postgres}'),
+      ('private.audit_storage_resource_change()','0aee608717e10127e6856773669ca8c6',true,'{postgres=X/postgres}'),
+      ('private.guard_storage_resource_grant()','8a249f67a35ee28017a995f9eacd3113',false,'{postgres=X/postgres}'),
+      ('private.current_user_has_storage_resource_grant(text)','0b04c60fec0c305ddaa9201905461d9c',true,'{postgres=X/postgres,authenticated=X/postgres}'),
+      ('public.storage_resource_registry_create(jsonb,jsonb)','6089619af11d4e76301da410a376599c',false,'{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}'),
+      ('public.storage_resource_registry_set_grant(text,text,boolean)','cea81d2bc7937abdd51cb87e38205df2',false,'{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}')
+    ) AS f(signature, body_md5, security_definer, function_acl)
+  LOOP
+    function_oid := to_regprocedure(expected_function.signature);
+    IF function_oid IS NULL OR NOT EXISTS (
+      SELECT 1 FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner
+      WHERE p.oid=function_oid AND r.rolname='postgres'
+        AND p.prosecdef=expected_function.security_definer
+        AND p.proconfig @> ARRAY['search_path=""']
+        AND md5(replace(replace(p.prosrc, E'\r\n', E'\n'), E'\r', E'\n'))=expected_function.body_md5
+        AND coalesce(p.proacl::text,'default')=expected_function.function_acl
+    ) THEN
+      RAISE EXCEPTION 'C2_RECONCILIATION_FUNCTION_MISMATCH:%', expected_function.signature;
+    END IF;
+  END LOOP;
+
+  IF (SELECT relacl::text FROM pg_class WHERE oid='public.storage_resources'::regclass)
+       IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}'
+     OR (SELECT relacl::text FROM pg_class WHERE oid='public.storage_resource_scopes'::regclass)
+       IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}'
+     OR (SELECT relacl::text FROM pg_class WHERE oid='public.storage_resource_user_grants'::regclass)
+       IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}'
+     OR (SELECT relacl::text FROM pg_class WHERE oid='public.storage_resource_audit_events'::regclass)
+       IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}' THEN
+    RAISE EXCEPTION 'C2_RECONCILIATION_GRANTS_MISMATCH';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.storage_resources WHERE visibility='public')
+     OR EXISTS (SELECT 1 FROM public.storage_resource_audit_events
+       WHERE action NOT IN ('resource_insert','resource_update','resource_delete',
+         'scope_insert','scope_update','scope_delete','grant_insert','grant_update','grant_delete')) THEN
+    RAISE EXCEPTION 'C2_RECONCILIATION_EXISTING_DATA_INCOMPATIBLE';
+  END IF;
+END
+$c2_reconciliation_preflight$;
+
+-- The preflight above must pass before these legacy CREATE statements become no-ops.
+create table if not exists public.storage_resources (
   id text primary key default gen_random_uuid()::text,
   provider text not null check (provider in ('google_drive', 'onedrive')),
   canonical_id text not null check (btrim(canonical_id) <> '' and canonical_id !~ '[/\\?#]'),
@@ -36,7 +164,7 @@ create table public.storage_resources (
   )
 );
 
-create table public.storage_resource_scopes (
+create table if not exists public.storage_resource_scopes (
   id text primary key default gen_random_uuid()::text,
   resource_id text not null references public.storage_resources(id) on delete cascade,
   brand_id text references public.brands(id) on delete restrict,
@@ -57,7 +185,7 @@ create table public.storage_resource_scopes (
   )
 );
 
-create table public.storage_resource_user_grants (
+create table if not exists public.storage_resource_user_grants (
   resource_id text not null references public.storage_resources(id) on delete cascade,
   user_id text not null references public.business_users(id) on delete restrict,
   granted_by text not null references public.business_users(id) on delete restrict,
@@ -76,7 +204,7 @@ create table public.storage_resource_edit_grants (
   primary key (resource_id, user_id)
 );
 
-create table public.storage_resource_audit_events (
+create table if not exists public.storage_resource_audit_events (
   id bigint generated always as identity primary key,
   resource_id text not null,
   action text not null check (action in ('resource_insert', 'resource_update', 'resource_delete', 'scope_insert', 'scope_update', 'scope_delete', 'grant_insert', 'grant_update', 'grant_delete', 'edit_grant_insert', 'edit_grant_update', 'edit_grant_delete')),
@@ -85,6 +213,19 @@ create table public.storage_resource_audit_events (
   after_data jsonb,
   created_at timestamptz not null default now()
 );
+
+-- Widen supported values without changing existing rows or ACLs.
+alter table public.storage_resources drop constraint storage_resources_visibility_check;
+alter table public.storage_resources add constraint storage_resources_visibility_check
+  check (visibility in ('admin_only', 'owner_only', 'granted_users', 'public')) not valid;
+alter table public.storage_resources validate constraint storage_resources_visibility_check;
+
+alter table public.storage_resource_audit_events drop constraint storage_resource_audit_events_action_check;
+alter table public.storage_resource_audit_events add constraint storage_resource_audit_events_action_check
+  check (action in ('resource_insert', 'resource_update', 'resource_delete',
+    'scope_insert', 'scope_update', 'scope_delete', 'grant_insert', 'grant_update',
+    'grant_delete', 'edit_grant_insert', 'edit_grant_update', 'edit_grant_delete')) not valid;
+alter table public.storage_resource_audit_events validate constraint storage_resource_audit_events_action_check;
 
 create table public.attendance_photo_drive_folders (
   shift_id text not null references public.shifts(id) on delete cascade,
@@ -143,11 +284,11 @@ revoke all on function public.release_operational_storage_folder_lock(text, uuid
 grant execute on function public.acquire_operational_storage_folder_lock(text, uuid, integer) to service_role;
 grant execute on function public.release_operational_storage_folder_lock(text, uuid) to service_role;
 
-create index storage_resource_scopes_resource_idx on public.storage_resource_scopes(resource_id);
-create index storage_resource_scopes_brand_campaign_idx on public.storage_resource_scopes(brand_id, campaign_id);
-create index storage_resource_grants_user_idx on public.storage_resource_user_grants(user_id) where revoked_at is null;
+create index if not exists storage_resource_scopes_resource_idx on public.storage_resource_scopes(resource_id);
+create index if not exists storage_resource_scopes_brand_campaign_idx on public.storage_resource_scopes(brand_id, campaign_id);
+create index if not exists storage_resource_grants_user_idx on public.storage_resource_user_grants(user_id) where revoked_at is null;
 create index storage_resource_edit_grants_user_idx on public.storage_resource_edit_grants(user_id, resource_id, decision) where revoked_at is null;
-create index storage_resource_audit_resource_idx on public.storage_resource_audit_events(resource_id, created_at desc);
+create index if not exists storage_resource_audit_resource_idx on public.storage_resource_audit_events(resource_id, created_at desc);
 create index attendance_photo_drive_folders_shift_idx on public.attendance_photo_drive_folders(shift_id);
 
 create or replace function private.guard_storage_resource_scope()
@@ -163,9 +304,6 @@ begin
   return new;
 end;
 $$;
-create trigger storage_resource_scopes_private_attendance
-before insert or update on public.storage_resource_scopes
-for each row execute function private.guard_storage_resource_scope();
 revoke all on function private.guard_storage_resource_scope() from public, anon, authenticated;
 
 create or replace function private.guard_storage_resource_attendance()
@@ -182,9 +320,6 @@ begin
   return new;
 end;
 $$;
-create trigger storage_resources_private_attendance
-before update of resource_type, visibility on public.storage_resources
-for each row execute function private.guard_storage_resource_attendance();
 revoke all on function private.guard_storage_resource_attendance() from public, anon, authenticated;
 
 create or replace function private.audit_storage_resource_change()
@@ -197,7 +332,8 @@ begin
     when tg_table_name = 'storage_resources' then 'resource_' || lower(tg_op)
     when tg_table_name = 'storage_resource_scopes' then 'scope_' || lower(tg_op)
     when tg_table_name = 'storage_resource_user_grants' then 'grant_' || lower(tg_op)
-    else 'edit_grant_' || lower(tg_op)
+    when tg_table_name = 'storage_resource_edit_grants' then 'edit_grant_' || lower(tg_op)
+    else 'grant_' || lower(tg_op)
   end;
   insert into public.storage_resource_audit_events(resource_id, action, actor_id, before_data, after_data)
   values (
@@ -210,12 +346,7 @@ begin
   return new;
 end;
 $$;
-create trigger storage_resources_audit after insert or update or delete on public.storage_resources
-for each row execute function private.audit_storage_resource_change();
-create trigger storage_resource_scopes_audit after insert or update or delete on public.storage_resource_scopes
-for each row execute function private.audit_storage_resource_change();
-create trigger storage_resource_grants_audit after insert or update or delete on public.storage_resource_user_grants
-for each row execute function private.audit_storage_resource_change();
+-- Existing audit triggers are retained; attach only the trigger for the new grant table.
 create trigger storage_resource_edit_grants_audit after insert or update or delete on public.storage_resource_edit_grants
 for each row execute function private.audit_storage_resource_change();
 revoke all on function private.audit_storage_resource_change() from public, anon, authenticated;
@@ -313,9 +444,6 @@ begin
   return new;
 end;
 $$;
-create trigger storage_resource_grants_target_guard
-before insert or update on public.storage_resource_user_grants
-for each row execute function private.guard_storage_resource_grant();
 revoke all on function private.guard_storage_resource_grant() from public, anon, authenticated;
 
 create or replace function public.storage_resource_registry_create(p_resource jsonb, p_scope jsonb default null)
@@ -503,12 +631,12 @@ revoke all on public.storage_resources, public.storage_resource_scopes,
 grant select, insert, update on public.storage_resources, public.storage_resource_scopes,
   public.storage_resource_user_grants, public.storage_resource_edit_grants to authenticated;
 grant select on public.storage_resource_audit_events to authenticated;
-grant usage, select on sequence public.storage_resource_audit_events_id_seq to authenticated;
 revoke all on public.attendance_photo_drive_folders from public, anon, authenticated;
 grant select, insert, update on public.attendance_photo_drive_folders to service_role;
 
-create policy storage_resources_read_allowed on public.storage_resources for select to authenticated
-using (
+-- "public" exposes registry metadata to active authenticated ADA Ops users only.
+-- It does not enable anonymous Data API access or change the provider ACL.
+alter policy storage_resources_read_allowed on public.storage_resources using (
   private.current_business_user_is_active() and (
     (private.is_admin())
     or (is_active and visibility = 'public')
@@ -516,24 +644,6 @@ using (
     or (is_active and visibility = 'granted_users' and private.current_user_has_storage_resource_grant(id))
   )
 );
-create policy storage_resources_admin_insert on public.storage_resources for insert to authenticated
-with check (private.is_admin() and created_by = private.current_business_user_id() and updated_by = private.current_business_user_id());
-create policy storage_resources_admin_update on public.storage_resources for update to authenticated
-using (private.is_admin()) with check (private.is_admin() and updated_by = private.current_business_user_id());
-
-create policy storage_resource_scopes_read_allowed on public.storage_resource_scopes for select to authenticated
-using (exists (select 1 from public.storage_resources r where r.id = resource_id));
-create policy storage_resource_scopes_admin_insert on public.storage_resource_scopes for insert to authenticated
-with check (private.is_admin() and created_by = private.current_business_user_id());
-create policy storage_resource_scopes_admin_update on public.storage_resource_scopes for update to authenticated
-using (private.is_admin()) with check (private.is_admin());
-
-create policy storage_resource_grants_admin_read on public.storage_resource_user_grants for select to authenticated
-using (private.is_admin());
-create policy storage_resource_grants_admin_insert on public.storage_resource_user_grants for insert to authenticated
-with check (private.is_admin() and granted_by = private.current_business_user_id());
-create policy storage_resource_grants_admin_update on public.storage_resource_user_grants for update to authenticated
-using (private.is_admin()) with check (private.is_admin());
 
 create policy storage_resource_edit_grants_admin_read on public.storage_resource_edit_grants for select to authenticated
 using (private.is_admin());
@@ -542,10 +652,9 @@ with check (private.is_admin() and granted_by = private.current_business_user_id
 create policy storage_resource_edit_grants_admin_update on public.storage_resource_edit_grants for update to authenticated
 using (private.is_admin()) with check (private.is_admin());
 
-create policy storage_resource_audit_admin_read on public.storage_resource_audit_events for select to authenticated
-using (private.is_admin());
-
 comment on table public.storage_resources is 'Metadata-only provider resource registry. Provider binaries are never stored here; registry visibility does not imply provider access.';
 comment on table public.storage_resource_scopes is 'Descriptive resource associations only; these links do not grant registry or provider access.';
 comment on table public.storage_resource_edit_grants is 'Account-level in-app edit decisions for one resource; does not change external Drive ACLs or public viewing.';
 comment on table public.attendance_photo_drive_folders is 'Persisted Google Drive folder IDs for a confirmed Shift and role/event destination; server-role access only.';
+
+COMMIT;

@@ -1,0 +1,19 @@
+# RC19 C4.1 migration reconciliation rehearsal
+
+All database execution in this folder is restricted to the isolated PostgreSQL 17.6 cluster and databases marked `CODEX_DISPOSABLE_RC19_C4_REHEARSAL_ONLY`. No Production SQL or migration was executed. The frozen application source remains `240a0d51b49863167be252d94545ea7c5ab2ac9a`; this worktree contains the C2 reconciliation and rehearsal artifacts only.
+
+## Results
+
+- Baseline classification: **CORRECTED**. The Production snapshot contained 19 queried target names, including nine entries with exists=false; the previous comparison counted all 19 as present. A fresh read-only Production query confirmed the nine remain absent and the 89-row ledger/head remains unchanged. The corrected states are 10 BASELINE_MATCH, 9 EXPECTED_NEW_OBJECT, 0 incompatible and 0 unverified across the 19 targeted relations.
+- Catalog parity: **PARTIAL**. Exact selected comparisons match for 172 columns, 98 constraints, 29 indexes, 15 policies, and 142 common routine metadata records. The Production-only platform routine public.rls_auto_enable() and its ensure_rls event trigger were captured, including body fingerprint and ACL. Whole-schema triggers and grants are not comparable from the existing evidence, so full parity remains unverified.
+- C2 Storage: **PASS for read-only Production preflight fingerprints**. The exact existing table columns/constraints/indexes/policies/triggers, protected functions, ACLs and aggregate row-compatibility checks match. The live migration was not executed. PG17.6 synthetic focused/full replay proves atomicity and preservation only for synthetic rows.
+- Ledger replay: **PASS** for the captured 89 Production migration receipts plus all 17 effective C4 migrations on PostgreSQL 17.6, exact run evidence/prodshape-pg17-20261107T114021Z/. The comparison script validates all 17 source hashes against the PASS receipts without rerunning the database suite.
+- Production release: **NO-GO**. Production execution allowlist remains empty. Production backup/independent restore, full schema parity, old-runtime compatibility, independent role UAT, Drive runtime identity/ACL/readback, and effective feature-flag verification remain open.
+
+Use evidence/production-baseline-comparison-c42.json for corrected three-state relation classification and parity status; evidence/live-production-target-relations-20261107.json and evidence/c2-preflight-readonly-production-proof-20261107.json for current read-only evidence; evidence/effective-migration-manifest.json for exact effective migration hashes; and evidence/production-execution-plan-c42.json for the conditional sequence and stop conditions. The older production-snapshot-comparison.json is corrected and records the counting error.
+
+## Reproduce local checks
+
+The scripts validate the source SHA, canonical migration hashes, database marker, PostgreSQL 17 version, history head, and expected starting state before execution. They never connect to Supabase. The latest 89+17 ledger-derived run is `evidence/prodshape-pg17-20261107T114021Z/`; exact final C2 preflight, incompatible-schema rejection and RLS proof is `evidence/c2-focused-pg17-20261107T112434Z/`. Earlier runs remain as historical evidence. Synthetic restore evidence is in `evidence/prodshape-pg17-20261107T101849Z/`. The ledger-derived replay correctly lacks the nine expected-new relations before C4; all nine are created by the 17-migration chain. Full Production catalog parity remains partial because broad trigger, function-body and grant evidence is incomplete.
+
+Do not use `supabase db push` or treat a migration-ledger receipt as evidence for operations not executed. Any future Production run requires a complete current schema snapshot for all pre-existing unledgered relations, target-environment migration history/hash review, a verified independent backup/restore, old/new-runtime compatibility, and explicit Owner approval of the exact effective sequence.

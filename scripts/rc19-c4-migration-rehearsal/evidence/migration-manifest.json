@@ -1,0 +1,91 @@
+{
+  "candidate_sha": "240a0d51b49863167be252d94545ea7c5ab2ac9a",
+  "production_project": "egdjnpmoasarrttvhgds",
+  "captured_utc": "2026-11-06T08:03:57.8101416Z",
+  "production_ledger": {
+    "postgresql": "17.6",
+    "latest_version": "20261101073742",
+    "entry_count": 89,
+    "latest_name": "20261101073646_rc19_brand01_catalog"
+  },
+  "production_only_migrations": [
+    {
+      "name": "20261101073643_rc19_sto02_resource_registry",
+      "version": "20261101073720"
+    },
+    {
+      "name": "20261101073646_rc19_brand01_catalog",
+      "version": "20261101073742"
+    }
+  ],
+  "migrations": [
+    {
+      "file": "20261102110000_rc19_batch05a_report_storage.sql",
+      "sha256": "51f17d84f157ae82bbfc5baaa399ff6eda510e4c234f7732bf84a0abff926824"
+    },
+    {
+      "file": "20261102135047_rc19_batch05a3_domain_storage_routes.sql",
+      "sha256": "613668b237e56f438a57795b280fb060b7ea3042bbdb92e5506d0bfee4494aed"
+    },
+    {
+      "file": "20261102150000_rc19_batch05a4_storage_runtime.sql",
+      "sha256": "29d986326c51f39e06317e41d84d4abca061179f88c337d5a40b58016df384bd"
+    },
+    {
+      "file": "20261102160334_rc19_batch05a41_storage_release_blockers.sql",
+      "sha256": "5d9c322efe68ad9ebe66fa680893711bf1691124dadc9fb99a9e57c502a39965"
+    },
+    {
+      "file": "20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
+      "sha256": "6af251246946a7f437797e28c78d332a823fc6664cd68eefe1b1275f878996fe"
+    },
+    {
+      "file": "20261102190000_rc19_batch01_1_agency_code.sql",
+      "sha256": "f4fbb773463b1e6677f8d9690c1ee5322978ce10494ce6a617779dba34568053"
+    },
+    {
+      "file": "20261102200000_rc19_batch01_3_shift_identity_index.sql",
+      "sha256": "f4f0ea3e24dc72a4ea7ff0d2f551eb215cf17402f8363cb1850df32674b9db37"
+    },
+    {
+      "file": "20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
+      "sha256": "fa5797b21fdc1c39582e8edb49d65d1169b20fca175827f1f77f178921bea0f2"
+    },
+    {
+      "file": "20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+      "sha256": "1b16c0add91917c8188195d913e589d7618d8f27233f350dc55819c2b66be9dc"
+    },
+    {
+      "file": "20261104085945_rc19_rbac01_role_permission_enforcement.sql",
+      "sha256": "2e0131e497e53bece73b107ec1efe99f6b2fecb36461adbd7d5263509af9d908"
+    },
+    {
+      "file": "20261104085946_rc19_rbac02_account_permission_enforcement.sql",
+      "sha256": "8255f31fbf2eebd4324fe61834f768af29383b10ffd99c6306a3fb9a505423c4"
+    },
+    {
+      "file": "20261104093735_rc19_rbac03_supported_permission_enforcement.sql",
+      "sha256": "b6a02b4b0825437d77155cb9a5f42b51712086786f3137b5fddb6f761f4f80a5"
+    },
+    {
+      "file": "20261104110000_rc19_c3_scoped_action_catalog.sql",
+      "sha256": "2a21d177fcb2a2cbc13c59be9af7b676862ed7292df519207ed35a01ec14307f"
+    },
+    {
+      "file": "20261104113000_rc19_c3_staffing_permission_guard.sql",
+      "sha256": "01bfe9b0c627e86fae8f366afa1dcf8124947c84035df393ed64ce2a8c7ac231"
+    },
+    {
+      "file": "20261104120000_rc19_c3_leader_brand_scope_reports.sql",
+      "sha256": "7d0a0bcba8bccbdfe864c464d6d622f4a7796f6ca1c2b2b2fdea587a76cd6812"
+    },
+    {
+      "file": "20261104174527_rc19_c3_report_artifact_deletion.sql",
+      "sha256": "927e19fdc152f9e3754ded6d038cedac45d9d9e1345b609f2336fb2798bce31e"
+    },
+    {
+      "file": "20261105120000_rc19_c3_scoped_report_export.sql",
+      "sha256": "1c99d2fa7887e085195bd0aa3d439ead56bc908834155f20fbe1881c8cb1abe9"
+    }
+  ]
+}

@@ -1,0 +1,551 @@
+{
+  "reviewed_at_utc": "2026-11-07T12:32:23.293319+00:00",
+  "source": {
+    "frozen_c4_sha": "240a0d51b49863167be252d94545ea7c5ab2ac9a",
+    "worktree_head_at_review": "1f07e33205a09ed65f7c2c3ad97716177d25a2f9"
+  },
+  "production": {
+    "project_id": "egdjnpmoasarrttvhgds",
+    "captured_at_utc": "2026-11-07T12:05:08.822152Z",
+    "postgresql": "17.6",
+    "ledger": {
+      "head": "20261101073742",
+      "count": 89
+    }
+  },
+  "states": {
+    "actual_production_pre_c4": "2026-11-07T12:05:08.822152Z",
+    "disposable_after_89": "schema-after-89-production-ledger.sql",
+    "disposable_after_89_plus_17": "schema-after-20261105120000.sql",
+    "target_relation_counts": {
+      "production_present": 10,
+      "replay_89_present": 10,
+      "targets": 19
+    },
+    "classification_counts": {
+      "BASELINE_MATCH": 10,
+      "EXPECTED_NEW_OBJECT": 9,
+      "EXISTING_INCOMPATIBLE_OBJECT": 0,
+      "UNVERIFIED": 0
+    },
+    "result": "PASS",
+    "relations": [
+      {
+        "relation": "public.business_users",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": null,
+        "classification": "BASELINE_MATCH"
+      },
+      {
+        "relation": "public.operational_schedule_source_files",
+        "production_exists": false,
+        "replay_89_exists": false,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261102150000",
+          "file": "20261102150000_rc19_batch05a4_storage_runtime.sql",
+          "sha256": "b8fb59c16d6d4e13fcf7125d5ef8e487e67ce67ee511852059988ccaac37d5db",
+          "receipt": "PASS"
+        },
+        "classification": "EXPECTED_NEW_OBJECT"
+      },
+      {
+        "relation": "public.operational_storage_domain_folders",
+        "production_exists": false,
+        "replay_89_exists": false,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261102135047",
+          "file": "20261102135047_rc19_batch05a3_domain_storage_routes.sql",
+          "sha256": "a4b6748b7a1530c7a1168636ab9ebabeced6c07e03c1d44622da290ed8c76f01",
+          "receipt": "PASS"
+        },
+        "classification": "EXPECTED_NEW_OBJECT"
+      },
+      {
+        "relation": "public.operational_storage_drive_probe_rate_limits",
+        "production_exists": false,
+        "replay_89_exists": false,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261102150000",
+          "file": "20261102150000_rc19_batch05a4_storage_runtime.sql",
+          "sha256": "b8fb59c16d6d4e13fcf7125d5ef8e487e67ce67ee511852059988ccaac37d5db",
+          "receipt": "PASS"
+        },
+        "classification": "EXPECTED_NEW_OBJECT"
+      },
+      {
+        "relation": "public.operational_storage_drive_probe_runs",
+        "production_exists": false,
+        "replay_89_exists": false,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261102150000",
+          "file": "20261102150000_rc19_batch05a4_storage_runtime.sql",
+          "sha256": "b8fb59c16d6d4e13fcf7125d5ef8e487e67ce67ee511852059988ccaac37d5db",
+          "receipt": "PASS"
+        },
+        "classification": "EXPECTED_NEW_OBJECT"
+      },
+      {
+        "relation": "public.operational_storage_routes",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": null,
+        "classification": "BASELINE_MATCH"
+      },
+      {
+        "relation": "public.rc19_leader_brand_scope_events",
+        "production_exists": false,
+        "replay_89_exists": false,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261104120000",
+          "file": "20261104120000_rc19_c3_leader_brand_scope_reports.sql",
+          "sha256": "4ec6ef8a562ddf8846c55a508b49aed1695ba4a3239282cca7d9a9fbe857f188",
+          "receipt": "PASS"
+        },
+        "classification": "EXPECTED_NEW_OBJECT"
+      },
+      {
+        "relation": "public.rc19_leader_brand_scopes",
+        "production_exists": false,
+        "replay_89_exists": false,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261104120000",
+          "file": "20261104120000_rc19_c3_leader_brand_scope_reports.sql",
+          "sha256": "4ec6ef8a562ddf8846c55a508b49aed1695ba4a3239282cca7d9a9fbe857f188",
+          "receipt": "PASS"
+        },
+        "classification": "EXPECTED_NEW_OBJECT"
+      },
+      {
+        "relation": "public.rc19_report_artifact_deletion_events",
+        "production_exists": false,
+        "replay_89_exists": false,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261104174527",
+          "file": "20261104174527_rc19_c3_report_artifact_deletion.sql",
+          "sha256": "97dc6704e9a24f2cffb249baccb0d435edf57c6ceed20ee2743973f6bd61192e",
+          "receipt": "PASS"
+        },
+        "classification": "EXPECTED_NEW_OBJECT"
+      },
+      {
+        "relation": "public.rc19_report_artifact_deletions",
+        "production_exists": false,
+        "replay_89_exists": false,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261104174527",
+          "file": "20261104174527_rc19_c3_report_artifact_deletion.sql",
+          "sha256": "97dc6704e9a24f2cffb249baccb0d435edf57c6ceed20ee2743973f6bd61192e",
+          "receipt": "PASS"
+        },
+        "classification": "EXPECTED_NEW_OBJECT"
+      },
+      {
+        "relation": "public.rc19_report_export_audit",
+        "production_exists": false,
+        "replay_89_exists": false,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261105120000",
+          "file": "20261105120000_rc19_c3_scoped_report_export.sql",
+          "sha256": "f28874984e5f7ed60571b1c709f3200af890d7c53b1433da59301af2d88b7293",
+          "receipt": "PASS"
+        },
+        "classification": "EXPECTED_NEW_OBJECT"
+      },
+      {
+        "relation": "public.report_images",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": null,
+        "classification": "BASELINE_MATCH"
+      },
+      {
+        "relation": "public.report_revisions",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": null,
+        "classification": "BASELINE_MATCH"
+      },
+      {
+        "relation": "public.reports",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": null,
+        "classification": "BASELINE_MATCH"
+      },
+      {
+        "relation": "public.shifts",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": null,
+        "classification": "BASELINE_MATCH"
+      },
+      {
+        "relation": "public.storage_resource_audit_events",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261103195519",
+          "file": "20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+          "sha256": "d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5"
+        },
+        "classification": "BASELINE_MATCH"
+      },
+      {
+        "relation": "public.storage_resource_scopes",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261103195519",
+          "file": "20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+          "sha256": "d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5"
+        },
+        "classification": "BASELINE_MATCH"
+      },
+      {
+        "relation": "public.storage_resource_user_grants",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261103195519",
+          "file": "20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+          "sha256": "d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5"
+        },
+        "classification": "BASELINE_MATCH"
+      },
+      {
+        "relation": "public.storage_resources",
+        "production_exists": true,
+        "replay_89_exists": true,
+        "after_17_create_statement": true,
+        "after_17_rls_enabled": true,
+        "creator_migration": {
+          "version": "20261103195519",
+          "file": "20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+          "sha256": "d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5"
+        },
+        "classification": "BASELINE_MATCH"
+      }
+    ]
+  },
+  "c2_preflight_read_only": {
+    "result": "PASS",
+    "evidence": "c2-preflight-readonly-production-proof-20261107.json",
+    "all_existing_table_fingerprints": true,
+    "existing_data_compatible": true,
+    "missing_targets_absent": true,
+    "no_production_ddl_dml": true
+  },
+  "catalog_parity": {
+    "columns": {
+      "scope": "captured C4-related columns",
+      "production": 172,
+      "replay_89": 172,
+      "exact": true
+    },
+    "constraints": {
+      "scope": "captured target relations",
+      "production": 98,
+      "replay_89": 98,
+      "exact": true
+    },
+    "indexes": {
+      "scope": "captured target relations",
+      "production": 29,
+      "replay_89": 29,
+      "exact": true
+    },
+    "policies": {
+      "scope": "captured target relations",
+      "production": 15,
+      "replay_89": 15,
+      "exact": true
+    },
+    "routines_common": {
+      "scope": "captured public/private authority routines",
+      "production": 143,
+      "replay_89": 142,
+      "common": 142,
+      "common_metadata_exact": true,
+      "production_only": [
+        "public.rls_auto_enable()"
+      ],
+      "replay_only": [],
+      "body_fingerprints": "UNVERIFIED for common routines; 7 C2-protected functions and the Production-only event-trigger function are captured"
+    },
+    "table_grants": "NOT_COMPARABLE; replay schema-only dump used --no-privileges; C2 target ACLs verified separately",
+    "triggers": "UNVERIFIED for the full application schema; C2 target trigger fingerprints verified separately",
+    "overall": "PARTIAL_UNVERIFIED"
+  },
+  "migration_rehearsal": {
+    "result": "PASS",
+    "postgresql": "17.6 (170006)",
+    "replayed_receipts": 89,
+    "effective_migrations": [
+      {
+        "version": "20261102110000",
+        "file": "20261102110000_rc19_batch05a_report_storage.sql",
+        "sha256": "ee1f6c7d084fb2428c6e289857ee908b1f8d59c1dd1cde98c997ce1d3d57372c",
+        "verified": true
+      },
+      {
+        "version": "20261102135047",
+        "file": "20261102135047_rc19_batch05a3_domain_storage_routes.sql",
+        "sha256": "a4b6748b7a1530c7a1168636ab9ebabeced6c07e03c1d44622da290ed8c76f01",
+        "verified": true
+      },
+      {
+        "version": "20261102150000",
+        "file": "20261102150000_rc19_batch05a4_storage_runtime.sql",
+        "sha256": "b8fb59c16d6d4e13fcf7125d5ef8e487e67ce67ee511852059988ccaac37d5db",
+        "verified": true
+      },
+      {
+        "version": "20261102160334",
+        "file": "20261102160334_rc19_batch05a41_storage_release_blockers.sql",
+        "sha256": "4b5bfd4ddabf30af92fc9af95e2f267ceb76828a74256348431565f3a8763851",
+        "verified": true
+      },
+      {
+        "version": "20261102170608",
+        "file": "20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
+        "sha256": "bb8be521e80b5b3d592043053bae9b722f35eab85794efc74b58c198cc7bce36",
+        "verified": true
+      },
+      {
+        "version": "20261102190000",
+        "file": "20261102190000_rc19_batch01_1_agency_code.sql",
+        "sha256": "55e199c231bd64ae4ced2084e425a9cd33873fd4d6ffc048de012c0bbd62a71b",
+        "verified": true
+      },
+      {
+        "version": "20261102200000",
+        "file": "20261102200000_rc19_batch01_3_shift_identity_index.sql",
+        "sha256": "5aea00c199c164a9c947e34eae9ffcf636eeb496b3cf1ebc470bd6b22dcf942f",
+        "verified": true
+      },
+      {
+        "version": "20261103093137",
+        "file": "20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
+        "sha256": "47da2ca5fe2f34bd0d722cbefcd3831e8813b72049976c0e6351576670a000f1",
+        "verified": true
+      },
+      {
+        "version": "20261103195519",
+        "file": "20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+        "sha256": "d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5",
+        "verified": true
+      },
+      {
+        "version": "20261104085945",
+        "file": "20261104085945_rc19_rbac01_role_permission_enforcement.sql",
+        "sha256": "115f7a0f485b6e9d8e7fb604d5c25a45253e91de622e9ecb5a232f4432c4c37c",
+        "verified": true
+      },
+      {
+        "version": "20261104085946",
+        "file": "20261104085946_rc19_rbac02_account_permission_enforcement.sql",
+        "sha256": "e5d125aff1e0a907410f39e561215eccbe0256e6b4550c5752eb169fe5cdb04d",
+        "verified": true
+      },
+      {
+        "version": "20261104093735",
+        "file": "20261104093735_rc19_rbac03_supported_permission_enforcement.sql",
+        "sha256": "5b706e4c5d20d8420a3537afc76a095a771889933c4fc4b006c04e3234800944",
+        "verified": true
+      },
+      {
+        "version": "20261104110000",
+        "file": "20261104110000_rc19_c3_scoped_action_catalog.sql",
+        "sha256": "c779dbe8ecad9f324df565f260499092ff6b830c5275d5ef31963e377dc0b4bc",
+        "verified": true
+      },
+      {
+        "version": "20261104113000",
+        "file": "20261104113000_rc19_c3_staffing_permission_guard.sql",
+        "sha256": "44d24cc255ed837f182ca23494fe79a979f63f8fe91bd5c3d2bfda783194d413",
+        "verified": true
+      },
+      {
+        "version": "20261104120000",
+        "file": "20261104120000_rc19_c3_leader_brand_scope_reports.sql",
+        "sha256": "4ec6ef8a562ddf8846c55a508b49aed1695ba4a3239282cca7d9a9fbe857f188",
+        "verified": true
+      },
+      {
+        "version": "20261104174527",
+        "file": "20261104174527_rc19_c3_report_artifact_deletion.sql",
+        "sha256": "97dc6704e9a24f2cffb249baccb0d435edf57c6ceed20ee2743973f6bd61192e",
+        "verified": true
+      },
+      {
+        "version": "20261105120000",
+        "file": "20261105120000_rc19_c3_scoped_report_export.sql",
+        "sha256": "f28874984e5f7ed60571b1c709f3200af890d7c53b1433da59301af2d88b7293",
+        "verified": true
+      }
+    ],
+    "c2_storage_rls_admin_leader_member": "PASS",
+    "c2_anonymous_denied": "PASS",
+    "pg_cron_worker": "NOT_SIMULATED"
+  },
+  "historical_data_and_activation": {
+    "captured_at_utc": "2026-11-07T12:24:08.362443Z",
+    "canonical_identity_conflict_groups": 0,
+    "old_slot_duplicate_groups": 0,
+    "storage_routes": {
+      "total": 0,
+      "active": 0
+    },
+    "result": "PASS"
+  },
+  "production_only_event_trigger": {
+    "evidence": "live-production-event-triggers-20261107.json",
+    "ensure_rls_body_md5": "99be20677b456ea8d3be47bdd44fb369",
+    "ensure_rls_security_definer": true,
+    "ensure_rls_search_path": [
+      "search_path=pg_catalog"
+    ],
+    "ensure_rls_acl": "{postgres=X/postgres}",
+    "rehearsal_captured_platform_event_trigger": false,
+    "explicit_rls_enabled_all_new_public_tables": [
+      {
+        "table": "attendance_photo_drive_folders",
+        "creating_versions": [
+          "20261103195519"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "operational_schedule_source_files",
+        "creating_versions": [
+          "20261102150000"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "operational_storage_domain_folders",
+        "creating_versions": [
+          "20261102135047"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "operational_storage_drive_probe_rate_limits",
+        "creating_versions": [
+          "20261102150000"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "operational_storage_drive_probe_runs",
+        "creating_versions": [
+          "20261102150000"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "operational_storage_folder_locks",
+        "creating_versions": [
+          "20261103195519"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "rc19_leader_brand_scope_events",
+        "creating_versions": [
+          "20261104120000"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "rc19_leader_brand_scopes",
+        "creating_versions": [
+          "20261104120000"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "rc19_report_artifact_deletion_events",
+        "creating_versions": [
+          "20261104174527"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "rc19_report_artifact_deletions",
+        "creating_versions": [
+          "20261104174527"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "rc19_report_export_audit",
+        "creating_versions": [
+          "20261105120000"
+        ],
+        "explicit_rls_enabled": true
+      },
+      {
+        "table": "storage_resource_edit_grants",
+        "creating_versions": [
+          "20261103195519"
+        ],
+        "explicit_rls_enabled": true
+      }
+    ]
+  },
+  "dashboard_image_transition": {
+    "production_before_c4": "public=true; public-read policy present",
+    "pg17_6_migration_result": "UPDATE 1",
+    "migration_sets_public_false": true,
+    "explicit_final_select_readback": "NOT_CAPTURED",
+    "old_runtime_private_bucket_read": "UNVERIFIED"
+  },
+  "release_gates": {
+    "production_execution_allowlist": [],
+    "production_backup_and_independent_restore": "BLOCKED; only synthetic fixture restore evidence exists",
+    "old_runtime_dashboard_read_after_private_transition": "UNVERIFIED",
+    "old_runtime_rollback_after_shift_identity_index_transition": "UNVERIFIED",
+    "authenticated_admin_leader_member_uat": "BLOCKED",
+    "google_drive_principal_acl_readback_checksum": "BLOCKED",
+    "effective_feature_flags": "UNVERIFIED",
+    "ux_hotfix_integration_visual_validation": "SEPARATE_BRANCH_NOT_INTEGRATED"
+  }
+}

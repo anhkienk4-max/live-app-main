@@ -1,0 +1,145 @@
+{
+  "ledger": {
+    "head": "20261101073742",
+    "count": 89
+  },
+  "database": "postgres",
+  "relations": [
+    {
+      "rls": true,
+      "name": "public.business_users",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    },
+    {
+      "rls": null,
+      "name": "public.operational_schedule_source_files",
+      "exists": false,
+      "relkind": null,
+      "force_rls": null
+    },
+    {
+      "rls": null,
+      "name": "public.operational_storage_domain_folders",
+      "exists": false,
+      "relkind": null,
+      "force_rls": null
+    },
+    {
+      "rls": null,
+      "name": "public.operational_storage_drive_probe_rate_limits",
+      "exists": false,
+      "relkind": null,
+      "force_rls": null
+    },
+    {
+      "rls": null,
+      "name": "public.operational_storage_drive_probe_runs",
+      "exists": false,
+      "relkind": null,
+      "force_rls": null
+    },
+    {
+      "rls": true,
+      "name": "public.operational_storage_routes",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    },
+    {
+      "rls": null,
+      "name": "public.rc19_leader_brand_scope_events",
+      "exists": false,
+      "relkind": null,
+      "force_rls": null
+    },
+    {
+      "rls": null,
+      "name": "public.rc19_leader_brand_scopes",
+      "exists": false,
+      "relkind": null,
+      "force_rls": null
+    },
+    {
+      "rls": null,
+      "name": "public.rc19_report_artifact_deletion_events",
+      "exists": false,
+      "relkind": null,
+      "force_rls": null
+    },
+    {
+      "rls": null,
+      "name": "public.rc19_report_artifact_deletions",
+      "exists": false,
+      "relkind": null,
+      "force_rls": null
+    },
+    {
+      "rls": null,
+      "name": "public.rc19_report_export_audit",
+      "exists": false,
+      "relkind": null,
+      "force_rls": null
+    },
+    {
+      "rls": true,
+      "name": "public.report_images",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "name": "public.report_revisions",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "name": "public.reports",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "name": "public.shifts",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "name": "public.storage_resource_audit_events",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "name": "public.storage_resource_scopes",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "name": "public.storage_resource_user_grants",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "name": "public.storage_resources",
+      "exists": true,
+      "relkind": "r",
+      "force_rls": false
+    }
+  ],
+  "postgresql": "17.6",
+  "project_id": "egdjnpmoasarrttvhgds",
+  "captured_at_utc": "2026-11-07T12:05:08.822152Z"
+}

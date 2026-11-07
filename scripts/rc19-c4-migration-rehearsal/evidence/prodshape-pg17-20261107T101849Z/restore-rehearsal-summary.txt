@@ -1,0 +1,14 @@
+Synthetic PostgreSQL 17 backup/restore rehearsal
+Timestamp: 2026-11-07
+Source disposable DB: rc19_c4_rehearsal_prodshape_20261107_pg176_r4
+Restored disposable DB: rc19_c4_rehearsal_restore_20261107_pg176_r2
+Both DB comments verified as CODEX_DISPOSABLE_RC19_C4_REHEARSAL_ONLY before the verifier ran.
+Server: PostgreSQL 17.6 (170006); pg_dump/pg_restore client: PostgreSQL 17.11.
+Custom-format synthetic dump SHA-256: a75219effe15a06973f40c11693b66a1740f1b33ca0780c8e67ded1618d103c6
+Normalized source data SHA-256: 735454caf3f616a0d6df3f84454ac34f24c9d9e99c5ee012740cabb0a4f08ba8
+Catalog fingerprint: PASS; source and restored fingerprint files byte-identical; diff has 0 lines.
+Data dump comparison: PASS after removing pg_dump's random psql restrict tokens.
+Restored contract assertions: PASS for migration receipt count, preserved synthetic C2 resource/audit rows, C2 relations/constraint/policy/function, Admin/Leader/Member contract and anon denial.
+Anon direct SELECT: PASS DENY; psql exit code 1; see restore-anon-denial.log.
+Source/restored synthetic row counts: 106 migration receipts, 2 preserved storage resources, 2 RLS test resources, 5 audit rows, 1 publication; matched.
+This evidence covers disposable synthetic data only. It is not evidence of a Production backup/PITR or a Production restore.

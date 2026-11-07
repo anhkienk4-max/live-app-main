@@ -1,0 +1,271 @@
+--- before-20261102150000
++++ after-20261102150000
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict Qe7nNQcwJdYGNBD3854fm0SXnbv4XN1pIPPn4LmKe1Bd3ShhhDh5oSbdMaJ1sQY
++\restrict zcp9H5sNu8qOskjmr2yZiNxQEKYug2qZigmXdrY2zImeNS0cpczICKgrKg3HlL0
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -4861,6 +4861,43 @@
+ 
+ 
+ --
++-- Name: claim_operational_storage_drive_probe_rate_limit(text, integer, integer); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.claim_operational_storage_drive_probe_rate_limit(p_actor_auth_user_id text, p_limit integer, p_window_seconds integer) RETURNS boolean
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE
++  changed integer;
++  request_time timestamptz := statement_timestamp();
++BEGIN
++  IF nullif(btrim(p_actor_auth_user_id), '') IS NULL
++    OR p_limit < 1 OR p_limit > 10
++    OR p_window_seconds < 30 OR p_window_seconds > 3600 THEN
++    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'STORAGE_PROBE_RATE_LIMIT_INPUT_INVALID';
++  END IF;
++
++  INSERT INTO public.operational_storage_drive_probe_rate_limits AS current_limit
++    (actor_auth_user_id, window_started_at, request_count)
++  VALUES (p_actor_auth_user_id, request_time, 1)
++  ON CONFLICT (actor_auth_user_id) DO UPDATE
++  SET window_started_at = CASE
++        WHEN current_limit.window_started_at <= request_time - make_interval(secs => p_window_seconds)
++          THEN request_time ELSE current_limit.window_started_at END,
++      request_count = CASE
++        WHEN current_limit.window_started_at <= request_time - make_interval(secs => p_window_seconds)
++          THEN 1 ELSE current_limit.request_count + 1 END
++  WHERE current_limit.window_started_at <= request_time - make_interval(secs => p_window_seconds)
++    OR current_limit.request_count < p_limit;
++
++  GET DIAGNOSTICS changed = ROW_COUNT;
++  RETURN changed = 1;
++END;
++$$;
++
++
++--
+ -- Name: complete_account_request_provisioning(uuid, integer, text); Type: FUNCTION; Schema: public; Owner: -
+ --
+ 
+@@ -12780,6 +12817,46 @@
+ 
+ 
+ --
++-- Name: operational_schedule_source_files; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.operational_schedule_source_files (
++    id uuid DEFAULT gen_random_uuid() NOT NULL,
++    batch_id text NOT NULL,
++    provider text DEFAULT 'google_drive'::text NOT NULL,
++    external_file_id text,
++    external_parent_id text,
++    provider_metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
++    folder_path text NOT NULL,
++    file_name text NOT NULL,
++    mime_type text NOT NULL,
++    size_bytes bigint NOT NULL,
++    checksum_sha256 text NOT NULL,
++    reconciliation_status text DEFAULT 'pending'::text NOT NULL,
++    uploaded_by text NOT NULL,
++    created_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
++    updated_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
++    CONSTRAINT operational_schedule_source_files_batch_id_check CHECK ((batch_id ~ '^[A-Za-z0-9_-]{1,120}$'::text)),
++    CONSTRAINT operational_schedule_source_files_checksum_sha256_check CHECK ((checksum_sha256 ~ '^[a-f0-9]{64}$'::text)),
++    CONSTRAINT operational_schedule_source_files_file_name_check CHECK ((btrim(file_name) <> ''::text)),
++    CONSTRAINT operational_schedule_source_files_folder_path_check CHECK ((btrim(folder_path) <> ''::text)),
++    CONSTRAINT operational_schedule_source_files_provider_check CHECK ((provider = 'google_drive'::text)),
++    CONSTRAINT operational_schedule_source_files_provider_reference_check CHECK ((((external_file_id IS NULL) AND (external_parent_id IS NULL)) OR ((NULLIF(btrim(external_file_id), ''::text) IS NOT NULL) AND (NULLIF(btrim(external_parent_id), ''::text) IS NOT NULL)))),
++    CONSTRAINT operational_schedule_source_files_reconciliation_status_check CHECK ((reconciliation_status = ANY (ARRAY['pending'::text, 'provider_verified'::text, 'failed_cleaned'::text, 'reconciliation_required'::text]))),
++    CONSTRAINT operational_schedule_source_files_size_bytes_check CHECK ((size_bytes > 0)),
++    CONSTRAINT operational_schedule_source_files_uploaded_by_check CHECK ((btrim(uploaded_by) <> ''::text)),
++    CONSTRAINT operational_schedule_source_files_verified_reference_check CHECK (((reconciliation_status <> 'provider_verified'::text) OR ((NULLIF(btrim(external_file_id), ''::text) IS NOT NULL) AND (NULLIF(btrim(external_parent_id), ''::text) IS NOT NULL))))
++);
++
++
++--
++-- Name: TABLE operational_schedule_source_files; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON TABLE public.operational_schedule_source_files IS 'Metadata-only receipt for original schedule files, independent of any shift or execution_source.';
++
++
++--
+ -- Name: operational_storage_domain_folders; Type: TABLE; Schema: public; Owner: -
+ --
+ 
+@@ -12792,7 +12869,7 @@
+     verified_created boolean DEFAULT false NOT NULL,
+     created_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
+     updated_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
+-    CONSTRAINT operational_storage_domain_folders_access_classification_check CHECK ((access_classification = ANY (ARRAY['shared'::text, 'pending_restriction_no_sensitive_upload'::text, 'shared_schema_template_only'::text]))),
++    CONSTRAINT operational_storage_domain_folders_access_classification_check CHECK ((access_classification = ANY (ARRAY['shared'::text, 'pending_restriction_no_sensitive_upload'::text, 'shared_schema_template_only'::text, 'restricted_verified'::text]))),
+     CONSTRAINT operational_storage_domain_folders_folder_id_check CHECK ((btrim(folder_id) <> ''::text)),
+     CONSTRAINT operational_storage_domain_folders_folder_path_check CHECK ((btrim(folder_path) <> ''::text)),
+     CONSTRAINT operational_storage_domain_folders_parent_folder_id_check CHECK ((btrim(parent_folder_id) <> ''::text))
+@@ -12803,7 +12880,61 @@
+ -- Name: TABLE operational_storage_domain_folders; Type: COMMENT; Schema: public; Owner: -
+ --
+ 
+-COMMENT ON TABLE public.operational_storage_domain_folders IS 'Exact metadata-only registry for verified ADA Ops Drive folders; inactive until separately approved.';
++COMMENT ON TABLE public.operational_storage_domain_folders IS 'Metadata-only allowlist for exact verified ADA Ops Drive folders. Sensitive routes require restricted_verified classification.';
++
++
++--
++-- Name: operational_storage_drive_probe_rate_limits; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.operational_storage_drive_probe_rate_limits (
++    actor_auth_user_id text NOT NULL,
++    window_started_at timestamp with time zone NOT NULL,
++    request_count integer NOT NULL,
++    CONSTRAINT operational_storage_drive_probe_rate_l_actor_auth_user_id_check CHECK ((btrim(actor_auth_user_id) <> ''::text)),
++    CONSTRAINT operational_storage_drive_probe_rate_limits_request_count_check CHECK ((request_count > 0))
++);
++
++
++--
++-- Name: operational_storage_drive_probe_runs; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.operational_storage_drive_probe_runs (
++    id uuid DEFAULT gen_random_uuid() NOT NULL,
++    actor_auth_user_id text NOT NULL,
++    actor_business_user_id text,
++    actor_role text NOT NULL,
++    mode text NOT NULL,
++    status text DEFAULT 'started'::text NOT NULL,
++    folder_id text NOT NULL,
++    expected_parent_id text NOT NULL,
++    provider_file_id text,
++    provider_parent_id text,
++    checksum_sha256 text,
++    folder_can_add_children boolean,
++    readback_verified boolean DEFAULT false NOT NULL,
++    cleanup_status text DEFAULT 'not_started'::text NOT NULL,
++    error_code text,
++    created_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
++    completed_at timestamp with time zone,
++    CONSTRAINT operational_storage_drive_probe_parent_check CHECK (((provider_parent_id IS NULL) OR (btrim(provider_parent_id) <> ''::text))),
++    CONSTRAINT operational_storage_drive_probe_runs_actor_auth_user_id_check CHECK ((btrim(actor_auth_user_id) <> ''::text)),
++    CONSTRAINT operational_storage_drive_probe_runs_actor_role_check CHECK ((actor_role = 'admin'::text)),
++    CONSTRAINT operational_storage_drive_probe_runs_checksum_sha256_check CHECK (((checksum_sha256 IS NULL) OR (checksum_sha256 ~ '^[a-f0-9]{64}$'::text))),
++    CONSTRAINT operational_storage_drive_probe_runs_cleanup_status_check CHECK ((cleanup_status = ANY (ARRAY['not_started'::text, 'not_applicable'::text, 'trashed'::text, 'pending_reconciliation'::text, 'failed'::text]))),
++    CONSTRAINT operational_storage_drive_probe_runs_expected_parent_id_check CHECK ((expected_parent_id = '177g-GBHRY06rHx9ID8rpQOqR-uve9-kj'::text)),
++    CONSTRAINT operational_storage_drive_probe_runs_folder_id_check CHECK ((folder_id = '1ucgT3BkHtKOqDqkKY5i7Gd5s6akTPH1P'::text)),
++    CONSTRAINT operational_storage_drive_probe_runs_mode_check CHECK ((mode = ANY (ARRAY['metadata'::text, 'upload_readback'::text]))),
++    CONSTRAINT operational_storage_drive_probe_runs_status_check CHECK ((status = ANY (ARRAY['started'::text, 'passed'::text, 'failed'::text])))
++);
++
++
++--
++-- Name: TABLE operational_storage_drive_probe_runs; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON TABLE public.operational_storage_drive_probe_runs IS 'Admin-only controlled synthetic Drive probe audit; stores identifiers and checksums, never file bytes or credentials.';
+ 
+ 
+ --
+@@ -13735,6 +13866,22 @@
+ 
+ 
+ --
++-- Name: operational_schedule_source_files operational_schedule_source_files_batch_checksum_key; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.operational_schedule_source_files
++    ADD CONSTRAINT operational_schedule_source_files_batch_checksum_key UNIQUE (batch_id, checksum_sha256);
++
++
++--
++-- Name: operational_schedule_source_files operational_schedule_source_files_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.operational_schedule_source_files
++    ADD CONSTRAINT operational_schedule_source_files_pkey PRIMARY KEY (id);
++
++
++--
+ -- Name: operational_storage_domain_folders operational_storage_domain_folders_folder_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -13751,6 +13898,22 @@
+ 
+ 
+ --
++-- Name: operational_storage_drive_probe_rate_limits operational_storage_drive_probe_rate_limits_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.operational_storage_drive_probe_rate_limits
++    ADD CONSTRAINT operational_storage_drive_probe_rate_limits_pkey PRIMARY KEY (actor_auth_user_id);
++
++
++--
++-- Name: operational_storage_drive_probe_runs operational_storage_drive_probe_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.operational_storage_drive_probe_runs
++    ADD CONSTRAINT operational_storage_drive_probe_runs_pkey PRIMARY KEY (id);
++
++
++--
+ -- Name: operational_storage_routes operational_storage_routes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -14524,6 +14687,13 @@
+ --
+ 
+ CREATE INDEX operational_files_scope_created ON public.operational_files USING btree (scope_key, created_at DESC) WHERE (deleted_at IS NULL);
++
++
++--
++-- Name: operational_storage_drive_probe_runs_actor_created_idx; Type: INDEX; Schema: public; Owner: -
++--
++
++CREATE INDEX operational_storage_drive_probe_runs_actor_created_idx ON public.operational_storage_drive_probe_runs USING btree (actor_auth_user_id, created_at DESC);
+ 
+ 
+ --
+@@ -17369,10 +17539,28 @@
+ ALTER TABLE public.operational_files ENABLE ROW LEVEL SECURITY;
+ 
+ --
++-- Name: operational_schedule_source_files; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.operational_schedule_source_files ENABLE ROW LEVEL SECURITY;
++
++--
+ -- Name: operational_storage_domain_folders; Type: ROW SECURITY; Schema: public; Owner: -
+ --
+ 
+ ALTER TABLE public.operational_storage_domain_folders ENABLE ROW LEVEL SECURITY;
++
++--
++-- Name: operational_storage_drive_probe_rate_limits; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.operational_storage_drive_probe_rate_limits ENABLE ROW LEVEL SECURITY;
++
++--
++-- Name: operational_storage_drive_probe_runs; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.operational_storage_drive_probe_runs ENABLE ROW LEVEL SECURITY;
+ 
+ --
+ -- Name: operational_storage_routes; Type: ROW SECURITY; Schema: public; Owner: -
+@@ -17827,5 +18015,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict Qe7nNQcwJdYGNBD3854fm0SXnbv4XN1pIPPn4LmKe1Bd3ShhhDh5oSbdMaJ1sQY
+-
++\unrestrict zcp9H5sNu8qOskjmr2yZiNxQEKYug2qZigmXdrY2zImeNS0cpczICKgrKg3HlL0
++

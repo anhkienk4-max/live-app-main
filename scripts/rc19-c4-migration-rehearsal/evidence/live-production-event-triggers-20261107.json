@@ -1,0 +1,86 @@
+{
+  "event_triggers": [
+    {
+      "name": "ensure_rls",
+      "tags": [
+        "CREATE TABLE",
+        "CREATE TABLE AS",
+        "SELECT INTO"
+      ],
+      "event": "ddl_command_end",
+      "owner": "postgres",
+      "enabled": "O",
+      "function": "rls_auto_enable()"
+    },
+    {
+      "name": "issue_graphql_placeholder",
+      "tags": [
+        "DROP EXTENSION"
+      ],
+      "event": "sql_drop",
+      "owner": "supabase_admin",
+      "enabled": "O",
+      "function": "set_graphql_placeholder()"
+    },
+    {
+      "name": "issue_pg_cron_access",
+      "tags": [
+        "CREATE EXTENSION"
+      ],
+      "event": "ddl_command_end",
+      "owner": "supabase_admin",
+      "enabled": "O",
+      "function": "grant_pg_cron_access()"
+    },
+    {
+      "name": "issue_pg_graphql_access",
+      "tags": [
+        "CREATE EXTENSION"
+      ],
+      "event": "ddl_command_end",
+      "owner": "supabase_admin",
+      "enabled": "O",
+      "function": "grant_pg_graphql_access()"
+    },
+    {
+      "name": "issue_pg_net_access",
+      "tags": [
+        "CREATE EXTENSION"
+      ],
+      "event": "ddl_command_end",
+      "owner": "supabase_admin",
+      "enabled": "O",
+      "function": "grant_pg_net_access()"
+    },
+    {
+      "name": "pgrst_ddl_watch",
+      "tags": null,
+      "event": "ddl_command_end",
+      "owner": "supabase_admin",
+      "enabled": "O",
+      "function": "pgrst_ddl_watch()"
+    },
+    {
+      "name": "pgrst_drop_watch",
+      "tags": null,
+      "event": "sql_drop",
+      "owner": "supabase_admin",
+      "enabled": "O",
+      "function": "pgrst_drop_watch()"
+    }
+  ],
+  "captured_at_utc": "2026-11-07T12:27:10.290147Z",
+  "production_only_routine": {
+    "acl": "{postgres=X/postgres}",
+    "owner": "postgres",
+    "returns": "event_trigger",
+    "body_md5": "99be20677b456ea8d3be47bdd44fb369",
+    "language": "plpgsql",
+    "signature": "rls_auto_enable()",
+    "definition": "CREATE OR REPLACE FUNCTION public.rls_auto_enable()\n RETURNS event_trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\nDECLARE\n  cmd record;\nBEGIN\n  FOR cmd IN\n    SELECT *\n    FROM pg_event_trigger_ddl_commands()\n    WHERE command_tag IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')\n      AND object_type IN ('table','partitioned table')\n  LOOP\n     IF cmd.schema_name IS NOT NULL AND cmd.schema_name IN ('public') AND cmd.schema_name NOT IN ('pg_catalog','information_schema') AND cmd.schema_name NOT LIKE 'pg_toast%' AND cmd.schema_name NOT LIKE 'pg_temp%' THEN\n      BEGIN\n        EXECUTE format('alter table if exists %s enable row level security', cmd.object_identity);\n        RAISE LOG 'rls_auto_enable: enabled RLS on %', cmd.object_identity;\n      EXCEPTION\n        WHEN OTHERS THEN\n          RAISE LOG 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;\n      END;\n     ELSE\n        RAISE LOG 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;\n     END IF;\n  END LOOP;\nEND;\n$function$\n",
+    "configuration": [
+      "search_path=pg_catalog"
+    ],
+    "security_definer": true
+  }
+}

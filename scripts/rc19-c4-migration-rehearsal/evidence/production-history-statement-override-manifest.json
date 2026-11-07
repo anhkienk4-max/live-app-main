@@ -1,0 +1,17 @@
+{
+  "capture_file": "production-ledger-statements-shift-rpc-20260831-20260913.json",
+  "capture_sha256": "2e399943447d8ce2da09550e774bac47b1222332190ab8c47665156e4451cf30",
+  "capture_source": "read-only Production supabase_migrations.schema_migrations statements",
+  "entries": [
+    {
+      "version": "20260831120000",
+      "production_name": "core_v1_shift_lifecycle_admin_guard",
+      "reason": "Exact stored SQL restores the recorded update_shift definition required by the following immutable RC15 drift guard."
+    },
+    {
+      "version": "20260913120000",
+      "production_name": "shift_status_mode_and_auto_completion",
+      "reason": "Exact stored SQL preserves the recorded mixed line endings required by the following immutable RC15 drift guard."
+    }
+  ]
+}

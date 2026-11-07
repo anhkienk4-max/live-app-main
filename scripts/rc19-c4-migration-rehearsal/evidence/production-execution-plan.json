@@ -1,0 +1,225 @@
+{
+  "candidate_sha": "240a0d51b49863167be252d94545ea7c5ab2ac9a",
+  "production_project": "egdjnpmoasarrttvhgds",
+  "captured_utc": "2026-11-06T08:49:55Z",
+  "observed_production_ledger": {
+    "postgresql": "17.6",
+    "latest_version": "20261101073742",
+    "entry_count": 89,
+    "latest_name": "20261101073646_rc19_brand01_catalog"
+  },
+  "production_only_ledger_migrations": [
+    {
+      "name": "20261101073643_rc19_sto02_resource_registry",
+      "version": "20261101073720"
+    },
+    {
+      "name": "20261101073646_rc19_brand01_catalog",
+      "version": "20261101073742"
+    }
+  ],
+  "executable_allowlist": [],
+  "ordered_source_manifest": [
+    {
+      "sequence": 1,
+      "file": "20261102110000_rc19_batch05a_report_storage.sql",
+      "sha256": "51f17d84f157ae82bbfc5baaa399ff6eda510e4c234f7732bf84a0abff926824",
+      "status": "HOLD",
+      "reason": "HOLD: changes the public dashboard-image bucket and read policy; old-runtime compatibility is unverified.",
+      "effective_sha256": "ee1f6c7d084fb2428c6e289857ee908b1f8d59c1dd1cde98c997ce1d3d57372c",
+      "original_sha256": "51f17d84f157ae82bbfc5baaa399ff6eda510e4c234f7732bf84a0abff926824"
+    },
+    {
+      "sequence": 2,
+      "file": "20261102135047_rc19_batch05a3_domain_storage_routes.sql",
+      "sha256": "613668b237e56f438a57795b280fb060b7ea3042bbdb92e5506d0bfee4494aed",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
+      "effective_sha256": "a4b6748b7a1530c7a1168636ab9ebabeced6c07e03c1d44622da290ed8c76f01",
+      "original_sha256": "613668b237e56f438a57795b280fb060b7ea3042bbdb92e5506d0bfee4494aed"
+    },
+    {
+      "sequence": 3,
+      "file": "20261102150000_rc19_batch05a4_storage_runtime.sql",
+      "sha256": "29d986326c51f39e06317e41d84d4abca061179f88c337d5a40b58016df384bd",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
+      "effective_sha256": "b8fb59c16d6d4e13fcf7125d5ef8e487e67ce67ee511852059988ccaac37d5db",
+      "original_sha256": "29d986326c51f39e06317e41d84d4abca061179f88c337d5a40b58016df384bd"
+    },
+    {
+      "sequence": 4,
+      "file": "20261102160334_rc19_batch05a41_storage_release_blockers.sql",
+      "sha256": "5d9c322efe68ad9ebe66fa680893711bf1691124dadc9fb99a9e57c502a39965",
+      "status": "HOLD",
+      "reason": "HOLD: no Production execution allowlist; schema-shaped rehearsal and recovery gates remain open.",
+      "effective_sha256": "4b5bfd4ddabf30af92fc9af95e2f267ceb76828a74256348431565f3a8763851",
+      "original_sha256": "5d9c322efe68ad9ebe66fa680893711bf1691124dadc9fb99a9e57c502a39965"
+    },
+    {
+      "sequence": 5,
+      "file": "20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
+      "sha256": "6af251246946a7f437797e28c78d332a823fc6664cd68eefe1b1275f878996fe",
+      "status": "HOLD",
+      "reason": "HOLD: no Production execution allowlist; schema-shaped rehearsal and recovery gates remain open.",
+      "effective_sha256": "bb8be521e80b5b3d592043053bae9b722f35eab85794efc74b58c198cc7bce36",
+      "original_sha256": "6af251246946a7f437797e28c78d332a823fc6664cd68eefe1b1275f878996fe"
+    },
+    {
+      "sequence": 6,
+      "file": "20261102190000_rc19_batch01_1_agency_code.sql",
+      "sha256": "f4fbb773463b1e6677f8d9690c1ee5322978ce10494ce6a617779dba34568053",
+      "status": "HOLD",
+      "reason": "HOLD: no Production execution allowlist; schema-shaped rehearsal and recovery gates remain open.",
+      "effective_sha256": "55e199c231bd64ae4ced2084e425a9cd33873fd4d6ffc048de012c0bbd62a71b",
+      "original_sha256": "f4fbb773463b1e6677f8d9690c1ee5322978ce10494ce6a617779dba34568053"
+    },
+    {
+      "sequence": 7,
+      "file": "20261102200000_rc19_batch01_3_shift_identity_index.sql",
+      "sha256": "f4f0ea3e24dc72a4ea7ff0d2f551eb215cf17402f8363cb1850df32674b9db37",
+      "status": "HOLD",
+      "reason": "HOLD: drops the existing uniqueness index; historical collision check passed but old-runtime rollback compatibility is unverified.",
+      "effective_sha256": "5aea00c199c164a9c947e34eae9ffcf636eeb496b3cf1ebc470bd6b22dcf942f",
+      "original_sha256": "f4f0ea3e24dc72a4ea7ff0d2f551eb215cf17402f8363cb1850df32674b9db37"
+    },
+    {
+      "sequence": 8,
+      "file": "20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
+      "sha256": "fa5797b21fdc1c39582e8edb49d65d1169b20fca175827f1f77f178921bea0f2",
+      "status": "HOLD",
+      "reason": "HOLD: no Production execution allowlist; schema-shaped rehearsal and recovery gates remain open.",
+      "effective_sha256": "47da2ca5fe2f34bd0d722cbefcd3831e8813b72049976c0e6351576670a000f1",
+      "original_sha256": "fa5797b21fdc1c39582e8edb49d65d1169b20fca175827f1f77f178921bea0f2"
+    },
+    {
+      "sequence": 9,
+      "file": "20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+      "sha256": "1b16c0add91917c8188195d913e589d7618d8f27233f350dc55819c2b66be9dc",
+      "effective_sha256": "d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5",
+      "status": "REVISED_PENDING_APPROVAL",
+      "reason": "Original archived at its recorded SHA. Revised C2 migration has exact fail-closed table/function/ACL/data preflight and passed isolated PG17 rehearsal. Captured Production ledger lacks this version; confirm version/hash history in every intended target before use. Never apply the original C2 bytes.",
+      "original_sha256": "1b16c0add91917c8188195d913e589d7618d8f27233f350dc55819c2b66be9dc"
+    },
+    {
+      "sequence": 10,
+      "file": "20261104085945_rc19_rbac01_role_permission_enforcement.sql",
+      "sha256": "2e0131e497e53bece73b107ec1efe99f6b2fecb36461adbd7d5263509af9d908",
+      "status": "HOLD",
+      "reason": "HOLD: depends on reconciled Storage/schema state and exact PostgreSQL 17 authorization replay.",
+      "effective_sha256": "115f7a0f485b6e9d8e7fb604d5c25a45253e91de622e9ecb5a232f4432c4c37c",
+      "original_sha256": "2e0131e497e53bece73b107ec1efe99f6b2fecb36461adbd7d5263509af9d908"
+    },
+    {
+      "sequence": 11,
+      "file": "20261104085946_rc19_rbac02_account_permission_enforcement.sql",
+      "sha256": "8255f31fbf2eebd4324fe61834f768af29383b10ffd99c6306a3fb9a505423c4",
+      "status": "HOLD",
+      "reason": "HOLD: depends on reconciled Storage/schema state and exact PostgreSQL 17 authorization replay.",
+      "effective_sha256": "e5d125aff1e0a907410f39e561215eccbe0256e6b4550c5752eb169fe5cdb04d",
+      "original_sha256": "8255f31fbf2eebd4324fe61834f768af29383b10ffd99c6306a3fb9a505423c4"
+    },
+    {
+      "sequence": 12,
+      "file": "20261104093735_rc19_rbac03_supported_permission_enforcement.sql",
+      "sha256": "b6a02b4b0825437d77155cb9a5f42b51712086786f3137b5fddb6f761f4f80a5",
+      "status": "HOLD",
+      "reason": "HOLD: depends on reconciled Storage/schema state and exact PostgreSQL 17 authorization replay.",
+      "effective_sha256": "5b706e4c5d20d8420a3537afc76a095a771889933c4fc4b006c04e3234800944",
+      "original_sha256": "b6a02b4b0825437d77155cb9a5f42b51712086786f3137b5fddb6f761f4f80a5"
+    },
+    {
+      "sequence": 13,
+      "file": "20261104110000_rc19_c3_scoped_action_catalog.sql",
+      "sha256": "2a21d177fcb2a2cbc13c59be9af7b676862ed7292df519207ed35a01ec14307f",
+      "status": "HOLD",
+      "reason": "HOLD: depends on reconciled Storage/schema state and exact PostgreSQL 17 authorization replay.",
+      "effective_sha256": "c779dbe8ecad9f324df565f260499092ff6b830c5275d5ef31963e377dc0b4bc",
+      "original_sha256": "2a21d177fcb2a2cbc13c59be9af7b676862ed7292df519207ed35a01ec14307f"
+    },
+    {
+      "sequence": 14,
+      "file": "20261104113000_rc19_c3_staffing_permission_guard.sql",
+      "sha256": "01bfe9b0c627e86fae8f366afa1dcf8124947c84035df393ed64ce2a8c7ac231",
+      "status": "HOLD",
+      "reason": "HOLD: depends on reconciled Storage/schema state and exact PostgreSQL 17 authorization replay.",
+      "effective_sha256": "44d24cc255ed837f182ca23494fe79a979f63f8fe91bd5c3d2bfda783194d413",
+      "original_sha256": "01bfe9b0c627e86fae8f366afa1dcf8124947c84035df393ed64ce2a8c7ac231"
+    },
+    {
+      "sequence": 15,
+      "file": "20261104120000_rc19_c3_leader_brand_scope_reports.sql",
+      "sha256": "7d0a0bcba8bccbdfe864c464d6d622f4a7796f6ca1c2b2b2fdea587a76cd6812",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
+      "effective_sha256": "4ec6ef8a562ddf8846c55a508b49aed1695ba4a3239282cca7d9a9fbe857f188",
+      "original_sha256": "7d0a0bcba8bccbdfe864c464d6d622f4a7796f6ca1c2b2b2fdea587a76cd6812"
+    },
+    {
+      "sequence": 16,
+      "file": "20261104174527_rc19_c3_report_artifact_deletion.sql",
+      "sha256": "927e19fdc152f9e3754ded6d038cedac45d9d9e1345b609f2336fb2798bce31e",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
+      "effective_sha256": "97dc6704e9a24f2cffb249baccb0d435edf57c6ceed20ee2743973f6bd61192e",
+      "original_sha256": "927e19fdc152f9e3754ded6d038cedac45d9d9e1345b609f2336fb2798bce31e"
+    },
+    {
+      "sequence": 17,
+      "file": "20261105120000_rc19_c3_scoped_report_export.sql",
+      "sha256": "1c99d2fa7887e085195bd0aa3d439ead56bc908834155f20fbe1881c8cb1abe9",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
+      "effective_sha256": "f28874984e5f7ed60571b1c709f3200af890d7c53b1433da59301af2d88b7293",
+      "original_sha256": "1c99d2fa7887e085195bd0aa3d439ead56bc908834155f20fbe1881c8cb1abe9"
+    }
+  ],
+  "required_before_reissue": [
+    "Capture a complete sanitized current schema for all nine unledgered Production relations, including columns/defaults, constraints, indexes, triggers, policies, grants and relevant function bodies.",
+    "Prove ownership and version/hash status of each unledgered object; retain the zero-row candidate migration ledger fact and do not invent migration receipts.",
+    "Rehearse the effective 17-file sequence against a disposable PostgreSQL 17 database initialized with the complete captured schema and synthetic-only data; record per-file receipts and catalog deltas.",
+    "Validate actual Production grants and C2 function/trigger fingerprints against the fail-closed C2 preflight without applying the migration.",
+    "Verify old-runtime compatibility for private dashboard-image reads and the shift identity index transition.",
+    "Obtain a secured offsite backup and independently restored copy; the current Supabase organization is Free and automatic backup/PITR evidence is unavailable.",
+    "Verify Drive OAuth runtime principal and effective parent ACL; keep storage routes inactive until then.",
+    "Obtain Owner approval for the exact effective migration hashes, operation order, stop conditions and recovery procedure."
+  ],
+  "stop_conditions": [
+    "Any effective migration hash mismatch or version already recorded in the target ledger.",
+    "Any unledgered pre-existing relation whose exact definition or ownership is not verified.",
+    "Any columns/defaults/constraints/indexes/trigger/RLS/grant/function fingerprint mismatch.",
+    "Historical canonical shift identity duplicates.",
+    "Lock timeout, nonzero migration exit, or incomplete per-migration receipt/catalog delta.",
+    "Unexpected active storage route or unverified Drive principal/ACL.",
+    "No verified independent backup/restore or old-runtime compatibility."
+  ],
+  "recovery_plan": [
+    "No Production migration is authorized by this plan; executable_allowlist remains empty.",
+    "Secure an external encrypted backup and independently restore it into isolated PostgreSQL 17 before any Production mutation.",
+    "Apply only the separately Owner-approved effective sequence after unledgered objects pass exact preflight; do not bulk db push or alter the ledger to imply work.",
+    "On any error, stop and preserve exact state/logs; do not blindly retry or drop objects. Use only a reviewed forward repair or the verified restore procedure.",
+    "Keep the old application only if old/new read/write compatibility has passed; otherwise a database restore is the only proposed recovery and is not currently proven for Production."
+  ],
+  "reviewed_date": "2026-11-07",
+  "c2_reconciliation": {
+    "version": "20261103195519",
+    "original_sha256": "1b16c0add91917c8188195d913e589d7618d8f27233f350dc55819c2b66be9dc",
+    "effective_sha256": "d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5",
+    "original_archived": "scripts/rc19-c4-migration-rehearsal/archive/20261103195519_rc19_c2_resource_public_and_app_edit.original.sql",
+    "production_ledger_state": "version absent from captured 89-row Production ledger",
+    "scope": "Production target only; other environment ledger/hash ownership not verified",
+    "status": "LOCAL_PG17_PASS_PRODUCTION_PREFLIGHT_REQUIRED"
+  },
+  "rehearsal_result": {
+    "pg17": "17.6 (170006)",
+    "ledger_replay": "89 of 89 exact mapped entries",
+    "candidate_migrations": "17 of 17 passed on ledger-derived baseline; all canonical Git blob SHA receipts match the effective manifest.",
+    "live_snapshot_parity": "BLOCKED: nine Production relations are not represented by the 89-entry replay schema; grant metadata omitted from schema-only dump",
+    "production_sql_executed": false,
+    "c2_incompatible_shape_preflight": "PASS: aborts before partial C2 DDL on a marked disposable clone",
+    "latest_evidence": "prodshape-pg17-20261107T114021Z/result.txt and progress.tsv",
+    "pg_cron_worker": "NOT_SIMULATED"
+  },
+  "effective_hash_basis": "SHA-256 of canonical Git SQL blob bytes (CRLF checkout pairs normalize to LF); sha256 retains the recorded original source hash, and effective_sha256 identifies release SQL.",
+  "superseded_by": "production-execution-plan-c42.json"
+}

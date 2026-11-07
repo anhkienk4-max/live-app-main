@@ -1,0 +1,463 @@
+--- before-20261104174527
++++ after-20261104174527
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict DUoarUohuBWa5w4c9Ev9mauxAl773cpGvNWBeJ11FnrnPczh39snPEjhLQez44E
++\restrict kiNEd5Fkhgx8lrLuD1qGtq1Mh54xMaIzI29T7QFO5xIkuZwTbYMaeelCcmBbcg7
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -2888,6 +2888,31 @@
+ 
+ 
+ --
++-- Name: rc19_artifact_delete_authorized(text); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.rc19_artifact_delete_authorized(p_file_id text) RETURNS boolean
++    LANGUAGE sql STABLE SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++  SELECT coalesce((
++    SELECT private.current_business_user_is_active()
++      AND private.current_business_user_id() IS NOT NULL
++      AND public.rbac01_effective_permission('reports.submit')
++      AND public.rbac01_effective_permission(CASE WHEN private.current_system_permission() = 'member'
++        THEN 'storage.edit_own' ELSE 'storage.delete' END)
++      AND private.rc19_can_mutate_report(f.report_id)
++      AND (private.current_system_permission() <> 'member' OR f.uploaded_by = private.current_business_user_id())
++      AND r.shift_id = f.shift_id AND r.deleted_at IS NULL AND r.archived_at IS NULL
++      AND NOT coalesce(r.metrics_confirmed, false) AND r.status <> 'confirmed'
++      AND btrim(f.external_file_id) <> ''
++    FROM public.stored_files f JOIN public.reports r ON r.id = f.report_id
++    WHERE f.id = p_file_id
++  ), false);
++$$;
++
++
++--
+ -- Name: rc19_can_mutate_report(text); Type: FUNCTION; Schema: private; Owner: -
+ --
+ 
+@@ -8924,6 +8949,125 @@
+ 
+ 
+ --
++-- Name: rc19_backfill_report_artifact_parent(uuid, integer, text, text, text, text); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_backfill_report_artifact_parent(p_operation_id uuid, p_fencing_version integer, p_provider text, p_external_file_id text, p_external_parent_id text, p_actor_business_user_id text) RETURNS text
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE op public.rc19_report_artifact_deletions; file_id text;
++BEGIN
++  IF p_provider <> 'google_drive' OR nullif(btrim(p_external_parent_id),'') IS NULL OR NOT EXISTS (
++    SELECT 1 FROM public.business_users u WHERE u.id = p_actor_business_user_id AND u.system_permission = 'admin'
++      AND u.status = 'active' AND u.account_status = 'active' AND u.deleted_at IS NULL AND u.archived_at IS NULL
++  ) THEN RAISE EXCEPTION 'REPORT_ARTIFACT_PARENT_VERIFICATION_INVALID' USING ERRCODE = '42501'; END IF;
++  SELECT stored_file_id INTO file_id FROM public.rc19_report_artifact_deletions WHERE operation_id = p_operation_id;
++  IF file_id IS NULL THEN RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_FENCE_INVALID' USING ERRCODE = '40001'; END IF;
++  PERFORM 1 FROM public.stored_files WHERE id = file_id FOR UPDATE;
++  SELECT * INTO op FROM public.rc19_report_artifact_deletions WHERE operation_id = p_operation_id FOR UPDATE;
++  IF NOT FOUND OR op.status <> 'manual_review' OR op.last_error_code <> 'LEGACY_PARENT_VERIFICATION_REQUIRED'
++    OR op.attempt_count <> 0 OR op.fencing_version IS DISTINCT FROM p_fencing_version
++    OR op.provider IS DISTINCT FROM p_provider OR op.external_file_id IS DISTINCT FROM p_external_file_id
++    OR op.external_parent_id IS NOT NULL THEN
++    RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_FENCE_INVALID' USING ERRCODE = '40001';
++  END IF;
++  UPDATE public.stored_files SET external_parent_id = p_external_parent_id, updated_at = clock_timestamp()
++    WHERE id = op.stored_file_id AND report_id = op.report_id AND provider = op.provider
++      AND external_file_id = op.external_file_id AND nullif(btrim(external_parent_id),'') IS NULL AND deleted_at IS NULL;
++  IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_REFERENCE_CHANGED' USING ERRCODE = '40001'; END IF;
++  UPDATE public.rc19_report_artifact_deletions SET external_parent_id = p_external_parent_id,
++    status = 'retryable_failure', last_error_code = NULL, updated_at = clock_timestamp() WHERE operation_id = op.operation_id;
++  INSERT INTO public.rc19_report_artifact_deletion_events(operation_id,status,fencing_version,actor_business_user_id)
++    VALUES(op.operation_id,'legacy_parent_verified',op.fencing_version,p_actor_business_user_id);
++  RETURN 'retryable_failure';
++END;
++$$;
++
++
++--
++-- Name: rc19_begin_report_artifact_deletion(uuid, uuid, integer); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_begin_report_artifact_deletion(p_operation_id uuid, p_lease_owner uuid, p_fencing_version integer) RETURNS jsonb
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE op public.rc19_report_artifact_deletions; actor text := private.current_business_user_id();
++BEGIN
++  SELECT * INTO op FROM public.rc19_report_artifact_deletions WHERE operation_id = p_operation_id FOR UPDATE;
++  IF NOT FOUND OR op.lease_actor IS DISTINCT FROM actor OR NOT private.rc19_artifact_delete_authorized(op.stored_file_id)
++    OR op.status <> 'pending' OR op.lease_owner IS DISTINCT FROM p_lease_owner
++    OR op.fencing_version IS DISTINCT FROM p_fencing_version OR op.lease_expires_at <= clock_timestamp()
++    OR NOT EXISTS (SELECT 1 FROM public.stored_files f WHERE f.id = op.stored_file_id AND f.deleted_at IS NULL
++      AND f.report_id = op.report_id AND f.provider = op.provider AND f.external_file_id = op.external_file_id
++      AND f.external_parent_id = op.external_parent_id) THEN
++    RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_CLAIM_INVALID' USING ERRCODE = '42501';
++  END IF;
++  UPDATE public.rc19_report_artifact_deletions SET status = 'provider_deleting', attempt_count = attempt_count + 1,
++    updated_at = clock_timestamp() WHERE operation_id = op.operation_id RETURNING * INTO op;
++  INSERT INTO public.rc19_report_artifact_deletion_events(operation_id,status,fencing_version,actor_business_user_id)
++    VALUES(op.operation_id,op.status,op.fencing_version,actor);
++  RETURN jsonb_build_object('operation_id',op.operation_id,'provider',op.provider,
++    'external_file_id',op.external_file_id,'external_parent_id',op.external_parent_id);
++END;
++$$;
++
++
++--
++-- Name: rc19_claim_report_artifact_deletion(text, uuid); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_claim_report_artifact_deletion(p_file_id text, p_lease_owner uuid) RETURNS jsonb
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE f public.stored_files; op public.rc19_report_artifact_deletions; actor text := private.current_business_user_id();
++BEGIN
++  IF p_file_id IS NULL OR p_lease_owner IS NULL OR NOT private.rc19_artifact_delete_authorized(p_file_id) THEN
++    RAISE EXCEPTION 'REPORT_ARTIFACT_NOT_FOUND' USING ERRCODE = '42501';
++  END IF;
++  SELECT * INTO f FROM public.stored_files WHERE id = p_file_id FOR UPDATE;
++  IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_ARTIFACT_NOT_FOUND' USING ERRCODE = '42501'; END IF;
++  SELECT * INTO op FROM public.rc19_report_artifact_deletions WHERE stored_file_id = f.id FOR UPDATE;
++  IF FOUND THEN
++    IF op.requested_by <> actor AND private.current_system_permission() <> 'admin' THEN
++      RAISE EXCEPTION 'REPORT_ARTIFACT_NOT_FOUND' USING ERRCODE = '42501';
++    END IF;
++    IF op.status = 'retryable_failure' OR (op.status = 'pending' AND op.lease_expires_at <= clock_timestamp()) THEN
++      UPDATE public.rc19_report_artifact_deletions SET status = 'pending', lease_owner = p_lease_owner, lease_actor = actor,
++        lease_expires_at = clock_timestamp() + interval '2 minutes', fencing_version = fencing_version + 1,
++        last_error_code = NULL, updated_at = clock_timestamp() WHERE operation_id = op.operation_id RETURNING * INTO op;
++      INSERT INTO public.rc19_report_artifact_deletion_events(operation_id,status,fencing_version,actor_business_user_id)
++        VALUES(op.operation_id,op.status,op.fencing_version,actor);
++    ELSIF op.status = 'provider_deleting' AND op.lease_expires_at <= clock_timestamp() THEN
++      UPDATE public.rc19_report_artifact_deletions SET status = 'manual_review',
++        last_error_code = 'PROVIDER_OUTCOME_UNKNOWN', updated_at = clock_timestamp()
++        WHERE operation_id = op.operation_id RETURNING * INTO op;
++      INSERT INTO public.rc19_report_artifact_deletion_events(operation_id,status,fencing_version,actor_business_user_id)
++        VALUES(op.operation_id,op.status,op.fencing_version,actor);
++    END IF;
++    IF (op.status = 'pending' AND op.lease_owner <> p_lease_owner) OR op.status = 'provider_deleting' THEN
++      RETURN jsonb_build_object('status','in_progress');
++    END IF;
++  ELSE
++    IF f.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'REPORT_ARTIFACT_NOT_FOUND' USING ERRCODE = '42501'; END IF;
++    INSERT INTO public.rc19_report_artifact_deletions(stored_file_id,report_id,provider,external_file_id,external_parent_id,requested_by,lease_actor,status,lease_owner,lease_expires_at,last_error_code)
++      VALUES(f.id,f.report_id,f.provider,f.external_file_id,nullif(btrim(f.external_parent_id),''),actor,actor,
++        CASE WHEN nullif(btrim(f.external_parent_id),'') IS NULL THEN 'manual_review' ELSE 'pending' END,
++        p_lease_owner,clock_timestamp()+interval '2 minutes',
++        CASE WHEN nullif(btrim(f.external_parent_id),'') IS NULL THEN 'LEGACY_PARENT_VERIFICATION_REQUIRED' ELSE NULL END)
++      RETURNING * INTO op;
++    INSERT INTO public.rc19_report_artifact_deletion_events(operation_id,status,fencing_version,actor_business_user_id)
++      VALUES(op.operation_id,op.status,op.fencing_version,actor);
++  END IF;
++  RETURN jsonb_build_object('operation_id',op.operation_id,'status',op.status,'fencing_version',op.fencing_version,
++    'lease_owner',op.lease_owner,'provider',op.provider,'external_file_id',op.external_file_id,'external_parent_id',op.external_parent_id);
++END;
++$$;
++
++
++--
+ -- Name: rc19_current_leader_brand_ids(text); Type: FUNCTION; Schema: public; Owner: -
+ --
+ 
+@@ -8949,6 +9093,113 @@
+     AND brand.archived_at IS NULL
+     AND brand.deleted_at IS NULL
+   ORDER BY scope_row.brand_id;
++$$;
++
++
++--
++-- Name: rc19_finalize_report_artifact_deletion(uuid, uuid, integer); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_finalize_report_artifact_deletion(p_operation_id uuid, p_lease_owner uuid, p_fencing_version integer) RETURNS text
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE op public.rc19_report_artifact_deletions; file_id text;
++BEGIN
++  SELECT stored_file_id INTO file_id FROM public.rc19_report_artifact_deletions WHERE operation_id = p_operation_id;
++  IF file_id IS NULL THEN RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_FENCE_INVALID' USING ERRCODE = '40001'; END IF;
++  PERFORM 1 FROM public.stored_files WHERE id = file_id FOR UPDATE;
++  SELECT * INTO op FROM public.rc19_report_artifact_deletions WHERE operation_id = p_operation_id FOR UPDATE;
++  IF NOT FOUND OR op.lease_owner IS DISTINCT FROM p_lease_owner OR op.fencing_version IS DISTINCT FROM p_fencing_version
++    OR op.status NOT IN ('provider_deleted','completed') THEN
++    RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_FENCE_INVALID' USING ERRCODE = '40001';
++  END IF;
++  IF op.status = 'completed' THEN RETURN 'completed'; END IF;
++  UPDATE public.stored_files SET deleted_at = clock_timestamp(), updated_at = clock_timestamp()
++    WHERE id = op.stored_file_id AND report_id = op.report_id AND provider = op.provider
++      AND external_file_id = op.external_file_id AND external_parent_id = op.external_parent_id AND deleted_at IS NULL;
++  IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_REFERENCE_CHANGED' USING ERRCODE = '40001'; END IF;
++  UPDATE public.rc19_report_artifact_deletions SET status = 'completed', completed_at = clock_timestamp(),
++    updated_at = clock_timestamp() WHERE operation_id = op.operation_id;
++  INSERT INTO public.rc19_report_artifact_deletion_events(operation_id,status,fencing_version,actor_business_user_id)
++    VALUES(op.operation_id,'completed',op.fencing_version,op.lease_actor);
++  RETURN 'completed';
++END;
++$$;
++
++
++--
++-- Name: rc19_reconcile_report_artifact_deleted(uuid, uuid, integer, text, text, text, text); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_reconcile_report_artifact_deleted(p_operation_id uuid, p_lease_owner uuid, p_fencing_version integer, p_provider text, p_external_file_id text, p_external_parent_id text, p_actor_business_user_id text) RETURNS text
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE op public.rc19_report_artifact_deletions;
++BEGIN
++  IF NOT EXISTS (SELECT 1 FROM public.business_users u WHERE u.id = p_actor_business_user_id
++    AND u.system_permission = 'admin' AND u.status = 'active' AND u.account_status = 'active'
++    AND u.deleted_at IS NULL AND u.archived_at IS NULL) THEN
++    RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_AUTHORIZATION_INVALID' USING ERRCODE = '42501';
++  END IF;
++  UPDATE public.rc19_report_artifact_deletions SET status = 'provider_deleted', last_error_code = NULL, updated_at = clock_timestamp()
++    WHERE operation_id = p_operation_id AND status = 'manual_review' AND attempt_count > 0
++      AND lease_owner = p_lease_owner AND fencing_version = p_fencing_version AND lease_expires_at <= clock_timestamp()
++      AND provider = p_provider AND external_file_id = p_external_file_id AND external_parent_id = p_external_parent_id
++    RETURNING * INTO op;
++  IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_FENCE_INVALID' USING ERRCODE = '40001'; END IF;
++  INSERT INTO public.rc19_report_artifact_deletion_events(operation_id,status,fencing_version,actor_business_user_id)
++    VALUES(op.operation_id,op.status,op.fencing_version,p_actor_business_user_id);
++  RETURN op.status;
++END;
++$$;
++
++
++--
++-- Name: rc19_record_report_artifact_delete_outcome(uuid, uuid, integer, boolean); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_record_report_artifact_delete_outcome(p_operation_id uuid, p_lease_owner uuid, p_fencing_version integer, p_success boolean) RETURNS text
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE op public.rc19_report_artifact_deletions;
++BEGIN
++  IF p_success IS NULL THEN RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_OUTCOME_INVALID'; END IF;
++  UPDATE public.rc19_report_artifact_deletions SET status = CASE WHEN p_success THEN 'provider_deleted' ELSE 'manual_review' END,
++    last_error_code = CASE WHEN p_success THEN NULL ELSE 'PROVIDER_OUTCOME_UNKNOWN' END, updated_at = clock_timestamp()
++    WHERE operation_id = p_operation_id AND status = 'provider_deleting'
++      AND lease_owner = p_lease_owner AND fencing_version = p_fencing_version RETURNING * INTO op;
++  IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_FENCE_INVALID' USING ERRCODE = '40001'; END IF;
++  INSERT INTO public.rc19_report_artifact_deletion_events(operation_id,status,fencing_version,actor_business_user_id)
++    VALUES(op.operation_id,op.status,op.fencing_version,op.lease_actor);
++  RETURN op.status;
++END;
++$$;
++
++
++--
++-- Name: rc19_release_report_artifact_delete_claim(uuid, uuid, integer, boolean); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_release_report_artifact_delete_claim(p_operation_id uuid, p_lease_owner uuid, p_fencing_version integer, p_needs_review boolean) RETURNS text
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE op public.rc19_report_artifact_deletions; actor text := private.current_business_user_id();
++BEGIN
++  IF actor IS NULL OR p_needs_review IS NULL THEN RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_CLAIM_INVALID' USING ERRCODE = '42501'; END IF;
++  UPDATE public.rc19_report_artifact_deletions SET status = CASE WHEN p_needs_review THEN 'manual_review' ELSE 'retryable_failure' END,
++    last_error_code = CASE WHEN p_needs_review THEN 'REFERENCE_VERIFICATION_FAILED' ELSE 'PRE_PROVIDER_ABORTED' END,
++    updated_at = clock_timestamp()
++    WHERE operation_id = p_operation_id AND lease_actor = actor AND status = 'pending'
++      AND lease_owner = p_lease_owner AND fencing_version = p_fencing_version RETURNING * INTO op;
++  IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_ARTIFACT_DELETE_FENCE_INVALID' USING ERRCODE = '40001'; END IF;
++  INSERT INTO public.rc19_report_artifact_deletion_events(operation_id,status,fencing_version,actor_business_user_id)
++    VALUES(op.operation_id,op.status,op.fencing_version,actor);
++  RETURN op.status;
++END;
+ $$;
+ 
+ 
+@@ -14822,6 +15073,66 @@
+ 
+ 
+ --
++-- Name: rc19_report_artifact_deletion_events; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.rc19_report_artifact_deletion_events (
++    id bigint NOT NULL,
++    operation_id uuid NOT NULL,
++    status text NOT NULL,
++    fencing_version integer NOT NULL,
++    actor_business_user_id text,
++    occurred_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL
++);
++
++
++--
++-- Name: rc19_report_artifact_deletion_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
++--
++
++ALTER TABLE public.rc19_report_artifact_deletion_events ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
++    SEQUENCE NAME public.rc19_report_artifact_deletion_events_id_seq
++    START WITH 1
++    INCREMENT BY 1
++    NO MINVALUE
++    NO MAXVALUE
++    CACHE 1
++);
++
++
++--
++-- Name: rc19_report_artifact_deletions; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.rc19_report_artifact_deletions (
++    operation_id uuid DEFAULT gen_random_uuid() NOT NULL,
++    stored_file_id text NOT NULL,
++    report_id text NOT NULL,
++    provider text NOT NULL,
++    external_file_id text NOT NULL,
++    external_parent_id text,
++    requested_by text NOT NULL,
++    lease_actor text NOT NULL,
++    status text NOT NULL,
++    fencing_version integer DEFAULT 1 NOT NULL,
++    lease_owner uuid NOT NULL,
++    lease_expires_at timestamp with time zone NOT NULL,
++    attempt_count integer DEFAULT 0 NOT NULL,
++    last_error_code text,
++    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
++    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
++    completed_at timestamp with time zone,
++    CONSTRAINT rc19_report_artifact_deletions_attempt_count_check CHECK ((attempt_count >= 0)),
++    CONSTRAINT rc19_report_artifact_deletions_check CHECK (((external_parent_id IS NOT NULL) OR (status = 'manual_review'::text))),
++    CONSTRAINT rc19_report_artifact_deletions_external_file_id_check CHECK ((btrim(external_file_id) <> ''::text)),
++    CONSTRAINT rc19_report_artifact_deletions_external_parent_id_check CHECK (((external_parent_id IS NULL) OR (btrim(external_parent_id) <> ''::text))),
++    CONSTRAINT rc19_report_artifact_deletions_fencing_version_check CHECK ((fencing_version > 0)),
++    CONSTRAINT rc19_report_artifact_deletions_provider_check CHECK ((provider = ANY (ARRAY['google_drive'::text, 'onedrive'::text]))),
++    CONSTRAINT rc19_report_artifact_deletions_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'provider_deleting'::text, 'provider_deleted'::text, 'completed'::text, 'retryable_failure'::text, 'manual_review'::text])))
++);
++
++
++--
+ -- Name: report_revisions; Type: TABLE; Schema: public; Owner: -
+ --
+ 
+@@ -15814,6 +16125,30 @@
+ 
+ 
+ --
++-- Name: rc19_report_artifact_deletion_events rc19_report_artifact_deletion_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_artifact_deletion_events
++    ADD CONSTRAINT rc19_report_artifact_deletion_events_pkey PRIMARY KEY (id);
++
++
++--
++-- Name: rc19_report_artifact_deletions rc19_report_artifact_deletions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_artifact_deletions
++    ADD CONSTRAINT rc19_report_artifact_deletions_pkey PRIMARY KEY (operation_id);
++
++
++--
++-- Name: rc19_report_artifact_deletions rc19_report_artifact_deletions_stored_file_id_key; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_artifact_deletions
++    ADD CONSTRAINT rc19_report_artifact_deletions_stored_file_id_key UNIQUE (stored_file_id);
++
++
++--
+ -- Name: report_images report_images_dedupe_key; Type: CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -18495,6 +18830,54 @@
+ 
+ ALTER TABLE ONLY public.rc19_leader_brand_scopes
+     ADD CONSTRAINT rc19_leader_brand_scopes_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_report_artifact_deletion_events rc19_report_artifact_deletion_event_actor_business_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_artifact_deletion_events
++    ADD CONSTRAINT rc19_report_artifact_deletion_event_actor_business_user_id_fkey FOREIGN KEY (actor_business_user_id) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_report_artifact_deletion_events rc19_report_artifact_deletion_events_operation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_artifact_deletion_events
++    ADD CONSTRAINT rc19_report_artifact_deletion_events_operation_id_fkey FOREIGN KEY (operation_id) REFERENCES public.rc19_report_artifact_deletions(operation_id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_report_artifact_deletions rc19_report_artifact_deletions_lease_actor_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_artifact_deletions
++    ADD CONSTRAINT rc19_report_artifact_deletions_lease_actor_fkey FOREIGN KEY (lease_actor) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_report_artifact_deletions rc19_report_artifact_deletions_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_artifact_deletions
++    ADD CONSTRAINT rc19_report_artifact_deletions_report_id_fkey FOREIGN KEY (report_id) REFERENCES public.reports(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_report_artifact_deletions rc19_report_artifact_deletions_requested_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_artifact_deletions
++    ADD CONSTRAINT rc19_report_artifact_deletions_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_report_artifact_deletions rc19_report_artifact_deletions_stored_file_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_artifact_deletions
++    ADD CONSTRAINT rc19_report_artifact_deletions_stored_file_id_fkey FOREIGN KEY (stored_file_id) REFERENCES public.stored_files(id) ON DELETE RESTRICT;
+ 
+ 
+ --
+@@ -19867,6 +20250,18 @@
+ 
+ 
+ --
++-- Name: rc19_report_artifact_deletion_events; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.rc19_report_artifact_deletion_events ENABLE ROW LEVEL SECURITY;
++
++--
++-- Name: rc19_report_artifact_deletions; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.rc19_report_artifact_deletions ENABLE ROW LEVEL SECURITY;
++
++--
+ -- Name: report_images; Type: ROW SECURITY; Schema: public; Owner: -
+ --
+ 
+@@ -20298,5 +20693,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict DUoarUohuBWa5w4c9Ev9mauxAl773cpGvNWBeJ11FnrnPczh39snPEjhLQez44E
+-
++\unrestrict kiNEd5Fkhgx8lrLuD1qGtq1Mh54xMaIzI29T7QFO5xIkuZwTbYMaeelCcmBbcg7
++

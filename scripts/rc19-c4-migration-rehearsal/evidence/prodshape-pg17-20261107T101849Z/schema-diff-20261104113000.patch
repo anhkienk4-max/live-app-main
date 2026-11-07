@@ -1,0 +1,76 @@
+--- before-20261104113000
++++ after-20261104113000
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict h2F3a6Ml2F5RPCROH0krYWEj3QSuQItCml0tA2aSs3grG3qh27AYL1k7ElTgC5x
++\restrict IB4MYr9cEpYPzTG779iSLoOcK8ra0kut1d1t8n1NgHSwKTeshWRx1OfvPKLp6Uc
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -1858,6 +1858,42 @@
+   end if;
+   return new;
+ end;
++$$;
++
++
++--
++-- Name: enforce_rbac_staffing_permission(); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.enforce_rbac_staffing_permission() RETURNS trigger
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE
++  v_enabled boolean;
++  v_requires_assignment boolean := false;
++BEGIN
++  SELECT enabled INTO v_enabled
++  FROM private.rbac_runtime_gate
++  WHERE id = true;
++
++  IF NOT coalesce(v_enabled, false) THEN
++    RETURN NEW;
++  END IF;
++
++  IF TG_OP = 'INSERT' THEN
++    v_requires_assignment := NEW.status = 'manually_assigned';
++  ELSIF (OLD.status IS DISTINCT FROM NEW.status AND NEW.status = 'manually_assigned')
++    OR (OLD.status IN ('approved', 'manually_assigned') AND NEW.status = 'removed') THEN
++    v_requires_assignment := true;
++  END IF;
++
++  IF v_requires_assignment AND NOT private.rbac_has_permission('shifts.assign_staff') THEN
++    RAISE EXCEPTION 'RBAC_PERMISSION_DENIED' USING ERRCODE = '42501';
++  END IF;
++
++  RETURN NEW;
++END;
+ $$;
+ 
+ 
+@@ -16976,6 +17012,13 @@
+ 
+ 
+ --
++-- Name: shift_registrations shift_registrations_rbac_staffing_permission; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER shift_registrations_rbac_staffing_permission BEFORE INSERT OR UPDATE OF status ON public.shift_registrations FOR EACH ROW EXECUTE FUNCTION private.enforce_rbac_staffing_permission();
++
++
++--
+ -- Name: shift_registrations shift_registrations_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
+ --
+ 
+@@ -19691,5 +19734,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict h2F3a6Ml2F5RPCROH0krYWEj3QSuQItCml0tA2aSs3grG3qh27AYL1k7ElTgC5x
+-
++\unrestrict IB4MYr9cEpYPzTG779iSLoOcK8ra0kut1d1t8n1NgHSwKTeshWRx1OfvPKLp6Uc
++
