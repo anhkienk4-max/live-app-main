@@ -111,7 +111,7 @@ export function WorkforceIndividualView({
   const minutesWorked = summary ? summary.approvedActualMinutes % 60 : 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-route-readiness={loading ? 'pending' : error ? 'error' : 'ready'}>
       {/* Filter / Scope Toolbar */}
       <Card className="border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 items-end">

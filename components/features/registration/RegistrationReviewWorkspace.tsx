@@ -32,7 +32,7 @@ type RoleFilter = 'all' | OperationalRole
 const reviewList = { getPage: shiftRegistrationService.getReviewPage }
 
 export function RegistrationReviewWorkspace() {
-  const { currentUser } = useCurrentUser()
+  const { currentUser, loading: userLoading } = useCurrentUser()
 
   // State
   const [selectedRegId, setSelectedRegId] = React.useState<string | null>(null)
@@ -57,7 +57,7 @@ export function RegistrationReviewWorkspace() {
   const brands = result?.brands ?? []
   const platforms = result?.platforms ?? []
   const counts = result?.counts
-  const loading = list.loading || list.refreshing
+  const loading = userLoading || list.loading || list.refreshing
   const refreshing = list.refreshing
   const reload = list.reload
   const capacities: Record<string, Record<OperationalRole, ShiftRoleCapacity>> = {}
@@ -116,17 +116,17 @@ export function RegistrationReviewWorkspace() {
     return () => controller.abort()
   }, [activeRegId, contextKey])
 
-  if (list.error) return <PageLoadError error={list.error} onRetry={() => void loadData()} />
+  if (list.error) return <div data-route-readiness="error"><PageLoadError error={list.error} onRetry={() => void loadData()} /></div>
   if (loading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="p-6 space-y-4" data-route-readiness="pending">
         <ContentSkeleton />
       </div>
     )
   }
 
   return (
-    <div data-testid="registration-review-workspace" className="flex flex-col min-h-[680px] h-[calc(100vh-12rem)] bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs">
+    <div data-testid="registration-review-workspace" data-route-readiness="ready" className="flex flex-col min-h-[680px] h-[calc(100vh-12rem)] bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs">
       {/* 1. READ-ONLY BANNER FOR MEMBERS */}
       {!canReview && (
         <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-900">

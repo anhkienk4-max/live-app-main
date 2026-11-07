@@ -823,7 +823,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
 
       {!!loadError && <PageLoadError error={loadError} onRetry={() => { void loadData(); void loadReferenceData().catch(setLoadError) }} />}
       {/* Calendar Views */}
-      <Card className="min-w-0 overflow-hidden gap-0 py-0" aria-busy={loading || loadingMore || loadedKey !== requestKey}>
+      <Card className="min-w-0 overflow-hidden gap-0 py-0" aria-busy={loading || loadingMore || loadedKey !== requestKey} data-route-readiness={loadError ? 'error' : loading || loadingMore || !windowComplete || loadedKey !== requestKey ? 'pending' : 'ready'}>
         {loadedKey !== requestKey && <ContentSkeleton />}
         {loading && loadedKey === requestKey && <div role="status" className="px-3 py-1 text-xs text-muted-foreground">{t('loading')}</div>}
          {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">{language === 'vi' ? `Đang tải ca trong kỳ: ${shifts.length}/${listTotal}. Dữ liệu chưa đầy đủ.` : `Loading shifts in range: ${shifts.length}/${listTotal}. Data is incomplete.`}</div>}

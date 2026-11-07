@@ -4,30 +4,48 @@ import test from 'node:test'
 
 const fromSource = (path: string) => readFileSync(new URL('../' + path, import.meta.url), 'utf8')
 
-test('P0 / BUG-PROD-001: AdaNavigationTransition eliminates pulse deadlock and installs initial mount failsafe', () => {
+test('P0 / BUG-PROD-001: AdaNavigationTransition waits for route-owned readiness and exposes retry on timeout', () => {
   const source = fromSource('components/branding/AdaNavigationTransition.tsx')
-
-  // 1. Initial mount failsafe timer must be present and armed
-  assert.match(source, /INITIAL_MOUNT_FAILSAFE_MS\s*=\s*3_000/, 'INITIAL_MOUNT_FAILSAFE_MS set to 3000ms')
-  assert.match(source, /NAVIGATION_FAILSAFE_MS\s*=\s*3_000/, 'NAVIGATION_FAILSAFE_MS lowered to 3000ms')
-  assert.match(source, /FETCH_BLOCKING_WINDOW_MS\s*=\s*1_000/, 'FETCH_BLOCKING_WINDOW_MS set to 1000ms')
-
-  // 2. Terminal state detection bypasses waiting immediately
-  assert.match(source, /function routeHasTerminalState\(\)/, 'routeHasTerminalState helper defined')
-  assert.match(source, /\[role="alert"\]/, 'Matches role=alert for instant release')
-  assert.match(source, /\[data-testid\*="error"/, 'Matches data-testid error')
-  assert.match(source, /\[data-testid\*="denied"/, 'Matches data-testid denied')
-
-  // 3. routeContentIsLoading selector must NOT match generic .animate-pulse or widget skeletons
+  assert.match(source, /ROUTE_READINESS_TIMEOUT_MS\s*=\s*20_000/)
+  assert.match(source, /data-route-readiness/)
+  assert.match(source, /EXPLICIT_READINESS_PATHS/)
+  assert.doesNotMatch(source, /window\.fetch\s*=/, 'readiness does not monkeypatch global fetch')
+  assert.doesNotMatch(source, /NAVIGATION_FAILSAFE_MS|INITIAL_MOUNT_FAILSAFE_MS|FETCH_BLOCKING_WINDOW_MS/)
+  assert.match(source, /function routeHasTerminalState\(\)/)
+  assert.match(source, /\[role="alert"\]/)
+  assert.match(source, /role="alertdialog"/)
+  assert.match(source, /window\.location\.reload\(\)/)
+  assert.match(source, /previousFocus\.current\.focus/)
   const matchFn = source.match(/function routeContentIsLoading\(\)[\s\S]*?\n\}/)
-  assert.ok(matchFn, 'routeContentIsLoading found')
-  // Strip comments to test selector string
-  const fnBodyNoComments = matchFn[0].replace(/\/\/.*$/gm, '')
-  assert.doesNotMatch(fnBodyNoComments, /\.animate-pulse/, 'routeContentIsLoading code does NOT include .animate-pulse')
-  assert.doesNotMatch(fnBodyNoComments, /data-testid\*="skeleton"/, 'routeContentIsLoading code does NOT include data-testid skeleton')
+  assert.ok(matchFn)
+  assert.doesNotMatch(matchFn[0], /\.animate-pulse|data-testid\*="skeleton"/)
+})
 
-  // 4. Initial mount failsafe armed in useEffect
-  assert.match(source, /failSafeTimer\.current\s*=\s*setTimeout\(\(\)\s*=>\s*\{[\s\S]*?finishTransition\(\)[\s\S]*?INITIAL_MOUNT_FAILSAFE_MS\)/, 'Initial mount failsafe armed')
+test('C4 route-owned readiness is wired to the slow initial data routes', () => {
+  const routes = [
+    ['components/features/dashboard/DashboardOverview.tsx', /data-route-readiness="pending"/, /data-route-readiness=\{capabilitiesLoading/],
+    ['components/features/calendar/CalendarView.tsx', /data-route-readiness=\{loadError/],
+    ['components/features/registration/RegistrationReviewWorkspace.tsx', /data-route-readiness="pending"/, /data-route-readiness="ready"/],
+    ['components/features/reports/ReportsList.tsx', /data-route-readiness="pending"/, /data-route-readiness="ready"/],
+    ['app/(dashboard)/workforce/page.tsx', /data-route-readiness="pending"/, /data-route-readiness=\{routeReadiness\}/],
+  ] as const
+  for (const [file, ...assertions] of routes) {
+    const source = fromSource(file)
+    for (const assertion of assertions) assert.match(source, assertion, `${file} publishes route readiness`)
+  }
+})
+
+test('C4 BrandLogo uses persisted Brand identity and neutral failure fallback', () => {
+  const source = fromSource('components/features/brands/BrandLogo.tsx')
+  const dashboard = fromSource('components/features/dashboard/DashboardOverview.tsx')
+  const brandList = fromSource('components/features/brands/BrandList.tsx')
+  assert.match(source, /brandId: string/)
+  assert.match(source, /logoUrl\?: string \| null/)
+  assert.match(source, /url\.protocol === 'https:' \|\| url\.protocol === 'http:'/)
+  assert.match(source, /bg-slate-100 font-semibold text-slate-600/)
+  assert.match(source, /onError=\{\(\) => setFailedUrl/)
+  assert.match(dashboard, /brandLogoUrl: brands\.find\(brand => brand\.id === s\.brand_id\)/)
+  assert.match(brandList, /<BrandLogo brandId=\{brand\.id\}/)
 })
 
 test('P1 / BUG-PROD-002: AdminWorkspace non-admin access denied renders immediate recovery UI', () => {

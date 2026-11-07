@@ -180,7 +180,7 @@ function DashboardRoleSkeleton({ role }: { role: string }) {
 }
 
 export function DashboardOverview() {
-  const {currentUser, capabilities} = useWorkforceCapabilities()
+  const {currentUser, capabilities, loading: capabilitiesLoading, error: capabilitiesError, reload: reloadCapabilities} = useWorkforceCapabilities()
   const [data,setData] = React.useState<DashboardDataset | null>(null)
   const [loading,setLoading] = React.useState(true)
   const [isRefreshing,setIsRefreshing] = React.useState(false)
@@ -350,10 +350,11 @@ export function DashboardOverview() {
     return ()=>{cancelAnimationFrame(frame); seq.current++;}
   },[currentUser,loadData])
 
-  if (loadError && !data) return <PageLoadError error={loadError} onRetry={()=>void loadData()} />
+  if (capabilitiesError) return <div data-route-readiness="error"><PageLoadError error={capabilitiesError} onRetry={reloadCapabilities} /></div>
+  if (loadError && !data) return <div data-route-readiness="error"><PageLoadError error={loadError} onRetry={()=>void loadData()} /></div>
 
   if ((loading && !data) || !data || !currentUser) {
-    return <div className="space-y-3" data-testid="dashboard-progressive-shell">
+    return <div className="space-y-3" data-testid="dashboard-progressive-shell" data-route-readiness="pending">
       {early?.key===viewKey && <section className="rounded-lg border bg-card p-4" data-testid="dashboard-visible-first">
         <h2 className="text-sm font-semibold">Ca livestream sắp tới</h2>
         <p className="mt-1 text-xs text-muted-foreground">Đang tải số liệu tổng hợp. Danh sách ca được xác nhận từ server.</p>
@@ -366,7 +367,7 @@ export function DashboardOverview() {
   }
 
   return (
-    <div className="relative min-w-0">
+    <div className="relative min-w-0" data-route-readiness={capabilitiesLoading ? 'pending' : 'ready'}>
       {isRefreshing && (
         <div className="sticky top-0 z-20 w-full bg-blue-500/10 backdrop-blur-sm border-b border-blue-200/50 px-4 py-1.5 text-xs text-blue-700 font-medium flex items-center justify-between transition-all">
           <span className="flex items-center gap-2">
@@ -565,10 +566,12 @@ function AdminDashboard(props: CommonProps) {
     const locale = language === 'vi' ? 'vi-VN' : 'en-US'
     return { id: report.id, title: shift ? `${nameFor(brands, shift.brand_id)} · ${shift.date}` : props.t('report'), description: `${props.t(statusKey)} · ${new Date(report.updated_at).toLocaleDateString(locale)}`, href: '/reports' }
   }) : []
-  const latestBrandItems = canManageBrands ? (latestBrands ?? []).slice(0, 5).map(brand => ({ id: brand.id, title: brand.name, description: `${brand.category || props.t('brand')} · ${props.t(brand.status || 'active')}`, href: '/brands' })) : []
+  const latestBrandItems = canManageBrands ? (latestBrands ?? []).slice(0, 5).map(brand => ({ id: brand.id, title: brand.name, description: `${brand.category || props.t('brand')} · ${props.t(brand.status || 'active')}`, href: '/brands', brandId: brand.id, brandLogoUrl: brand.logo_url })) : []
 
   const todaysOperations = todaysShifts.map(s => ({
     brand: nameFor(brands, s.brand_id),
+    brandId: s.brand_id,
+    brandLogoUrl: brands.find(brand => brand.id === s.brand_id)?.logo_url,
     shiftTime: `${s.start_time} - ${s.end_time}`,
     platform: nameFor(platforms, s.platform_id),
     status: shiftStatusLabel(s.status),
@@ -579,6 +582,8 @@ function AdminDashboard(props: CommonProps) {
 
   const liveShifts = todaysShifts.filter(s => s.status === 'live').map(s => ({
     brand: nameFor(brands, s.brand_id),
+    brandId: s.brand_id,
+    brandLogoUrl: brands.find(brand => brand.id === s.brand_id)?.logo_url,
     platform: nameFor(platforms, s.platform_id),
     duration: null,
     viewers: null,

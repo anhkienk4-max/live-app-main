@@ -5,6 +5,7 @@ import {
   Clock, CheckCircle, Eye, TrendingUp, TrendingDown, ArrowUpRight,
 } from 'lucide-react'
 import type { DashboardRecentItem } from '@/lib/ui/dashboard-recent-items'
+import { BrandLogo } from '@/components/features/brands/BrandLogo'
 
 // View-Model
 
@@ -13,6 +14,8 @@ export type StatusColor = 'green' | 'orange' | 'red' | 'slate'
 
 export interface LiveShiftItem {
   brand: string
+  brandId: string
+  brandLogoUrl?: string
   platform: string
   duration: string | null
   viewers: string | null
@@ -21,6 +24,8 @@ export interface LiveShiftItem {
 
 export interface OperationRowItem {
   brand: string
+  brandId: string
+  brandLogoUrl?: string
   shiftTime: string
   platform: string
   status: string
@@ -46,7 +51,7 @@ export interface ApplicationOverviewMetric {
   href: string
 }
 
-export interface DashboardLinkedItem { id: string; title: string; description: string; href: string }
+export interface DashboardLinkedItem { id: string; title: string; description: string; href: string; brandId?: string; brandLogoUrl?: string }
 
 export interface PerformanceData {
   viewers: string
@@ -152,8 +157,8 @@ function AttentionRow({ severity, title, context, time, action, href }: Attentio
   )
 }
 
-interface LiveItemProps { brand: string; platform: string; duration: string | null; viewers: string | null; health: LiveHealthStatus }
-function LiveItem({ brand, platform, duration, viewers, health }: LiveItemProps) {
+interface LiveItemProps { brand: string; brandId: string; brandLogoUrl?: string; platform: string; duration: string | null; viewers: string | null; health: LiveHealthStatus }
+function LiveItem({ brand, brandId, brandLogoUrl, platform, duration, viewers, health }: LiveItemProps) {
   const dot: Record<LiveHealthStatus, string> = {
     good:    'bg-emerald-500 border-emerald-600',
     warning: 'bg-amber-500 border-amber-600',
@@ -163,9 +168,7 @@ function LiveItem({ brand, platform, duration, viewers, health }: LiveItemProps)
   return (
     <div className="flex items-center justify-between p-3.5 border border-slate-200 rounded-lg bg-white shadow-sm hover:border-slate-300 hover:shadow-md transition-all">
       <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-700 shadow-inner">
-          <span className="font-bold text-[14px]">{brand.charAt(0)}</span>
-        </div>
+        <BrandLogo brandId={brandId} brandName={brand} logoUrl={brandLogoUrl} size={48} className="shadow-inner" />
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="text-[14px] font-bold text-slate-900">{brand}</span>
@@ -184,8 +187,8 @@ function LiveItem({ brand, platform, duration, viewers, health }: LiveItemProps)
   )
 }
 
-interface OperationRowProps { brand: string; shiftTime: string; platform: string; status: string; statusColor: StatusColor; metrics: string; manager: string }
-function OperationRowItem({ brand, shiftTime, platform, status, statusColor, metrics, manager }: OperationRowProps) {
+interface OperationRowProps { brand: string; brandId: string; brandLogoUrl?: string; shiftTime: string; platform: string; status: string; statusColor: StatusColor; metrics: string; manager: string }
+function OperationRowItem({ brand, brandId, brandLogoUrl, shiftTime, platform, status, statusColor, metrics, manager }: OperationRowProps) {
   const pill: Record<StatusColor, string> = {
     green:  'bg-emerald-50 text-emerald-700 border-emerald-200',
     red:    'bg-red-50 text-red-700 border-red-200',
@@ -194,7 +197,7 @@ function OperationRowItem({ brand, shiftTime, platform, status, statusColor, met
   }
   return (
     <tr className="hover:bg-slate-50 transition-colors">
-      <td className="px-5 py-3.5 text-[13px] font-bold text-slate-900 whitespace-nowrap">{brand}</td>
+      <td className="px-5 py-3.5 text-[13px] font-bold text-slate-900 whitespace-nowrap"><span className="inline-flex items-center gap-2"><BrandLogo brandId={brandId} brandName={brand} logoUrl={brandLogoUrl} size={24} className="rounded" />{brand}</span></td>
       <td className="px-5 py-3.5 text-[13px] font-medium text-slate-700 whitespace-nowrap">{shiftTime}</td>
       <td className="px-5 py-3.5 text-[13px] text-slate-600 whitespace-nowrap">{platform}</td>
       <td className="px-5 py-3.5 whitespace-nowrap">
@@ -330,7 +333,7 @@ export function AdminDashboardView({
           <h2 className="text-[16px] font-bold text-slate-900 mb-3">{t('liveNow')}</h2>
           <div className="flex flex-col gap-3 flex-1">
             {liveShifts.length > 0 ? liveShifts.slice(0, 6).map((item, i) => (
-              <LiveItem key={i} brand={item.brand} platform={item.platform} duration={item.duration} viewers={item.viewers} health={item.health} />
+              <LiveItem key={i} brand={item.brand} brandId={item.brandId} brandLogoUrl={item.brandLogoUrl} platform={item.platform} duration={item.duration} viewers={item.viewers} health={item.health} />
             )) : (
               <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-4 text-center text-sm text-slate-500 flex-1 flex items-center justify-center">Không có ca đang live</div>
             )}
@@ -389,7 +392,7 @@ export function AdminDashboardView({
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {todaysOperations.slice(0, 6).map((op, i) => (
-                  <OperationRowItem key={i} brand={op.brand} shiftTime={op.shiftTime} platform={op.platform} status={op.status} statusColor={op.statusColor} metrics={op.metrics} manager={op.manager} />
+                  <OperationRowItem key={i} brand={op.brand} brandId={op.brandId} brandLogoUrl={op.brandLogoUrl} shiftTime={op.shiftTime} platform={op.platform} status={op.status} statusColor={op.statusColor} metrics={op.metrics} manager={op.manager} />
                 ))}
               </tbody>
             </table>
@@ -443,7 +446,7 @@ function DashboardLinkedList({ title, href, items, empty, unavailable, t }: {
       {unavailable ? <p className="p-4 text-sm text-amber-700">{unavailable}</p> : items.length ? <ul className="divide-y divide-slate-100">
         {items.slice(0, 5).map(item => <li key={item.id}>
           <a href={item.href} className="block min-h-14 px-4 py-3 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600">
-            <span className="block truncate text-sm font-medium text-slate-800">{item.title}</span>
+            <span className="flex min-w-0 items-center gap-2"><span className="block truncate text-sm font-medium text-slate-800">{item.title}</span>{item.brandId && <BrandLogo brandId={item.brandId} brandName={item.title} logoUrl={item.brandLogoUrl} size={24} className="rounded" />}</span>
             <span className="mt-1 block truncate text-xs text-slate-500">{item.description}</span>
           </a>
         </li>)}

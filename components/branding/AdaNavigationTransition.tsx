@@ -4,15 +4,11 @@ import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AdaLoadingScreen } from '@/components/branding/AdaLoadingScreen'
 
-const INITIAL_READY_DELAY_MS = 600
-const ROUTE_QUIET_MS = 300
 const EXIT_TRANSITION_MS = 200
-const NAVIGATION_FAILSAFE_MS = 3_000
-const INITIAL_MOUNT_FAILSAFE_MS = 3_000
-const FETCH_BLOCKING_WINDOW_MS = 1_000
+const ROUTE_READINESS_TIMEOUT_MS = 20_000
+const EXPLICIT_READINESS_PATHS = new Set(['/','/calendar','/registration','/staffing','/reports','/workforce'])
 
 function routeHasTerminalState(): boolean {
-  if (typeof document === 'undefined') return false
   const content = document.querySelector('.ada-navigation-content')
   if (!content) return false
   const terminalSelector = [
@@ -28,17 +24,10 @@ function routeHasTerminalState(): boolean {
 }
 
 function routeContentIsLoading(): boolean {
-  if (typeof document === 'undefined') return false
   const content = document.querySelector('.ada-navigation-content')
   const main = content?.querySelector('main') ?? content
   if (!main) return false
-
-  // If a terminal error or access-denied state has rendered, route is done loading
   if (routeHasTerminalState()) return false
-
-  // Check ONLY full-route blocking shells.
-  // NEVER check .animate-pulse or generic widget skeletons, as progressive dashboards intentionally
-  // mount skeleton widgets while background analytics/KPIs resolve.
   const fullRouteLoadingSelector = [
     '[data-route-loading="true"]',
     '[data-testid="route-loading"]',
@@ -48,142 +37,92 @@ function routeContentIsLoading(): boolean {
     '[data-testid="settings-loading-shell"]',
     '#route-loading-indicator',
   ].join(', ')
-
   return main.matches(fullRouteLoadingSelector) || Boolean(main.querySelector(fullRouteLoadingSelector))
 }
 
-function isNonBlockingUrl(url: string): boolean {
-  return (
-    url.includes('/api/notifications') ||
-    url.includes('/api/telemetry') ||
-    url.includes('/api/analytics/stream') ||
-    url.includes('/api/heartbeat')
-  )
+function routeIsReady(pathname: string): boolean {
+  if (routeHasTerminalState()) return true
+  const content = document.querySelector('.ada-navigation-content')
+  if (!content) return false
+  const states = [...content.querySelectorAll<HTMLElement>('[data-route-readiness]')]
+    .map(element => element.dataset.routeReadiness)
+  if (states.includes('error')) return true
+  if (states.includes('pending')) return false
+  if (states.includes('ready')) return true
+  if (routeContentIsLoading()) return false
+  return !EXPLICIT_READINESS_PATHS.has(pathname)
+}
+
+function currentRouteKey(): string {
+  return `${window.location.pathname}${window.location.search}`
 }
 
 export function AdaNavigationTransition({ children }: { children: ReactNode }): ReactNode {
   const pathname = usePathname()
   const [visible, setVisible] = useState(true)
   const [exiting, setExiting] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
   const visibleRef = useRef(true)
+  const exitStarted = useRef(false)
   const previousPath = useRef(pathname)
-  const currentPath = useRef(pathname)
-  const pendingPath = useRef<string | null>(pathname)
-  const navigationStartedAtPath = useRef<string | null>(null)
-  const navigationStartTime = useRef<number>(0)
-  const activeFetches = useRef(0)
+  const pendingRouteKey = useRef<string | null>(null)
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const failSafeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const timeoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previousFocus = useRef<HTMLElement | null>(null)
+  const retryButton = useRef<HTMLButtonElement>(null)
 
   const finishTransition = useCallback(() => {
-    if (!visibleRef.current) return
-    if (failSafeTimer.current) clearTimeout(failSafeTimer.current)
-    failSafeTimer.current = null
-    if (settleTimer.current) clearTimeout(settleTimer.current)
-    settleTimer.current = null
+    if (!visibleRef.current || exitStarted.current) return
+    exitStarted.current = true
+    if (timeoutTimer.current) clearTimeout(timeoutTimer.current)
+    timeoutTimer.current = null
+    setTimedOut(false)
     setExiting(true)
     if (exitTimer.current) clearTimeout(exitTimer.current)
     exitTimer.current = setTimeout(() => {
       visibleRef.current = false
       setVisible(false)
       setExiting(false)
-      navigationStartedAtPath.current = null
-      pendingPath.current = null
+      exitStarted.current = false
+      pendingRouteKey.current = null
       exitTimer.current = null
-      failSafeTimer.current = null
+      if (previousFocus.current?.isConnected) previousFocus.current.focus({ preventScroll: true })
+      previousFocus.current = null
     }, EXIT_TRANSITION_MS)
   }, [])
 
   const scheduleReadyCheck = useCallback(() => {
-    if (!visibleRef.current) return
-
-    // If destination path has not aligned yet, continue waiting
-    if (pendingPath.current !== currentPath.current) return
-
-    // Immediate terminal state shortcut (errors, access denied)
-    if (routeHasTerminalState()) {
-      requestAnimationFrame(() => requestAnimationFrame(finishTransition))
-      return
-    }
-
-    // Only let active fetches block transition within the initial fetch window (1000ms max)
-    const withinFetchWindow = navigationStartTime.current > 0 && Date.now() - navigationStartTime.current < FETCH_BLOCKING_WINDOW_MS
-    if (withinFetchWindow && activeFetches.current > 0) return
-
-    // If a full-route blocking shell is active, continue waiting
-    if (routeContentIsLoading()) return
-
-    if (settleTimer.current) clearTimeout(settleTimer.current)
-    settleTimer.current = setTimeout(() => {
-      if (!visibleRef.current || pendingPath.current !== currentPath.current) return
-      if (routeContentIsLoading()) return
-      requestAnimationFrame(() => requestAnimationFrame(finishTransition))
-    }, ROUTE_QUIET_MS)
+    if (!visibleRef.current || pendingRouteKey.current !== currentRouteKey()) return
+    if (!routeIsReady(window.location.pathname)) return
+    requestAnimationFrame(() => requestAnimationFrame(finishTransition))
   }, [finishTransition])
 
-  const beginTransition = useCallback((fromPath: string) => {
+  const beginTransition = useCallback((destinationKey: string) => {
     if (exitTimer.current) clearTimeout(exitTimer.current)
-    if (settleTimer.current) clearTimeout(settleTimer.current)
-    if (failSafeTimer.current) clearTimeout(failSafeTimer.current)
+    if (timeoutTimer.current) clearTimeout(timeoutTimer.current)
+    previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     visibleRef.current = true
+    exitStarted.current = false
     setVisible(true)
     setExiting(false)
-    navigationStartedAtPath.current = fromPath
-    navigationStartTime.current = Date.now()
-    pendingPath.current = null
-    failSafeTimer.current = setTimeout(finishTransition, NAVIGATION_FAILSAFE_MS)
-  }, [finishTransition])
+    setTimedOut(false)
+    pendingRouteKey.current = destinationKey
+    timeoutTimer.current = setTimeout(() => setTimedOut(true), ROUTE_READINESS_TIMEOUT_MS)
+  }, [])
 
-  // Intercept fetch requests: ignore non-blocking URLs, track active fetches with time bounding
   useEffect(() => {
-    const originalFetch = window.fetch
-    const wrappedFetch: typeof window.fetch = (...args) => {
-      const url = typeof args[0] === 'string' ? args[0] : (args[0] && 'url' in args[0]) ? (args[0] as Request).url : ''
-      const isBlocking = !isNonBlockingUrl(url)
-
-      if (isBlocking) {
-        activeFetches.current += 1
-      }
-
-      return originalFetch.apply(window, args).finally(() => {
-        if (isBlocking) {
-          activeFetches.current = Math.max(0, activeFetches.current - 1)
-        }
-        scheduleReadyCheck()
-      })
-    }
-    window.fetch = wrappedFetch
-
-    const contentObserver = new MutationObserver(() => scheduleReadyCheck())
+    pendingRouteKey.current = currentRouteKey()
+    timeoutTimer.current = setTimeout(() => setTimedOut(true), ROUTE_READINESS_TIMEOUT_MS)
+    const contentObserver = new MutationObserver(scheduleReadyCheck)
     const appContent = document.querySelector('.ada-navigation-content')
-    if (appContent) {
-      contentObserver.observe(appContent, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['aria-busy', 'class', 'data-testid', 'role'],
-      })
-    }
+    if (appContent) contentObserver.observe(appContent, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['aria-busy', 'class', 'data-route-readiness', 'data-testid', 'role'],
+    })
+    const readyFrame = requestAnimationFrame(scheduleReadyCheck)
 
-    // Initial mount readiness & failsafe recovery
-    navigationStartTime.current = Date.now()
-    const initialTimer = setTimeout(scheduleReadyCheck, INITIAL_READY_DELAY_MS)
-    failSafeTimer.current = setTimeout(() => {
-      if (visibleRef.current) {
-        finishTransition()
-      }
-    }, INITIAL_MOUNT_FAILSAFE_MS)
-
-    return () => {
-      clearTimeout(initialTimer)
-      if (failSafeTimer.current) clearTimeout(failSafeTimer.current)
-      contentObserver.disconnect()
-      if (window.fetch === wrappedFetch) window.fetch = originalFetch
-    }
-  }, [scheduleReadyCheck, finishTransition])
-
-  useEffect(() => {
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
       const target = event.target
@@ -191,37 +130,43 @@ export function AdaNavigationTransition({ children }: { children: ReactNode }): 
       const anchor = target.closest('a[href]')
       if (!(anchor instanceof HTMLAnchorElement) || (anchor.target && anchor.target !== '_self') || anchor.hasAttribute('download')) return
       const destination = new URL(anchor.href, window.location.href)
-      if (destination.origin !== window.location.origin || destination.pathname === currentPath.current) return
-      beginTransition(currentPath.current)
+      const destinationKey = `${destination.pathname}${destination.search}`
+      if (destination.origin !== window.location.origin || destinationKey === currentRouteKey()) return
+      beginTransition(destinationKey)
     }
     const onPopState = () => {
-      if (window.location.pathname !== currentPath.current) beginTransition(currentPath.current)
+      const destinationKey = currentRouteKey()
+      if (destinationKey !== pendingRouteKey.current) beginTransition(destinationKey)
     }
     document.addEventListener('click', onClick, true)
     window.addEventListener('popstate', onPopState)
+
     return () => {
+      cancelAnimationFrame(readyFrame)
+      if (timeoutTimer.current) clearTimeout(timeoutTimer.current)
+      contentObserver.disconnect()
       document.removeEventListener('click', onClick, true)
       window.removeEventListener('popstate', onPopState)
     }
-  }, [beginTransition])
+  }, [beginTransition, scheduleReadyCheck])
 
   useEffect(() => {
-    currentPath.current = pathname
-    if (previousPath.current === pathname) {
-      if (pendingPath.current === pathname) scheduleReadyCheck()
-      return
+    const routeKey = currentRouteKey()
+    if (previousPath.current !== pathname) {
+      previousPath.current = pathname
+      if (!visibleRef.current) beginTransition(routeKey)
+      pendingRouteKey.current = routeKey
+      scheduleReadyCheck()
     }
-    const previous = previousPath.current
-    previousPath.current = pathname
-    if (navigationStartedAtPath.current === null) beginTransition(previous)
-    pendingPath.current = pathname
-    scheduleReadyCheck()
   }, [beginTransition, pathname, scheduleReadyCheck])
+
+  useEffect(() => {
+    if (timedOut) retryButton.current?.focus()
+  }, [timedOut])
 
   useEffect(() => () => {
     if (exitTimer.current) clearTimeout(exitTimer.current)
-    if (settleTimer.current) clearTimeout(settleTimer.current)
-    if (failSafeTimer.current) clearTimeout(failSafeTimer.current)
+    if (timeoutTimer.current) clearTimeout(timeoutTimer.current)
   }, [])
 
   return (
@@ -232,6 +177,11 @@ export function AdaNavigationTransition({ children }: { children: ReactNode }): 
       {visible && (
         <div className={`ada-navigation-transition${exiting ? ' ada-navigation-transition--exiting' : ''}`}>
           <AdaLoadingScreen overlay />
+          {timedOut && <div role="alertdialog" aria-modal="true" aria-labelledby="ada-route-timeout-title" className="absolute inset-x-4 bottom-6 z-[10001] mx-auto max-w-md rounded-xl border border-amber-200 bg-white p-5 text-center shadow-xl">
+            <h2 id="ada-route-timeout-title" className="font-semibold text-slate-900">Trang đang tải lâu hơn dự kiến</h2>
+            <p className="mt-2 text-sm text-slate-600">Chưa xác nhận được dữ liệu. Hãy thử tải lại trang.</p>
+            <button ref={retryButton} type="button" onClick={() => window.location.reload()} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Thử tải lại</button>
+          </div>}
         </div>
       )}
     </>

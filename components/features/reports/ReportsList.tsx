@@ -533,11 +533,11 @@ export function ReportsList() {
     await runReportExport('images', complete.map(report => report.id))
   }
 
-  if (loading || userLoading || identity!==loadedIdentity) return <div className="space-y-3 py-3" data-testid="reports-progressive-shell">{firstRows?.key===pageKey && <section className="rounded-lg border bg-card p-4" data-testid="reports-visible-first"><h2 className="text-sm font-semibold">Báo cáo gần đây</h2><p className="my-2 text-xs text-muted-foreground">Đang tải hàng đợi và chi tiết. Thao tác chỉnh sửa chỉ khả dụng sau khi đồng bộ đầy đủ.</p><ul className="divide-y text-sm">{firstRows.rows.slice(0,10).map(report=>{const shift=firstRows.shifts.find(item=>item.id===report.shift_id);return <li key={report.id} className="flex justify-between gap-3 py-2"><span>{shift?.title || 'Báo cáo livestream'}</span><span className="text-muted-foreground">{shift?.date || '—'}</span></li>})}</ul></section>}<div role="status" className="py-8 text-center">{t('loading')}</div></div>
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />
+  if (loading || userLoading || identity!==loadedIdentity) return <div className="space-y-3 py-3" data-testid="reports-progressive-shell" data-route-readiness="pending">{firstRows?.key===pageKey && <section className="rounded-lg border bg-card p-4" data-testid="reports-visible-first"><h2 className="text-sm font-semibold">Báo cáo gần đây</h2><p className="my-2 text-xs text-muted-foreground">Đang tải hàng đợi và chi tiết. Thao tác chỉnh sửa chỉ khả dụng sau khi đồng bộ đầy đủ.</p><ul className="divide-y text-sm">{firstRows.rows.slice(0,10).map(report=>{const shift=firstRows.shifts.find(item=>item.id===report.shift_id);return <li key={report.id} className="flex justify-between gap-3 py-2"><span>{shift?.title || 'Báo cáo livestream'}</span><span className="text-muted-foreground">{shift?.date || '—'}</span></li>})}</ul></section>}<div role="status" className="py-8 text-center">{t('loading')}</div></div>
+  if (loadError) return <div data-route-readiness="error"><PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} /></div>
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-route-readiness="ready">
       {currentUser && hasPermission(currentUser, 'reports.submit') && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
           <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? `${completedShifts.length} ca đang hiển thị trong trang hàng đợi, không phải tổng ca có thể tạo Draft` : t('noReportDraftReady')}</p></div>

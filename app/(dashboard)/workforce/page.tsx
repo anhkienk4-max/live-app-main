@@ -44,9 +44,9 @@ import { useListPagination } from '@/lib/hooks/useListPagination'
 export default function WorkforcePage() {
   const { translate } = useTranslation()
   const { currentUser, loading, error, capabilities, identityKey, reload } = useWorkforceCapabilities()
-  if (loading) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Đang xác minh phiên đăng nhập và quyền truy cập…')}</p></PageShell>
-  if (error) return <PageShell archetype="command" className="space-y-3 p-4 md:p-6"><p role="alert">{translate(error)}</p><Button onClick={reload}>{translate('Thử lại')}</Button></PageShell>
-  if (!currentUser || !capabilities?.own_performance) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.')}</p></PageShell>
+  if (loading) return <div data-route-readiness="pending"><PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Đang xác minh phiên đăng nhập và quyền truy cập…')}</p></PageShell></div>
+  if (error) return <div data-route-readiness="error"><PageShell archetype="command" className="space-y-3 p-4 md:p-6"><p role="alert">{translate(error)}</p><Button onClick={reload}>{translate('Thử lại')}</Button></PageShell></div>
+  if (!currentUser || !capabilities?.own_performance) return <div data-route-readiness="ready"><PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.')}</p></PageShell></div>
   return <WorkforceWorkspace key={identityKey} currentUser={currentUser} canViewTeam={capabilities.team_performance} />
 }
 
@@ -97,6 +97,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   const queryKey = [period, role, pagination.page, pagination.pageSize, search, staffFilter, record, sort, direction].join('|')
   const overviewData = overviewState?.key === queryKey ? overviewState.data || null : null
   const overviewError = overviewState?.key === queryKey ? overviewState.error || null : null
+  const routeReadiness = needsOverview ? overviewError ? 'error' : loadingOverview || !overviewData ? 'pending' : 'ready' : 'ready'
 
   // Load Team Overview for Supervisors
   const readSequence = React.useRef(0)
@@ -153,7 +154,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   if (!isSupervisor) {
     const myStaffId = currentUser!.id
     return (
-      <PageShell archetype="command" className="ada-workforce-page min-w-0 space-y-4 p-4 md:space-y-6 md:p-6">
+      <div data-route-readiness="ready"><PageShell archetype="command" className="ada-workforce-page min-w-0 space-y-4 p-4 md:space-y-6 md:p-6">
         <div className="flex flex-col gap-2 border-b border-slate-200 pb-4">
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white">
@@ -177,13 +178,13 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
           onRoleChange={updateRole}
           onPeriodChange={updatePeriod}
         />
-      </PageShell>
+      </PageShell></div>
     )
   }
 
   // Admin & Leader workspace with tabs
   return (
-    <PageShell archetype="command" className="ada-workforce-page min-w-0 space-y-4 p-4 md:space-y-6 md:p-6">
+    <div data-route-readiness={routeReadiness}><PageShell archetype="command" className="ada-workforce-page min-w-0 space-y-4 p-4 md:space-y-6 md:p-6">
       {/* Page Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4">
         <div>
@@ -341,6 +342,6 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
           />
         </TabsContent>
       </Tabs>
-    </PageShell>
+    </PageShell></div>
   )
 }
