@@ -19,7 +19,7 @@ for (const role of ['admin', 'leader', 'member'] as const) test('Groups preserve
  assert.equal(primary[1].href.split('?')[0],'/calendar')
  assert.deepEqual(primary.map(item=>item.href.split('?')[0]),['/','/calendar','/shifts','/live'])
  assert.ok(primary.every(item=>nav.includes(item)))
- if(role==='member') assert.ok(!nav.some(i=>i.href.includes('registration')||i.href==='/payroll'||i.href==='/audit'))
+ if(role==='member') assert.ok(nav.some(i=>i.href.includes('registration')&&i.accessStatus==='read_only'))
 })
 test('Catalogue assigns requested operational, data, people and admin groups',()=>{
  const groups=groupNavigation(getNavigationForRole('admin'))

@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback, type ReactElement } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { Lock } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { groupNavigation, type NavItem } from '@/lib/ui/role-ux'
 import { useTranslation } from '@/lib/i18n'
@@ -90,8 +91,30 @@ export function NavigationDrawer({ items, activeHref, trigger, menuId = 'mobile'
             const Icon = item.icon
             const label = t((item.labelKey ?? item.name.toLowerCase()) as Parameters<typeof t>[0])
             const active = item.href === activeHref
-            return <Link key={item.href} href={item.href} onClick={removeMarker} aria-current={active ? 'page' : undefined} className={cn('flex min-h-11 items-center gap-3 rounded-md px-3 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', active ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
-              <Icon aria-hidden="true" className="h-5 w-5 shrink-0" /><span className="min-w-0 break-words">{label}</span>
+            const isRestricted = item.accessStatus === 'restricted' || item.accessStatus === 'unavailable' || item.accessStatus === 'pending'
+            const accessLabel = item.accessStatus === 'read_only' ? t('readOnly') : isRestricted ? t('accessRestricted') : label
+            return <Link
+              key={item.href}
+              href={item.href}
+              onClick={removeMarker}
+              aria-current={active ? 'page' : undefined}
+              title={`${label} (${accessLabel})`}
+              data-access-status={item.accessStatus || 'available'}
+              className={cn(
+                'flex min-h-11 items-center justify-between gap-3 rounded-md px-3 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                active ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                isRestricted && 'text-muted-foreground'
+              )}
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <Icon aria-hidden="true" className="h-5 w-5 shrink-0" />
+                <span className="min-w-0 break-words">{label}</span>
+              </div>
+              {isRestricted && (
+                <span title={accessLabel} className="shrink-0 text-muted-foreground" aria-label={accessLabel}>
+                  <Lock className="h-4 w-4" aria-hidden="true" />
+                </span>
+              )}
             </Link>
           })}
         </section>)}

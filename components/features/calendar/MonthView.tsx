@@ -148,17 +148,16 @@ export function MonthView({
               </button>
 
               <div className="min-w-0 space-y-1">
-                {dayShifts.slice(0, MONTH_VISIBLE_EVENT_LIMITS.large).map((shift, index) => {
+                {dayShifts.slice(0, MONTH_VISIBLE_EVENT_LIMITS.large).map((shift) => {
                   const crossesMidnight = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)?.crossesMidnight
                   const title = shift.title || `${brandName(shift.brand_id)} live`
                   const displayTitle = shift.studio ? `${title} • ${shift.studio}` : title
-                  const visibility = index === 1 ? 'hidden md:flex' : index === 2 ? 'hidden lg:flex' : 'flex'
                   return (
                       <ShiftCard
                         key={shift.id}
                         shift={shift}
                         variant="compact"
-                        className={visibility + ' min-w-0 h-7 bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border'}
+                        className="flex min-w-0 h-7 bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border"
                         style={{ borderLeftColor: brandColor(shift.brand_id) }}
                         onClick={event => {
                           event.stopPropagation()
@@ -171,35 +170,9 @@ export function MonthView({
                     )
                 })}
 
-                {dayShifts.length > MONTH_VISIBLE_EVENT_LIMITS.narrow && (
-                  <button
-                    className="block w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted md:hidden"
-                    data-testid={`calendar-more-narrow-${format(day, 'yyyy-MM-dd')}`}
-                    onClick={event => {
-                      event.stopPropagation()
-                      onDayClick?.(day)
-                    }}
-                    type="button"
-                  >
-                    {t('moreSessions', { count: dayShifts.length - MONTH_VISIBLE_EVENT_LIMITS.narrow })}
-                  </button>
-                )}
-                {dayShifts.length > MONTH_VISIBLE_EVENT_LIMITS.medium && (
-                  <button
-                    className="hidden w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted md:block lg:hidden"
-                    data-testid={`calendar-more-medium-${format(day, 'yyyy-MM-dd')}`}
-                    onClick={event => {
-                      event.stopPropagation()
-                      onDayClick?.(day)
-                    }}
-                    type="button"
-                  >
-                    {t('moreSessions', { count: dayShifts.length - MONTH_VISIBLE_EVENT_LIMITS.medium })}
-                  </button>
-                )}
                 {dayShifts.length > MONTH_VISIBLE_EVENT_LIMITS.large && (
                   <button
-                    className="hidden w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted lg:block"
+                    className="block w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted"
                     data-testid={`calendar-more-large-${format(day, 'yyyy-MM-dd')}`}
                     onClick={event => {
                       event.stopPropagation()

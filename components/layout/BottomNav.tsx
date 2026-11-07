@@ -8,7 +8,6 @@ import { useTranslation } from '@/lib/i18n'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { filterNav, getNavigationForRole, mobilePrimaryNavigation } from '@/lib/ui/role-ux'
-import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 import { resolveActiveNavigation } from './shellConfig'
 import { NavigationDrawer } from './NavigationDrawer'
 
@@ -16,8 +15,8 @@ export function BottomNav() {
   const pathname = usePathname()
   const search = useSearchParams()
   const { t } = useTranslation()
-  const { currentUser, capabilities } = useWorkforceCapabilities()
-  const roleNav = filterWorkforceNavigation(filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser), capabilities)
+  const { currentUser, capabilities, effectivePermissions } = useWorkforceCapabilities()
+  const roleNav = filterNav(getNavigationForRole(resolveSystemPermission(currentUser)), currentUser, capabilities, effectivePermissions ?? null)
   const activeHref = resolveActiveNavigation(roleNav, pathname, search)
   const primaryNav = mobilePrimaryNavigation(roleNav)
   const moreActive = !!activeHref && !primaryNav.some(item => item.href === activeHref)

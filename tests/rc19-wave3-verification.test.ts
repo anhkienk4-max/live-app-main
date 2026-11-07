@@ -101,7 +101,7 @@ test('TASK D (#167): Role-aware navigation fails closed and cannot exceed backen
   assert.ok(adminHrefs.includes('/settings'), 'Admin sees Settings')
   assert.ok(adminHrefs.includes('/payroll'), 'Admin sees Payroll')
 
-  // 2. Leader navigation
+  // 2. Leader navigation with full discovery parity & permission-aware access
   const leaderUser: User = {
     id: 'usr-leader',
     email: 'leader@ada.test',
@@ -113,13 +113,15 @@ test('TASK D (#167): Role-aware navigation fails closed and cannot exceed backen
   }
   const leaderNav = filterNav(getNavigationForRole('leader'), leaderUser)
   const leaderHrefs = leaderNav.map(item => item.href)
-  assert.ok(!leaderHrefs.includes('/admin'), 'Leader CANNOT see Admin workspace')
-  assert.ok(!leaderHrefs.includes('/audit'), 'Leader CANNOT see Audit')
-  assert.ok(!leaderHrefs.includes('/settings'), 'Leader CANNOT see Settings')
+  assert.ok(leaderHrefs.includes('/admin'), 'Leader retains Admin workspace destination for discovery')
+  assert.equal(leaderNav.find(i => i.href === '/admin')?.accessStatus, 'restricted', 'Leader has restricted access status to Admin workspace')
+  assert.ok(leaderHrefs.includes('/audit'), 'Leader retains Audit destination')
+  assert.equal(leaderNav.find(i => i.href === '/audit')?.accessStatus, 'available', 'Leader has available access status to Audit (audit.view_team)')
+  assert.ok(leaderHrefs.includes('/settings'), 'Leader sees Settings')
   assert.ok(leaderHrefs.includes('/staffing'), 'Leader sees Staffing')
   assert.ok(leaderHrefs.includes('/workforce'), 'Leader sees Team Workforce')
 
-  // 3. Member navigation
+  // 3. Member navigation with full discovery parity & permission-aware access
   const memberUser: User = {
     id: 'usr-member',
     email: 'member@ada.test',
@@ -131,11 +133,15 @@ test('TASK D (#167): Role-aware navigation fails closed and cannot exceed backen
   }
   const memberNav = filterNav(getNavigationForRole('member'), memberUser)
   const memberHrefs = memberNav.map(item => item.href)
-  assert.ok(!memberHrefs.includes('/admin'), 'Member CANNOT see Admin workspace')
-  assert.ok(!memberHrefs.includes('/audit'), 'Member CANNOT see Audit')
-  assert.ok(!memberHrefs.includes('/settings'), 'Member CANNOT see Settings')
-  assert.ok(!memberHrefs.includes('/payroll'), 'Member CANNOT see company Payroll')
-  assert.ok(!memberHrefs.includes('/staffing'), 'Member CANNOT see Staffing management')
+  assert.ok(memberHrefs.includes('/admin'), 'Member retains Admin workspace destination for discovery')
+  assert.equal(memberNav.find(i => i.href === '/admin')?.accessStatus, 'restricted', 'Member has restricted access status to Admin')
+  assert.ok(memberHrefs.includes('/audit'), 'Member retains Audit destination for discovery')
+  assert.equal(memberNav.find(i => i.href === '/audit')?.accessStatus, 'restricted', 'Member has restricted access status to Audit')
+  assert.ok(memberHrefs.includes('/settings'), 'Member sees Settings')
+  assert.ok(memberHrefs.includes('/payroll'), 'Member retains Payroll destination for discovery')
+  assert.equal(memberNav.find(i => i.href === '/payroll')?.accessStatus, 'restricted', 'Member has restricted access status to company Payroll')
+  assert.ok(memberHrefs.includes('/staffing'), 'Member retains Staffing destination for discovery')
+  assert.equal(memberNav.find(i => i.href === '/staffing')?.accessStatus, 'read_only', 'Member has read_only access status to Staffing')
   assert.ok(memberHrefs.includes('/calendar?tab=mine'), 'Member sees My Schedule')
   assert.ok(memberHrefs.includes('/calendar?tab=open'), 'Member sees Open Shifts')
 

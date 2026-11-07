@@ -1,6 +1,9 @@
 import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, FolderArchive, Banknote, Activity, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { SystemPermission, User as UserType } from '@/lib/types/database.types'
-import { hasAnyPermission, Permission } from '@/lib/permissions'
+import { hasAnyPermission, hasPermission, Permission } from '@/lib/permissions'
+import type { WorkforceCapabilities } from '@/lib/services/workforceService'
+
+export type NavAccessStatus = 'available' | 'read_only' | 'restricted' | 'unavailable' | 'pending'
 
 export type NavItem = {
   name: string
@@ -10,19 +13,14 @@ export type NavItem = {
   labelKey?: string
   /** Short label for compact layouts (e.g. mobile bottom nav) */
   shortLabelKey?: string
-  /**
-   * When set, item is only rendered if the user holds at least one of these
-   * permissions. Only use this for routes that have a genuine access requirement
-   * (i.e., classification A). Do NOT apply to routes that are merely
-   * mutation-restricted while remaining readable (classification B).
-   *
-   * Classification reference:
-   *   A = route genuinely permission-restricted (hidden from unauthorised users)
-   *   B = readable but mutation-restricted (page renders for all; only actions gated)
-   *   C = intentional UX omission for role simplification (not a permission denial)
-   */
+  /** Required permissions for viewing the module */
   requiredPermissions?: Permission[]
+  /** Specific permissions required for mutation/management actions */
+  actionPermissions?: Permission[]
+  /** Workforce capabilities required */
+  requiredCapability?: 'payroll' | 'team_performance' | 'own_performance' | 'actual_staffing'
   group?: NavigationGroupId
+  accessStatus?: NavAccessStatus
 }
 
 export const NAVIGATION_GROUPS = [
@@ -46,120 +44,136 @@ export function mobilePrimaryNavigation(items: NavItem[]) {
   })
 }
 
-// Full catalogue of all application destinations
-const navCatalogue: Record<string, NavItem> = {
-  brandCatalog:  { name: 'Product catalog', href: '/brand-catalog', icon: Package, labelKey: 'productCatalog', group: 'data' },
-  adminWorkspace:{ name: 'Admin workspace', href: '/admin', icon: ShieldCheck, labelKey: 'adminWorkspace', requiredPermissions: ['settings.admin'], group: 'system' },
-  dashboard:     { name: 'Dashboard',     href: '/',              icon: Home, labelKey: 'dashboard', shortLabelKey: 'myWorkspaceShort', group: 'overview' },
-  calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar, labelKey: 'calendar', shortLabelKey: 'myScheduleShort', group: 'operations' },
-  live:          { name: 'Live',          href: '/live',          icon: Radio, labelKey: 'live', shortLabelKey: 'live', group: 'operations' },
-  reports:       { name: 'Reports',       href: '/reports',       icon: FileText, labelKey: 'reports', group: 'data' },
-  storage:       { name: 'Storage',       href: '/storage',       icon: FolderArchive, labelKey: 'storage', requiredPermissions: ['reports.review'], group: 'data' },
-  swaps:         { name: 'Swaps',         href: '/swaps',         icon: RefreshCw, labelKey: 'swaps', group: 'operations' },
-  analytics:     { name: 'Analytics',     href: '/analytics',     icon: BarChart3, labelKey: 'analytics', group: 'data' },
-  staff:         { name: 'Staff',         href: '/staff',         icon: Users, labelKey: 'staff', group: 'people' },
-  brands:        { name: 'Brands',        href: '/brands',        icon: Package, labelKey: 'brands', group: 'system' },
-  platforms:     { name: 'Platforms',     href: '/platforms',     icon: Megaphone, labelKey: 'platforms', group: 'system' },
-  campaigns:     { name: 'Campaigns',     href: '/campaigns',     icon: Megaphone, labelKey: 'campaigns', group: 'system' },
-  audit:         { name: 'Audit',         href: '/audit',         icon: History,  labelKey: 'auditHistory', requiredPermissions: ['audit.view', 'audit.view_team'], group: 'system' },
-  settings:      { name: 'Settings',      href: '/settings',      icon: Settings, labelKey: 'settings', group: 'system' },
-  profile:       { name: 'Profile',       href: '/profile',       icon: User, labelKey: 'profile', group: 'overview' },
-  notifications: { name: 'Notifications', href: '/notifications', icon: Bell,     labelKey: 'navNotifications', group: 'overview' },
-  payroll:       { name: 'Bảng lương',    href: '/payroll',       icon: Banknote, labelKey: 'payroll', group: 'people' },
-  workforce:     { name: 'Hiệu suất',     href: '/workforce',     icon: Activity, labelKey: 'workforce', group: 'data' },
+// One catalogue backs desktop, mobile, dashboard, and search navigation.
+export const UNIFIED_NAVIGATION_CATALOG: NavItem[] = [
+  // Overview
+  { name: 'Dashboard', href: '/', icon: Home, labelKey: 'dashboard', shortLabelKey: 'myWorkspaceShort', group: 'overview' },
+  { name: 'Profile', href: '/profile', icon: User, labelKey: 'profile', group: 'overview' },
+  { name: 'Notifications', href: '/notifications', icon: Bell, labelKey: 'navNotifications', group: 'overview' },
 
-  // Additional parity placeholders
-  shifts:        { name: 'Shifts',        href: '/shifts',        icon: Calendar, labelKey: 'shifts', group: 'operations' },
-  staffing:      { name: 'Staffing',      href: '/staffing',      icon: Users, labelKey: 'staffing', group: 'operations' },
-  registration:  { name: 'Registration',  href: '/staffing?tab=registration', icon: UserCheck, labelKey: 'registration', requiredPermissions: ['shifts.approve_registration'], group: 'operations' },
-  staffDirectory:{ name: 'Staff Directory',href: '/staff',        icon: Users, labelKey: 'staffDirectory', group: 'people' },
-  myWorkspace:   { name: 'My Workspace',  href: '/',              icon: Home, labelKey: 'myWorkspace', shortLabelKey: 'myWorkspaceShort', group: 'overview' },
-  mySchedule:    { name: 'My Schedule',   href: '/calendar?tab=mine', icon: Calendar, labelKey: 'mySchedule', shortLabelKey: 'myScheduleShort', group: 'operations' },
-  openShifts:    { name: 'Open Shifts',   href: '/calendar?tab=open', icon: Calendar, labelKey: 'openShifts', shortLabelKey: 'openShiftsShort', group: 'operations' },
-  mySwaps:       { name: 'My Swaps',      href: '/swaps',         icon: RefreshCw, labelKey: 'mySwaps', shortLabelKey: 'mySwapsShort', group: 'operations' },
+  // Operations
+  { name: 'Calendar', href: '/calendar', icon: Calendar, labelKey: 'calendar', shortLabelKey: 'myScheduleShort', group: 'operations' },
+  { name: 'Shifts', href: '/shifts', icon: Calendar, labelKey: 'shifts', group: 'operations' },
+  { name: 'Open Shifts', href: '/calendar?tab=open', icon: Calendar, labelKey: 'openShifts', shortLabelKey: 'openShiftsShort', group: 'operations' },
+  { name: 'My Schedule', href: '/calendar?tab=mine', icon: Calendar, labelKey: 'mySchedule', shortLabelKey: 'myScheduleShort', group: 'operations' },
+  { name: 'Registration', href: '/staffing?tab=registration', icon: UserCheck, labelKey: 'registration', group: 'operations', actionPermissions: ['shifts.approve_registration'] },
+  { name: 'Staffing', href: '/staffing', icon: Users, labelKey: 'staffing', group: 'operations', actionPermissions: ['shifts.assign_staff'] },
+  { name: 'Swaps', href: '/swaps', icon: RefreshCw, labelKey: 'swaps', group: 'operations' },
+  { name: 'Live', href: '/live', icon: Radio, labelKey: 'live', shortLabelKey: 'live', group: 'operations' },
+  { name: 'Attendance', href: '/calendar?tab=attendance', icon: UserCheck, labelKey: 'attendance', group: 'operations' },
+  { name: 'Shift Notes', href: '/calendar?tab=notes', icon: FileText, labelKey: 'shiftNotes', group: 'operations' },
+
+  // Data & Reports
+  { name: 'Reports', href: '/reports', icon: FileText, labelKey: 'reports', group: 'data' },
+  { name: 'Analytics', href: '/analytics', icon: BarChart3, labelKey: 'analytics', group: 'data' },
+  { name: 'Storage', href: '/storage', icon: FolderArchive, labelKey: 'storage', group: 'data', requiredPermissions: ['storage.upload', 'reports.review'] },
+  { name: 'Product catalog', href: '/brand-catalog', icon: Package, labelKey: 'productCatalog', group: 'data' },
+  { name: 'Workforce Performance', href: '/workforce', icon: Activity, labelKey: 'workforce', group: 'data', requiredCapability: 'team_performance' },
+  { name: 'Data Quality', href: '/data-quality', icon: FileText, labelKey: 'dataQuality', group: 'data' },
+
+  // People & Finance
+  { name: 'Staff Directory', href: '/staff', icon: Users, labelKey: 'staffDirectory', group: 'people', actionPermissions: ['staff.manage'] },
+  { name: 'Account Management', href: '/staff?tab=accounts', icon: Users, labelKey: 'accountManagement', group: 'people', requiredPermissions: ['staff.manage'] },
+  { name: 'Payroll', href: '/payroll', icon: Banknote, labelKey: 'payroll', group: 'people', requiredPermissions: ['payroll.manage'], requiredCapability: 'payroll' },
+  { name: 'Personal Payslip', href: '/payroll?tab=personal', icon: Banknote, labelKey: 'personalPayslip', group: 'people' },
+
+  // System Administration
+  { name: 'Admin workspace', href: '/admin', icon: ShieldCheck, labelKey: 'adminWorkspace', group: 'system', requiredPermissions: ['settings.admin'] },
+  { name: 'Brands', href: '/brands', icon: Package, labelKey: 'brands', group: 'system', actionPermissions: ['brands.manage'] },
+  { name: 'Platforms', href: '/platforms', icon: Megaphone, labelKey: 'platforms', group: 'system', actionPermissions: ['platforms.manage'] },
+  { name: 'Campaigns', href: '/campaigns', icon: Megaphone, labelKey: 'campaigns', group: 'system', actionPermissions: ['campaigns.manage', 'campaigns.edit_operational'] },
+  { name: 'Audit', href: '/audit', icon: History, labelKey: 'auditHistory', group: 'system', requiredPermissions: ['audit.view', 'audit.view_team'] },
+  { name: 'Settings', href: '/settings', icon: Settings, labelKey: 'settings', group: 'system' },
+]
+
+export function resolveNavAccessStatus(
+  item: NavItem,
+  currentUser: Pick<UserType, 'role' | 'system_permission'> | null | undefined,
+  capabilities?: WorkforceCapabilities,
+  effectivePermissions?: Partial<Record<Permission, boolean>> | null,
+): NavAccessStatus {
+  if (!currentUser) return 'restricted'
+
+  const permissionAccess = (permissions: Permission[]) => {
+    if (effectivePermissions === undefined) return hasAnyPermission(currentUser, permissions)
+    if (effectivePermissions === null) return null
+    const results = permissions.map(permission => effectivePermissions[permission])
+    if (results.includes(true)) return true
+    return results.some(result => result === undefined) ? null : false
+  }
+
+  if (item.href === '/storage' && process.env.NEXT_PUBLIC_FEATURE_FILE_STORAGE === 'false') {
+    return 'unavailable'
+  }
+
+  if (item.requiredCapability === 'payroll') {
+    if (capabilities?.payroll === false) return 'unavailable'
+    const allowed = permissionAccess(['payroll.manage'])
+    if (allowed === false) return 'restricted'
+    if (allowed === null || (capabilities === undefined && effectivePermissions !== undefined)) return 'pending'
+    return allowed ? 'available' : 'restricted'
+  }
+
+  if (item.requiredCapability === 'team_performance') {
+    if (capabilities?.team_performance === false && capabilities.own_performance === false) return 'unavailable'
+    if (capabilities?.team_performance === true) return 'available'
+    if (capabilities?.own_performance === true) return 'read_only'
+    if (hasPermission(currentUser, 'staff.manage')) return 'available'
+    if (capabilities === undefined && effectivePermissions === null) return 'pending'
+    return 'restricted'
+  }
+
+  if (item.requiredCapability === 'actual_staffing') {
+    if (capabilities?.actual_staffing === true) return 'available'
+    if (capabilities === undefined && effectivePermissions === null) return 'pending'
+    return 'restricted'
+  }
+
+  if (item.requiredPermissions && item.requiredPermissions.length > 0) {
+    if (effectivePermissions === undefined && !hasAnyPermission(currentUser, item.requiredPermissions)) return 'restricted'
+    const allowed = permissionAccess(item.requiredPermissions)
+    if (allowed === null) return 'pending'
+    if (!allowed) return 'restricted'
+  }
+
+  if (item.actionPermissions && item.actionPermissions.length > 0) {
+    const allowed = permissionAccess(item.actionPermissions)
+    if (allowed === null) return 'pending'
+    if (!allowed) return 'read_only'
+  }
+
+  return 'available'
 }
 
-// ADMIN priority
-const adminNav: NavItem[] = [
-  { ...navCatalogue.dashboard },
-  { ...navCatalogue.adminWorkspace },
-  { ...navCatalogue.profile },
-  { ...navCatalogue.notifications },
-  { ...navCatalogue.calendar },
-  { ...navCatalogue.live },
-  { ...navCatalogue.shifts },
-  { ...navCatalogue.staffing },
-  { ...navCatalogue.registration },
-  { ...navCatalogue.storage },
-  { ...navCatalogue.swaps },
-  { ...navCatalogue.reports },
-  { ...navCatalogue.brandCatalog },
-  { ...navCatalogue.workforce },
-  { ...navCatalogue.analytics },
-  { ...navCatalogue.payroll },
-  { ...navCatalogue.brands },
-  { ...navCatalogue.platforms },
-  { ...navCatalogue.campaigns },
-  { ...navCatalogue.staff },
-  { ...navCatalogue.audit },
-  { ...navCatalogue.settings },
-]
-
-// LEADER priority
-const leaderNav: NavItem[] = [
-  { ...navCatalogue.dashboard, name: 'Team Operations', labelKey: 'teamOperations', shortLabelKey: 'teamOperationsShort' },
-  { ...navCatalogue.profile },
-  { ...navCatalogue.notifications },
-  { ...navCatalogue.calendar },
-  { ...navCatalogue.live },
-  { ...navCatalogue.shifts },
-  { ...navCatalogue.staffing },
-  { ...navCatalogue.registration },
-  { ...navCatalogue.swaps },
-  { ...navCatalogue.reports },
-  { ...navCatalogue.brandCatalog },
-  { ...navCatalogue.workforce },
-  { ...navCatalogue.staffDirectory },
-]
-
-// MEMBER priority
-const memberNav: NavItem[] = [
-  { ...navCatalogue.myWorkspace },
-  { ...navCatalogue.profile },
-  { ...navCatalogue.notifications },
-  { ...navCatalogue.mySchedule },
-  { ...navCatalogue.openShifts },
-  { ...navCatalogue.shifts },
-  { ...navCatalogue.mySwaps },
-  { ...navCatalogue.live },
-  { ...navCatalogue.reports },
-  { ...navCatalogue.brandCatalog },
-  { ...navCatalogue.workforce, name: 'Hiệu suất cá nhân', labelKey: 'myWorkforce' },
-]
-
 /**
- * Shared permission filter — single source of truth for Sidebar and BottomNav.
- * Only removes items whose requiredPermissions the user does not satisfy (class A items).
- * Class B/C items pass through unconditionally.
+ * Shared navigation resolver — single source of truth for navigation surfaces.
+ * For unauthenticated users, strips elevated routes (security failsafe).
+ * For all authenticated roles, preserves discovery parity while annotating accessStatus.
  */
 export function filterNav(
   items: NavItem[],
   currentUser: Pick<UserType, 'role' | 'system_permission'> | null | undefined,
+  capabilities?: WorkforceCapabilities,
+  effectivePermissions?: Partial<Record<Permission, boolean>> | null,
 ): NavItem[] {
-  return items.filter(item => {
-    if (!item.requiredPermissions || item.requiredPermissions.length === 0) return true
-    if (!currentUser) return false
-    return hasAnyPermission(currentUser, item.requiredPermissions)
-  })
+  if (!currentUser) {
+    return items.filter(item => {
+      if (item.requiredPermissions && item.requiredPermissions.length > 0) return false
+      if (item.requiredCapability) return false
+      if (item.actionPermissions && item.actionPermissions.length > 0) return false
+      return true
+    })
+  }
+
+  return items.map(item => ({
+    ...item,
+    accessStatus: resolveNavAccessStatus(item, currentUser, capabilities, effectivePermissions),
+  }))
 }
 
-export function getNavigationForRole(systemPermission: SystemPermission | undefined): NavItem[] {
-  switch (systemPermission) {
-    case 'admin':  return adminNav
-    case 'leader': return leaderNav
-    case 'member':
-    default:       return memberNav // safe fallback
-  }
+export function getNavigationForRole(systemPermission?: SystemPermission): NavItem[] {
+  void systemPermission
+  return UNIFIED_NAVIGATION_CATALOG.map(item => ({ ...item }))
 }
 
 export type ExceptionSeverity = 'critical' | 'action_required' | 'pending' | 'informational' | 'resolved'

@@ -3,13 +3,12 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { BarChart3, ChevronDown } from 'lucide-react'
+import { BarChart3, ChevronDown, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { resolveSystemPermission } from '@/lib/permissions'
 import { filterNav, getNavigationForRole, groupNavigation } from '@/lib/ui/role-ux'
-import { filterWorkforceNavigation } from '@/lib/ui/workforceNavigation'
 import { resolveActiveNavigation } from './shellConfig'
 import { AccountMenu } from './AccountMenu'
 
@@ -17,9 +16,9 @@ export function Sidebar() {
   const pathname = usePathname()
   const search = useSearchParams()
   const { t } = useTranslation()
-  const { currentUser, capabilities } = useWorkforceCapabilities()
+  const { currentUser, capabilities, effectivePermissions } = useWorkforceCapabilities()
   const permission = resolveSystemPermission(currentUser)
-  const navigation = filterWorkforceNavigation(filterNav(getNavigationForRole(permission), currentUser), capabilities)
+  const navigation = filterNav(getNavigationForRole(permission), currentUser, capabilities, effectivePermissions ?? null)
   const activeHref = resolveActiveNavigation(navigation, pathname, search)
   const [collapsed, setCollapsed] = useState<string[]>([])
   const [preferencesKey, setPreferencesKey] = useState('')
@@ -51,14 +50,35 @@ export function Sidebar() {
             </button>
             <div id={'sidebar-group-' + group.id} hidden={!expanded}>
             {group.items.map((item) => {
-          const active = item.href === activeHref
-          const Icon = item.icon
-          const label = item.labelKey ? t(item.labelKey as Parameters<typeof t>[0]) : t(item.name.toLowerCase() as Parameters<typeof t>[0]) || item.name
-          return <div key={item.name}>
-            <Link href={item.href} aria-current={active ? 'page' : undefined} title={label} data-testid={`sidebar-${item.name.toLowerCase().replace(/\s+/g, '-')}`} className={cn('mb-1 flex items-center gap-3 rounded-md px-3 py-2.5 text-[13px] font-medium transition-colors', active ? 'bg-blue-600 text-white' : 'hover:bg-white/10 hover:text-white')}>
-              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="truncate">{label}</span>
-            </Link>
-          </div>
+              const active = item.href === activeHref
+              const Icon = item.icon
+              const label = item.labelKey ? t(item.labelKey as Parameters<typeof t>[0]) : t(item.name.toLowerCase() as Parameters<typeof t>[0]) || item.name
+              const isRestricted = item.accessStatus === 'restricted' || item.accessStatus === 'unavailable' || item.accessStatus === 'pending'
+              const accessLabel = item.accessStatus === 'read_only' ? t('readOnly') : isRestricted ? t('accessRestricted') : label
+              return <div key={item.name + item.href}>
+                <Link
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  title={`${label} (${accessLabel})`}
+                  data-testid={`sidebar-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                  data-access-status={item.accessStatus || 'available'}
+                  className={cn(
+                    'mb-1 flex items-center justify-between gap-3 rounded-md px-3 py-2.5 text-[13px] font-medium transition-colors',
+                    active ? 'bg-blue-600 text-white' : 'hover:bg-white/10 hover:text-white',
+                    isRestricted && 'text-slate-400 opacity-80'
+                  )}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{label}</span>
+                  </div>
+                  {isRestricted && (
+                    <span title={accessLabel} className="shrink-0 text-slate-400" aria-label={accessLabel}>
+                      <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+                    </span>
+                  )}
+                </Link>
+              </div>
             })}
             </div>
           </section>

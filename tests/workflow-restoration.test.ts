@@ -237,6 +237,7 @@ test('Month View uses stable responsive limits and sorts sessions by start time'
     ...base,
     id: `session-${index + 1}`,
     start_time: `${String(index + 8).padStart(2, '0')}:00`,
+    end_time: `${String(index + 9).padStart(2, '0')}:00`,
     title: `Session ${index + 1}`,
   }))
   const markup = renderToStaticMarkup(createElement(

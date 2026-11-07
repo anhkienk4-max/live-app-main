@@ -28,7 +28,7 @@ test('nested and query navigation highlight one canonical destination per role',
   const member = filterNav(getNavigationForRole('member'), { role: 'staff', system_permission: 'member' })
   assert.equal(resolveActiveNavigation(member, '/calendar', new URLSearchParams('tab=mine')), '/calendar?tab=mine')
   assert.equal(resolveActiveNavigation(member, '/calendar', new URLSearchParams('tab=open')), '/calendar?tab=open')
-  assert.ok(!member.some(item => item.href.includes('registration')))
+  assert.equal(member.find(item => item.href.includes('registration'))?.accessStatus, 'read_only')
 })
 test('chart ticks stay compact; full values are not changed', () => {
   assert.equal(formatChartAxis(1000000000, true), '1B \u20ab')

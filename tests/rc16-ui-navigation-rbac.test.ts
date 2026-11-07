@@ -3,22 +3,21 @@ import assert from 'node:assert/strict'
 import { getNavigationForRole, filterNav } from '@/lib/ui/role-ux'
 import type { User } from '@/lib/types/database.types'
 
-test('RC16 UI: Navigation RBAC protects Payroll as strictly Admin-only', () => {
+test('RC16 UI: Navigation parity keeps Payroll visible for all roles while restricting non-admin access', () => {
   const adminNav = getNavigationForRole('admin')
   const leaderNav = getNavigationForRole('leader')
   const memberNav = getNavigationForRole('member')
 
-  // Payroll must exist in admin navigation
+  // Payroll exists in navigation for all roles to preserve complete module discovery parity
   const adminPayroll = adminNav.find(item => item.href === '/payroll')
   assert.ok(adminPayroll, 'Payroll must exist in admin navigation')
-  assert.equal(adminPayroll.name, 'Bảng lương')
+  assert.equal(adminPayroll.name, 'Payroll')
 
-  // Payroll must NOT exist in leader or member navigation
   const leaderPayroll = leaderNav.find(item => item.href === '/payroll')
-  assert.equal(leaderPayroll, undefined, 'Payroll must NOT exist in leader navigation')
+  assert.ok(leaderPayroll, 'Payroll must exist in leader navigation for discovery parity')
 
   const memberPayroll = memberNav.find(item => item.href === '/payroll')
-  assert.equal(memberPayroll, undefined, 'Payroll must NOT exist in member navigation')
+  assert.ok(memberPayroll, 'Payroll must exist in member navigation for discovery parity')
 })
 
 test('RC16 UI: Workforce Performance navigation is available across roles with appropriate scope', () => {
@@ -34,10 +33,9 @@ test('RC16 UI: Workforce Performance navigation is available across roles with a
 
   const memberWorkforce = memberNav.find(item => item.href === '/workforce')
   assert.ok(memberWorkforce, 'Workforce must exist in member navigation')
-  assert.equal(memberWorkforce.name, 'Hiệu suất cá nhân')
 })
 
-test('RC16 UI: filterNav preserves Payroll for admin user and strips for non-admin', () => {
+test('RC16 UI: filterNav annotates accessStatus for authenticated users and strips for unauthenticated', () => {
   const adminUser: Pick<User, 'role' | 'system_permission'> = {
     role: 'admin',
     system_permission: 'admin',
@@ -52,11 +50,21 @@ test('RC16 UI: filterNav preserves Payroll for admin user and strips for non-adm
   }
 
   const adminItems = filterNav(getNavigationForRole('admin'), adminUser)
-  assert.ok(adminItems.some(item => item.href === '/payroll'))
+  const adminPayroll = adminItems.find(item => item.href === '/payroll')
+  assert.ok(adminPayroll)
+  assert.equal(adminPayroll.accessStatus, 'available')
 
   const leaderItems = filterNav(getNavigationForRole('leader'), leaderUser)
-  assert.ok(!leaderItems.some(item => item.href === '/payroll'))
+  const leaderPayroll = leaderItems.find(item => item.href === '/payroll')
+  assert.ok(leaderPayroll, 'Leader retains Payroll in navigation')
+  assert.equal(leaderPayroll.accessStatus, 'restricted', 'Leader has restricted access status')
 
   const memberItems = filterNav(getNavigationForRole('member'), memberUser)
-  assert.ok(!memberItems.some(item => item.href === '/payroll'))
+  const memberPayroll = memberItems.find(item => item.href === '/payroll')
+  assert.ok(memberPayroll, 'Member retains Payroll in navigation')
+  assert.equal(memberPayroll.accessStatus, 'restricted', 'Member has restricted access status')
+
+  // Unauthenticated user failsafe
+  const unauthItems = filterNav(getNavigationForRole('admin'), null)
+  assert.ok(!unauthItems.some(item => item.href === '/payroll'), 'Unauthenticated user is stripped of gated routes')
 })

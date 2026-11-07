@@ -5,17 +5,19 @@ import { filterNav, getNavigationForRole, groupNavigation } from '../lib/ui/role
 
 const fromSource = (path: string) => readFileSync(new URL('../' + path, import.meta.url), 'utf8')
 
-test('member and leader navigation omit Admin destinations while preserving personal workflows', () => {
-  const admin = getNavigationForRole('admin')
-  const leader = getNavigationForRole('leader')
+test('navigation maintains full discovery parity while strictly enforcing role access status', () => {
+  const admin = filterNav(getNavigationForRole('admin'), { role: 'admin', system_permission: 'admin' })
+  const leader = filterNav(getNavigationForRole('leader'), { role: 'leader', system_permission: 'leader' })
   const member = filterNav(getNavigationForRole('member'), { role: 'staff', system_permission: 'member' })
   const paths = (items: typeof member) => items.map(item => new URL(item.href, 'https://local.invalid').pathname)
-  const restricted = ['/payroll', '/brands', '/platforms', '/campaigns', '/audit', '/settings']
+  const restricted = ['/payroll', '/brands', '/platforms', '/campaigns', '/settings']
   for (const href of restricted) {
     assert.ok(paths(admin).includes(href), 'Admin retains ' + href)
-    assert.ok(!paths(leader).includes(href), 'Leader does not inherit Admin-only destination ' + href)
-    assert.ok(!paths(member).includes(href), 'Member does not inherit Admin-only destination ' + href)
+    assert.ok(paths(leader).includes(href), 'Leader retains destination ' + href)
+    assert.ok(paths(member).includes(href), 'Member retains destination ' + href)
   }
+  assert.equal(member.find(i => i.href === '/payroll')?.accessStatus, 'restricted')
+  assert.equal(member.find(i => i.href === '/admin')?.accessStatus, 'restricted')
   for (const href of ['/calendar', '/shifts', '/swaps', '/reports', '/workforce']) {
     assert.ok(paths(member).includes(href), 'Member retains personal workflow ' + href)
   }
@@ -36,7 +38,10 @@ test('desktop, tablet, and mobile navigation are derived from the signed-in role
   assert.match(permissions, /hasPermission/)
   const roleUx = fromSource('lib/ui/role-ux.ts')
   assert.match(roleUx, /function filterNav\(/)
-  assert.match(roleUx, /hasAnyPermission\(currentUser, item\.requiredPermissions\)/)
+  assert.match(roleUx, /permissionAccess\(item\.requiredPermissions\)/)
+  assert.match(roleUx, /effectivePermissions/)
+  const search = fromSource('components/features/search/GlobalSearch.tsx')
+  assert.match(search, /UNIFIED_NAVIGATION_CATALOG/)
   assert.doesNotMatch(roleUx, /return\s+true\s*\n\s*}\s*\n\s*export function filterNav/)
 })
 

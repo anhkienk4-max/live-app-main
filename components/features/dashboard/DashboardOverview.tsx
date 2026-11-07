@@ -20,6 +20,7 @@ import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getSwapUiActions } from '@/lib/utils/swapUi'
 import { getMemberAssignedShifts, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
+import { Lock } from 'lucide-react'
 import { deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { selectLatestDashboardItems } from '@/lib/ui/dashboard-recent-items'
 import { getAllIssues } from '@/lib/utils/dataQuality'
@@ -180,7 +181,7 @@ function DashboardRoleSkeleton({ role }: { role: string }) {
 }
 
 export function DashboardOverview() {
-  const {currentUser, capabilities, loading: capabilitiesLoading, error: capabilitiesError, reload: reloadCapabilities} = useWorkforceCapabilities()
+  const {currentUser, capabilities, effectivePermissions, loading: capabilitiesLoading, error: capabilitiesError, reload: reloadCapabilities} = useWorkforceCapabilities()
   const [data,setData] = React.useState<DashboardDataset | null>(null)
   const [loading,setLoading] = React.useState(true)
   const [isRefreshing,setIsRefreshing] = React.useState(false)
@@ -383,6 +384,7 @@ export function DashboardOverview() {
         data={data}
         currentUser={currentUser}
         workforceCapabilities={capabilities}
+        effectivePermissions={effectivePermissions}
         onUpdate={() => loadData(false)}
         filterState={filters}
         onFilterChange={setFilters}
@@ -397,6 +399,7 @@ export function DashboardWorkspace({
   data,
   currentUser,
   workforceCapabilities,
+  effectivePermissions,
   onUpdate,
   filterState,
   onFilterChange,
@@ -405,6 +408,7 @@ export function DashboardWorkspace({
   data: DashboardDataset
   currentUser: User
   workforceCapabilities?: ReturnType<typeof useWorkforceCapabilities>['capabilities']
+  effectivePermissions?: ReturnType<typeof useWorkforceCapabilities>['effectivePermissions']
   onUpdate: () => void | Promise<void>
   filterState?: Filters | null
   onFilterChange?: React.Dispatch<React.SetStateAction<Filters | null>>
@@ -421,7 +425,11 @@ export function DashboardWorkspace({
   React.useEffect(()=>{const frame=requestAnimationFrame(()=>setLocalFilters(initialFilters()));return ()=>cancelAnimationFrame(frame)},[])
   if (!filters) return <ContentSkeleton />
   const role = resolveSystemPermission(currentUser)
-  const visibleFeatures = filterWorkforceNavigation(filterNav(getNavigationForRole(role), currentUser), workforceCapabilities).filter(item => item.href.split('?')[0] !== '/')
+  const baseNav = filterNav(getNavigationForRole(role), currentUser)
+  const visibleFeatures = (effectivePermissions !== undefined || workforceCapabilities !== undefined
+    ? filterNav(getNavigationForRole(role), currentUser, workforceCapabilities, effectivePermissions ?? null)
+    : filterWorkforceNavigation(baseNav, workforceCapabilities)
+  ).filter(item => item.href.split('?')[0] !== '/')
   const dashboardFeatureLinks = <DashboardFeatureLinks items={visibleFeatures} t={(key, variables) => t(key as TranslationKey, variables)} />
   const setPreset = (preset:Preset)=>setFilters(current=>current ? {...current,preset,...(preset==='custom'?{}:rangeFor(preset))} : current)
   const props: CommonProps = {
@@ -457,9 +465,12 @@ function DashboardFeatureLinks({ items, t }: { items: ReturnType<typeof filterNa
       {items.map(item => {
         const Icon = item.icon
         const label = t((item.labelKey ?? item.name.toLowerCase()) as TranslationKey)
-        return <Link key={`${item.href}:${item.name}`} href={item.href} className="flex min-h-14 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-300 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+        const locked = item.accessStatus === 'restricted' || item.accessStatus === 'unavailable' || item.accessStatus === 'pending'
+        const accessLabel = item.accessStatus === 'read_only' ? t('readOnly') : locked ? t('accessRestricted') : label
+        return <Link key={`${item.href}:${item.name}`} href={item.href} title={`${label} (${accessLabel})`} data-access-status={item.accessStatus || 'available'} className="flex min-h-14 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-300 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
           <Icon className="size-4 shrink-0 text-blue-600" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">{label}</span>
+          {locked && <Lock className="size-3.5 shrink-0 text-slate-400" aria-label={accessLabel} />}
           <span className="sr-only">{t('dashboardOpenFeature')}</span>
         </Link>
       })}

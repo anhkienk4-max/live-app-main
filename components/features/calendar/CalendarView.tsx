@@ -173,7 +173,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     : { all: 'All time', week: 'Current week', month: 'Current month', studios: 'All studios', unassigned: 'Unassigned' }
   const listPagination = useListPagination('calendar_list', 10)
   const { params, navigate: listNavigate } = listPagination
-  const mobileFullCalendar = params.get('calendar_mobile_mode') === 'full'
+  const mobileCompactCalendar = params.get('calendar_mobile_mode') === 'compact'
+  const mobileFullCalendar = !mobileCompactCalendar
   const rawView = params.get('calendar_view')
   const view = rawView === 'month' || rawView === 'week' || rawView === 'day' || rawView === 'list' ? rawView
     : hasPermission(currentUser, 'shifts.approve_registration') ? 'week' : 'month'
@@ -703,10 +704,10 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             </div>
             {(view === 'month' || view === 'week') && (
               <div className="grid w-full grid-cols-2 rounded-md border bg-muted/20 p-1 sm:hidden" role="group" aria-label={language === 'vi' ? 'Kiểu hiển thị lịch trên điện thoại' : 'Mobile calendar layout'} data-testid="calendar-mobile-layout-toggle">
-                <Button type="button" size="sm" variant={!mobileFullCalendar ? 'secondary' : 'ghost'} aria-pressed={!mobileFullCalendar} data-testid="calendar-mobile-compact" onClick={() => listNavigate({ calendar_mobile_mode: null })} className="min-w-0 text-xs">
+                <Button type="button" size="sm" variant={mobileCompactCalendar ? 'secondary' : 'ghost'} aria-pressed={mobileCompactCalendar} data-testid="calendar-mobile-compact" onClick={() => listNavigate({ calendar_mobile_mode: 'compact' })} className="min-w-0 text-xs">
                   {language === 'vi' ? 'Lịch gọn' : 'Compact'}
                 </Button>
-                <Button type="button" size="sm" variant={mobileFullCalendar ? 'secondary' : 'ghost'} aria-pressed={mobileFullCalendar} data-testid="calendar-mobile-full" onClick={() => listNavigate({ calendar_mobile_mode: 'full' })} className="min-w-0 text-xs">
+                <Button type="button" size="sm" variant={mobileFullCalendar ? 'secondary' : 'ghost'} aria-pressed={mobileFullCalendar} data-testid="calendar-mobile-full" onClick={() => listNavigate({ calendar_mobile_mode: null })} className="min-w-0 text-xs">
                   {language === 'vi' ? 'Lịch đầy đủ' : 'Full calendar'}
                 </Button>
               </div>
@@ -829,8 +830,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
          {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">{language === 'vi' ? `Đang tải ca trong kỳ: ${shifts.length}/${listTotal}. Dữ liệu chưa đầy đủ.` : `Loading shifts in range: ${shifts.length}/${listTotal}. Data is incomplete.`}</div>}
         {loadedKey === requestKey && <>
         {view === 'month' && <>
-          <div className={mobileFullCalendar ? "max-w-full overflow-x-auto sm:hidden lg:block" : "hidden max-w-full overflow-x-auto lg:block"} role="region" aria-label={t('month')} tabIndex={0} data-testid="calendar-full-month-view"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
-          <section className={mobileFullCalendar ? "hidden min-w-0 sm:block lg:hidden" : "min-w-0 lg:hidden"} data-testid="calendar-compact-month-view">
+          <div className={mobileFullCalendar ? "max-w-full overflow-x-auto" : "hidden max-w-full overflow-x-auto lg:block"} role="region" aria-label={t('month')} tabIndex={0} data-testid="calendar-full-month-view"><div className="min-w-[760px] md:min-w-full"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
+          <section className={mobileFullCalendar ? "hidden" : "min-w-0 lg:hidden"} data-testid="calendar-compact-month-view">
             <MonthView compact complete={windowComplete} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onDayClick={setSelectedDay} />
           </section>
         </>}
