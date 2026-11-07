@@ -2,17 +2,11 @@ import { z } from 'zod'
 import { requirePermission, authorizationErrorResponse, isAuthorizationError } from '@/lib/server/authGuards'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
+import { attendanceReviewBodySchema } from '@/lib/server/attendanceReviewSchema'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 const headers = { 'Cache-Control': 'no-store' }
-export const attendanceReviewBodySchema = z.object({
-  event_id: z.string().uuid(),
-  evidence_request_id: z.string().uuid(),
-  expected_version: z.number().int().nonnegative(),
-  decision: z.enum(['approved', 'rejected', 'correction_requested']),
-  reason: z.string().trim().min(8).max(2000),
-}).strict()
 const fail = (error: string, status: number) => Response.json({ ok: false, error: { code: error } }, { status, headers })
 const uid = (request: Request) => request.headers.get('origin') === new URL(request.url).origin
 
