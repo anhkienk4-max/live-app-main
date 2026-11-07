@@ -1,0 +1,3282 @@
+{
+  "columns": [
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "id",
+      "default": "(gen_random_uuid())::text",
+      "nullable": "NO",
+      "position": 1
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "provider",
+      "default": null,
+      "nullable": "NO",
+      "position": 2
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "execution_source",
+      "default": null,
+      "nullable": "NO",
+      "position": 3
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "brand_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 4
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "platform_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 5
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "subbrand_key",
+      "default": null,
+      "nullable": "YES",
+      "position": 6
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "storage_profile",
+      "default": null,
+      "nullable": "NO",
+      "position": 7
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "root_folder_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 8
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "base_folder_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 9
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.operational_storage_routes",
+      "column": "folder_labels",
+      "default": "'{}'::jsonb",
+      "nullable": "NO",
+      "position": 10
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "period_naming_style",
+      "default": null,
+      "nullable": "NO",
+      "position": 11
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.operational_storage_routes",
+      "column": "period_label_overrides",
+      "default": "'{}'::jsonb",
+      "nullable": "NO",
+      "position": 12
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.operational_storage_routes",
+      "column": "period_date_ranges",
+      "default": "'[]'::jsonb",
+      "nullable": "NO",
+      "position": 13
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.operational_storage_routes",
+      "column": "folder_label_overrides",
+      "default": "'{}'::jsonb",
+      "nullable": "NO",
+      "position": 14
+    },
+    {
+      "udt": "bool",
+      "type": "boolean",
+      "table": "public.operational_storage_routes",
+      "column": "active",
+      "default": "true",
+      "nullable": "NO",
+      "position": 15
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.operational_storage_routes",
+      "column": "approved_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 16
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.operational_storage_routes",
+      "column": "approved_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 17
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.operational_storage_routes",
+      "column": "created_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 18
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.operational_storage_routes",
+      "column": "updated_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 19
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "id",
+      "default": "(gen_random_uuid())::text",
+      "nullable": "NO",
+      "position": 1
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "report_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 2
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "image_url",
+      "default": null,
+      "nullable": "NO",
+      "position": 3
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "storage_path",
+      "default": null,
+      "nullable": "NO",
+      "position": 4
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "original_name",
+      "default": null,
+      "nullable": "YES",
+      "position": 5
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "mime_type",
+      "default": null,
+      "nullable": "YES",
+      "position": 6
+    },
+    {
+      "udt": "int8",
+      "type": "bigint",
+      "table": "public.report_images",
+      "column": "size_bytes",
+      "default": null,
+      "nullable": "YES",
+      "position": 7
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "image_type",
+      "default": null,
+      "nullable": "NO",
+      "position": 8
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "uploaded_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 9
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.report_images",
+      "column": "created_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 10
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.report_images",
+      "column": "updated_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 11
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.report_images",
+      "column": "deleted_at",
+      "default": null,
+      "nullable": "YES",
+      "position": 12
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "provider",
+      "default": null,
+      "nullable": "YES",
+      "position": 13
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_images",
+      "column": "external_file_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 14
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_revisions",
+      "column": "id",
+      "default": "(gen_random_uuid())::text",
+      "nullable": "NO",
+      "position": 1
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_revisions",
+      "column": "report_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 2
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.report_revisions",
+      "column": "version",
+      "default": null,
+      "nullable": "NO",
+      "position": 3
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_revisions",
+      "column": "created_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 4
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.report_revisions",
+      "column": "created_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 5
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_revisions",
+      "column": "status",
+      "default": null,
+      "nullable": "NO",
+      "position": 6
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_revisions",
+      "column": "reason",
+      "default": null,
+      "nullable": "YES",
+      "position": 7
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.report_revisions",
+      "column": "event",
+      "default": null,
+      "nullable": "NO",
+      "position": 8
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.report_revisions",
+      "column": "metrics",
+      "default": null,
+      "nullable": "YES",
+      "position": 9
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.report_revisions",
+      "column": "ocr_review",
+      "default": null,
+      "nullable": "YES",
+      "position": 10
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.report_revisions",
+      "column": "final_recap",
+      "default": null,
+      "nullable": "YES",
+      "position": 11
+    },
+    {
+      "udt": "_text",
+      "type": "ARRAY",
+      "table": "public.report_revisions",
+      "column": "image_references",
+      "default": null,
+      "nullable": "YES",
+      "position": 12
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "id",
+      "default": "(gen_random_uuid())::text",
+      "nullable": "NO",
+      "position": 1
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "shift_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 2
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "status",
+      "default": "'draft'::text",
+      "nullable": "NO",
+      "position": 3
+    },
+    {
+      "udt": "numeric",
+      "type": "numeric",
+      "table": "public.reports",
+      "column": "revenue",
+      "default": null,
+      "nullable": "YES",
+      "position": 4
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "orders",
+      "default": null,
+      "nullable": "YES",
+      "position": 5
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "peak_viewer",
+      "default": null,
+      "nullable": "YES",
+      "position": 6
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "average_viewer",
+      "default": null,
+      "nullable": "YES",
+      "position": 7
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "likes",
+      "default": null,
+      "nullable": "YES",
+      "position": 8
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "comments",
+      "default": null,
+      "nullable": "YES",
+      "position": 9
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "shares",
+      "default": null,
+      "nullable": "YES",
+      "position": 10
+    },
+    {
+      "udt": "_text",
+      "type": "ARRAY",
+      "table": "public.reports",
+      "column": "top_products",
+      "default": null,
+      "nullable": "YES",
+      "position": 11
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "insights_good",
+      "default": null,
+      "nullable": "YES",
+      "position": 12
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "insights_improvement",
+      "default": null,
+      "nullable": "YES",
+      "position": 13
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "replay_url",
+      "default": null,
+      "nullable": "YES",
+      "position": 14
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "dashboard_url",
+      "default": null,
+      "nullable": "YES",
+      "position": 15
+    },
+    {
+      "udt": "numeric",
+      "type": "numeric",
+      "table": "public.reports",
+      "column": "gmv",
+      "default": null,
+      "nullable": "YES",
+      "position": 16
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "viewers",
+      "default": null,
+      "nullable": "YES",
+      "position": 17
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "product_clicks",
+      "default": null,
+      "nullable": "YES",
+      "position": 18
+    },
+    {
+      "udt": "numeric",
+      "type": "numeric",
+      "table": "public.reports",
+      "column": "ctr",
+      "default": null,
+      "nullable": "YES",
+      "position": 19
+    },
+    {
+      "udt": "numeric",
+      "type": "numeric",
+      "table": "public.reports",
+      "column": "cvr",
+      "default": null,
+      "nullable": "YES",
+      "position": 20
+    },
+    {
+      "udt": "numeric",
+      "type": "numeric",
+      "table": "public.reports",
+      "column": "average_order_value",
+      "default": null,
+      "nullable": "YES",
+      "position": 21
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "live_duration_minutes",
+      "default": null,
+      "nullable": "YES",
+      "position": 22
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "dashboard_platform",
+      "default": "'other'::text",
+      "nullable": "NO",
+      "position": 23
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.reports",
+      "column": "normalized_metrics",
+      "default": null,
+      "nullable": "YES",
+      "position": 24
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.reports",
+      "column": "platform_metrics",
+      "default": null,
+      "nullable": "YES",
+      "position": 25
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "raw_ocr_output",
+      "default": null,
+      "nullable": "YES",
+      "position": 26
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.reports",
+      "column": "ocr_review",
+      "default": null,
+      "nullable": "YES",
+      "position": 27
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.reports",
+      "column": "final_recap",
+      "default": null,
+      "nullable": "YES",
+      "position": 28
+    },
+    {
+      "udt": "bool",
+      "type": "boolean",
+      "table": "public.reports",
+      "column": "metrics_confirmed",
+      "default": "false",
+      "nullable": "NO",
+      "position": 29
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.reports",
+      "column": "confirmed_at",
+      "default": null,
+      "nullable": "YES",
+      "position": 30
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "confirmed_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 31
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "submitted_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 32
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "reviewed_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 33
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.reports",
+      "column": "reviewed_at",
+      "default": null,
+      "nullable": "YES",
+      "position": 34
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "review_notes",
+      "default": null,
+      "nullable": "YES",
+      "position": 35
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.reports",
+      "column": "version_number",
+      "default": "0",
+      "nullable": "NO",
+      "position": 36
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "updated_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 37
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.reports",
+      "column": "created_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 38
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.reports",
+      "column": "updated_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 39
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.reports",
+      "column": "deleted_at",
+      "default": null,
+      "nullable": "YES",
+      "position": 40
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "deleted_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 41
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.reports",
+      "column": "archived_at",
+      "default": null,
+      "nullable": "YES",
+      "position": 42
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "archived_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 43
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.reports",
+      "column": "deletion_reason",
+      "default": null,
+      "nullable": "YES",
+      "position": 44
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "id",
+      "default": "(gen_random_uuid())::text",
+      "nullable": "NO",
+      "position": 1
+    },
+    {
+      "udt": "date",
+      "type": "date",
+      "table": "public.shifts",
+      "column": "date",
+      "default": null,
+      "nullable": "NO",
+      "position": 2
+    },
+    {
+      "udt": "time",
+      "type": "time without time zone",
+      "table": "public.shifts",
+      "column": "start_time",
+      "default": null,
+      "nullable": "NO",
+      "position": 3
+    },
+    {
+      "udt": "time",
+      "type": "time without time zone",
+      "table": "public.shifts",
+      "column": "end_time",
+      "default": null,
+      "nullable": "NO",
+      "position": 4
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "timezone",
+      "default": "'Asia/Ho_Chi_Minh'::text",
+      "nullable": "NO",
+      "position": 5
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.shifts",
+      "column": "start_at",
+      "default": null,
+      "nullable": "NO",
+      "position": 6
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.shifts",
+      "column": "end_at",
+      "default": null,
+      "nullable": "NO",
+      "position": 7
+    },
+    {
+      "udt": "date",
+      "type": "date",
+      "table": "public.shifts",
+      "column": "end_date",
+      "default": null,
+      "nullable": "NO",
+      "position": 8
+    },
+    {
+      "udt": "bool",
+      "type": "boolean",
+      "table": "public.shifts",
+      "column": "crosses_midnight",
+      "default": null,
+      "nullable": "NO",
+      "position": 9
+    },
+    {
+      "udt": "int2",
+      "type": "smallint",
+      "table": "public.shifts",
+      "column": "duration_minutes",
+      "default": null,
+      "nullable": "NO",
+      "position": 10
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "brand_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 11
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "platform_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 12
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "campaign_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 13
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "title",
+      "default": null,
+      "nullable": "YES",
+      "position": 14
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "studio",
+      "default": null,
+      "nullable": "YES",
+      "position": 15
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "host_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 16
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "support_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 17
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "technical_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 18
+    },
+    {
+      "udt": "int2",
+      "type": "smallint",
+      "table": "public.shifts",
+      "column": "required_host_count",
+      "default": "1",
+      "nullable": "NO",
+      "position": 19
+    },
+    {
+      "udt": "int2",
+      "type": "smallint",
+      "table": "public.shifts",
+      "column": "required_support_count",
+      "default": "1",
+      "nullable": "NO",
+      "position": 20
+    },
+    {
+      "udt": "int2",
+      "type": "smallint",
+      "table": "public.shifts",
+      "column": "required_technical_count",
+      "default": "1",
+      "nullable": "NO",
+      "position": 21
+    },
+    {
+      "udt": "bool",
+      "type": "boolean",
+      "table": "public.shifts",
+      "column": "registration_locked",
+      "default": "false",
+      "nullable": "NO",
+      "position": 22
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.shifts",
+      "column": "registration_cutoff_at",
+      "default": null,
+      "nullable": "NO",
+      "position": 23
+    },
+    {
+      "udt": "bool",
+      "type": "boolean",
+      "table": "public.shifts",
+      "column": "allow_multi_role",
+      "default": "false",
+      "nullable": "NO",
+      "position": 24
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "import_batch_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 25
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "status",
+      "default": "'scheduled'::text",
+      "nullable": "NO",
+      "position": 26
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "live_link",
+      "default": null,
+      "nullable": "YES",
+      "position": 27
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "product_notes",
+      "default": null,
+      "nullable": "YES",
+      "position": 28
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "updated_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 29
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.shifts",
+      "column": "created_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 30
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.shifts",
+      "column": "updated_at",
+      "default": "statement_timestamp()",
+      "nullable": "NO",
+      "position": 31
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.shifts",
+      "column": "deleted_at",
+      "default": null,
+      "nullable": "YES",
+      "position": 32
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "deleted_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 33
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.shifts",
+      "column": "archived_at",
+      "default": null,
+      "nullable": "YES",
+      "position": 34
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "archived_by",
+      "default": null,
+      "nullable": "YES",
+      "position": 35
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "deletion_reason",
+      "default": null,
+      "nullable": "YES",
+      "position": 36
+    },
+    {
+      "udt": "_text",
+      "type": "ARRAY",
+      "table": "public.shifts",
+      "column": "host_names",
+      "default": "'{}'::text[]",
+      "nullable": "NO",
+      "position": 37
+    },
+    {
+      "udt": "_text",
+      "type": "ARRAY",
+      "table": "public.shifts",
+      "column": "assistant_names",
+      "default": "'{}'::text[]",
+      "nullable": "NO",
+      "position": 38
+    },
+    {
+      "udt": "_text",
+      "type": "ARRAY",
+      "table": "public.shifts",
+      "column": "technical_names",
+      "default": "'{}'::text[]",
+      "nullable": "NO",
+      "position": 39
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.shifts",
+      "column": "version",
+      "default": "1",
+      "nullable": "NO",
+      "position": 40
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "status_mode",
+      "default": "'auto'::text",
+      "nullable": "NO",
+      "position": 41
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.shifts",
+      "column": "execution_source",
+      "default": null,
+      "nullable": "YES",
+      "position": 42
+    },
+    {
+      "udt": "int8",
+      "type": "bigint",
+      "table": "public.storage_resource_audit_events",
+      "column": "id",
+      "default": null,
+      "nullable": "NO",
+      "position": 1
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_audit_events",
+      "column": "resource_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 2
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_audit_events",
+      "column": "action",
+      "default": null,
+      "nullable": "NO",
+      "position": 3
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_audit_events",
+      "column": "actor_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 4
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.storage_resource_audit_events",
+      "column": "before_data",
+      "default": null,
+      "nullable": "YES",
+      "position": 5
+    },
+    {
+      "udt": "jsonb",
+      "type": "jsonb",
+      "table": "public.storage_resource_audit_events",
+      "column": "after_data",
+      "default": null,
+      "nullable": "YES",
+      "position": 6
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.storage_resource_audit_events",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO",
+      "position": 7
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "id",
+      "default": "(gen_random_uuid())::text",
+      "nullable": "NO",
+      "position": 1
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "resource_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 2
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "brand_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 3
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "campaign_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 4
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "platform_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 5
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "shift_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 6
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "staff_id",
+      "default": null,
+      "nullable": "YES",
+      "position": 7
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "client_group_key",
+      "default": null,
+      "nullable": "YES",
+      "position": 8
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "sku_key",
+      "default": null,
+      "nullable": "YES",
+      "position": 9
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.storage_resource_scopes",
+      "column": "year",
+      "default": null,
+      "nullable": "YES",
+      "position": 10
+    },
+    {
+      "udt": "int4",
+      "type": "integer",
+      "table": "public.storage_resource_scopes",
+      "column": "month",
+      "default": null,
+      "nullable": "YES",
+      "position": 11
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_scopes",
+      "column": "created_by",
+      "default": null,
+      "nullable": "NO",
+      "position": 12
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.storage_resource_scopes",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO",
+      "position": 13
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_user_grants",
+      "column": "resource_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 1
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_user_grants",
+      "column": "user_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 2
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resource_user_grants",
+      "column": "granted_by",
+      "default": null,
+      "nullable": "NO",
+      "position": 3
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.storage_resource_user_grants",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO",
+      "position": 4
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.storage_resource_user_grants",
+      "column": "revoked_at",
+      "default": null,
+      "nullable": "YES",
+      "position": 5
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "id",
+      "default": "(gen_random_uuid())::text",
+      "nullable": "NO",
+      "position": 1
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "provider",
+      "default": null,
+      "nullable": "NO",
+      "position": 2
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "canonical_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 3
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "canonical_url",
+      "default": null,
+      "nullable": "NO",
+      "position": 4
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "title",
+      "default": null,
+      "nullable": "NO",
+      "position": 5
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "resource_type",
+      "default": null,
+      "nullable": "NO",
+      "position": 6
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "owner_id",
+      "default": null,
+      "nullable": "NO",
+      "position": 7
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "visibility",
+      "default": null,
+      "nullable": "NO",
+      "position": 8
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "verification_status",
+      "default": "'unverified'::text",
+      "nullable": "NO",
+      "position": 9
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.storage_resources",
+      "column": "verification_checked_at",
+      "default": null,
+      "nullable": "YES",
+      "position": 10
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "verification_error_code",
+      "default": null,
+      "nullable": "YES",
+      "position": 11
+    },
+    {
+      "udt": "bool",
+      "type": "boolean",
+      "table": "public.storage_resources",
+      "column": "is_active",
+      "default": "true",
+      "nullable": "NO",
+      "position": 12
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "created_by",
+      "default": null,
+      "nullable": "NO",
+      "position": 13
+    },
+    {
+      "udt": "text",
+      "type": "text",
+      "table": "public.storage_resources",
+      "column": "updated_by",
+      "default": null,
+      "nullable": "NO",
+      "position": 14
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.storage_resources",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO",
+      "position": 15
+    },
+    {
+      "udt": "timestamptz",
+      "type": "timestamp with time zone",
+      "table": "public.storage_resources",
+      "column": "updated_at",
+      "default": "now()",
+      "nullable": "NO",
+      "position": 16
+    }
+  ],
+  "database": {
+    "latest": {
+      "name": "20261101073646_rc19_brand01_catalog",
+      "version": "20261101073742"
+    },
+    "version": "17.6",
+    "ledger_count": 89
+  },
+  "routines": [
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "approve_account_request(p_request_id uuid, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "approve_shift_registration(p_registration_id text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "approve_shift_registration(p_registration_id text, p_notes text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "swap_requests",
+      "language": "plpgsql",
+      "signature": "approve_shift_swap_request(p_request_id text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "swap_requests",
+      "language": "plpgsql",
+      "signature": "approve_shift_swap_request(p_request_id text, p_notes text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "business_users",
+      "language": "plpgsql",
+      "signature": "approve_staff_account(p_user_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "archive_report(p_report_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "business_users",
+      "language": "plpgsql",
+      "signature": "archive_staff_member(p_user_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "boolean",
+      "language": "plpgsql",
+      "signature": "authorize_live_report_image_delete(p_image_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "boolean",
+      "language": "plpgsql",
+      "signature": "authorize_report_image_delete(p_image_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,supabase_auth_admin=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "before_user_created_block_google(event jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "begin_account_request_provisioning(p_request_id uuid, p_expected_version integer, p_retry boolean)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "brand01_product_knowledge_versions",
+      "language": "plpgsql",
+      "signature": "brand01_admin_create_knowledge_version(p_product_id text, p_sku_id text, p_knowledge_type text, p_content jsonb, p_source_resource_id text, p_source_url text, p_source_reference text, p_effective_from date, p_effective_to date)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "brand01_products",
+      "language": "plpgsql",
+      "signature": "brand01_admin_create_product(p_product_code text, p_name text, p_category text, p_internal_description text, p_owner_id text, p_brand_ids text[])",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "brand01_product_skus",
+      "language": "plpgsql",
+      "signature": "brand01_admin_create_sku(p_product_id text, p_sku_code text, p_variant_name text, p_size_or_package text, p_packaging_type text, p_platform_mappings jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "brand01_products",
+      "language": "plpgsql",
+      "signature": "brand01_admin_replace_product_brands(p_product_id text, p_brand_ids text[], p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "brand01_campaign_schemes",
+      "language": "plpgsql",
+      "signature": "brand01_admin_review_campaign_scheme(p_scheme_id text, p_decision text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "brand01_user_brand_access",
+      "language": "plpgsql",
+      "signature": "brand01_admin_set_brand_access(p_user_id text, p_brand_id text, p_active boolean, p_expires_at timestamp with time zone)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "brand01_product_platform_skus",
+      "language": "plpgsql",
+      "signature": "brand01_admin_set_sku_platform(p_sku_id text, p_platform_id text, p_external_sku_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "brand01_products",
+      "language": "plpgsql",
+      "signature": "brand01_admin_update_product(p_product_id text, p_expected_version integer, p_product_code text, p_name text, p_category text, p_internal_description text, p_lifecycle_status text, p_brand_ids text[])",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "TABLE(knowledge_version_id text, decision text, reviewed_at timestamp with time zone)",
+      "language": "sql",
+      "signature": "brand01_knowledge_approval_status(p_version_ids text[])",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "TABLE(registration_id text, review_action text, success boolean, error_code text, error_message text, reviewed_registration jsonb)",
+      "language": "plpgsql",
+      "signature": "bulk_review_shift_registrations(p_registration_ids text[], p_action text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "TABLE(registration_id text, review_action text, success boolean, error_code text, error_message text, reviewed_registration jsonb)",
+      "language": "plpgsql",
+      "signature": "bulk_review_shift_registrations(p_registration_ids text[], p_action text, p_notes text, p_expected_versions jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "cancel_own_shift_registration(p_registration_id text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "cancel_own_shift_registration(p_registration_id text, p_notes text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "swap_requests",
+      "language": "plpgsql",
+      "signature": "cancel_own_shift_swap_request(p_request_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "swap_requests",
+      "language": "plpgsql",
+      "signature": "cancel_own_shift_swap_request(p_request_id text, p_reason text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "schedule_import_batches",
+      "language": "plpgsql",
+      "signature": "cancel_schedule_import_batch(p_batch_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "complete_account_request_provisioning(p_request_id uuid, p_expected_version integer, p_provisioning_status text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "confirm_attendance_import_batch(p_batch_id text, p_actor_id text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "schedule_import_batches",
+      "language": "plpgsql",
+      "signature": "confirm_schedule_import_batch(p_batch_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "dashboard_updates",
+      "language": "plpgsql",
+      "signature": "create_dashboard_update(p_data jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "create_report(p_data jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "schedule_import_batches",
+      "language": "plpgsql",
+      "signature": "create_schedule_import_batch(p_source text, p_source_name text, p_summary jsonb, p_rows jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "create_shift(p_data jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "swap_requests",
+      "language": "plpgsql",
+      "signature": "create_shift_swap_request(p_source_registration_id text, p_mode text, p_reason text, p_target_shift_id text, p_replacement_staff_id text, p_counterpart_registration_id text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "business_users",
+      "language": "plpgsql",
+      "signature": "create_staff_member(p_data jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "business_users",
+      "language": "plpgsql",
+      "signature": "create_staff_member_with_auth(p_auth_user_id uuid, p_data jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "boolean",
+      "language": "plpgsql",
+      "signature": "delete_dashboard_update(p_update_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "ensure_account_request_identity(p_request_id uuid, p_expected_version integer, p_auth_user_id uuid, p_staff_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "fail_account_request_provisioning(p_request_id uuid, p_expected_version integer, p_error_code text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "schedule_import_batches",
+      "language": "plpgsql",
+      "signature": "fail_schedule_import_batch(p_batch_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "get_account_request(p_request_id uuid)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_analytics_snapshot(p_filters jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_archived_entity_page(p_page integer, p_page_size integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_audit_actor_page(p_page integer, p_page_size integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_live_update_page(p_shift_id text, p_page integer, p_page_size integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_my_self_attendance(p_shift_id text, p_limit integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_payroll_period_snapshot(p_period_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_registration_review_context(p_registration_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_registration_review_page(p_page integer, p_page_size integer, p_filters jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_report_list_page(p_page integer, p_page_size integer, p_filters jsonb, p_summary boolean)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_report_list_with_history(p_page integer, p_page_size integer, p_filters jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_report_obligation_page(p_page integer, p_page_size integer, p_filters jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "TABLE(version integer, created_at timestamp with time zone, created_by text, status text, reason text, event text, metrics jsonb, ocr_review jsonb, final_recap jsonb, image_references text[])",
+      "language": "plpgsql",
+      "signature": "get_report_revisions(p_report_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_schedule_change_page(p_page integer, p_page_size integer, p_filters jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_self_attendance_photo_context(p_shift_id text, p_operational_role text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_self_attendance_photo_context(p_shift_id text, p_operational_role text, p_event_kind text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_shift_list_page(p_scope text, p_page integer, p_page_size integer, p_filters jsonb, p_pending_page integer, p_include_live boolean)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "TABLE(shift_id text, role text, required integer, approved integer, pending integer, remaining integer, approved_staff jsonb)",
+      "language": "plpgsql",
+      "signature": "get_shift_staffing_summary(p_shift_ids text[])",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "TABLE(id text, full_name text, avatar_url text, operational_roles text[])",
+      "language": "plpgsql",
+      "signature": "get_staff_directory()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "TABLE(staff_id text, role text, shift_count bigint)",
+      "language": "plpgsql",
+      "signature": "get_staff_workload(p_staff_ids text[])",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "TABLE(registration_id text, user_id text, full_name text)",
+      "language": "plpgsql",
+      "signature": "get_swap_exchange_candidates(p_shift_id text, p_role text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "get_swap_list_page(p_page integer, p_page_size integer, p_filters jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "business_users",
+      "language": "plpgsql",
+      "signature": "link_staff_auth_user(p_staff_id text, p_auth_user_id uuid, p_system_permission text, p_mode text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "SETOF account_requests",
+      "language": "plpgsql",
+      "signature": "list_account_requests(p_status text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "manual_assign_imported_shift_staff(p_shift_id text, p_user_id text, p_role text, p_imported_name text, p_match_method text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "manual_assign_imported_shift_staff(p_shift_id text, p_user_id text, p_role text, p_imported_name text, p_match_method text, p_notes text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "manual_assign_shift_staff(p_shift_id text, p_user_id text, p_role text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "manual_assign_shift_staff(p_shift_id text, p_user_id text, p_role text, p_notes text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "void",
+      "language": "plpgsql",
+      "signature": "mark_all_notifications_read()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "void",
+      "language": "plpgsql",
+      "signature": "mark_notification_read(p_notification_id uuid)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "record_report_ocr_run(p_report_id text, p_review jsonb, p_rerun boolean)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "void",
+      "language": "plpgsql",
+      "signature": "record_schedule_import_batch_outcomes(p_batch_id text, p_outcomes jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "TABLE(updated_count integer)",
+      "language": "plpgsql",
+      "signature": "refresh_automatic_shift_statuses()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "register_for_shift(p_shift_id text, p_role text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "reject_account_request(p_request_id uuid, p_expected_version integer, p_rejection_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "reject_report_review(p_report_id text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "reject_shift_registration(p_registration_id text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "reject_shift_registration(p_registration_id text, p_notes text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "swap_requests",
+      "language": "plpgsql",
+      "signature": "reject_shift_swap_request(p_request_id text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "swap_requests",
+      "language": "plpgsql",
+      "signature": "reject_shift_swap_request(p_request_id text, p_notes text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "business_users",
+      "language": "plpgsql",
+      "signature": "reject_staff_account(p_user_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "boolean",
+      "language": "plpgsql",
+      "signature": "remove_live_report_image(p_image_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "boolean",
+      "language": "plpgsql",
+      "signature": "remove_report_image(p_image_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "remove_shift_staffing(p_registration_id text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shift_registrations",
+      "language": "plpgsql",
+      "signature": "remove_shift_staffing(p_registration_id text, p_notes text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "reopen_report(p_report_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "void",
+      "language": "plpgsql",
+      "signature": "reorder_live_report_images(p_report_id text, p_ordered_ids text[])",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "reset_report_ocr(p_report_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "swap_requests",
+      "language": "plpgsql",
+      "signature": "respond_shift_swap_request(p_request_id text, p_action text, p_notes text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "swap_requests",
+      "language": "plpgsql",
+      "signature": "respond_shift_swap_request(p_request_id text, p_action text, p_notes text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "restore_report(p_report_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "restore_shift(p_shift_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "restore_shift(p_shift_id text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "business_users",
+      "language": "plpgsql",
+      "signature": "restore_staff_member(p_user_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "return_shift_to_automatic(p_shift_id text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "event_trigger",
+      "language": "plpgsql",
+      "signature": "rls_auto_enable()",
+      "configuration": [
+        "search_path=pg_catalog"
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "self_attendance_record(p_shift_id text, p_operational_role text, p_event_kind text, p_request_id uuid, p_evidence_note text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "server_begin_account_request_provisioning(p_request_id uuid, p_expected_version integer, p_retry boolean, p_actor_auth_user_id uuid)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "server_complete_account_request_provisioning(p_request_id uuid, p_expected_version integer, p_provisioning_status text, p_actor_auth_user_id uuid)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "server_ensure_account_request_identity(p_request_id uuid, p_expected_version integer, p_auth_user_id uuid, p_staff_id text, p_actor_auth_user_id uuid)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "account_requests",
+      "language": "plpgsql",
+      "signature": "server_fail_account_request_provisioning(p_request_id uuid, p_expected_version integer, p_error_code text, p_actor_auth_user_id uuid)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "void",
+      "language": "plpgsql",
+      "signature": "set_live_report_image_cover(p_report_id text, p_image_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "set_shift_registration_lock(p_shift_id text, p_locked boolean)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "set_shift_registration_lock(p_shift_id text, p_locked boolean, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "soft_delete_report(p_report_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "soft_delete_shift(p_shift_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "soft_delete_shift(p_shift_id text, p_reason text, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "stage_attendance_import_batch(p_batch_id text, p_source_type text, p_source_name text, p_source_fingerprint text, p_timezone text, p_brand_id text, p_metadata jsonb, p_actor_id text, p_total_rows integer, p_matched_rows integer, p_exception_rows integer, p_rows jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "start_report_review(p_report_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "storage_resource_registry_create(p_resource jsonb, p_scope jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "storage_resource_registry_set_grant(p_resource_id text, p_user_id text, p_active boolean)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,anon=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "submit_account_request(p_email text, p_full_name text, p_phone text, p_department text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "business_users",
+      "language": "plpgsql",
+      "signature": "sync_staff_auth_metadata(p_user_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "audit_log_reviews",
+      "language": "plpgsql",
+      "signature": "update_audit_review(p_audit_id text, p_admin_note text, p_review_status text, p_handling_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "live_report_images",
+      "language": "plpgsql",
+      "signature": "update_live_report_image_metadata(p_image_id text, p_category text, p_title text, p_description text, p_captured_at timestamp with time zone)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "system_settings",
+      "language": "plpgsql",
+      "signature": "update_operational_settings(p_patch jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "update_report(p_report_id text, p_patch jsonb, p_expected_version integer, p_reason text, p_event text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "reports",
+      "language": "plpgsql",
+      "signature": "update_report(p_report_id text, p_patch jsonb, p_reason text, p_event text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "schedule_import_batches",
+      "language": "plpgsql",
+      "signature": "update_schedule_import_batch_preview(p_batch_id text, p_summary jsonb, p_rows jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean, p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "update_shift_staffing_labels(p_shift_id text, p_host_names text[], p_assistant_names text[], p_technical_names text[])",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "shifts",
+      "language": "plpgsql",
+      "signature": "update_shift_staffing_labels(p_shift_id text, p_host_names text[], p_assistant_names text[], p_technical_names text[], p_expected_version integer)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "business_users",
+      "language": "plpgsql",
+      "signature": "update_staff_member(p_user_id text, p_data jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "report_images",
+      "language": "plpgsql",
+      "signature": "upload_report_image(p_report_id text, p_storage_path text, p_image_url text, p_original_name text, p_mime_type text, p_size_bytes bigint, p_image_type text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "report_images",
+      "language": "plpgsql",
+      "signature": "upload_report_image_with_provider(p_report_id text, p_storage_path text, p_image_url text, p_original_name text, p_mime_type text, p_size_bytes bigint, p_image_type text, p_provider text, p_external_file_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "live_report_images",
+      "language": "plpgsql",
+      "signature": "upsert_live_report_image(p_data jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "live_report_images",
+      "language": "plpgsql",
+      "signature": "upsert_live_report_image_with_provider(p_data jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "trigger",
+      "language": "plpgsql",
+      "signature": "workforce_rc16_immutable_approved_segment()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "trigger",
+      "language": "plpgsql",
+      "signature": "workforce_rc16_immutable_payroll_audit()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "trigger",
+      "language": "plpgsql",
+      "signature": "workforce_rc16_line_guard()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "trigger",
+      "language": "plpgsql",
+      "signature": "workforce_rc16_period_guard()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "trigger",
+      "language": "plpgsql",
+      "signature": "workforce_rc16_rate_guard()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "workforce_payroll_periods",
+      "language": "plpgsql",
+      "signature": "workforce_rc16_transition_payroll(p_period_id text, p_expected_status text, p_target_status text, p_actor_id text, p_reason text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "workforce_rc16b_correct_payroll_line(p_period_id text, p_line_id text, p_expected_version integer, p_request_id uuid, p_action text, p_actor_id text, p_reason text, p_payable_minutes integer, p_overtime_minutes integer, p_adjustment_vnd bigint, p_adjustment_reason text, p_expected_gross_vnd bigint)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "trigger",
+      "language": "plpgsql",
+      "signature": "workforce_rc16b_line_change_guard()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "trigger",
+      "language": "plpgsql",
+      "signature": "workforce_rc16b_period_review_guard()",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "workforce_rc17b_auto_calculate_draft_batch(p_period_id text, p_request_id uuid, p_actor_id text, p_reason text, p_insert_lines jsonb, p_recalc_items jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "workforce_rc17b_recalculate_draft_batch(p_period_id text, p_request_id uuid, p_actor_id text, p_reason text, p_items jsonb)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "workforce_rc17b_recalculate_draft_line(p_period_id text, p_line_id text, p_expected_version integer, p_request_id uuid, p_actor_id text, p_reason text, p_new_rate_card_id text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    },
+    {
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres",
+      "schema": "public",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "signature": "workforce_rc17b_register_rate_card(p_staff_id text, p_operational_role text, p_effective_from date, p_effective_through date, p_vnd_per_hour integer, p_overtime_multiplier_basis_points integer, p_approved_by text, p_approval_note text)",
+      "configuration": [
+        "search_path=\"\""
+      ],
+      "security_definer": false
+    }
+  ],
+  "project_id": "egdjnpmoasarrttvhgds",
+  "migration_objects": [],
+  "captured_at_utc": "2026-11-06T08:50:46.872Z",
+  "source": "Supabase read-only catalog SELECT via MCP; no business rows"
+}

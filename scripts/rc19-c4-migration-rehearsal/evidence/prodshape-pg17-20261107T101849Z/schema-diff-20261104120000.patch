@@ -1,0 +1,974 @@
+--- before-20261104120000
++++ after-20261104120000
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict PGN2JvmtEg0DV7XlX34cOTvgwSjxfDW4bPq8GblAFNh8fbt7vsInQxPpTq1JF2N
++\restrict wxFJfNTjUf2lEtrahPXL042VifcFJgbKbLSzO8thIwx9LOg6QIX8yObJfVklv3N
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -1056,45 +1056,46 @@
+     LANGUAGE plpgsql STABLE SECURITY DEFINER
+     SET search_path TO ''
+     AS $$
+-declare
++DECLARE
+   actor_id text := private.current_business_user_id();
+   actor_role text := private.current_system_permission();
+   allowed boolean := false;
+-begin
+-  if actor_id is null
+-    or actor_role not in ('member','leader','admin')
+-    or not private.current_business_user_is_active() then
+-    return false;
+-  end if;
+-
+-  select (
+-    case
+-      when actor_role = 'admin' then true
+-      when report.deleted_at is not null or report.archived_at is not null then false
+-      when actor_role = 'leader' then true
+-      when actor_role = 'member' then
+-        coalesce(report.submitted_by = actor_id, false)
+-        or exists (
+-          select 1 from public.shifts as shift
+-          where shift.id = report.shift_id
+-            and (
+-              actor_id in (shift.host_id, shift.support_id, shift.technical_id)
+-              or exists (
+-                select 1 from public.shift_registrations as assignment
+-                where assignment.shift_id = shift.id
+-                  and assignment.user_id = actor_id
+-                  and assignment.status in ('approved', 'manually_assigned')
+-              )
++BEGIN
++  IF actor_id IS NULL OR actor_role NOT IN ('member', 'leader', 'admin')
++    OR NOT private.current_business_user_is_active() THEN
++    RETURN false;
++  END IF;
++
++  SELECT CASE
++    WHEN actor_role = 'admin' THEN true
++    WHEN report.deleted_at IS NOT NULL OR report.archived_at IS NOT NULL THEN false
++    WHEN actor_role = 'leader' THEN EXISTS (
++      SELECT 1 FROM public.shifts AS shift
++      WHERE shift.id = report.shift_id
++        AND (
++          private.rc19_has_any_leader_brand_scope(shift.brand_id, ARRAY['reports.read', 'reports.review']::text[])
++          OR (report.submitted_by = actor_id
++            AND private.rc19_has_leader_brand_scope(shift.brand_id, 'reports.submit'))
++        )
++    )
++    ELSE coalesce(report.submitted_by = actor_id, false)
++      OR EXISTS (
++        SELECT 1 FROM public.shifts AS shift
++        WHERE shift.id = report.shift_id
++          AND (
++            actor_id IN (shift.host_id, shift.support_id, shift.technical_id)
++            OR EXISTS (
++              SELECT 1 FROM public.shift_registrations AS assignment
++              WHERE assignment.shift_id = shift.id AND assignment.user_id = actor_id
++                AND assignment.status IN ('approved', 'manually_assigned')
+             )
+-        )
+-      else false
+-    end
+-  ) into allowed
+-  from public.reports as report
+-  where report.id = p_report_id;
+-
+-  return coalesce(allowed, false);
+-end;
++          )
++      )
++  END INTO allowed
++  FROM public.reports AS report
++  WHERE report.id = p_report_id;
++  RETURN coalesce(allowed, false);
++END;
+ $$;
+ 
+ 
+@@ -1106,31 +1107,27 @@
+     LANGUAGE sql STABLE SECURITY DEFINER
+     SET search_path TO ''
+     AS $$
+-  select coalesce((
+-    select case
+-      when (select private.current_system_permission()) = 'admin' then true
+-      when shift.deleted_at is not null or shift.archived_at is not null then false
+-      when (select private.current_system_permission()) = 'leader' then true
+-      else (
+-        (
+-          shift.status = 'scheduled'
+-          and shift.registration_locked = false
+-          and shift.end_at > statement_timestamp()
+-        )
+-        or (select private.current_business_user_id()) in
+-          (shift.host_id, shift.support_id, shift.technical_id)
+-        or exists (
+-          select 1
+-          from public.shift_registrations as registration
+-          where registration.shift_id = shift.id
+-            and registration.user_id = (select private.current_business_user_id())
+-            and registration.status in ('pending', 'approved', 'manually_assigned')
++  SELECT coalesce((
++    SELECT CASE
++      WHEN private.current_system_permission() = 'admin' THEN true
++      WHEN shift.deleted_at IS NOT NULL OR shift.archived_at IS NOT NULL THEN false
++      WHEN private.current_system_permission() = 'leader' THEN
++        private.rc19_has_any_leader_brand_scope(shift.brand_id, ARRAY[
++          'shifts.read', 'shifts.manage'
++        ]::text[])
++      ELSE (
++        (shift.status = 'scheduled' AND shift.registration_locked = false AND shift.end_at > statement_timestamp())
++        OR private.current_business_user_id() IN (shift.host_id, shift.support_id, shift.technical_id)
++        OR EXISTS (
++          SELECT 1 FROM public.shift_registrations AS registration
++          WHERE registration.shift_id = shift.id
++            AND registration.user_id = private.current_business_user_id()
++            AND registration.status IN ('pending', 'approved', 'manually_assigned')
+         )
+       )
+-    end
+-    from public.shifts as shift
+-    where shift.id = p_shift_id
+-      and (select private.current_business_user_is_active())
++    END
++    FROM public.shifts AS shift
++    WHERE shift.id = p_shift_id AND private.current_business_user_is_active()
+   ), false);
+ $$;
+ 
+@@ -2891,6 +2888,216 @@
+ 
+ 
+ --
++-- Name: rc19_can_mutate_report(text); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.rc19_can_mutate_report(p_report_id text) RETURNS boolean
++    LANGUAGE plpgsql STABLE SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE
++  actor_id text := private.current_business_user_id();
++  actor_role text := private.current_system_permission();
++  submitted_by text;
++  brand_id text;
++BEGIN
++  IF actor_id IS NULL OR NOT private.current_business_user_is_active() THEN RETURN false; END IF;
++  SELECT report.submitted_by, shift.brand_id INTO submitted_by, brand_id
++  FROM public.reports AS report
++  JOIN public.shifts AS shift ON shift.id = report.shift_id
++  WHERE report.id = p_report_id AND report.deleted_at IS NULL AND report.archived_at IS NULL;
++  IF NOT FOUND THEN RETURN false; END IF;
++  IF actor_role = 'admin' THEN RETURN true; END IF;
++  IF actor_role = 'leader' THEN
++    RETURN private.rc19_has_leader_brand_scope(brand_id, 'reports.review')
++      OR (submitted_by = actor_id AND private.rc19_has_leader_brand_scope(brand_id, 'reports.submit'));
++  END IF;
++  RETURN actor_role = 'member' AND submitted_by = actor_id;
++END;
++$$;
++
++
++--
++-- Name: rc19_guard_report_child_write(); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.rc19_guard_report_child_write() RETURNS trigger
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE
++  actor_id text := private.current_business_user_id();
++  actor_role text := private.current_system_permission();
++  target_report public.reports;
++  report_id text;
++  brand_id text;
++BEGIN
++  IF actor_id IS NULL OR NOT private.current_business_user_is_active() THEN
++    RAISE EXCEPTION 'AUTHENTICATION_REQUIRED' USING ERRCODE = '42501';
++  END IF;
++  IF actor_role = 'admin' THEN
++    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
++    RETURN NEW;
++  END IF;
++  report_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.report_id ELSE NEW.report_id END;
++  SELECT report.* INTO target_report FROM public.reports AS report
++  WHERE report.id = report_id AND report.deleted_at IS NULL AND report.archived_at IS NULL;
++  IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_NOT_FOUND' USING ERRCODE = 'P0001'; END IF;
++  SELECT shift.brand_id INTO brand_id FROM public.shifts AS shift WHERE shift.id = target_report.shift_id;
++  IF actor_role = 'leader' AND (
++    private.rc19_has_leader_brand_scope(brand_id, 'reports.review')
++    OR (target_report.submitted_by = actor_id AND private.rc19_has_leader_brand_scope(brand_id, 'reports.submit'))
++  ) THEN
++    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
++    RETURN NEW;
++  END IF;
++  IF actor_role = 'member' AND target_report.submitted_by = actor_id THEN
++    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
++    RETURN NEW;
++  END IF;
++  RAISE EXCEPTION 'REPORT_SCOPE_DENIED' USING ERRCODE = '42501';
++END;
++$$;
++
++
++--
++-- Name: rc19_guard_report_write(); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.rc19_guard_report_write() RETURNS trigger
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE
++  actor_id text := private.current_business_user_id();
++  actor_role text := private.current_system_permission();
++  brand_id text;
++  submitted_by text;
++BEGIN
++  IF actor_id IS NULL OR NOT private.current_business_user_is_active() THEN
++    RAISE EXCEPTION 'AUTHENTICATION_REQUIRED' USING ERRCODE = '42501';
++  END IF;
++  IF actor_role = 'admin' THEN
++    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
++    RETURN NEW;
++  END IF;
++
++  IF TG_OP = 'DELETE' THEN
++    submitted_by := OLD.submitted_by;
++    SELECT shift.brand_id INTO brand_id FROM public.shifts AS shift WHERE shift.id = OLD.shift_id;
++  ELSE
++    submitted_by := NEW.submitted_by;
++    SELECT shift.brand_id INTO brand_id FROM public.shifts AS shift WHERE shift.id = NEW.shift_id;
++  END IF;
++  IF brand_id IS NULL THEN RAISE EXCEPTION 'REPORT_NOT_FOUND' USING ERRCODE = 'P0001'; END IF;
++
++  IF actor_role = 'leader' THEN
++    IF private.rc19_has_leader_brand_scope(brand_id, 'reports.review')
++      OR (submitted_by = actor_id AND private.rc19_has_leader_brand_scope(brand_id, 'reports.submit')) THEN
++      IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
++      RETURN NEW;
++    END IF;
++  ELSIF actor_role = 'member' AND submitted_by = actor_id THEN
++    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
++    RETURN NEW;
++  END IF;
++  RAISE EXCEPTION 'REPORT_SCOPE_DENIED' USING ERRCODE = '42501';
++END;
++$$;
++
++
++--
++-- Name: rc19_has_any_leader_brand_scope(text, text[]); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.rc19_has_any_leader_brand_scope(p_brand_id text, p_scope_keys text[]) RETURNS boolean
++    LANGUAGE sql STABLE SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++  SELECT coalesce(
++    (SELECT private.current_business_user_is_active()
++      AND private.current_system_permission() = 'leader'
++      AND EXISTS (
++        SELECT 1
++        FROM public.rc19_leader_brand_scopes AS scope_row
++        JOIN public.brands AS brand ON brand.id = scope_row.brand_id
++        WHERE scope_row.leader_business_user_id = private.current_business_user_id()
++          AND scope_row.brand_id = p_brand_id
++          AND scope_row.scope_key = ANY(p_scope_keys)
++          AND scope_row.status = 'active'
++          AND scope_row.valid_from <= statement_timestamp()
++          AND (scope_row.valid_until IS NULL OR statement_timestamp() < scope_row.valid_until)
++          AND brand.status = 'active'
++          AND brand.archived_at IS NULL
++          AND brand.deleted_at IS NULL
++      )), false);
++$$;
++
++
++--
++-- Name: rc19_has_leader_brand_scope(text, text); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.rc19_has_leader_brand_scope(p_brand_id text, p_scope_key text) RETURNS boolean
++    LANGUAGE sql STABLE SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++  SELECT coalesce(
++    (SELECT private.current_business_user_is_active()
++      AND private.current_system_permission() = 'leader'
++      AND EXISTS (
++        SELECT 1
++        FROM public.rc19_leader_brand_scopes AS scope_row
++        JOIN public.brands AS brand ON brand.id = scope_row.brand_id
++        WHERE scope_row.leader_business_user_id = private.current_business_user_id()
++          AND scope_row.brand_id = p_brand_id
++          AND scope_row.scope_key = p_scope_key
++          AND scope_row.status = 'active'
++          AND scope_row.valid_from <= statement_timestamp()
++          AND (scope_row.valid_until IS NULL OR statement_timestamp() < scope_row.valid_until)
++          AND brand.status = 'active'
++          AND brand.archived_at IS NULL
++          AND brand.deleted_at IS NULL
++      )), false);
++$$;
++
++
++--
++-- Name: rc19_revoke_leader_brand_scopes_on_role_loss(); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.rc19_revoke_leader_brand_scopes_on_role_loss() RETURNS trigger
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE
++  actor_id text := private.current_business_user_id();
++BEGIN
++  IF OLD.system_permission = 'leader' AND OLD.status = 'active' AND OLD.account_status = 'active'
++    AND OLD.archived_at IS NULL AND OLD.deleted_at IS NULL
++    AND (NEW.system_permission <> 'leader' OR NEW.status <> 'active' OR NEW.account_status <> 'active'
++      OR NEW.archived_at IS NOT NULL OR NEW.deleted_at IS NOT NULL) THEN
++    WITH revoked AS (
++      UPDATE public.rc19_leader_brand_scopes AS scope_row
++      SET status = 'revoked', revoked_at = statement_timestamp(), version = version + 1,
++          updated_by = coalesce(actor_id, updated_by), updated_at = statement_timestamp()
++      WHERE leader_business_user_id = NEW.id AND status = 'active'
++      RETURNING scope_row.*
++    )
++    INSERT INTO public.rc19_leader_brand_scope_events (
++      scope_id, leader_business_user_id, brand_id, scope_key, event_type,
++      prior_status, new_status, version, actor_business_user_id, reason
++    )
++    SELECT id, leader_business_user_id, brand_id, scope_key, 'automatic_revoke',
++      'active', 'revoked', version, actor_id, 'Leader account lost active Leader status'
++    FROM revoked;
++  END IF;
++  RETURN NEW;
++END;
++$$;
++
++
++--
+ -- Name: record_report_revision(text, text, text, text, text, jsonb, jsonb, jsonb, text[]); Type: FUNCTION; Schema: private; Owner: -
+ --
+ 
+@@ -4309,37 +4516,32 @@
+     LANGUAGE plpgsql SECURITY DEFINER
+     SET search_path TO ''
+     AS $$
+-declare
+-  actor_id text;
++DECLARE
++  actor_id text := private.current_business_user_id();
++  actor_role text := private.current_system_permission();
+   target_image public.live_report_images;
+   target_report public.reports;
+-  actor_permission text;
+-begin
+-  actor_id := private.current_business_user_id();
+-  if actor_id is null then
+-    raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED';
+-  end if;
+-  select * into target_image from public.live_report_images where id = p_image_id;
+-  if target_image.id is null then return false; end if;
+-  select * into target_report
+-  from public.reports
+-  where id = target_image.report_id and deleted_at is null and archived_at is null
+-  for update;
+-  if target_report.id is null then
+-    raise exception using errcode = 'P0001', message = 'REPORT_NOT_FOUND';
+-  end if;
+-  actor_permission := (select system_permission from public.business_users where id = actor_id);
+-  if actor_permission = 'member' and (target_image.uploaded_by is null or target_image.uploaded_by <> actor_id) then
+-    raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
+-  end if;
+-  if actor_permission = 'member' and (target_report.submitted_by is null or target_report.submitted_by <> actor_id) then
+-    raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
+-  end if;
+-  if target_report.metrics_confirmed or target_report.status = 'confirmed' then
+-    raise exception using errcode = 'P0001', message = 'REPORT_CONFIRMED';
+-  end if;
+-  return true;
+-end;
++BEGIN
++  IF actor_id IS NULL OR NOT private.current_business_user_is_active() THEN
++    RAISE EXCEPTION 'AUTHENTICATION_REQUIRED' USING ERRCODE = '42501';
++  END IF;
++  SELECT * INTO target_image FROM public.live_report_images WHERE id = p_image_id;
++  IF NOT FOUND THEN RETURN false; END IF;
++  SELECT * INTO target_report FROM public.reports
++  WHERE id = target_image.report_id AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE;
++  IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_NOT_FOUND' USING ERRCODE = 'P0001'; END IF;
++  IF actor_role = 'member' AND (target_image.uploaded_by IS DISTINCT FROM actor_id
++      OR target_report.submitted_by IS DISTINCT FROM actor_id) THEN
++    RAISE EXCEPTION 'OPERATION_NOT_ALLOWED' USING ERRCODE = '42501';
++  END IF;
++  IF target_report.metrics_confirmed OR target_report.status = 'confirmed' THEN
++    RAISE EXCEPTION 'REPORT_CONFIRMED' USING ERRCODE = 'P0001';
++  END IF;
++  IF NOT private.rc19_can_mutate_report(target_report.id) THEN
++    RAISE EXCEPTION 'REPORT_SCOPE_DENIED' USING ERRCODE = '42501';
++  END IF;
++  RETURN true;
++END;
+ $$;
+ 
+ 
+@@ -4351,37 +4553,32 @@
+     LANGUAGE plpgsql SECURITY DEFINER
+     SET search_path TO ''
+     AS $$
+-declare
+-  actor_id text;
++DECLARE
++  actor_id text := private.current_business_user_id();
++  actor_role text := private.current_system_permission();
+   target_image public.report_images;
+   target_report public.reports;
+-  actor_permission text;
+-begin
+-  actor_id := private.current_business_user_id();
+-  if actor_id is null then
+-    raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED';
+-  end if;
+-  select * into target_image from public.report_images where id = p_image_id;
+-  if target_image.id is null then return false; end if;
+-  select * into target_report
+-  from public.reports
+-  where id = target_image.report_id and deleted_at is null and archived_at is null
+-  for update;
+-  if target_report.id is null then
+-    raise exception using errcode = 'P0001', message = 'REPORT_NOT_FOUND';
+-  end if;
+-  actor_permission := (select system_permission from public.business_users where id = actor_id);
+-  if actor_permission = 'member' and (target_image.uploaded_by is null or target_image.uploaded_by <> actor_id) then
+-    raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
+-  end if;
+-  if actor_permission = 'member' and (target_report.submitted_by is null or target_report.submitted_by <> actor_id) then
+-    raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
+-  end if;
+-  if target_report.metrics_confirmed or target_report.status = 'confirmed' then
+-    raise exception using errcode = 'P0001', message = 'REPORT_CONFIRMED';
+-  end if;
+-  return true;
+-end;
++BEGIN
++  IF actor_id IS NULL OR NOT private.current_business_user_is_active() THEN
++    RAISE EXCEPTION 'AUTHENTICATION_REQUIRED' USING ERRCODE = '42501';
++  END IF;
++  SELECT * INTO target_image FROM public.report_images WHERE id = p_image_id;
++  IF NOT FOUND THEN RETURN false; END IF;
++  SELECT * INTO target_report FROM public.reports
++  WHERE id = target_image.report_id AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE;
++  IF NOT FOUND THEN RAISE EXCEPTION 'REPORT_NOT_FOUND' USING ERRCODE = 'P0001'; END IF;
++  IF actor_role = 'member' AND (target_image.uploaded_by IS DISTINCT FROM actor_id
++      OR target_report.submitted_by IS DISTINCT FROM actor_id) THEN
++    RAISE EXCEPTION 'OPERATION_NOT_ALLOWED' USING ERRCODE = '42501';
++  END IF;
++  IF target_report.metrics_confirmed OR target_report.status = 'confirmed' THEN
++    RAISE EXCEPTION 'REPORT_CONFIRMED' USING ERRCODE = 'P0001';
++  END IF;
++  IF NOT private.rc19_can_mutate_report(target_report.id) THEN
++    RAISE EXCEPTION 'REPORT_SCOPE_DENIED' USING ERRCODE = '42501';
++  END IF;
++  RETURN true;
++END;
+ $$;
+ 
+ 
+@@ -8727,6 +8924,164 @@
+ 
+ 
+ --
++-- Name: rc19_current_leader_brand_ids(text); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_current_leader_brand_ids(p_scope_key text) RETURNS SETOF text
++    LANGUAGE sql STABLE SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++  SELECT DISTINCT scope_row.brand_id
++  FROM public.rc19_leader_brand_scopes AS scope_row
++  JOIN public.brands AS brand ON brand.id = scope_row.brand_id
++  WHERE private.current_business_user_is_active()
++    AND private.current_system_permission() = 'leader'
++    AND scope_row.leader_business_user_id = private.current_business_user_id()
++    AND scope_row.scope_key = p_scope_key
++    AND p_scope_key IN (
++      'shifts.read', 'shifts.manage', 'staff.read', 'staff.manage', 'workforce.read',
++      'reports.read', 'reports.submit', 'reports.review', 'reports.export'
++    )
++    AND scope_row.status = 'active'
++    AND scope_row.valid_from <= statement_timestamp()
++    AND (scope_row.valid_until IS NULL OR statement_timestamp() < scope_row.valid_until)
++    AND brand.status = 'active'
++    AND brand.archived_at IS NULL
++    AND brand.deleted_at IS NULL
++  ORDER BY scope_row.brand_id;
++$$;
++
++
++--
++-- Name: rc19_leader_brand_scopes; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.rc19_leader_brand_scopes (
++    id bigint NOT NULL,
++    leader_business_user_id text NOT NULL,
++    brand_id text NOT NULL,
++    scope_key text NOT NULL,
++    status text NOT NULL,
++    valid_from timestamp with time zone NOT NULL,
++    valid_until timestamp with time zone,
++    revoked_at timestamp with time zone,
++    version integer NOT NULL,
++    granted_by text NOT NULL,
++    updated_by text NOT NULL,
++    created_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
++    updated_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
++    CONSTRAINT rc19_leader_brand_scope_status_check CHECK ((((status = 'active'::text) AND (revoked_at IS NULL)) OR ((status = 'revoked'::text) AND (revoked_at IS NOT NULL)))),
++    CONSTRAINT rc19_leader_brand_scope_window_check CHECK (((valid_until IS NULL) OR (valid_until > valid_from))),
++    CONSTRAINT rc19_leader_brand_scopes_scope_key_check CHECK ((scope_key = ANY (ARRAY['shifts.read'::text, 'shifts.manage'::text, 'staff.read'::text, 'staff.manage'::text, 'workforce.read'::text, 'reports.read'::text, 'reports.submit'::text, 'reports.review'::text, 'reports.export'::text]))),
++    CONSTRAINT rc19_leader_brand_scopes_status_check CHECK ((status = ANY (ARRAY['active'::text, 'revoked'::text]))),
++    CONSTRAINT rc19_leader_brand_scopes_version_check CHECK ((version > 0))
++);
++
++
++--
++-- Name: TABLE rc19_leader_brand_scopes; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON TABLE public.rc19_leader_brand_scopes IS 'Admin-managed, versioned Leader-to-Brand data authority. Team grants are intentionally unsupported until a key-backed team relation exists.';
++
++
++--
++-- Name: rc19_set_leader_brand_scope(text, text, text, boolean, integer, timestamp with time zone, timestamp with time zone, text); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_set_leader_brand_scope(p_user_id text, p_brand_id text, p_scope_key text, p_enabled boolean, p_expected_version integer, p_valid_from timestamp with time zone DEFAULT statement_timestamp(), p_valid_until timestamp with time zone DEFAULT NULL::timestamp with time zone, p_reason text DEFAULT NULL::text) RETURNS public.rc19_leader_brand_scopes
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE
++  actor_id text := private.current_business_user_id();
++  target public.business_users;
++  target_brand public.brands;
++  current_scope public.rc19_leader_brand_scopes;
++  saved_scope public.rc19_leader_brand_scopes;
++  current_version integer := 0;
++  event_kind text;
++  clean_reason text := nullif(btrim(p_reason), '');
++BEGIN
++  IF actor_id IS NULL OR NOT private.current_business_user_is_active()
++    OR private.current_system_permission() <> 'admin' THEN
++    RAISE EXCEPTION 'ADMIN_SCOPE_MANAGEMENT_REQUIRED' USING ERRCODE = '42501';
++  END IF;
++  IF p_user_id IS NULL OR p_brand_id IS NULL OR p_scope_key NOT IN (
++    'shifts.read', 'shifts.manage', 'staff.read', 'staff.manage', 'workforce.read',
++    'reports.read', 'reports.submit', 'reports.review', 'reports.export'
++  ) OR p_enabled IS NULL OR p_expected_version IS NULL OR p_expected_version < 0
++    OR clean_reason IS NULL OR length(clean_reason) > 500 THEN
++    RAISE EXCEPTION 'LEADER_BRAND_SCOPE_INVALID' USING ERRCODE = '22023';
++  END IF;
++  IF p_enabled AND (p_valid_from IS NULL OR (p_valid_until IS NOT NULL AND p_valid_until <= p_valid_from)) THEN
++    RAISE EXCEPTION 'LEADER_BRAND_SCOPE_WINDOW_INVALID' USING ERRCODE = '22023';
++  END IF;
++
++  SELECT * INTO target FROM public.business_users WHERE id = p_user_id FOR SHARE;
++  IF NOT FOUND THEN RAISE EXCEPTION 'LEADER_BRAND_SCOPE_TARGET_NOT_FOUND' USING ERRCODE = 'P0002'; END IF;
++  IF p_enabled AND (target.system_permission <> 'leader' OR target.status <> 'active'
++      OR target.account_status <> 'active' OR target.archived_at IS NOT NULL OR target.deleted_at IS NOT NULL) THEN
++    RAISE EXCEPTION 'LEADER_BRAND_SCOPE_TARGET_NOT_ACTIVE_LEADER' USING ERRCODE = '42501';
++  END IF;
++  IF p_enabled THEN
++    SELECT * INTO target_brand FROM public.brands WHERE id = p_brand_id FOR SHARE;
++    IF NOT FOUND OR target_brand.status <> 'active' OR target_brand.archived_at IS NOT NULL OR target_brand.deleted_at IS NOT NULL THEN
++      RAISE EXCEPTION 'LEADER_BRAND_SCOPE_BRAND_NOT_ACTIVE' USING ERRCODE = '22023';
++    END IF;
++  END IF;
++
++  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
++    p_user_id || chr(31) || p_brand_id || chr(31) || p_scope_key, 0
++  ));
++  SELECT * INTO current_scope FROM public.rc19_leader_brand_scopes
++  WHERE leader_business_user_id = p_user_id AND brand_id = p_brand_id AND scope_key = p_scope_key
++  FOR UPDATE;
++  IF FOUND THEN current_version := current_scope.version; END IF;
++  IF current_version <> p_expected_version THEN
++    RAISE EXCEPTION 'LEADER_BRAND_SCOPE_VERSION_CONFLICT' USING ERRCODE = '40001';
++  END IF;
++  IF NOT p_enabled AND current_version = 0 THEN
++    RAISE EXCEPTION 'LEADER_BRAND_SCOPE_NOT_FOUND' USING ERRCODE = 'P0002';
++  END IF;
++
++  IF p_enabled THEN
++    INSERT INTO public.rc19_leader_brand_scopes AS scope_row (
++      leader_business_user_id, brand_id, scope_key, status, valid_from, valid_until,
++      revoked_at, version, granted_by, updated_by
++    ) VALUES (
++      p_user_id, p_brand_id, p_scope_key, 'active', p_valid_from, p_valid_until,
++      NULL, current_version + 1, actor_id, actor_id
++    )
++    ON CONFLICT (leader_business_user_id, brand_id, scope_key) DO UPDATE SET
++      status = 'active', valid_from = EXCLUDED.valid_from, valid_until = EXCLUDED.valid_until,
++      revoked_at = NULL, version = scope_row.version + 1,
++      granted_by = EXCLUDED.granted_by, updated_by = EXCLUDED.updated_by,
++      updated_at = statement_timestamp()
++    RETURNING * INTO saved_scope;
++    event_kind := CASE WHEN current_version = 0 THEN 'grant' ELSE 'update' END;
++  ELSE
++    UPDATE public.rc19_leader_brand_scopes
++    SET status = 'revoked', revoked_at = statement_timestamp(), version = version + 1,
++        updated_by = actor_id, updated_at = statement_timestamp()
++    WHERE id = current_scope.id
++    RETURNING * INTO saved_scope;
++    event_kind := 'revoke';
++  END IF;
++
++  INSERT INTO public.rc19_leader_brand_scope_events (
++    scope_id, leader_business_user_id, brand_id, scope_key, event_type,
++    prior_status, new_status, version, actor_business_user_id, reason
++  ) VALUES (
++    saved_scope.id, saved_scope.leader_business_user_id, saved_scope.brand_id, saved_scope.scope_key,
++    event_kind, current_scope.status, saved_scope.status, saved_scope.version, actor_id, clean_reason
++  );
++  RETURN saved_scope;
++END;
++$$;
++
++
++--
+ -- Name: record_report_ocr_run(text, jsonb, boolean); Type: FUNCTION; Schema: public; Owner: -
+ --
+ 
+@@ -14408,6 +14763,65 @@
+ 
+ 
+ --
++-- Name: rc19_leader_brand_scope_events; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.rc19_leader_brand_scope_events (
++    id bigint NOT NULL,
++    scope_id bigint NOT NULL,
++    leader_business_user_id text NOT NULL,
++    brand_id text NOT NULL,
++    scope_key text NOT NULL,
++    event_type text NOT NULL,
++    prior_status text,
++    new_status text NOT NULL,
++    version integer NOT NULL,
++    actor_business_user_id text,
++    reason text NOT NULL,
++    occurred_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
++    CONSTRAINT rc19_leader_brand_scope_events_event_type_check CHECK ((event_type = ANY (ARRAY['grant'::text, 'update'::text, 'revoke'::text, 'automatic_revoke'::text]))),
++    CONSTRAINT rc19_leader_brand_scope_events_new_status_check CHECK ((new_status = ANY (ARRAY['active'::text, 'revoked'::text]))),
++    CONSTRAINT rc19_leader_brand_scope_events_prior_status_check CHECK (((prior_status IS NULL) OR (prior_status = ANY (ARRAY['active'::text, 'revoked'::text])))),
++    CONSTRAINT rc19_leader_brand_scope_events_version_check CHECK ((version > 0))
++);
++
++
++--
++-- Name: TABLE rc19_leader_brand_scope_events; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON TABLE public.rc19_leader_brand_scope_events IS 'Append-only audit trail for Leader-to-Brand scope grants, updates, revocations and conflicts.';
++
++
++--
++-- Name: rc19_leader_brand_scope_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
++--
++
++ALTER TABLE public.rc19_leader_brand_scope_events ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
++    SEQUENCE NAME public.rc19_leader_brand_scope_events_id_seq
++    START WITH 1
++    INCREMENT BY 1
++    NO MINVALUE
++    NO MAXVALUE
++    CACHE 1
++);
++
++
++--
++-- Name: rc19_leader_brand_scopes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
++--
++
++ALTER TABLE public.rc19_leader_brand_scopes ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
++    SEQUENCE NAME public.rc19_leader_brand_scopes_id_seq
++    START WITH 1
++    INCREMENT BY 1
++    NO MINVALUE
++    NO MAXVALUE
++    CACHE 1
++);
++
++
++--
+ -- Name: report_revisions; Type: TABLE; Schema: public; Owner: -
+ --
+ 
+@@ -15376,6 +15790,30 @@
+ 
+ 
+ --
++-- Name: rc19_leader_brand_scope_events rc19_leader_brand_scope_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scope_events
++    ADD CONSTRAINT rc19_leader_brand_scope_events_pkey PRIMARY KEY (id);
++
++
++--
++-- Name: rc19_leader_brand_scopes rc19_leader_brand_scope_identity_key; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scopes
++    ADD CONSTRAINT rc19_leader_brand_scope_identity_key UNIQUE (leader_business_user_id, brand_id, scope_key);
++
++
++--
++-- Name: rc19_leader_brand_scopes rc19_leader_brand_scopes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scopes
++    ADD CONSTRAINT rc19_leader_brand_scopes_pkey PRIMARY KEY (id);
++
++
++--
+ -- Name: report_images report_images_dedupe_key; Type: CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -16193,6 +16631,20 @@
+ 
+ 
+ --
++-- Name: rc19_leader_brand_scope_effective_idx; Type: INDEX; Schema: public; Owner: -
++--
++
++CREATE INDEX rc19_leader_brand_scope_effective_idx ON public.rc19_leader_brand_scopes USING btree (leader_business_user_id, scope_key, brand_id) WHERE (status = 'active'::text);
++
++
++--
++-- Name: rc19_leader_brand_scope_events_subject_idx; Type: INDEX; Schema: public; Owner: -
++--
++
++CREATE INDEX rc19_leader_brand_scope_events_subject_idx ON public.rc19_leader_brand_scope_events USING btree (leader_business_user_id, occurred_at DESC);
++
++
++--
+ -- Name: report_images_report_id_idx; Type: INDEX; Schema: public; Owner: -
+ --
+ 
+@@ -16911,6 +17363,34 @@
+ --
+ 
+ CREATE TRIGGER platforms_set_updated_at BEFORE UPDATE ON public.platforms FOR EACH ROW EXECUTE FUNCTION private.set_updated_at();
++
++
++--
++-- Name: live_report_images rc19_live_report_image_scope_write_guard; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER rc19_live_report_image_scope_write_guard BEFORE INSERT OR DELETE OR UPDATE ON public.live_report_images FOR EACH ROW EXECUTE FUNCTION private.rc19_guard_report_child_write();
++
++
++--
++-- Name: report_images rc19_report_image_scope_write_guard; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER rc19_report_image_scope_write_guard BEFORE INSERT OR DELETE OR UPDATE ON public.report_images FOR EACH ROW EXECUTE FUNCTION private.rc19_guard_report_child_write();
++
++
++--
++-- Name: reports rc19_report_scope_write_guard; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER rc19_report_scope_write_guard BEFORE INSERT OR DELETE OR UPDATE ON public.reports FOR EACH ROW EXECUTE FUNCTION private.rc19_guard_report_write();
++
++
++--
++-- Name: business_users rc19_revoke_leader_brand_scopes_on_role_loss; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER rc19_revoke_leader_brand_scopes_on_role_loss AFTER UPDATE OF system_permission, status, account_status, archived_at, deleted_at ON public.business_users FOR EACH ROW EXECUTE FUNCTION private.rc19_revoke_leader_brand_scopes_on_role_loss();
+ 
+ 
+ --
+@@ -17951,6 +18431,70 @@
+ 
+ ALTER TABLE ONLY public.platforms
+     ADD CONSTRAINT platforms_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.business_users(id) ON DELETE SET NULL;
++
++
++--
++-- Name: rc19_leader_brand_scope_events rc19_leader_brand_scope_events_actor_business_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scope_events
++    ADD CONSTRAINT rc19_leader_brand_scope_events_actor_business_user_id_fkey FOREIGN KEY (actor_business_user_id) REFERENCES public.business_users(id) ON DELETE SET NULL;
++
++
++--
++-- Name: rc19_leader_brand_scope_events rc19_leader_brand_scope_events_brand_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scope_events
++    ADD CONSTRAINT rc19_leader_brand_scope_events_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES public.brands(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_leader_brand_scope_events rc19_leader_brand_scope_events_leader_business_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scope_events
++    ADD CONSTRAINT rc19_leader_brand_scope_events_leader_business_user_id_fkey FOREIGN KEY (leader_business_user_id) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_leader_brand_scope_events rc19_leader_brand_scope_events_scope_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scope_events
++    ADD CONSTRAINT rc19_leader_brand_scope_events_scope_id_fkey FOREIGN KEY (scope_id) REFERENCES public.rc19_leader_brand_scopes(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_leader_brand_scopes rc19_leader_brand_scopes_brand_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scopes
++    ADD CONSTRAINT rc19_leader_brand_scopes_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES public.brands(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_leader_brand_scopes rc19_leader_brand_scopes_granted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scopes
++    ADD CONSTRAINT rc19_leader_brand_scopes_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_leader_brand_scopes rc19_leader_brand_scopes_leader_business_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scopes
++    ADD CONSTRAINT rc19_leader_brand_scopes_leader_business_user_id_fkey FOREIGN KEY (leader_business_user_id) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_leader_brand_scopes rc19_leader_brand_scopes_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_leader_brand_scopes
++    ADD CONSTRAINT rc19_leader_brand_scopes_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.business_users(id) ON DELETE RESTRICT;
+ 
+ 
+ --
+@@ -19097,7 +19641,11 @@
+ -- Name: business_users business_users_active_directory_select; Type: POLICY; Schema: public; Owner: -
+ --
+ 
+-CREATE POLICY business_users_active_directory_select ON public.business_users FOR SELECT TO authenticated USING ((( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (status = 'active'::text) AND (account_status = 'active'::text) AND (archived_at IS NULL) AND (deleted_at IS NULL) AND (( SELECT private.is_leader_or_admin() AS is_leader_or_admin) OR (id = ( SELECT private.current_business_user_id() AS current_business_user_id)))));
++CREATE POLICY business_users_active_directory_select ON public.business_users FOR SELECT TO authenticated USING ((private.current_business_user_is_active() AND (status = 'active'::text) AND (account_status = 'active'::text) AND (archived_at IS NULL) AND (deleted_at IS NULL) AND ((private.current_system_permission() = 'admin'::text) OR (id = private.current_business_user_id()) OR ((private.current_system_permission() = 'leader'::text) AND (EXISTS ( SELECT 1
++   FROM public.shifts shift
++  WHERE ((shift.deleted_at IS NULL) AND (shift.archived_at IS NULL) AND private.rc19_has_any_leader_brand_scope(shift.brand_id, ARRAY['shifts.read'::text, 'shifts.manage'::text, 'staff.read'::text, 'staff.manage'::text, 'workforce.read'::text]) AND ((((business_users.id = shift.host_id) OR (business_users.id = shift.support_id)) OR (business_users.id = shift.technical_id)) OR (EXISTS ( SELECT 1
++           FROM public.shift_registrations registration
++          WHERE ((registration.shift_id = shift.id) AND (registration.user_id = business_users.id) AND (registration.status = ANY (ARRAY['pending'::text, 'approved'::text, 'manually_assigned'::text])))))))))))));
+ 
+ 
+ --
+@@ -19171,9 +19719,7 @@
+ -- Name: live_report_images live_report_images_read; Type: POLICY; Schema: public; Owner: -
+ --
+ 
+-CREATE POLICY live_report_images_read ON public.live_report_images FOR SELECT TO authenticated USING ((( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (report_id IS NOT NULL) AND (EXISTS ( SELECT 1
+-   FROM public.reports report
+-  WHERE ((report.id = live_report_images.report_id) AND (((report.deleted_at IS NULL) AND (report.archived_at IS NULL)) OR (( SELECT private.current_system_permission() AS current_system_permission) = 'admin'::text)))))));
++CREATE POLICY live_report_images_read ON public.live_report_images FOR SELECT TO authenticated USING (((report_id IS NOT NULL) AND private.can_read_report(report_id)));
+ 
+ 
+ --
+@@ -19295,6 +19841,32 @@
+ 
+ 
+ --
++-- Name: rc19_leader_brand_scope_events; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.rc19_leader_brand_scope_events ENABLE ROW LEVEL SECURITY;
++
++--
++-- Name: rc19_leader_brand_scope_events rc19_leader_brand_scope_events_admin_read; Type: POLICY; Schema: public; Owner: -
++--
++
++CREATE POLICY rc19_leader_brand_scope_events_admin_read ON public.rc19_leader_brand_scope_events FOR SELECT TO authenticated USING ((( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (( SELECT private.current_system_permission() AS current_system_permission) = 'admin'::text)));
++
++
++--
++-- Name: rc19_leader_brand_scopes; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.rc19_leader_brand_scopes ENABLE ROW LEVEL SECURITY;
++
++--
++-- Name: rc19_leader_brand_scopes rc19_leader_brand_scopes_read; Type: POLICY; Schema: public; Owner: -
++--
++
++CREATE POLICY rc19_leader_brand_scopes_read ON public.rc19_leader_brand_scopes FOR SELECT TO authenticated USING ((( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND ((( SELECT private.current_system_permission() AS current_system_permission) = 'admin'::text) OR (leader_business_user_id = ( SELECT private.current_business_user_id() AS current_business_user_id)))));
++
++
++--
+ -- Name: report_images; Type: ROW SECURITY; Schema: public; Owner: -
+ --
+ 
+@@ -19304,9 +19876,7 @@
+ -- Name: report_images report_images_read; Type: POLICY; Schema: public; Owner: -
+ --
+ 
+-CREATE POLICY report_images_read ON public.report_images FOR SELECT TO authenticated USING ((( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (EXISTS ( SELECT 1
+-   FROM public.reports report
+-  WHERE ((report.id = report_images.report_id) AND (((report.deleted_at IS NULL) AND (report.archived_at IS NULL)) OR (( SELECT private.current_system_permission() AS current_system_permission) = 'admin'::text)) AND (report_images.deleted_at IS NULL))))));
++CREATE POLICY report_images_read ON public.report_images FOR SELECT TO authenticated USING (((deleted_at IS NULL) AND private.can_read_report(report_id)));
+ 
+ 
+ --
+@@ -19319,9 +19889,7 @@
+ -- Name: report_revisions report_revisions_read; Type: POLICY; Schema: public; Owner: -
+ --
+ 
+-CREATE POLICY report_revisions_read ON public.report_revisions FOR SELECT TO authenticated USING ((( SELECT private.current_business_user_is_active() AS current_business_user_is_active) AND (EXISTS ( SELECT 1
+-   FROM public.reports report
+-  WHERE ((report.id = report_revisions.report_id) AND (((report.deleted_at IS NULL) AND (report.archived_at IS NULL)) OR (( SELECT private.current_system_permission() AS current_system_permission) = 'admin'::text)))))));
++CREATE POLICY report_revisions_read ON public.report_revisions FOR SELECT TO authenticated USING (private.can_read_report(report_id));
+ 
+ 
+ --
+@@ -19705,11 +20273,7 @@
+ -- Name: objects report-images-authenticated-read; Type: POLICY; Schema: storage; Owner: -
+ --
+ 
+-CREATE POLICY "report-images-authenticated-read" ON storage.objects FOR SELECT TO authenticated USING (((bucket_id = 'report-images'::text) AND (((split_part(name, '/'::text, 1) = 'reports'::text) AND (EXISTS ( SELECT 1
+-   FROM public.reports report
+-  WHERE ((report.id = split_part(objects.name, '/'::text, 2)) AND (((report.deleted_at IS NULL) AND (report.archived_at IS NULL)) OR ( SELECT (private.current_system_permission() = 'admin'::text))))))) OR ((split_part(name, '/'::text, 1) = 'live'::text) AND (EXISTS ( SELECT 1
+-   FROM public.reports report
+-  WHERE ((report.id = split_part(objects.name, '/'::text, 2)) AND (((report.deleted_at IS NULL) AND (report.archived_at IS NULL)) OR ( SELECT (private.current_system_permission() = 'admin'::text))))))))));
++CREATE POLICY "report-images-authenticated-read" ON storage.objects FOR SELECT TO authenticated USING (((bucket_id = 'report-images'::text) AND (split_part(name, '/'::text, 1) = ANY (ARRAY['reports'::text, 'live'::text])) AND private.can_read_report(split_part(name, '/'::text, 2))));
+ 
+ 
+ --
+@@ -19734,5 +20298,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict PGN2JvmtEg0DV7XlX34cOTvgwSjxfDW4bPq8GblAFNh8fbt7vsInQxPpTq1JF2N
+-
++\unrestrict wxFJfNTjUf2lEtrahPXL042VifcFJgbKbLSzO8thIwx9LOg6QIX8yObJfVklv3N
++

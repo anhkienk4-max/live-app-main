@@ -1,0 +1,78 @@
+--- before-20261104110000
++++ after-20261104110000
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict ldnft4Ivh1cNxdCj9wsgU8Vsbcm5ZL5DIkK8OBma8B56dOQh4xlwwXqxGp1DVs3
++\restrict BbArYXkOA0gqDR9bpha1d08UBj2VIw3pHnOlP0SygAALa7kGB0Z0Z2PuHy8IMrB
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -1858,6 +1858,44 @@
+   end if;
+   return new;
+ end;
++$$;
++
++
++--
++-- Name: enforce_rbac_swap_permission(); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.enforce_rbac_swap_permission() RETURNS trigger
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE
++  v_enabled boolean;
++  v_permission text;
++BEGIN
++  SELECT enabled INTO v_enabled FROM private.rbac_runtime_gate WHERE id = true;
++  IF NOT coalesce(v_enabled, false) THEN
++    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
++    RETURN NEW;
++  END IF;
++
++  IF TG_OP = 'INSERT' THEN
++    v_permission := 'swaps.request';
++  ELSIF OLD.status IS DISTINCT FROM NEW.status AND (
++    NEW.status = 'approved'
++    OR (NEW.status = 'rejected' AND NEW.approved_by IS NOT NULL
++      AND NEW.approved_by IS DISTINCT FROM OLD.approved_by)
++  ) THEN
++    v_permission := 'swaps.approve';
++  ELSE
++    RETURN NEW;
++  END IF;
++
++  IF NOT private.rbac_has_permission(v_permission) THEN
++    RAISE EXCEPTION 'RBAC_PERMISSION_DENIED' USING ERRCODE = '42501';
++  END IF;
++  RETURN NEW;
++END;
+ $$;
+ 
+ 
+@@ -17050,6 +17088,13 @@
+ 
+ 
+ --
++-- Name: swap_requests swap_requests_rbac_permission; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER swap_requests_rbac_permission BEFORE INSERT OR UPDATE OF status ON public.swap_requests FOR EACH ROW EXECUTE FUNCTION private.enforce_rbac_swap_permission();
++
++
++--
+ -- Name: swap_requests swap_requests_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
+ --
+ 
+@@ -19646,5 +19691,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict ldnft4Ivh1cNxdCj9wsgU8Vsbcm5ZL5DIkK8OBma8B56dOQh4xlwwXqxGp1DVs3
+-
++\unrestrict BbArYXkOA0gqDR9bpha1d08UBj2VIw3pHnOlP0SygAALa7kGB0Z0Z2PuHy8IMrB
++

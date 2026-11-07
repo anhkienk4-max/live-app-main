@@ -1,0 +1,65 @@
+{
+  "bucket": {
+    "id": "live-dashboard-images",
+    "public": true,
+    "file_size_limit": 10485760
+  },
+  "policies": [
+    {
+      "check": null,
+      "roles": [
+        "authenticated"
+      ],
+      "using": "((bucket_id = 'live-dashboard-images'::text) AND (( SELECT private.is_leader_or_admin() AS is_leader_or_admin) OR (EXISTS ( SELECT 1\n   FROM dashboard_updates update_row\n  WHERE ((update_row.screenshot_storage_path = objects.name) AND (update_row.created_by = ( SELECT private.current_business_user_id() AS current_business_user_id)))))))",
+      "policy": "live dashboard image delete",
+      "command": "DELETE"
+    },
+    {
+      "check": null,
+      "roles": [
+        "public"
+      ],
+      "using": "(bucket_id = 'live-dashboard-images'::text)",
+      "policy": "live dashboard image public read",
+      "command": "SELECT"
+    },
+    {
+      "check": "((bucket_id = 'live-dashboard-images'::text) AND (split_part(name, '/'::text, 1) = 'dashboard'::text) AND (EXISTS ( SELECT 1\n   FROM shifts shift\n  WHERE ((shift.id = split_part(objects.name, '/'::text, 2)) AND (shift.status = ANY (ARRAY['preparing'::text, 'live'::text, 'paused'::text])) AND (shift.deleted_at IS NULL) AND (shift.archived_at IS NULL)))) AND ( SELECT private.can_read_shift(split_part(objects.name, '/'::text, 2)) AS can_read_shift))",
+      "roles": [
+        "authenticated"
+      ],
+      "using": null,
+      "policy": "live dashboard image upload",
+      "command": "INSERT"
+    },
+    {
+      "check": null,
+      "roles": [
+        "authenticated"
+      ],
+      "using": "((bucket_id = 'report-images'::text) AND (((split_part(name, '/'::text, 1) = 'reports'::text) AND (EXISTS ( SELECT 1\n   FROM reports report\n  WHERE ((report.id = split_part(objects.name, '/'::text, 2)) AND (((report.deleted_at IS NULL) AND (report.archived_at IS NULL)) OR ( SELECT (private.current_system_permission() = 'admin'::text))))))) OR ((split_part(name, '/'::text, 1) = 'live'::text) AND (EXISTS ( SELECT 1\n   FROM reports report\n  WHERE ((report.id = split_part(objects.name, '/'::text, 2)) AND (((report.deleted_at IS NULL) AND (report.archived_at IS NULL)) OR ( SELECT (private.current_system_permission() = 'admin'::text)))))))))",
+      "policy": "report-images-authenticated-read",
+      "command": "SELECT"
+    },
+    {
+      "check": null,
+      "roles": [
+        "authenticated"
+      ],
+      "using": "((bucket_id = 'report-images'::text) AND ((owner_id = (( SELECT auth.uid() AS uid))::text) OR ( SELECT private.is_leader_or_admin() AS is_leader_or_admin)))",
+      "policy": "report-images-delete",
+      "command": "DELETE"
+    },
+    {
+      "check": "((bucket_id = 'report-images'::text) AND (( SELECT private.current_business_user_id() AS current_business_user_id) IS NOT NULL) AND (((split_part(name, '/'::text, 1) = 'reports'::text) AND (EXISTS ( SELECT 1\n   FROM reports report\n  WHERE ((report.id = split_part(objects.name, '/'::text, 2)) AND (report.deleted_at IS NULL) AND (report.archived_at IS NULL) AND (( SELECT private.is_leader_or_admin() AS is_leader_or_admin) OR (report.submitted_by = ( SELECT private.current_business_user_id() AS current_business_user_id))))))) OR ((split_part(name, '/'::text, 1) = 'live'::text) AND (EXISTS ( SELECT 1\n   FROM reports report\n  WHERE ((report.id = split_part(objects.name, '/'::text, 2)) AND (report.deleted_at IS NULL) AND (report.archived_at IS NULL) AND (( SELECT private.is_leader_or_admin() AS is_leader_or_admin) OR (report.submitted_by = ( SELECT private.current_business_user_id() AS current_business_user_id)))))))))",
+      "roles": [
+        "authenticated"
+      ],
+      "using": null,
+      "policy": "report-images-upload",
+      "command": "INSERT"
+    }
+  ],
+  "project_id": "egdjnpmoasarrttvhgds",
+  "captured_at_utc": "2026-11-06T08:45:44.880118"
+}

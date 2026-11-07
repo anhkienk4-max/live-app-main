@@ -1,0 +1,4 @@
+__pycache__/
+active-*.sql
+evidence/prodshape-pg17-*/schema-before-*.sql
+evidence/prodshape-pg17-*/schema-after-*.sql

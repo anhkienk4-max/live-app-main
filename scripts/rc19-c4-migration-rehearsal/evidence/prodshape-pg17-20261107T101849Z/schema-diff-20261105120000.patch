@@ -1,0 +1,176 @@
+--- before-20261105120000
++++ after-20261105120000
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict aLQ5Bo0m6A5LCXfHfMDEaRU1Jb641uJ1opROakc5Zjm7v5nf5tXAgCDLNjCvro8
++\restrict TWgZNYnclqGezcIR9Xjlpf0LxxV8JS8x1Zx7mMS0AuUieZOWPXkZuy9GdJNP5ea
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -9097,6 +9097,77 @@
+ 
+ 
+ --
++-- Name: rc19_export_report_bundle(text[], text); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rc19_export_report_bundle(p_report_ids text[], p_kind text) RETURNS jsonb
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE actor text := private.current_business_user_id(); role_name text := private.current_system_permission(); result jsonb;
++BEGIN
++  IF actor IS NULL OR NOT private.current_business_user_is_active()
++    OR NOT public.rbac01_effective_permission('reports.export')
++    OR p_kind IS NULL OR p_kind NOT IN ('reports','report','images') OR p_report_ids IS NULL
++    OR cardinality(p_report_ids) < 1 OR cardinality(p_report_ids) > 500
++    OR (SELECT count(DISTINCT id) FROM unnest(p_report_ids) id) <> cardinality(p_report_ids)
++    OR (p_kind = 'report' AND cardinality(p_report_ids) <> 1)
++    OR role_name NOT IN ('admin','leader') THEN
++    RAISE EXCEPTION 'REPORT_EXPORT_DENIED' USING ERRCODE='42501';
++  END IF;
++
++  IF role_name = 'leader' AND EXISTS (
++    SELECT 1 FROM unnest(p_report_ids) requested(id)
++    LEFT JOIN public.reports r ON r.id=requested.id AND r.deleted_at IS NULL AND r.archived_at IS NULL
++    LEFT JOIN public.shifts s ON s.id=r.shift_id
++    WHERE r.id IS NULL OR NOT private.rc19_has_leader_brand_scope(s.brand_id,'reports.export')
++  ) THEN RAISE EXCEPTION 'REPORT_EXPORT_SCOPE_DENIED' USING ERRCODE='42501'; END IF;
++
++  IF role_name = 'member' THEN
++    RAISE EXCEPTION 'REPORT_EXPORT_DENIED' USING ERRCODE='42501';
++  END IF;
++  IF EXISTS (SELECT 1 FROM unnest(p_report_ids) requested(id)
++    LEFT JOIN public.reports r ON r.id=requested.id AND r.deleted_at IS NULL AND r.archived_at IS NULL
++    WHERE r.id IS NULL) THEN RAISE EXCEPTION 'REPORT_EXPORT_SCOPE_DENIED' USING ERRCODE='42501'; END IF;
++
++  IF (SELECT count(*) FROM public.shift_registrations sr JOIN public.reports r ON r.shift_id=sr.shift_id WHERE r.id=ANY(p_report_ids)) > 10000
++    OR (p_kind='images' AND (SELECT count(*) FROM public.report_images i WHERE i.report_id=ANY(p_report_ids) AND i.deleted_at IS NULL) > 10000) THEN
++    RAISE EXCEPTION 'REPORT_EXPORT_SIZE_LIMIT' USING ERRCODE='22023';
++  END IF;
++
++  SELECT jsonb_build_object(
++    'reports', coalesce((SELECT jsonb_agg(jsonb_build_object(
++      'id',r.id,'shift_id',r.shift_id,'revenue',r.revenue,'gmv',r.gmv,'orders',r.orders,
++      'dashboard_platform',r.dashboard_platform,'platform_metrics',r.platform_metrics,'normalized_metrics',r.normalized_metrics,
++      'average_order_value',r.average_order_value,'average_viewer',r.average_viewer,'live_duration_minutes',r.live_duration_minutes,
++      'peak_viewer',r.peak_viewer,'product_clicks',r.product_clicks,'ctr',r.ctr,'cvr',r.cvr,'likes',r.likes,
++      'comments',r.comments,'shares',r.shares,'status',r.status,'metrics_confirmed',r.metrics_confirmed,
++      'confirmed_at',r.confirmed_at,'confirmed_by',r.confirmed_by,'created_at',r.created_at,'submitted_by',r.submitted_by,
++      'final_recap',r.final_recap
++    ) ORDER BY r.id) FROM public.reports r WHERE r.id=ANY(p_report_ids)), '[]'::jsonb),
++    'shifts', coalesce((SELECT jsonb_agg(jsonb_build_object('id',s.id,'date',s.date,'start_time',s.start_time,'end_time',s.end_time,'brand_id',s.brand_id,'platform_id',s.platform_id,'campaign_id',s.campaign_id,'host_id',s.host_id,'support_id',s.support_id,'technical_id',s.technical_id,'studio',s.studio) ORDER BY s.id) FROM public.shifts s WHERE s.id IN (SELECT r.shift_id FROM public.reports r WHERE r.id=ANY(p_report_ids))), '[]'::jsonb),
++    'registrations', coalesce((SELECT jsonb_agg(jsonb_build_object('id',sr.id,'shift_id',sr.shift_id,'user_id',sr.user_id,'operational_role',sr.operational_role,'status',sr.status) ORDER BY sr.id) FROM public.shift_registrations sr WHERE sr.shift_id IN (SELECT r.shift_id FROM public.reports r WHERE r.id=ANY(p_report_ids))), '[]'::jsonb),
++    'images', CASE WHEN p_kind='images' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',i.id,'report_id',i.report_id,'image_url',i.image_url,'storage_path',i.storage_path,'original_name',i.original_name,'mime_type',i.mime_type,'size_bytes',i.size_bytes,'image_type',i.image_type,'created_at',i.created_at) ORDER BY i.id) FROM public.report_images i WHERE i.report_id=ANY(p_report_ids) AND i.deleted_at IS NULL), '[]'::jsonb) ELSE '[]'::jsonb END,
++    'brands', coalesce((SELECT jsonb_agg(jsonb_build_object('id',b.id,'name',b.name)) FROM public.brands b WHERE b.id IN (SELECT s.brand_id FROM public.shifts s JOIN public.reports r ON r.shift_id=s.id WHERE r.id=ANY(p_report_ids))), '[]'::jsonb),
++    'platforms', coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.id,'name',p.name)) FROM public.platforms p WHERE p.id IN (SELECT s.platform_id FROM public.shifts s JOIN public.reports r ON r.shift_id=s.id WHERE r.id=ANY(p_report_ids))), '[]'::jsonb),
++    'campaigns', coalesce((SELECT jsonb_agg(jsonb_build_object('id',c.id,'name',c.name)) FROM public.campaigns c WHERE c.id IN (SELECT s.campaign_id FROM public.shifts s JOIN public.reports r ON r.shift_id=s.id WHERE r.id=ANY(p_report_ids))), '[]'::jsonb),
++    'users', coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id,'full_name',u.full_name)) FROM public.business_users u WHERE u.id IN (
++      SELECT r.submitted_by FROM public.reports r WHERE r.id=ANY(p_report_ids) UNION SELECT r.confirmed_by FROM public.reports r WHERE r.id=ANY(p_report_ids)
++      UNION SELECT s.host_id FROM public.shifts s JOIN public.reports r ON r.shift_id=s.id WHERE r.id=ANY(p_report_ids)
++      UNION SELECT s.support_id FROM public.shifts s JOIN public.reports r ON r.shift_id=s.id WHERE r.id=ANY(p_report_ids)
++      UNION SELECT s.technical_id FROM public.shifts s JOIN public.reports r ON r.shift_id=s.id WHERE r.id=ANY(p_report_ids)
++      UNION SELECT sr.user_id FROM public.shift_registrations sr JOIN public.reports r ON r.shift_id=sr.shift_id WHERE r.id=ANY(p_report_ids)
++    )), '[]'::jsonb)
++  ) INTO result;
++
++  INSERT INTO public.rc19_report_export_audit(actor_business_user_id, report_count, export_kind)
++  VALUES (actor, cardinality(p_report_ids), p_kind);
++  RETURN result;
++END;
++$$;
++
++
++--
+ -- Name: rc19_finalize_report_artifact_deletion(uuid, uuid, integer); Type: FUNCTION; Schema: public; Owner: -
+ --
+ 
+@@ -15133,6 +15204,35 @@
+ 
+ 
+ --
++-- Name: rc19_report_export_audit; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.rc19_report_export_audit (
++    id bigint NOT NULL,
++    actor_business_user_id text NOT NULL,
++    report_count integer NOT NULL,
++    export_kind text NOT NULL,
++    occurred_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
++    CONSTRAINT rc19_report_export_audit_export_kind_check CHECK ((export_kind = ANY (ARRAY['reports'::text, 'report'::text, 'images'::text]))),
++    CONSTRAINT rc19_report_export_audit_report_count_check CHECK (((report_count >= 1) AND (report_count <= 500)))
++);
++
++
++--
++-- Name: rc19_report_export_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: -
++--
++
++ALTER TABLE public.rc19_report_export_audit ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
++    SEQUENCE NAME public.rc19_report_export_audit_id_seq
++    START WITH 1
++    INCREMENT BY 1
++    NO MINVALUE
++    NO MAXVALUE
++    CACHE 1
++);
++
++
++--
+ -- Name: report_revisions; Type: TABLE; Schema: public; Owner: -
+ --
+ 
+@@ -16149,6 +16249,14 @@
+ 
+ 
+ --
++-- Name: rc19_report_export_audit rc19_report_export_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_export_audit
++    ADD CONSTRAINT rc19_report_export_audit_pkey PRIMARY KEY (id);
++
++
++--
+ -- Name: report_images report_images_dedupe_key; Type: CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -18878,6 +18986,14 @@
+ 
+ ALTER TABLE ONLY public.rc19_report_artifact_deletions
+     ADD CONSTRAINT rc19_report_artifact_deletions_stored_file_id_fkey FOREIGN KEY (stored_file_id) REFERENCES public.stored_files(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: rc19_report_export_audit rc19_report_export_audit_actor_business_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.rc19_report_export_audit
++    ADD CONSTRAINT rc19_report_export_audit_actor_business_user_id_fkey FOREIGN KEY (actor_business_user_id) REFERENCES public.business_users(id) ON DELETE RESTRICT;
+ 
+ 
+ --
+@@ -20262,6 +20378,12 @@
+ ALTER TABLE public.rc19_report_artifact_deletions ENABLE ROW LEVEL SECURITY;
+ 
+ --
++-- Name: rc19_report_export_audit; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.rc19_report_export_audit ENABLE ROW LEVEL SECURITY;
++
++--
+ -- Name: report_images; Type: ROW SECURITY; Schema: public; Owner: -
+ --
+ 
+@@ -20693,5 +20815,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict aLQ5Bo0m6A5LCXfHfMDEaRU1Jb641uJ1opROakc5Zjm7v5nf5tXAgCDLNjCvro8
+-
++\unrestrict TWgZNYnclqGezcIR9Xjlpf0LxxV8JS8x1Zx7mMS0AuUieZOWPXkZuy9GdJNP5ea
++

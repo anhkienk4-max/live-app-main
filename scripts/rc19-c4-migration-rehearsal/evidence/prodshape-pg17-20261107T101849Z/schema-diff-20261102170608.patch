@@ -1,0 +1,144 @@
+--- before-20261102170608
++++ after-20261102170608
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict aEnGl9aCuIQL5NIW4oZ8hl0IlShaEZqBmYEXmrfkcJxxgSlz3iJA7Tm7NIbwaNL
++\restrict uooofEYuI9Ezrr8zDq1OV2J24ddw1HYa3LvEYSUxi7XDvmolByq01RfhHDK1OjL
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -2030,6 +2030,53 @@
+ 
+ 
+ --
++-- Name: guard_excel_source_receipt_mutation(); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.guard_excel_source_receipt_mutation() RETURNS trigger
++    LANGUAGE plpgsql
++    SET search_path TO ''
++    AS $$
++DECLARE
++  source_batch_id text;
++  source_batch_status text;
++BEGIN
++  source_batch_id := CASE WHEN TG_OP IN ('DELETE', 'UPDATE') THEN OLD.batch_id ELSE NEW.batch_id END;
++  SELECT status INTO source_batch_status
++  FROM public.schedule_import_batches
++  WHERE id = source_batch_id
++  FOR UPDATE;
++
++  IF NOT FOUND THEN
++    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'SCHEDULE_SOURCE_BATCH_NOT_FOUND';
++  END IF;
++  IF source_batch_status = 'confirmed' THEN
++    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'SCHEDULE_SOURCE_CONFIRMED_RECEIPT_IMMUTABLE';
++  END IF;
++  IF TG_OP = 'INSERT' AND NEW.reconciliation_status <> 'pending' THEN
++    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'SCHEDULE_SOURCE_RECEIPT_MUST_START_PENDING';
++  END IF;
++  IF TG_OP = 'UPDATE'
++    AND (NEW.batch_id IS DISTINCT FROM OLD.batch_id
++      OR NEW.checksum_sha256 IS DISTINCT FROM OLD.checksum_sha256) THEN
++    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'SCHEDULE_SOURCE_RECEIPT_IDENTITY_IMMUTABLE';
++  END IF;
++  IF TG_OP = 'DELETE' THEN
++    RETURN OLD;
++  END IF;
++  RETURN NEW;
++END;
++$$;
++
++
++--
++-- Name: FUNCTION guard_excel_source_receipt_mutation(); Type: COMMENT; Schema: private; Owner: -
++--
++
++COMMENT ON FUNCTION private.guard_excel_source_receipt_mutation() IS 'Lock the parent batch while mutating source receipts and preserve receipt/batch references after confirmation.';
++
++
++--
+ -- Name: guard_storage_resource_attendance(); Type: FUNCTION; Schema: private; Owner: -
+ --
+ 
+@@ -2738,6 +2785,15 @@
+     SET search_path TO ''
+     AS $$
+ BEGIN
++  IF TG_OP = 'UPDATE' AND OLD.import_batch_id IS NOT NULL
++    AND OLD.import_batch_id IS DISTINCT FROM NEW.import_batch_id
++    AND EXISTS (
++      SELECT 1 FROM public.schedule_import_batches batch
++      WHERE batch.id = OLD.import_batch_id AND batch.source = 'excel' AND batch.status = 'confirmed'
++    ) THEN
++    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'SCHEDULE_SOURCE_CONFIRMED_BATCH_REFERENCE_IMMUTABLE';
++  END IF;
++
+   IF NEW.import_batch_id IS NOT NULL
+     AND EXISTS (
+       SELECT 1 FROM public.schedule_import_batches batch
+@@ -2773,6 +2829,13 @@
+     SET search_path TO ''
+     AS $$
+ BEGIN
++  IF TG_OP = 'UPDATE' AND OLD.status = 'confirmed'
++    AND (OLD.id IS DISTINCT FROM NEW.id
++      OR OLD.source IS DISTINCT FROM NEW.source
++      OR OLD.status IS DISTINCT FROM NEW.status) THEN
++    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'SCHEDULE_SOURCE_CONFIRMED_BATCH_IMMUTABLE';
++  END IF;
++
+   IF NEW.status = 'confirmed' AND NEW.source = 'excel'
+     AND NOT EXISTS (
+       SELECT 1 FROM public.operational_schedule_source_files source_file
+@@ -2792,7 +2855,7 @@
+ -- Name: FUNCTION require_excel_source_before_batch_confirmation(); Type: COMMENT; Schema: private; Owner: -
+ --
+ 
+-COMMENT ON FUNCTION private.require_excel_source_before_batch_confirmation() IS 'Require provider-verified raw Excel bytes before an Excel import batch is confirmed.';
++COMMENT ON FUNCTION private.require_excel_source_before_batch_confirmation() IS 'Require a backend-verified source receipt before Excel batch confirmation; provider bytes are re-read and checksummed by the API before import.';
+ 
+ 
+ --
+@@ -12935,7 +12998,7 @@
+     verified_created boolean DEFAULT false NOT NULL,
+     created_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
+     updated_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
+-    CONSTRAINT operational_storage_domain_folders_access_classification_check CHECK ((access_classification = ANY (ARRAY['shared'::text, 'pending_restriction_no_sensitive_upload'::text, 'shared_schema_template_only'::text, 'restricted_verified'::text]))),
++    CONSTRAINT operational_storage_domain_folders_access_classification_check CHECK ((access_classification = ANY (ARRAY['shared'::text, 'pending_restriction_no_sensitive_upload'::text, 'shared_schema_template_only'::text, 'restricted_pending_app_acl_verification'::text, 'restricted_verified'::text]))),
+     CONSTRAINT operational_storage_domain_folders_folder_id_check CHECK ((btrim(folder_id) <> ''::text)),
+     CONSTRAINT operational_storage_domain_folders_folder_path_check CHECK ((btrim(folder_path) <> ''::text)),
+     CONSTRAINT operational_storage_domain_folders_parent_folder_id_check CHECK ((btrim(parent_folder_id) <> ''::text))
+@@ -15470,6 +15533,13 @@
+ 
+ 
+ --
++-- Name: operational_schedule_source_files operational_schedule_source_files_guard_mutation; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER operational_schedule_source_files_guard_mutation BEFORE INSERT OR DELETE OR UPDATE ON public.operational_schedule_source_files FOR EACH ROW EXECUTE FUNCTION private.guard_excel_source_receipt_mutation();
++
++
++--
+ -- Name: platforms platforms_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
+ --
+ 
+@@ -15522,7 +15592,7 @@
+ -- Name: schedule_import_batches schedule_import_batches_require_excel_source; Type: TRIGGER; Schema: public; Owner: -
+ --
+ 
+-CREATE TRIGGER schedule_import_batches_require_excel_source BEFORE UPDATE OF status ON public.schedule_import_batches FOR EACH ROW EXECUTE FUNCTION private.require_excel_source_before_batch_confirmation();
++CREATE TRIGGER schedule_import_batches_require_excel_source BEFORE INSERT OR UPDATE OF id, source, status ON public.schedule_import_batches FOR EACH ROW EXECUTE FUNCTION private.require_excel_source_before_batch_confirmation();
+ 
+ 
+ --
+@@ -18103,5 +18173,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict aEnGl9aCuIQL5NIW4oZ8hl0IlShaEZqBmYEXmrfkcJxxgSlz3iJA7Tm7NIbwaNL
+-
++\unrestrict uooofEYuI9Ezrr8zDq1OV2J24ddw1HYa3LvEYSUxi7XDvmolByq01RfhHDK1OjL
++
