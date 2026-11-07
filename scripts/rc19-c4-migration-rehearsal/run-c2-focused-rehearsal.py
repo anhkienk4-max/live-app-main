@@ -104,7 +104,8 @@ def main():
             raise RuntimeError("HISTORY_PREFIX_HASH_MISMATCH:" + e["source_file"])
     c2 = next(e for e in effective["entries"] if e["version"] == "20261103195519")
     c2_source = ROOT / c2["source_file"]
-    if hashlib.sha256(c2_source.read_bytes()).hexdigest() != c2["sha256"]:
+    c2_source_sha = hashlib.sha256(c2_source.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+    if c2_source_sha != c2["sha256"]:
         raise RuntimeError("C2_EFFECTIVE_HASH_MISMATCH")
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

@@ -1,0 +1,66 @@
+--- before-20261102200000
++++ after-20261102200000
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict qa1odWtGrUpiTwhXiW3hXIhdUCFqJHe4VKXnty54MvJSBr8dcxQhdcJ6QcxFC45
++\restrict rghcPCxaAGGiPcizBjhbd5EzhtVtaKi1Jv92vDKD1YnD5MZgtQfCa7fSdyYvtAu
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -7924,6 +7924,24 @@
+ 
+ 
+ --
++-- Name: normalize_shift_qualifier(text); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.normalize_shift_qualifier(val text) RETURNS text
++    LANGUAGE sql IMMUTABLE
++    AS $$
++  select coalesce(regexp_replace(lower(btrim(val)), '\s+', ' ', 'g'), '');
++$$;
++
++
++--
++-- Name: FUNCTION normalize_shift_qualifier(val text); Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON FUNCTION public.normalize_shift_qualifier(val text) IS 'RC19 Batch 01.3.1: Canonical identity qualifier normalization for Studio and Campaign. Equivalent to TypeScript trim().toLowerCase().replace(/\s+/g, '' '')';
++
++
++--
+ -- Name: record_report_ocr_run(text, jsonb, boolean); Type: FUNCTION; Schema: public; Owner: -
+ --
+ 
+@@ -15064,10 +15082,17 @@
+ 
+ 
+ --
+--- Name: shifts_active_slot_uidx; Type: INDEX; Schema: public; Owner: -
+---
+-
+-CREATE UNIQUE INDEX shifts_active_slot_uidx ON public.shifts USING btree (brand_id, platform_id, date, start_time, end_time) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL));
++-- Name: shifts_active_identity_uidx; Type: INDEX; Schema: public; Owner: -
++--
++
++CREATE UNIQUE INDEX shifts_active_identity_uidx ON public.shifts USING btree (brand_id, platform_id, date, start_time, end_time, public.normalize_shift_qualifier(studio), public.normalize_shift_qualifier(campaign_id)) WHERE ((deleted_at IS NULL) AND (archived_at IS NULL));
++
++
++--
++-- Name: INDEX shifts_active_identity_uidx; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON INDEX public.shifts_active_identity_uidx IS 'RC19 Batch 01.3.1: Canonical active shift identity index. Supports parallel sessions in distinct studios/campaigns while strictly preventing duplicate shifts.';
+ 
+ 
+ --
+@@ -18243,5 +18268,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict qa1odWtGrUpiTwhXiW3hXIhdUCFqJHe4VKXnty54MvJSBr8dcxQhdcJ6QcxFC45
+-
++\unrestrict rghcPCxaAGGiPcizBjhbd5EzhtVtaKi1Jv92vDKD1YnD5MZgtQfCa7fSdyYvtAu
++

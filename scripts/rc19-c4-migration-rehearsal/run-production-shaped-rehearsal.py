@@ -45,6 +45,10 @@ def q(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def canonical_sql_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def psql(query: str, *, tuples_only: bool = True) -> str:
     args = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", EXPECTED_SOCKET, "-p", PG_PORT,
             "-U", PG_USER, "-d", EXPECTED_DATABASE]
@@ -101,7 +105,14 @@ def verify_manifest(manifest: dict, count: int, label: str) -> None:
     for item in items:
         source = ROOT / item.get("source_file", "supabase/migrations/" + item.get("file", ""))
         sha = item.get("source_sha256", item.get("sha256"))
-        if not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest() != sha:
+        if not source.is_file():
+            raise RuntimeError(f"{label}_SOURCE_MISSING:{source}")
+        actual_sha = (
+            canonical_sql_sha256(source)
+            if manifest.get("hash_basis") == "git_text_blob_sha256"
+            else hashlib.sha256(source.read_bytes()).hexdigest()
+        )
+        if actual_sha != sha:
             raise RuntimeError(f"{label}_SOURCE_HASH_MISMATCH:{source}")
 
 
@@ -138,8 +149,17 @@ def main() -> int:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = EVIDENCE / f"prodshape-pg17-{stamp}"
     out.mkdir(parents=True, exist_ok=False)
+    rehearsal_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+    ).strip()
+    rehearsal_worktree_clean = not subprocess.check_output(
+        ["git", "status", "--porcelain"], cwd=ROOT, text=True
+    ).strip()
     (out / "source.txt").write_text(
-        f"git_head={head}\npostgres_database={EXPECTED_DATABASE}\n"
+        f"candidate_application_sha={head}\nrehearsal_code_commit={rehearsal_commit}\n"
+        f"rehearsal_worktree_clean_at_run_start={str(rehearsal_worktree_clean).lower()}\n"
+        "effective_migration_hash_basis=git_text_blob_sha256\n"
+        f"postgres_database={EXPECTED_DATABASE}\n"
         f"production_project=egdjnpmoasarrttvhgds\nproduction_ledger=89\n"
         f"candidate_migrations=17\ncreated_utc={stamp}\n", encoding="utf-8")
 
@@ -249,7 +269,7 @@ def main() -> int:
         log = out / f"candidate-{index:02d}-{version}.log"
         adapter = entry.get("adapter") == "pg_cron_test_shim"
         execute_migration(source, log, adapter=adapter)
-        sha = hashlib.sha256(source.read_bytes()).hexdigest()
+        sha = canonical_sql_sha256(source)
         write_receipt(version, name, source_rel, sha)
         after_dump = schema_dump(after_file)
         diff = "".join(difflib.unified_diff(before_dump.splitlines(True), after_dump.splitlines(True),

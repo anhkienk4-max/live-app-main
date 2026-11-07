@@ -1,0 +1,8 @@
+RESULT=PASS
+source_sha=240a0d51b49863167be252d94545ea7c5ab2ac9a
+postgresql=170006
+production_ledger_replayed=89
+candidate_migrations_applied=17
+c2_storage_admin_leader_member_rls=PASS
+c2_anon_denied=PASS
+pg_cron_worker=NOT_SIMULATED

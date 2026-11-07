@@ -1,0 +1,89 @@
+--- before-20261102135047
++++ after-20261102135047
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict ddARuQWikMQnTw3Dx7RiZoPQaJx96O1jQQneNUFncUbwEMvvebIYmN9IQv0gThb
++\restrict fSTS2KGhXwNAy1hBY8WlcIO4PRbbLIkFkrj9vO5XbyOsN2P8er6egbnwK81eLGD
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -12780,6 +12780,33 @@
+ 
+ 
+ --
++-- Name: operational_storage_domain_folders; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.operational_storage_domain_folders (
++    folder_path text NOT NULL,
++    folder_id text NOT NULL,
++    parent_folder_id text NOT NULL,
++    access_classification text NOT NULL,
++    active boolean DEFAULT false NOT NULL,
++    verified_created boolean DEFAULT false NOT NULL,
++    created_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
++    updated_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
++    CONSTRAINT operational_storage_domain_folders_access_classification_check CHECK ((access_classification = ANY (ARRAY['shared'::text, 'pending_restriction_no_sensitive_upload'::text, 'shared_schema_template_only'::text]))),
++    CONSTRAINT operational_storage_domain_folders_folder_id_check CHECK ((btrim(folder_id) <> ''::text)),
++    CONSTRAINT operational_storage_domain_folders_folder_path_check CHECK ((btrim(folder_path) <> ''::text)),
++    CONSTRAINT operational_storage_domain_folders_parent_folder_id_check CHECK ((btrim(parent_folder_id) <> ''::text))
++);
++
++
++--
++-- Name: TABLE operational_storage_domain_folders; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON TABLE public.operational_storage_domain_folders IS 'Exact metadata-only registry for verified ADA Ops Drive folders; inactive until separately approved.';
++
++
++--
+ -- Name: operational_storage_routes; Type: TABLE; Schema: public; Owner: -
+ --
+ 
+@@ -13708,6 +13735,22 @@
+ 
+ 
+ --
++-- Name: operational_storage_domain_folders operational_storage_domain_folders_folder_id_key; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.operational_storage_domain_folders
++    ADD CONSTRAINT operational_storage_domain_folders_folder_id_key UNIQUE (folder_id);
++
++
++--
++-- Name: operational_storage_domain_folders operational_storage_domain_folders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.operational_storage_domain_folders
++    ADD CONSTRAINT operational_storage_domain_folders_pkey PRIMARY KEY (folder_path);
++
++
++--
+ -- Name: operational_storage_routes operational_storage_routes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -17326,6 +17369,12 @@
+ ALTER TABLE public.operational_files ENABLE ROW LEVEL SECURITY;
+ 
+ --
++-- Name: operational_storage_domain_folders; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.operational_storage_domain_folders ENABLE ROW LEVEL SECURITY;
++
++--
+ -- Name: operational_storage_routes; Type: ROW SECURITY; Schema: public; Owner: -
+ --
+ 
+@@ -17778,5 +17827,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict ddARuQWikMQnTw3Dx7RiZoPQaJx96O1jQQneNUFncUbwEMvvebIYmN9IQv0gThb
+-
++\unrestrict fSTS2KGhXwNAy1hBY8WlcIO4PRbbLIkFkrj9vO5XbyOsN2P8er6egbnwK81eLGD
++

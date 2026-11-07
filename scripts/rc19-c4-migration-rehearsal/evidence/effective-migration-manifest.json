@@ -1,6 +1,6 @@
 {
   "candidate_sha": "240a0d51b49863167be252d94545ea7c5ab2ac9a",
-  "strategy": "revised_candidate_migration_chain_for_verified_production_target",
+  "strategy": "revised_candidate_chain_for_captured_production_ledger_only",
   "production_project": "egdjnpmoasarrttvhgds",
   "production_ledger_observed_count": 89,
   "production_ledger_observed_head": "20261101073742",
@@ -15,49 +15,57 @@
       "version": "20261102110000",
       "file": "20261102110000_rc19_batch05a_report_storage.sql",
       "source_file": "supabase/migrations/20261102110000_rc19_batch05a_report_storage.sql",
-      "sha256": "51f17d84f157ae82bbfc5baaa399ff6eda510e4c234f7732bf84a0abff926824"
+      "sha256": "ee1f6c7d084fb2428c6e289857ee908b1f8d59c1dd1cde98c997ce1d3d57372c",
+      "original_sha256": "51f17d84f157ae82bbfc5baaa399ff6eda510e4c234f7732bf84a0abff926824"
     },
     {
       "version": "20261102135047",
       "file": "20261102135047_rc19_batch05a3_domain_storage_routes.sql",
       "source_file": "supabase/migrations/20261102135047_rc19_batch05a3_domain_storage_routes.sql",
-      "sha256": "613668b237e56f438a57795b280fb060b7ea3042bbdb92e5506d0bfee4494aed"
+      "sha256": "a4b6748b7a1530c7a1168636ab9ebabeced6c07e03c1d44622da290ed8c76f01",
+      "original_sha256": "613668b237e56f438a57795b280fb060b7ea3042bbdb92e5506d0bfee4494aed"
     },
     {
       "version": "20261102150000",
       "file": "20261102150000_rc19_batch05a4_storage_runtime.sql",
       "source_file": "supabase/migrations/20261102150000_rc19_batch05a4_storage_runtime.sql",
-      "sha256": "29d986326c51f39e06317e41d84d4abca061179f88c337d5a40b58016df384bd"
+      "sha256": "b8fb59c16d6d4e13fcf7125d5ef8e487e67ce67ee511852059988ccaac37d5db",
+      "original_sha256": "29d986326c51f39e06317e41d84d4abca061179f88c337d5a40b58016df384bd"
     },
     {
       "version": "20261102160334",
       "file": "20261102160334_rc19_batch05a41_storage_release_blockers.sql",
       "source_file": "supabase/migrations/20261102160334_rc19_batch05a41_storage_release_blockers.sql",
-      "sha256": "5d9c322efe68ad9ebe66fa680893711bf1691124dadc9fb99a9e57c502a39965"
+      "sha256": "4b5bfd4ddabf30af92fc9af95e2f267ceb76828a74256348431565f3a8763851",
+      "original_sha256": "5d9c322efe68ad9ebe66fa680893711bf1691124dadc9fb99a9e57c502a39965"
     },
     {
       "version": "20261102170608",
       "file": "20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
       "source_file": "supabase/migrations/20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
-      "sha256": "6af251246946a7f437797e28c78d332a823fc6664cd68eefe1b1275f878996fe"
+      "sha256": "bb8be521e80b5b3d592043053bae9b722f35eab85794efc74b58c198cc7bce36",
+      "original_sha256": "6af251246946a7f437797e28c78d332a823fc6664cd68eefe1b1275f878996fe"
     },
     {
       "version": "20261102190000",
       "file": "20261102190000_rc19_batch01_1_agency_code.sql",
       "source_file": "supabase/migrations/20261102190000_rc19_batch01_1_agency_code.sql",
-      "sha256": "f4fbb773463b1e6677f8d9690c1ee5322978ce10494ce6a617779dba34568053"
+      "sha256": "55e199c231bd64ae4ced2084e425a9cd33873fd4d6ffc048de012c0bbd62a71b",
+      "original_sha256": "f4fbb773463b1e6677f8d9690c1ee5322978ce10494ce6a617779dba34568053"
     },
     {
       "version": "20261102200000",
       "file": "20261102200000_rc19_batch01_3_shift_identity_index.sql",
       "source_file": "supabase/migrations/20261102200000_rc19_batch01_3_shift_identity_index.sql",
-      "sha256": "f4f0ea3e24dc72a4ea7ff0d2f551eb215cf17402f8363cb1850df32674b9db37"
+      "sha256": "5aea00c199c164a9c947e34eae9ffcf636eeb496b3cf1ebc470bd6b22dcf942f",
+      "original_sha256": "f4f0ea3e24dc72a4ea7ff0d2f551eb215cf17402f8363cb1850df32674b9db37"
     },
     {
       "version": "20261103093137",
       "file": "20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
       "source_file": "supabase/migrations/20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
-      "sha256": "fa5797b21fdc1c39582e8edb49d65d1169b20fca175827f1f77f178921bea0f2"
+      "sha256": "47da2ca5fe2f34bd0d722cbefcd3831e8813b72049976c0e6351576670a000f1",
+      "original_sha256": "fa5797b21fdc1c39582e8edb49d65d1169b20fca175827f1f77f178921bea0f2"
     },
     {
       "version": "20261103195519",
@@ -71,49 +79,58 @@
       "version": "20261104085945",
       "file": "20261104085945_rc19_rbac01_role_permission_enforcement.sql",
       "source_file": "supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql",
-      "sha256": "2e0131e497e53bece73b107ec1efe99f6b2fecb36461adbd7d5263509af9d908"
+      "sha256": "115f7a0f485b6e9d8e7fb604d5c25a45253e91de622e9ecb5a232f4432c4c37c",
+      "original_sha256": "2e0131e497e53bece73b107ec1efe99f6b2fecb36461adbd7d5263509af9d908"
     },
     {
       "version": "20261104085946",
       "file": "20261104085946_rc19_rbac02_account_permission_enforcement.sql",
       "source_file": "supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql",
-      "sha256": "8255f31fbf2eebd4324fe61834f768af29383b10ffd99c6306a3fb9a505423c4"
+      "sha256": "e5d125aff1e0a907410f39e561215eccbe0256e6b4550c5752eb169fe5cdb04d",
+      "original_sha256": "8255f31fbf2eebd4324fe61834f768af29383b10ffd99c6306a3fb9a505423c4"
     },
     {
       "version": "20261104093735",
       "file": "20261104093735_rc19_rbac03_supported_permission_enforcement.sql",
       "source_file": "supabase/migrations/20261104093735_rc19_rbac03_supported_permission_enforcement.sql",
-      "sha256": "b6a02b4b0825437d77155cb9a5f42b51712086786f3137b5fddb6f761f4f80a5"
+      "sha256": "5b706e4c5d20d8420a3537afc76a095a771889933c4fc4b006c04e3234800944",
+      "original_sha256": "b6a02b4b0825437d77155cb9a5f42b51712086786f3137b5fddb6f761f4f80a5"
     },
     {
       "version": "20261104110000",
       "file": "20261104110000_rc19_c3_scoped_action_catalog.sql",
       "source_file": "supabase/migrations/20261104110000_rc19_c3_scoped_action_catalog.sql",
-      "sha256": "2a21d177fcb2a2cbc13c59be9af7b676862ed7292df519207ed35a01ec14307f"
+      "sha256": "c779dbe8ecad9f324df565f260499092ff6b830c5275d5ef31963e377dc0b4bc",
+      "original_sha256": "2a21d177fcb2a2cbc13c59be9af7b676862ed7292df519207ed35a01ec14307f"
     },
     {
       "version": "20261104113000",
       "file": "20261104113000_rc19_c3_staffing_permission_guard.sql",
       "source_file": "supabase/migrations/20261104113000_rc19_c3_staffing_permission_guard.sql",
-      "sha256": "01bfe9b0c627e86fae8f366afa1dcf8124947c84035df393ed64ce2a8c7ac231"
+      "sha256": "44d24cc255ed837f182ca23494fe79a979f63f8fe91bd5c3d2bfda783194d413",
+      "original_sha256": "01bfe9b0c627e86fae8f366afa1dcf8124947c84035df393ed64ce2a8c7ac231"
     },
     {
       "version": "20261104120000",
       "file": "20261104120000_rc19_c3_leader_brand_scope_reports.sql",
       "source_file": "supabase/migrations/20261104120000_rc19_c3_leader_brand_scope_reports.sql",
-      "sha256": "7d0a0bcba8bccbdfe864c464d6d622f4a7796f6ca1c2b2b2fdea587a76cd6812"
+      "sha256": "4ec6ef8a562ddf8846c55a508b49aed1695ba4a3239282cca7d9a9fbe857f188",
+      "original_sha256": "7d0a0bcba8bccbdfe864c464d6d622f4a7796f6ca1c2b2b2fdea587a76cd6812"
     },
     {
       "version": "20261104174527",
       "file": "20261104174527_rc19_c3_report_artifact_deletion.sql",
       "source_file": "supabase/migrations/20261104174527_rc19_c3_report_artifact_deletion.sql",
-      "sha256": "927e19fdc152f9e3754ded6d038cedac45d9d9e1345b609f2336fb2798bce31e"
+      "sha256": "97dc6704e9a24f2cffb249baccb0d435edf57c6ceed20ee2743973f6bd61192e",
+      "original_sha256": "927e19fdc152f9e3754ded6d038cedac45d9d9e1345b609f2336fb2798bce31e"
     },
     {
       "version": "20261105120000",
       "file": "20261105120000_rc19_c3_scoped_report_export.sql",
       "source_file": "supabase/migrations/20261105120000_rc19_c3_scoped_report_export.sql",
-      "sha256": "1c99d2fa7887e085195bd0aa3d439ead56bc908834155f20fbe1881c8cb1abe9"
+      "sha256": "f28874984e5f7ed60571b1c709f3200af890d7c53b1433da59301af2d88b7293",
+      "original_sha256": "1c99d2fa7887e085195bd0aa3d439ead56bc908834155f20fbe1881c8cb1abe9"
     }
-  ]
+  ],
+  "hash_basis": "git_text_blob_sha256"
 }

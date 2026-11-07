@@ -1,0 +1,135 @@
+--- before-20261102160334
++++ after-20261102160334
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict s5frlpAg374T947ETAU801RHEaqlDCFr6WHO4hKz0WwRFjYNxf15Khyhi0qu6bC
++\restrict BJaqpBI1lTvH5AgBknyq75YX0wMrFtPp0HsuuzeVD23brV9Bb9g598SZAyRh8sq
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -2730,6 +2730,72 @@
+ 
+ 
+ --
++-- Name: require_excel_schedule_source_receipt(); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.require_excel_schedule_source_receipt() RETURNS trigger
++    LANGUAGE plpgsql
++    SET search_path TO ''
++    AS $$
++BEGIN
++  IF NEW.import_batch_id IS NOT NULL
++    AND EXISTS (
++      SELECT 1 FROM public.schedule_import_batches batch
++      WHERE batch.id = NEW.import_batch_id AND batch.source = 'excel'
++    )
++    AND NOT EXISTS (
++      SELECT 1 FROM public.operational_schedule_source_files source_file
++      WHERE source_file.batch_id = NEW.import_batch_id
++        AND source_file.reconciliation_status = 'provider_verified'
++        AND source_file.external_file_id IS NOT NULL
++        AND source_file.external_parent_id IS NOT NULL
++    ) THEN
++    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'SCHEDULE_SOURCE_REQUIRED_BEFORE_IMPORT';
++  END IF;
++  RETURN NEW;
++END;
++$$;
++
++
++--
++-- Name: FUNCTION require_excel_schedule_source_receipt(); Type: COMMENT; Schema: private; Owner: -
++--
++
++COMMENT ON FUNCTION private.require_excel_schedule_source_receipt() IS 'Require provider-verified raw Excel bytes before a batch-linked shift write.';
++
++
++--
++-- Name: require_excel_source_before_batch_confirmation(); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.require_excel_source_before_batch_confirmation() RETURNS trigger
++    LANGUAGE plpgsql
++    SET search_path TO ''
++    AS $$
++BEGIN
++  IF NEW.status = 'confirmed' AND NEW.source = 'excel'
++    AND NOT EXISTS (
++      SELECT 1 FROM public.operational_schedule_source_files source_file
++      WHERE source_file.batch_id = NEW.id
++        AND source_file.reconciliation_status = 'provider_verified'
++        AND source_file.external_file_id IS NOT NULL
++        AND source_file.external_parent_id IS NOT NULL
++    ) THEN
++    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'SCHEDULE_SOURCE_REQUIRED_BEFORE_CONFIRM';
++  END IF;
++  RETURN NEW;
++END;
++$$;
++
++
++--
++-- Name: FUNCTION require_excel_source_before_batch_confirmation(); Type: COMMENT; Schema: private; Owner: -
++--
++
++COMMENT ON FUNCTION private.require_excel_source_before_batch_confirmation() IS 'Require provider-verified raw Excel bytes before an Excel import batch is confirmed.';
++
++
++--
+ -- Name: require_report_actor(boolean); Type: FUNCTION; Schema: private; Owner: -
+ --
+ 
+@@ -15453,6 +15519,13 @@
+ 
+ 
+ --
++-- Name: schedule_import_batches schedule_import_batches_require_excel_source; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER schedule_import_batches_require_excel_source BEFORE UPDATE OF status ON public.schedule_import_batches FOR EACH ROW EXECUTE FUNCTION private.require_excel_source_before_batch_confirmation();
++
++
++--
+ -- Name: schedule_import_batches schedule_import_batches_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
+ --
+ 
+@@ -15527,6 +15600,13 @@
+ --
+ 
+ CREATE TRIGGER shifts_derive_fields BEFORE INSERT OR UPDATE OF date, start_time, end_time, timezone, registration_cutoff_at ON public.shifts FOR EACH ROW EXECUTE FUNCTION private.set_shift_derived_fields();
++
++
++--
++-- Name: shifts shifts_require_excel_schedule_source_receipt; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER shifts_require_excel_schedule_source_receipt BEFORE INSERT OR UPDATE OF import_batch_id ON public.shifts FOR EACH ROW EXECUTE FUNCTION private.require_excel_schedule_source_receipt();
+ 
+ 
+ --
+@@ -16277,6 +16357,14 @@
+ 
+ ALTER TABLE ONLY public.operational_files
+     ADD CONSTRAINT operational_files_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES public.business_users(id) ON DELETE SET NULL;
++
++
++--
++-- Name: operational_schedule_source_files operational_schedule_source_files_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.operational_schedule_source_files
++    ADD CONSTRAINT operational_schedule_source_files_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.schedule_import_batches(id) ON DELETE RESTRICT;
+ 
+ 
+ --
+@@ -18015,5 +18103,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict s5frlpAg374T947ETAU801RHEaqlDCFr6WHO4hKz0WwRFjYNxf15Khyhi0qu6bC
+-
++\unrestrict BJaqpBI1lTvH5AgBknyq75YX0wMrFtPp0HsuuzeVD23brV9Bb9g598SZAyRh8sq
++
