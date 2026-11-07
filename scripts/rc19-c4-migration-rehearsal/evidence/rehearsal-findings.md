@@ -1,61 +1,59 @@
-# RC19 C4 migration rehearsal and Production compatibility
+# RC19 C4.2 Production baseline reconciliation and migration rehearsal
 
-Candidate source: `240a0d51b49863167be252d94545ea7c5ab2ac9a`.
-Production project: `egdjnpmoasarrttvhgds`.
+## Corrected relation classification
 
-## C4.1 reconciliation update — 2026-11-07
+Read-only Production catalog query at 2026-11-07T12:05:08.822152Z confirmed project egdjnpmoasarrttvhgds, PostgreSQL 17.6, 89 migration receipts, head 20261101073742. A second read-only check captured the same 19 target relations. Ten exist in Production; the nine named below are absent.
 
-- Effective migration checksums are SHA-256 of canonical Git SQL blobs; runners normalize CRLF checkout pairs to LF. All 17 effective hashes match the commit tree, while `migration-manifest.json` preserves the original recorded source hashes and `original_sha256` maps each effective entry back. Effective C2 SHA-256 is `d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5`. The original C2 migration SHA-256 `1b16c0add91917c8188195d913e589d7618d8f27233f350dc55819c2b66be9dc` is preserved byte-for-byte at `../archive/20261103195519_rc19_c2_resource_public_and_app_edit.original.sql`.
-- The final focused run `c2-focused-pg17-20261107T112434Z` PASSes incompatible-column fail-closed rejection (`C2_RECONCILIATION_COLUMNS_MISMATCH:storage_resources`), confirms no partial C2 tables/receipt in the altered clone, then passes normal C2 application, atomic rollback injection, synthetic row/audit preservation, role RLS and anon denial using the canonical LF SHA.
-- The latest exact canonical-hash run replayed all 89 captured ledger entries and all 17 effective candidate migrations on PostgreSQL 17.6. All candidate receipts match the effective manifest; per-migration catalog diffs, C2 atomic rollback injection, synthetic row/audit preservation, Admin/Leader/Member RLS, and anonymous denial passed. See `prodshape-pg17-20261107T114021Z/result.txt`, its `progress.tsv`, and `c2-focused-pg17-20261107T112434Z/result.txt`.
-- Catalog comparison against the captured 2026-11-06 Production snapshot: 172/172 selected columns, 98/98 selected constraints, 29/29 indexes, and 15/15 policies match the 89-entry ledger baseline. However, Production has nine relations absent from that replay baseline: `operational_schedule_source_files`, `operational_storage_domain_folders`, `operational_storage_drive_probe_rate_limits`, `operational_storage_drive_probe_runs`, `rc19_leader_brand_scope_events`, `rc19_leader_brand_scopes`, `rc19_report_artifact_deletion_events`, `rc19_report_artifact_deletions`, and `rc19_report_export_audit`.
-- The schema-only baseline dump used `--no-privileges`, so it cannot prove table-grant parity. The Production snapshot does not include triggers or function bodies. It records 143 public routines while the replay dump contains 142; the additional Production routine is `public.rls_auto_enable()`. Exact C2 runtime preflight checks body, owner, search path, ACL, trigger fingerprints, and table ACLs and aborts on mismatch, but this preflight has not been run against Production.
-- Therefore the 89+17 replay is **PASS as a ledger-derived replay**, while the **complete Production-shaped rehearsal is BLOCKED** until the nine pre-existing unledgered relation definitions and ACLs are captured and represented in the disposable baseline. `production-execution-plan.json` keeps the Production allowlist empty.
-- Synthetic backup/restore verification PASS: custom-format dump restored to an isolated PostgreSQL 17.6 database; normalized data and catalog fingerprints match; Admin/Leader/Member read contracts pass and anon SELECT is denied. This is not a Production backup rehearsal. The Supabase organization is Free; automatic backups/PITR and a Production restore artifact were not evidenced. [Supabase backup and PITR availability](https://supabase.com/docs/guides/platform/backups).
-- C2 widening permits `visibility='public'` for registry metadata seen by active authenticated ADA Ops users only. No existing resource row is changed to public, anon does not gain access, and no Google Drive ACL changes. Existing routes remain inactive; Drive OAuth identity/effective ACL and real upload/readback are unverified.
-- The live dashboard image bucket is public today; migration `20261102110000` makes it private. Previous-runtime URL compatibility is unverified. The shift uniqueness migration removes the old active-slot index; rollback may conflict with new-contract data. Production recovery and old-runtime rollback are not proven.
+Root cause: the 2026-11-06 snapshot correctly included 19 queried target names and set exists=false for the nine absent names. The comparison treated the 19-row target list length as the count of present relations. It compared that with the 10 present relations in the 89-ledger replay and incorrectly called the nine absent relations Production-only. No nine-table schema drift exists.
 
-## Sanitized read-only Production snapshot
+The corrected three-state comparison is in production-baseline-comparison-c42.json:
 
-Captured 2026-11-06 08:40 UTC through catalog-only Supabase SQL SELECTs. No business rows, credentials, or user data were included. Artifacts:
+- Actual Production before C4: 10 existing targeted relations; all nine expected-new relations absent.
+- Disposable PG17.6 after 89 replay receipts: same 10 targeted relations; all nine absent.
+- Disposable PG17.6 after the 17 effective C4 migrations: all nine new relation definitions are present in the final schema dump, each mapped to its creating migration with a PASS receipt.
+- Classification: 10 BASELINE_MATCH, 9 EXPECTED_NEW_OBJECT, 0 EXISTING_INCOMPATIBLE_OBJECT, 0 UNVERIFIED for the 19 targeted relations.
 
-- `production-catalog-snapshot.json` — 19 relation presence/RLS flags, 15 public-schema policies, 74 table grants, 98 constraints, 29 indexes, selected RPC metadata.
-- `production-schema-rpc-snapshot.json` — 172 relevant columns and 143 public/private authority routine signatures with owner, security, search path, and ACL metadata; candidate migration ledger range has 0 entries.
-- `production-storage-policy-snapshot.json` — current `live-dashboard-images` bucket metadata and relevant Storage object policy predicates.
-- `production-catalog-snapshot.sql` — repeatable catalog-only query.
-- `migration-manifest.json` — exact 17 source migration names, order, and SHA-256 values, bound to candidate SHA.
+The nine expected-new relations are operational_schedule_source_files, operational_storage_domain_folders, operational_storage_drive_probe_rate_limits, operational_storage_drive_probe_runs, rc19_leader_brand_scope_events, rc19_leader_brand_scopes, rc19_report_artifact_deletion_events, rc19_report_artifact_deletions, and rc19_report_export_audit.
 
-Production is PostgreSQL 17.6 with 89 ledger rows, latest `20261101073742` / `20261101073646_rc19_brand01_catalog`. Two Production-only entries precede the C4 manifest: `20261101073720` / `20261101073643_rc19_sto02_resource_registry` and `20261101073742` / `20261101073646_rc19_brand01_catalog`.
+## Production baseline parity
 
-The existing `storage_resources`, `storage_resource_scopes`, `storage_resource_user_grants`, `storage_resource_audit_events`, `operational_storage_routes`, shifts, reports, revisions, and images have RLS enabled. Direct `anon` SELECT was absent on inspected objects; authenticated report/shift/storage reads are narrowed by RLS. The Production snapshot also shows unledgered Leader-scope, artifact-deletion, report-export-audit, source-file, domain-folder, and Drive-probe relations. Their versioned candidate migration entries are absent from the 89-row ledger; their complete column/default/trigger/grant definitions were not captured. The `operational_storage_routes` registry has no rows and no active routes.
+Exact comparisons against the 89-replay baseline match for:
 
-Production's existing `storage_resources.visibility` check allows `admin_only`, `owner_only`, and `granted_users`; source C2 adds `public`. This is a definition mismatch, in addition to the table overlap. Production's `live-dashboard-images` bucket is currently `public=true` and has the public-read policy. Source migration `20261102110000` sets it private and replaces public read with authenticated shift-scoped read. The C4 source has an authenticated `/api/dashboard-screenshots` read path, but the old live runtime's compatibility with the private bucket has not been attested. Do not infer app rollback safety from the additive columns alone.
+- 172/172 captured columns, including type/default/nullability/position.
+- 98/98 constraints.
+- 29/29 indexes.
+- 15/15 policies.
+- Ten existing targeted relation-presence/RLS records.
+- Metadata for 142 common captured public/private routines: owner, schema, return type, language, configuration/search path and SECURITY DEFINER flag. The replay included Production-only ledger receipts STO02 version 20261101073720 and Brand01 version 20261101073742.
 
-Historical shift check: the Production canonical identity duplicate query returned zero active duplicate groups. Migration `20261102200000` creates the normalized Studio/Campaign unique index and drops `shifts_active_slot_uidx`; it changes the uniqueness contract. Preserve the old runtime only after the new/old write and read behavior is demonstrated against a Production-shaped clone.
+Production has one routine absent from the replay snapshot: public.rls_auto_enable(). Its live body and ensure_rls event-trigger dependency were subsequently captured; see live-production-event-triggers-20261107.json. It is a Production platform object not emitted by the 89 project-migration replay.
 
-## Storage activation and side effects
+Full schema parity remains PARTIAL_UNVERIFIED: the baseline schema-only dump used --no-privileges, the broad Production snapshot omitted trigger definitions and routine bodies, and the available exact function metadata does not close those gaps. Do not treat matching selected catalogs as complete schema equivalence.
 
-`20261102135047` creates a separate domain-folder table, seeds the Owner's Drive IDs with `active=false`, and uses a transaction with a seed-integrity check. It does not write to Drive. `20261102150000` changes the classification constraint, marks four paths `pending_restriction_no_sensitive_upload`, then activates every `verified_created=true` folder. The app resolver separately requires `active` and `verified_created`; `canWriteOperationalStoragePlacement` permits the pending classification only for non-sensitive categories. This is an application gate, not proof of effective Drive ACL. Runtime OAuth principal and Drive ACL remain unverified. Do not activate routes or upload until the principal, ACL, and sensitive-category decisions are verified.
+A live catalog query also captured Production event triggers. The Production-only ensure_rls event trigger uses public.rls_auto_enable(), body MD5 99be20677b456ea8d3be47bdd44fb369, search_path pg_catalog, and a postgres-only ACL. The PG17.6 replay does not simulate platform event triggers; however, all 12 new public tables created by the C4 chain have explicit ENABLE ROW LEVEL SECURITY statements in the final replay dump. This resolves the final RLS state for those tables, not whole-schema trigger/grant parity.
 
-## PostgreSQL 17 rehearsal
+## C2 Storage reconciliation
 
-The disposable PostgreSQL 17.11 fixture is `rc19_c4_synthetic_storage_conflict`, database marker `CODEX_DISPOSABLE_RC19_C4_REHEARSAL_ONLY`. It contains synthetic `business_users` and `storage_resources` tables only. Exact evidence is `../../../evidence/pg17-c2-storage-collision-20261106T075309Z.log` relative to this folder.
+A read-only query reproduced C2's exact existing-table preflight fingerprints against live Production. Columns, constraints, indexes, policies, triggers, the seven protected function bodies/owners/search paths/ACLs, and four table ACLs matched. The storage_resources.visibility check is the expected old three-value constraint; C2 explicitly replaces it transactionally with the four-value constraint and validates it. Aggregated compatibility checks found no existing public visibility rows or unsupported audit actions. All C2-created target objects were absent.
 
-The initial collision reproduced the archived original migration bytes (SHA-256 `1b16c0add91917c8188195d913e589d7618d8f27233f350dc55819c2b66be9dc`): line 37 attempted `CREATE TABLE public.storage_resources` and PostgreSQL returned `relation "storage_resources" already exists` with psql exit code 3. That original file lacked an encompassing transaction and used unconditional table creation; this is a historical failure record, not a description of the effective C2 migration now in the worktree. The effective migration adds an exact preflight, a single transaction, and a negative incompatible-schema test; see the 2026-11-07 update above.
+C2 uses CREATE TABLE IF NOT EXISTS only after fail-closed fingerprints; it does not replace the existing storage tables. Its PG17.6 synthetic run separately verified row/audit preservation, atomic rollback and Admin/Leader/Member RLS with anonymous denial. This proves compatibility predicates and synthetic preservation, not Production data preservation by execution; no Production DDL/DML ran.
 
-**Initial 2026-11-06 rehearsal:** blocked at the C2 collision described above. **Updated 2026-11-07 rehearsal:** the C2 reconciliation and all 17 candidate files passed against a disposable 89-entry ledger-derived PostgreSQL 17.6 database. This does not constitute a complete Production-shaped pass because the captured Production schema contains nine unledgered relations absent from the replay baseline, and the sanitized dump omits grants.
+## PG17.6 migration rehearsal
 
-## Manifest decision, stop conditions, and recovery
+Existing exact-hash evidence was reused, not rerun: prodshape-pg17-20261107T114021Z/result.txt reports PASS, PostgreSQL 170006 (17.6), 89 replay receipts and 17 candidate migrations. compare-production-baseline.py verified every effective migration SHA-256 against the local source and each PASS receipt. C2 uses effective SHA-256 d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5; the archived original is preserved.
 
-The ordered 17-file list and SHA-256 values in `migration-manifest.json` and `production-execution-plan.json` are the source review baseline only. **Current Production execution allowlist: empty.** Do not bulk `supabase db push`, alter the migration ledger, or replay either Production-only STO02/Brand01 migration.
+The dashboard-image migration reported UPDATE 1 on the replayed public bucket row; current Production remains public=true with the public-read policy. Migration 01 SQL is identical to the frozen C4 source after CRLF normalization. The 17.6 statement executed and set the selected row to public=false; the final run did not retain an explicit post-migration SELECT, so the persisted state readback is not captured. Previous-runtime read/rollback compatibility with the private bucket is unverified.
 
-Required before Production execution or a complete current-schema rehearsal:
+Migration 07's old/new index transition is present in the PG17.6 catalog diff. A fresh read-only Production aggregate found zero groups conflicting with the canonical identity and zero active old-slot duplicate groups. The route registry has zero total rows and zero active routes, so no Drive route was activated. Compatibility with rollback to the previous application runtime remains unverified.
 
-1. Capture complete sanitized definitions and effective ACLs for the nine unledgered Production relations, plus trigger/function bodies needed by the C2 fingerprint guard; record their ownership and whether they came from prior out-of-ledger execution.
-2. Build a disposable PostgreSQL 17.6 baseline from that complete snapshot, retaining grants and adding synthetic fixtures only. Replay every approved effective migration in order and compare each per-migration schema/permission delta.
-3. Verify each intended migration version/hash in every target environment. Keep the original C2 hash archived; use only the explicitly mapped effective hash if its version ownership is approved.
-4. Decide the public dashboard-image URL transition and prove previous-runtime compatibility with the private bucket; rehearse old/new shift identity behavior before removing the legacy uniqueness index.
-5. Capture a secured offsite backup and independently restore it to isolated PostgreSQL 17. The current plan/organization has no evidenced automatic backup/PITR or Production restore artifact.
-6. Verify the Drive runtime principal and effective ACL, authenticated Admin/Leader/Member UAT, and inactive feature flags before any write or activation.
+The exact ordered effective 17-file manifest and SHA-256 values remain in effective-migration-manifest.json; the corrected conditional release plan is production-execution-plan-c42.json. The Production execution allowlist remains empty.
 
-Stop on any hash mismatch, unexpected pre-existing object/definition, historical duplicate, grant/RLS drift, lock timeout, nonzero migration exit, unexpected Storage activation, or failed old-runtime compatibility. On a disposable migration failure, preserve the failed DB and logs, inspect exact partial state, then use a fresh marked DB after correction; never automatically retry or drop objects. For any future Production release, apply only an Owner-approved exact manifest after verified recovery; keep unfinished feature flags off, validate read/RLS contracts, and retain the old application only if compatibility tests pass. No down-migration or restore is currently proven.
+## Separate release gates
+
+- Synthetic backup/restore on disposable PostgreSQL 17.6 passed; no Production backup/PITR artifact or independent Production restore was evidenced.
+- Owner's Admin browser access was previously demonstrated, but independent Admin/Leader/Member authenticated UAT is incomplete.
+- Google Drive runtime principal, effective ACL isolation, upload/readback/checksum are unverified.
+- Effective Production feature-flag state is unverified.
+- UX hotfix remains on its separate branch/worktree and was not integrated or visually validated here.
+
+No Production DDL/DML, migration ledger change, Drive write/ACL change, deployment, promotion, or main merge occurred.

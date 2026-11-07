@@ -33,8 +33,8 @@
       "sequence": 2,
       "file": "20261102135047_rc19_batch05a3_domain_storage_routes.sql",
       "sha256": "613668b237e56f438a57795b280fb060b7ea3042bbdb92e5506d0bfee4494aed",
-      "status": "BLOCKED_SCHEMA_PARITY",
-      "reason": "Production snapshot already contains operational_storage_domain_folders while this migration version is absent from the ledger. Complete column/default/trigger/grant attestation is missing; reject direct replay until the unledgered object is reconciled.",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
       "effective_sha256": "a4b6748b7a1530c7a1168636ab9ebabeced6c07e03c1d44622da290ed8c76f01",
       "original_sha256": "613668b237e56f438a57795b280fb060b7ea3042bbdb92e5506d0bfee4494aed"
     },
@@ -42,8 +42,8 @@
       "sequence": 3,
       "file": "20261102150000_rc19_batch05a4_storage_runtime.sql",
       "sha256": "29d986326c51f39e06317e41d84d4abca061179f88c337d5a40b58016df384bd",
-      "status": "BLOCKED_SCHEMA_PARITY",
-      "reason": "Production snapshot already contains operational_schedule_source_files and both Drive probe tables while these migration versions are absent from the ledger. Complete shape and ACL attestation is missing.",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
       "effective_sha256": "b8fb59c16d6d4e13fcf7125d5ef8e487e67ce67ee511852059988ccaac37d5db",
       "original_sha256": "29d986326c51f39e06317e41d84d4abca061179f88c337d5a40b58016df384bd"
     },
@@ -150,8 +150,8 @@
       "sequence": 15,
       "file": "20261104120000_rc19_c3_leader_brand_scope_reports.sql",
       "sha256": "7d0a0bcba8bccbdfe864c464d6d622f4a7796f6ca1c2b2b2fdea587a76cd6812",
-      "status": "BLOCKED_SCHEMA_PARITY",
-      "reason": "Production snapshot already contains both Leader Brand scope tables while this migration version is absent from the ledger. Full definitions and ACLs are not captured; reconcile exact existing objects before release.",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
       "effective_sha256": "4ec6ef8a562ddf8846c55a508b49aed1695ba4a3239282cca7d9a9fbe857f188",
       "original_sha256": "7d0a0bcba8bccbdfe864c464d6d622f4a7796f6ca1c2b2b2fdea587a76cd6812"
     },
@@ -159,8 +159,8 @@
       "sequence": 16,
       "file": "20261104174527_rc19_c3_report_artifact_deletion.sql",
       "sha256": "927e19fdc152f9e3754ded6d038cedac45d9d9e1345b609f2336fb2798bce31e",
-      "status": "BLOCKED_SCHEMA_PARITY",
-      "reason": "Production snapshot already contains both artifact deletion tables while this migration version is absent from the ledger. Full definitions and ACLs are not captured; reconcile exact existing objects before release.",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
       "effective_sha256": "97dc6704e9a24f2cffb249baccb0d435edf57c6ceed20ee2743973f6bd61192e",
       "original_sha256": "927e19fdc152f9e3754ded6d038cedac45d9d9e1345b609f2336fb2798bce31e"
     },
@@ -168,8 +168,8 @@
       "sequence": 17,
       "file": "20261105120000_rc19_c3_scoped_report_export.sql",
       "sha256": "1c99d2fa7887e085195bd0aa3d439ead56bc908834155f20fbe1881c8cb1abe9",
-      "status": "BLOCKED_SCHEMA_PARITY",
-      "reason": "Production snapshot already contains rc19_report_export_audit while this migration version is absent from the ledger. Full definitions and ACLs are not captured; reconcile exact existing object before release.",
+      "status": "SUPERSEDED_RELATION_CLASSIFICATION",
+      "reason": "The previous claim that this object already existed in Production was based on counting target-name rows, including exists=false. See production-baseline-comparison-c42.json for corrected states and the active hold gates.",
       "effective_sha256": "f28874984e5f7ed60571b1c709f3200af890d7c53b1433da59301af2d88b7293",
       "original_sha256": "1c99d2fa7887e085195bd0aa3d439ead56bc908834155f20fbe1881c8cb1abe9"
     }
@@ -220,5 +220,6 @@
     "latest_evidence": "prodshape-pg17-20261107T114021Z/result.txt and progress.tsv",
     "pg_cron_worker": "NOT_SIMULATED"
   },
-  "effective_hash_basis": "SHA-256 of canonical Git SQL blob bytes (CRLF checkout pairs normalize to LF); sha256 retains the recorded original source hash, and effective_sha256 identifies release SQL."
+  "effective_hash_basis": "SHA-256 of canonical Git SQL blob bytes (CRLF checkout pairs normalize to LF); sha256 retains the recorded original source hash, and effective_sha256 identifies release SQL.",
+  "superseded_by": "production-execution-plan-c42.json"
 }

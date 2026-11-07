@@ -1,0 +1,135 @@
+{
+  "functions": [
+    {
+      "exists": true,
+      "acl_match": true,
+      "signature": "private.audit_storage_resource_change()",
+      "body_match": true,
+      "owner_postgres": true,
+      "search_path_empty": true,
+      "security_definer_match": true
+    },
+    {
+      "exists": true,
+      "acl_match": true,
+      "signature": "private.current_user_has_storage_resource_grant(text)",
+      "body_match": true,
+      "owner_postgres": true,
+      "search_path_empty": true,
+      "security_definer_match": true
+    },
+    {
+      "exists": true,
+      "acl_match": true,
+      "signature": "private.guard_storage_resource_attendance()",
+      "body_match": true,
+      "owner_postgres": true,
+      "search_path_empty": true,
+      "security_definer_match": true
+    },
+    {
+      "exists": true,
+      "acl_match": true,
+      "signature": "private.guard_storage_resource_grant()",
+      "body_match": true,
+      "owner_postgres": true,
+      "search_path_empty": true,
+      "security_definer_match": true
+    },
+    {
+      "exists": true,
+      "acl_match": true,
+      "signature": "private.guard_storage_resource_scope()",
+      "body_match": true,
+      "owner_postgres": true,
+      "search_path_empty": true,
+      "security_definer_match": true
+    },
+    {
+      "exists": true,
+      "acl_match": true,
+      "signature": "public.storage_resource_registry_create(jsonb,jsonb)",
+      "body_match": true,
+      "owner_postgres": true,
+      "search_path_empty": true,
+      "security_definer_match": true
+    },
+    {
+      "exists": true,
+      "acl_match": true,
+      "signature": "public.storage_resource_registry_set_grant(text,text,boolean)",
+      "body_match": true,
+      "owner_postgres": true,
+      "search_path_empty": true,
+      "security_definer_match": true
+    }
+  ],
+  "table_grants": [
+    {
+      "table": "storage_resource_audit_events",
+      "acl_match": true
+    },
+    {
+      "table": "storage_resource_scopes",
+      "acl_match": true
+    },
+    {
+      "table": "storage_resource_user_grants",
+      "acl_match": true
+    },
+    {
+      "table": "storage_resources",
+      "acl_match": true
+    }
+  ],
+  "table_fingerprints": [
+    {
+      "table": "storage_resource_audit_events",
+      "columns_match": true,
+      "indexes_match": true,
+      "policies_match": true,
+      "triggers_match": null,
+      "constraints_match": true
+    },
+    {
+      "table": "storage_resource_scopes",
+      "columns_match": true,
+      "indexes_match": true,
+      "policies_match": true,
+      "triggers_match": true,
+      "constraints_match": true
+    },
+    {
+      "table": "storage_resource_user_grants",
+      "columns_match": true,
+      "indexes_match": true,
+      "policies_match": true,
+      "triggers_match": true,
+      "constraints_match": true
+    },
+    {
+      "table": "storage_resources",
+      "columns_match": true,
+      "indexes_match": true,
+      "policies_match": true,
+      "triggers_match": true,
+      "constraints_match": true
+    }
+  ],
+  "existing_data_compatible": true,
+  "new_object_targets_absent": {
+    "current_user_can_edit": true,
+    "storage_resource_edit_grants": true,
+    "attendance_photo_drive_folders": true,
+    "operational_storage_folder_locks": true
+  },
+  "captured_at_utc": "2026-11-07T12:14:06Z",
+  "project_id": "egdjnpmoasarrttvhgds",
+  "postgresql": "17.6",
+  "capture_method": "read-only SELECT reproducing C2 migration preflight fingerprints; no DDL/DML",
+  "interpretation": {
+    "result": "PASS",
+    "table_trigger_null": "storage_resource_audit_events has no non-internal triggers; empty expected fingerprint matched NULL",
+    "transcription_correction": "A one-off verification query initially mistyped the expected md5 for storage_resource_registry_set_grant; checked against the migration literal and live md5, both are cea81d2bc7937abdd51cb87e38205df2."
+  }
+}
