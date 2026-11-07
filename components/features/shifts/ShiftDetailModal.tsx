@@ -24,6 +24,7 @@ import type {
   ShiftStatus,
   User,
 } from '@/lib/types/database.types'
+import { formatRegistrationErrorMessage, canSelfCancelRegistration } from '@/lib/utils/shiftRegistration'
 import {
   Dialog,
   DialogBody,
@@ -79,6 +80,7 @@ import { resolveStaffingLabelsForRole, StaffingLabel } from '@/lib/utils/staffin
 import { ActualStaffingPanel } from './ActualStaffingPanel'
 import { AttendancePhotoReviewPanel } from '@/components/features/attendance/AttendancePhotoReviewPanel'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
+import { ShiftOperationalNotesSection } from './ShiftOperationalNotesSection'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -524,13 +526,16 @@ export function ShiftDetailModal({
   const [staffingActorId, setStaffingActorId] = React.useState<string | undefined>()
   const staffingRead = React.useRef(0)
   const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
+  const [activeShift, setActiveShift] = React.useState<Shift>(shift)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate active shift from incoming props
+  React.useEffect(() => { setActiveShift(shift) }, [shift])
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
   const [showSwapDialog, setShowSwapDialog] = React.useState(false)
   const [supplementalDraft, setSupplementalDraft] = React.useState<Record<string, string>>({})
   const searchParams = useSearchParams()
-  const initialParamTab = searchParams?.get('tab') || searchParams?.get('shift_tab')
-  const validTabs = React.useMemo(() => ['overview', 'staffing', 'details', 'attendance'], [])
+  const initialParamTab = searchParams?.get('shift_tab')
+  const validTabs = React.useMemo(() => ['overview', 'staffing', 'details', 'attendance', 'notes'], [])
   const resolvedInitialTab = initialTab && validTabs.includes(initialTab)
     ? initialTab
     : initialParamTab && validTabs.includes(initialParamTab)
@@ -549,7 +554,7 @@ export function ShiftDetailModal({
     onTabChange?.(nextTab)
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href)
-      url.searchParams.set('tab', nextTab)
+      url.searchParams.set('shift_tab', nextTab)
       window.history.replaceState(null, '', url.toString())
     }
   }
@@ -585,6 +590,9 @@ export function ShiftDetailModal({
       setStaffingActorId(actorId)
       setCapacities(loadedCapacities)
       setIsLocked(Boolean(updatedShift?.registration_locked))
+      if (updatedShift) {
+        setActiveShift(updatedShift)
+      }
     } catch {
       if (sequence === staffingRead.current) setStaffingError(true)
     } finally {
@@ -699,7 +707,7 @@ export function ShiftDetailModal({
       await loadStaffing()
       onUpdate()
     } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      toast({ title: t('error'), description: error instanceof Error ? formatRegistrationErrorMessage(error.message) : t('validationError'), variant: 'destructive' })
       if (throwAfterToast) throw error
     } finally {
       setBusy(false)
@@ -869,12 +877,15 @@ export function ShiftDetailModal({
 
           <DialogBody className="mx-0 pb-1 bg-muted/5 p-0 overflow-y-auto">
             <Tabs key={`${shift.id}:${currentUser?.id ?? ''}`} value={currentTab} onValueChange={handleTabChange} className="min-w-0">
-              <TabsList className="mx-4 mt-4 grid w-auto grid-cols-4 sm:mx-6" data-testid="shift-detail-permanent-tabs">
+              <TabsList className="mx-4 mt-4 grid w-auto grid-cols-5 sm:mx-6" data-testid="shift-detail-permanent-tabs">
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="attendance" data-testid="tab-attendance">
                   {language === 'en' ? 'Attendance' : 'Chấm công thực tế'}
+                </TabsTrigger>
+                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="notes" data-testid="tab-operational-notes">
+                  {language === 'en' ? 'Notes' : 'Ghi chú'}
                 </TabsTrigger>
               </TabsList>
 
@@ -1187,14 +1198,21 @@ export function ShiftDetailModal({
                  {/* D. REGISTRATION / WORKFLOW STATE */}
                  <section className="space-y-4">
                     <ShiftRegistrationActions
-                      allShifts={allShifts ?? [shift]}
-                       brandName={brand?.name}
-                       platformName={platform?.name}
-                       disabled={busy}
+                      allShifts={allShifts ?? [activeShift]}
+                      brandName={brand?.name}
+                      platformName={platform?.name}
+                      disabled={busy}
                       currentUser={currentUser}
                       onRegister={registerForRole}
+                      onCancel={async (regId) => {
+                        const targetReg = registrations.find(r => r.id === regId)
+                        await runStaffingAction(
+                          () => shiftRegistrationService.cancel(regId, currentUser!.id, 'Tự hủy đăng ký', targetReg?.version),
+                          t('registrationCancelled'),
+                        )
+                      }}
                       registrations={registrationContext}
-                      shift={shift}
+                      shift={activeShift}
                     />
 
                     {canRequestSwap && myRegistration && (
@@ -1298,6 +1316,53 @@ export function ShiftDetailModal({
                                       <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => { if (window.confirm(`Xác nhận từ chối ${userName(registration.user_id)} cho vai trò ${t(registration.operational_role)}?`)) void runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version), t('rejected')) }}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
                                     </>
                                   ) : null}
+                                  {(registration.status === 'approved' || registration.status === 'manually_assigned') && currentUser && hasPermission(currentUser, 'shifts.assign_staff') ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                                      disabled={busy}
+                                      data-testid={`remove-staffing-${registration.id}`}
+                                      onClick={() => {
+                                        const reason = window.prompt(`Lý do gỡ phân công ${userName(registration.user_id)}?`, 'Điều chỉnh nhân sự vận hành')
+                                        if (reason !== null) {
+                                          void runStaffingAction(
+                                            () => shiftRegistrationService.removeAssignment(registration.id, currentUser.id, reason.trim() || undefined, registration.version),
+                                            'Đã gỡ phân công nhân sự',
+                                          )
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className="mr-1 h-3 w-3" />
+                                      {t('removeAssignment')}
+                                    </Button>
+                                  ) : null}
+                                  {currentUser && currentUser.id === registration.user_id && (registration.status === 'pending' || registration.status === 'approved' || registration.status === 'manually_assigned') ? (
+                                    canSelfCancelRegistration(registration, activeShift) ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                                        disabled={busy}
+                                        data-testid={`cancel-registration-${registration.id}`}
+                                        onClick={() => {
+                                          if (window.confirm('Bạn có chắc chắn muốn hủy đăng ký ca này?')) {
+                                            void runStaffingAction(
+                                              () => shiftRegistrationService.cancel(registration.id, currentUser.id, 'Tự hủy đăng ký', registration.version),
+                                              t('registrationCancelled'),
+                                            )
+                                          }
+                                        }}
+                                      >
+                                        <X className="mr-1 h-3 w-3" />
+                                        {t('cancelRegistration')}
+                                      </Button>
+                                    ) : (registration.source === 'manual_assignment' || registration.status === 'manually_assigned') ? (
+                                      <span className="text-[11px] text-muted-foreground italic" data-testid={`manual-assignment-notice-${registration.id}`}>
+                                        Chỉ định (cần Quản lý gỡ)
+                                      </span>
+                                    ) : null
+                                  ) : null}
                                 </div>
                               </div>
                               </React.Fragment>
@@ -1323,6 +1388,15 @@ export function ShiftDetailModal({
                  </section>
 
                 </div>
+                </TabsContent>
+                <TabsContent value="notes" className="m-0 focus-visible:outline-none">
+                  <div className="p-4 sm:p-6 space-y-4">
+                    <ShiftOperationalNotesSection
+                      shift={activeShift}
+                      currentUser={currentUser}
+                      registrations={registrations}
+                    />
+                  </div>
                 </TabsContent>
               </Tabs>
           </DialogBody>

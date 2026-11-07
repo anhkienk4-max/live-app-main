@@ -210,7 +210,6 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       } else {
         url.searchParams.delete('shift_id')
         url.searchParams.delete('shiftId')
-        url.searchParams.delete('tab')
         url.searchParams.delete('shift_tab')
       }
       window.history.replaceState(null, '', url.toString())
@@ -988,7 +987,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       {selectedShift && (
         <ShiftDetailModal
           open={!!selectedShift}
-          initialTab={params.get('tab') || params.get('shift_tab') || undefined}
+          initialTab={params.get('shift_tab') || undefined}
           onOpenChange={(open) => !open && handleSelectShift(null)}
           shift={selectedShift}
           brands={brands}

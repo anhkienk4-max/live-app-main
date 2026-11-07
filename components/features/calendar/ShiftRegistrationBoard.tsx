@@ -49,6 +49,7 @@ import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
+import { formatRegistrationErrorMessage } from '@/lib/utils/shiftRegistration'
 import { deriveStaffingAttention } from '@/lib/ui/operational-attention'
 import { AttentionBanner } from '@/components/ui/operational-status'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
@@ -324,7 +325,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     } catch (error) {
       toast({
         title: t('error'),
-        description: error instanceof Error ? error.message : t('validationError'),
+        description: error instanceof Error ? formatRegistrationErrorMessage(error.message) : t('validationError'),
         variant: 'destructive',
       })
       if (throwAfterToast) throw error
@@ -358,8 +359,26 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       setRemovalTarget(null)
       await loadRegistrationOperationalData()
     } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      toast({ title: t('error'), description: error instanceof Error ? formatRegistrationErrorMessage(error.message) : t('validationError'), variant: 'destructive' })
       throw error
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const cancelRegistration = async (registrationId: string) => {
+    if (!currentUser) return
+    setBusyId(registrationId)
+    try {
+      await shiftRegistrationService.cancel(registrationId, currentUser.id, 'Tự hủy đăng ký')
+      toast({ title: t('success'), description: t('registrationCancelled'), variant: 'success' })
+      await loadRegistrationOperationalData()
+    } catch (error) {
+      toast({
+        title: t('error'),
+        description: error instanceof Error ? formatRegistrationErrorMessage(error.message) : t('validationError'),
+        variant: 'destructive',
+      })
     } finally {
       setBusyId(null)
     }
@@ -556,6 +575,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           allShifts={shifts}
           currentUser={currentUser}
           onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId, true)}
+          onCancelRegistration={reg => setRemovalTarget({ registration: reg, kind: 'cancel' })}
           shifts={visibleShifts}
           registrations={registrations}
           roleFilter={filters.roles}
@@ -625,11 +645,12 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                     </Button>
                     <ShiftRegistrationActions
                       allShifts={shifts}
-                       brandName={brandName(brands, shift.brand_id)}
-                       platformName={platformName(platforms, shift.platform_id)}
+                      brandName={brandName(brands, shift.brand_id)}
+                      platformName={platformName(platforms, shift.platform_id)}
                       compact
                       currentUser={currentUser}
                       onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'), shift.id, true)}
+                      onCancel={cancelRegistration}
                       registrations={registrations}
                       shift={shift}
                     />
@@ -939,6 +960,10 @@ function CompactShiftList({
                     compact
                     currentUser={currentUser}
                     onRegister={role => onRegister(shift.id, role)}
+                    onCancel={onCancelRegistration ? async regId => {
+                      const reg = registrations.find(r => r.id === regId)
+                      if (reg) onCancelRegistration(reg)
+                    } : undefined}
                     registrations={registrations}
                     shift={shift}
                   />
@@ -1048,6 +1073,7 @@ function ShiftSummaryTable({
   allShifts,
   currentUser,
   onRegister,
+  onCancelRegistration,
   shifts,
   registrations,
   roleFilter,
@@ -1058,6 +1084,7 @@ function ShiftSummaryTable({
   allShifts: Shift[]
   currentUser: User
   onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
+  onCancelRegistration?: (registration: ShiftRegistration) => void
   shifts: Shift[]
   registrations: ShiftRegistration[]
   roleFilter: RoleSelection
@@ -1077,7 +1104,10 @@ function ShiftSummaryTable({
         <td className="p-2">{platformName(platforms, shift.platform_id)}</td>
         <td className="p-2">{visibleCapacities.map(capacity => t(capacity.role)).join(', ')}</td>
         <td className="p-2">{visibleCapacities.map(capacity => `${t(capacity.role)} ${capacity.approved}/${capacity.required}`).join(' · ')}</td>
-        <td className="p-2"><div className="flex items-center gap-2"><ShiftRegistrationActions allShifts={allShifts} brandName={brandName(brands, shift.brand_id)} platformName={platformName(platforms, shift.platform_id)} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div></td>
+        <td className="p-2"><div className="flex items-center gap-2"><ShiftRegistrationActions allShifts={allShifts} brandName={brandName(brands, shift.brand_id)} platformName={platformName(platforms, shift.platform_id)} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} onCancel={onCancelRegistration ? async regId => {
+          const reg = registrations.find(r => r.id === regId)
+          if (reg) onCancelRegistration(reg)
+        } : undefined} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div></td>
       </tr>
     })}</tbody>
   </table></CardContent></Card>

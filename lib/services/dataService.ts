@@ -41,6 +41,7 @@ import {
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
+import { addDays, format, parseISO } from 'date-fns'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, hasShiftTimeConflict, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import {
   normalizeStaffingDisplayNames,
@@ -48,6 +49,7 @@ import {
 } from '@/lib/utils/scheduleImportPreview'
 import { deriveShiftStaffIdentityMatch } from '@/lib/utils/staffIdentityMatching'
 import { limitReportCandidates } from '@/lib/utils/reportQueue'
+import { isShiftOpenForRegistration } from '@/lib/utils/shiftRegistration'
 import { recordAuditEvent } from '@/lib/services/auditService'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
@@ -1333,9 +1335,10 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') return await getCollectionPage<Shift>(mode === 'open' ? 'open_shifts' : 'my_shifts', query, signal) as ShiftListPage
     const actor = actorFor()
     const owned = shiftRegistrations.filter(r => r.user_id === actor.id && ['pending', 'approved', 'manually_assigned'].includes(r.status))
+    const targetRoles = query.filters?.roles as OperationalRole[] | undefined
     const filtered = filterMockList(shifts, query.filters).filter(shift=>canReadMockPagedShift(shift,actor)).filter(shift => mode === 'open'
-      ? shift.status === 'scheduled' && (resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt.getTime() ?? 0) > Date.now()
-      : owned.some(r => r.shift_id === shift.id && (!query.filters?.roles?.length || query.filters.roles.includes(r.operational_role)) && (!query.filters?.registrationStatuses?.length || query.filters.registrationStatuses.includes(r.status))))
+      ? isShiftOpenForRegistration(shift, shiftRegistrations, new Date(), targetRoles)
+      : owned.some(r => r.shift_id === shift.id && (!targetRoles?.length || targetRoles.includes(r.operational_role)) && (!query.filters?.registrationStatuses?.length || query.filters.registrationStatuses.includes(r.status))))
     const result = localListPage(filtered, query)
     const ids = new Set(result.items.map(item => item.id))
     const visible = shiftRegistrations.filter(r => ids.has(r.shift_id) && (resolveSystemPermission(actor) !== 'member' || r.user_id === actor.id))
@@ -1868,15 +1871,29 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDate(date)
     }
-    return Promise.resolve(shifts.filter(s => s.date === date && !s.deleted_at))
+    const prevDate = format(addDays(parseISO(date), -1), 'yyyy-MM-dd')
+    return Promise.resolve(
+      shifts.filter(s => {
+        if (s.deleted_at || s.archived_at) return false
+        if (s.date === date) return true
+        const overnight = s.crosses_midnight || s.end_date === date || (s.end_time < s.start_time && s.end_time > '00:00')
+        return s.date === prevDate && overnight
+      }),
+    )
   },
 
   async getByDateRange(startDate: string, endDate: string): Promise<Shift[]> {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getByDateRange(startDate, endDate)
     }
+    const prevStart = format(addDays(parseISO(startDate), -1), 'yyyy-MM-dd')
     return Promise.resolve(
-      shifts.filter(s => s.date >= startDate && s.date <= endDate && !s.deleted_at)
+      shifts.filter(s => {
+        if (s.deleted_at || s.archived_at) return false
+        if (s.date >= startDate && s.date <= endDate) return true
+        const overnight = s.crosses_midnight || (s.end_time < s.start_time && s.end_time > '00:00')
+        return s.date === prevStart && overnight && (s.end_date ? s.end_date >= startDate : true)
+      }),
     )
   },
 
@@ -2210,6 +2227,7 @@ export const shiftRegistrationService = {
       requested_at: timestamp,
       created_at: timestamp,
       updated_at: timestamp,
+      version: 1,
     }
     shiftRegistrations.push(registration)
     recordScheduleChange('register', shiftId, undefined, { ...registration }, { actor_id: userId })
@@ -2667,21 +2685,24 @@ export const shiftRegistrationService = {
       version: nextVersion(registration.version),
     }
     const assignmentField = roleAssignmentField[registration.operational_role]
-    if (shift[assignmentField] === registration.user_id) {
-      const replacement = shiftRegistrations.find(candidate =>
-        candidate.shift_id === shift.id &&
-        candidate.operational_role === registration.operational_role &&
-        isStaffedRegistration(candidate) &&
-        candidate.id !== id
-      )
-      shifts[shiftIndex] = {
-        ...shift,
-        [assignmentField]: replacement?.user_id,
-        registration_locked: false,
-        updated_at: timestamp,
-        version: nextVersion(shift.version),
-      }
+    const replacement = shiftRegistrations.find(candidate =>
+      candidate.shift_id === shift.id &&
+      candidate.operational_role === registration.operational_role &&
+      isStaffedRegistration(candidate) &&
+      candidate.id !== id
+    )
+    const updatedShift: Shift = {
+      ...shift,
+      ...(shift[assignmentField] === registration.user_id ? { [assignmentField]: replacement?.user_id } : {}),
+      updated_at: timestamp,
+      version: nextVersion(shift.version),
     }
+    // Emulate server's private.refresh_shift_registration_lock(shift.id, true):
+    // only unlocks if understaffed after removal.
+    const updatedCapacities = getShiftRoleCapacities(updatedShift, shiftRegistrations)
+    const isFullyStaffed = updatedCapacities.every(c => c.approved >= c.required)
+    updatedShift.registration_locked = isFullyStaffed ? shift.registration_locked : false
+    shifts[shiftIndex] = updatedShift
     recordScheduleChange('remove_assignment', shift.id, { ...registration }, { ...shiftRegistrations[index] }, { actor_id: reviewerId, reason: notes })
     audit('calendar', 'unassign', 'shift_registration', id, `${actorFor(registration.user_id).full_name} · ${registration.operational_role}`, { actorId: reviewerId, before: { ...registration }, after: { ...shiftRegistrations[index] }, reason: notes })
     return Promise.resolve(shiftRegistrations[index])

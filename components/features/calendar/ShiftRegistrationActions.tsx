@@ -5,7 +5,7 @@ import type { OperationalRole, Shift, ShiftRegistration, User } from '@/lib/type
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { getShiftRoleCapacities, brandService, platformService } from '@/lib/services/dataService'
-import { resolveRegistrationCta, runEligibleRegistration, type RegistrationCtaResult } from '@/lib/utils/shiftRegistration'
+import { resolveRegistrationCta, runEligibleRegistration, canSelfCancelRegistration, type RegistrationCtaResult } from '@/lib/utils/shiftRegistration'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
@@ -15,6 +15,7 @@ interface ShiftRegistrationActionsProps {
   currentUser: User | null
   disabled?: boolean
   onRegister: (role: OperationalRole) => Promise<void>
+  onCancel?: (registrationId: string) => Promise<void>
   registrations: ShiftRegistration[]
   role?: OperationalRole
   shift: Shift
@@ -28,6 +29,7 @@ export function ShiftRegistrationActions({
   currentUser,
   disabled = false,
   onRegister,
+  onCancel,
   registrations,
   role,
   shift,
@@ -145,15 +147,49 @@ export function ShiftRegistrationActions({
                     {t('confirmedCount')}: {capacity?.approved ?? 0}/{capacity?.required ?? 0} · {t('pending')}: {capacity?.pending ?? 0}
                   </p>
                 </div>
-                <Button
-                  data-testid={`register-shift-${shift.id}-${state.role}`}
-                  disabled={disabled || busyRole !== null || state.state !== 'eligible'}
-                  onClick={() => setConfirmRole(state)}
-                  size="sm"
-                  type="button"
-                >
-                  {busyRole === state.role ? t('loading') : stateLabel}
-                </Button>
+                {(state.state === 'pending' || state.state === 'approved') && state.registration ? (
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${state.state === 'approved' ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
+                      {stateLabel}
+                    </span>
+                    {onCancel && canSelfCancelRegistration(state.registration, shift) ? (
+                      <Button
+                        data-testid={`cancel-shift-registration-${shift.id}-${state.role}`}
+                        disabled={disabled || busyRole !== null}
+                        onClick={async () => {
+                          if (window.confirm('Bạn có chắc chắn muốn hủy đăng ký ca này?')) {
+                            setBusyRole(state.role)
+                            try {
+                              await onCancel(state.registration!.id)
+                            } finally {
+                              setBusyRole(null)
+                            }
+                          }
+                        }}
+                        size="sm"
+                        variant="outline"
+                        type="button"
+                        className="h-8 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                      >
+                        {busyRole === state.role ? t('loading') : 'Hủy đăng ký'}
+                      </Button>
+                    ) : (state.registration.source === 'manual_assignment' || state.registration.status === 'manually_assigned') ? (
+                      <span className="text-[11px] text-muted-foreground italic" data-testid={`manual-assignment-notice-${shift.id}-${state.role}`}>
+                        Chỉ định (cần Quản lý gỡ)
+                      </span>
+                    ) : null}
+                  </div>
+                ) : (
+                  <Button
+                    data-testid={`register-shift-${shift.id}-${state.role}`}
+                    disabled={disabled || busyRole !== null || state.state !== 'eligible'}
+                    onClick={() => setConfirmRole(state)}
+                    size="sm"
+                    type="button"
+                  >
+                    {busyRole === state.role ? t('loading') : stateLabel}
+                  </Button>
+                )}
               </div>
             )
           })}
