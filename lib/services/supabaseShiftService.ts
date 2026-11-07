@@ -389,7 +389,7 @@ export function createSupabaseShiftRepository(
 
     async getByDate(date) {
       const result = await selectShifts()
-        .eq('date', date)
+        .or(`date.eq.${date},and(end_date.eq.${date},crosses_midnight.eq.true)`)
         .is('deleted_at', null)
         .is('archived_at', null)
         .order('start_time', { ascending: true })
@@ -421,15 +421,28 @@ export function createSupabaseShiftRepository(
     },
 
     async getOpen() {
+      const nowIso = new Date().toISOString()
       const result = await selectShifts()
-        .eq('status', 'scheduled')
+        .in('status', ['scheduled', 'preparing'])
         .eq('registration_locked', false)
         .is('deleted_at', null)
         .is('archived_at', null)
-        .gt('end_at', new Date().toISOString())
+        .or(`registration_cutoff_at.gt.${nowIso},and(registration_cutoff_at.is.null,start_at.gt.${nowIso})`)
         .order('date', { ascending: true })
-      return withShiftStaffingSummary(client, optionalRows('shift open read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
+      const shiftsWithSummary = await withShiftStaffingSummary(
+        client,
+        optionalRows('shift open read', result).map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)),
+      )
+      return shiftsWithSummary.filter(shift => {
+        const summary = shift.staffing_summary
+        if (summary && summary.length > 0) {
+          return summary.some(roleSummary => roleSummary.remaining > 0 || roleSummary.approved < roleSummary.required)
+        }
+        const hasHostVacant = (shift.required_host_count ?? 1) > (shift.host_id ? 1 : 0)
+        const hasSupportVacant = (shift.required_support_count ?? 0) > (shift.support_id ? 1 : 0)
+        const hasTechVacant = (shift.required_technical_count ?? 0) > (shift.technical_id ? 1 : 0)
+        return hasHostVacant || hasSupportVacant || hasTechVacant
+      })
     },
 
     async getToday() {

@@ -28,8 +28,17 @@ export const MONTH_VISIBLE_EVENT_LIMITS = {
 
 export function shiftsForCalendarDate(shifts: Shift[], date: Date) {
   const dateValue = format(date, 'yyyy-MM-dd')
+  const previousDate = format(addDays(date, -1), 'yyyy-MM-dd')
   return shifts
-    .filter(shift => shift.date === dateValue)
+    .filter(shift => {
+      if (shift.date === dateValue) return true
+      const overnight = Boolean(
+        shift.crosses_midnight ||
+        shift.end_date === dateValue ||
+        (shift.end_time < shift.start_time && shift.end_time > '00:00'),
+      )
+      return shift.date === previousDate && overnight
+    })
     .sort((left, right) =>
       left.start_time.localeCompare(right.start_time) ||
       (left.title || left.id).localeCompare(right.title || right.id),

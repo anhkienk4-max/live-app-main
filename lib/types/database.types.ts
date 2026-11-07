@@ -1074,3 +1074,26 @@ export interface OperationalSettings {
   calendar_density: string
   show_unassigned_shifts: boolean
 }
+
+export type ShiftOperationalNoteCategory =
+  | 'normal'
+  | 'attendance'
+  | 'swap'
+  | 'incident'
+  | 'sales'
+  | 'other'
+
+export interface ShiftOperationalNote {
+  id: string
+  shift_id: string
+  date: string
+  category: ShiftOperationalNoteCategory
+  note: string
+  author_id: string
+  author_name?: string
+  author_role?: string
+  event_time: string
+  created_at: string
+  updated_at: string
+  deleted_at?: string | null
+}

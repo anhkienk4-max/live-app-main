@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { format } from 'date-fns'
+import { addDays, format } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
 import { ExternalLink, FileText, Lock, LockOpen, Pencil, Radio, UserPlus } from 'lucide-react'
 import {
@@ -130,8 +130,17 @@ export function DaySessionsDialog({
   const [pageSize, setPageSize] = React.useState(10)
   const locale = language === 'vi' ? vi : enUS
   const dateValue = date ? format(date, 'yyyy-MM-dd') : ''
+  const previousDate = date ? format(addDays(date, -1), 'yyyy-MM-dd') : ''
   const dayShifts = shifts
-    .filter(shift => shift.date === dateValue)
+    .filter(shift => {
+      if (shift.date === dateValue) return true
+      const overnight = Boolean(
+        shift.crosses_midnight ||
+        shift.end_date === dateValue ||
+        (shift.end_time < shift.start_time && shift.end_time > '00:00'),
+      )
+      return shift.date === previousDate && overnight
+    })
     .sort((left, right) => left.start_time.localeCompare(right.start_time))
   const range = pageRange(dayShifts.length, page, pageSize)
 

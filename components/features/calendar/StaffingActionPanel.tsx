@@ -15,6 +15,7 @@ import type { OperationalRole, Shift, ShiftRegistration, User } from '@/lib/type
 type Decision =
   | { kind: 'assign'; role: OperationalRole; userId: string }
   | { kind: 'approve' | 'reject'; registrationId: string }
+  | { kind: 'remove'; registrationId: string }
 
 type CandidateViewRow = Omit<StaffingCandidateRow, 'availability'> & {
   availability: StaffingCandidateRow['availability'] | 'unchecked'
@@ -130,6 +131,7 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
   const capacities = getShiftRoleCapacities(shift, rows)
   const currentCapacity = capacities.find(item => item.role === role)
   const pending = rows.filter(reg => reg.status === 'pending')
+  const assigned = rows.filter(reg => reg.status === 'approved' || reg.status === 'manually_assigned')
   const candidateData = getAuthMode() === 'mock' ? mockCandidateSnapshot : (candidateSnapshot?.key === candidateKey ? candidateSnapshot : null)
   const candidate = candidateData?.items.find(item => item.user_id === userId && item.availableForAssignment)
   const canStartAssignment = canAssign && searchSettled && hasCurrentSnapshot && candidateData && versionReady &&
@@ -158,6 +160,14 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
         }
         mutation = await shiftRegistrationService.assignManually(
           shift.id, item.user_id, activeDecision.role, currentUser.id, shift.version,
+        )
+      } else if (activeDecision.kind === 'remove') {
+        const registration = rows.find(row => row.id === activeDecision.registrationId && (row.status === 'approved' || row.status === 'manually_assigned'))
+        if (!canAssign || !registration || !Number.isInteger(registration.version)) {
+          throw new Error('Phân công hoặc phiên bản không hợp lệ. Hãy tải lại.')
+        }
+        mutation = await shiftRegistrationService.removeAssignment(
+          registration.id, currentUser.id, reviewNotes.trim() || undefined, registration.version,
         )
       } else {
         const registration = rows.find(row => row.id === activeDecision.registrationId && row.status === 'pending')
@@ -240,6 +250,29 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
           ))}
           {pending.length > 20 && <p className="text-xs text-slate-600">Còn {pending.length - 20} đơn. Mở tab Xét duyệt để xem toàn bộ.</p>}
         </div>}
+        {canAssign && assigned.length > 0 && <div className="space-y-2 border-t pt-3">
+          <h4 className="font-medium">Nhân sự đã phân công ({assigned.length})</h4>
+          {assigned.map(registration => (
+            <div key={registration.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs">
+              <span className="min-w-0 flex-1">
+                <strong>{users.find(user => user.id === registration.user_id)?.full_name || registration.user_id}</strong> · {registration.operational_role === 'host' ? 'Host' : registration.operational_role === 'support' ? 'Trợ livestream' : 'Kỹ thuật'} · {registration.status === 'manually_assigned' ? 'Chỉ định' : 'Đã duyệt'}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                disabled={busy || !Number.isInteger(registration.version)}
+                onClick={() => {
+                  setReviewNotes('');
+                  setDecision({ scope, value: { kind: 'remove', registrationId: registration.id } })
+                }}
+              >
+                Gỡ phân công
+              </Button>
+            </div>
+          ))}
+        </div>}
         {canAssign && <div className="space-y-2 border-t pt-3">
           <h4 className="font-medium">Bổ sung nhân sự</h4>
           <label className="block text-xs">Vai trò
@@ -272,8 +305,8 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
           {!versionReady && <p role="alert" className="text-xs text-red-700">Thiếu phiên bản ca. Không thể phân công an toàn.</p>}
         </div>}
         {activeDecision && <div data-testid="staffing-confirmation" className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3">
-          <p className="text-sm font-medium">Xác nhận {activeDecision.kind === 'assign' ? `phân công ${candidateData?.items.find(item => item.user_id === activeDecision.userId)?.full_name ?? activeDecision.userId} vào vai trò ${activeDecision.role}` : activeDecision.kind === 'approve' ? 'duyệt đơn' : 'từ chối đơn'} cho ca {shift.title || shift.id}? Hành động sẽ được ghi audit.</p>
-          {activeDecision.kind !== 'assign' && <Input aria-label="Ghi chú xét duyệt" maxLength={500} placeholder="Ghi chú xét duyệt (tùy chọn)" value={reviewNotes} onChange={event => setReviewNotes(event.target.value)} />}
+          <p className="text-sm font-medium">Xác nhận {activeDecision.kind === 'assign' ? `phân công ${candidateData?.items.find(item => item.user_id === activeDecision.userId)?.full_name ?? activeDecision.userId} vào vai trò ${activeDecision.role}` : activeDecision.kind === 'remove' ? `gỡ phân công nhân sự ${(() => { const reg = rows.find(r => r.id === activeDecision.registrationId); return reg ? (users.find(u => u.id === reg.user_id)?.full_name || reg.user_id) : 'này' })()}` : activeDecision.kind === 'approve' ? 'duyệt đơn' : 'từ chối đơn'} cho ca {shift.title || shift.id}? Hành động sẽ được ghi audit.</p>
+          {activeDecision.kind !== 'assign' && <Input aria-label="Ghi chú xét duyệt" maxLength={500} placeholder={activeDecision.kind === 'remove' ? "Lý do gỡ phân công (tùy chọn)" : "Ghi chú xét duyệt (tùy chọn)"} value={reviewNotes} onChange={event => setReviewNotes(event.target.value)} />}
           <div className="flex justify-end gap-2">
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setDecision(null)}>Hủy</Button>
             <Button type="button" size="sm" disabled={busy} onClick={() => void perform()}>{busy ? 'Đang xử lý…' : 'Xác nhận'}</Button>

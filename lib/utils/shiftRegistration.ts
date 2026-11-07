@@ -45,15 +45,84 @@ const shiftsOverlap = (left: Shift, right: Shift) => {
   return leftTime.startAt < rightTime.endAt && rightTime.startAt < leftTime.endAt
 }
 
-const isShiftClosed = (shift: Shift, now: Date) => {
-  if (shift.status !== 'scheduled' || shift.registration_locked) return true
-  const endAt = shift.end_at ? new Date(shift.end_at) : resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt
-  if (endAt && !Number.isNaN(endAt.getTime()) && endAt <= now) return true
+export const isShiftClosed = (shift: Shift, now: Date = new Date()) => {
+  if (shift.registration_locked) return true
+  if (['cancelled', 'completed', 'live', 'paused'].includes(shift.status)) return true
+  if (shift.status !== 'scheduled' && shift.status !== 'preparing') return true
   if (shift.registration_cutoff_at) {
     const cutoff = new Date(shift.registration_cutoff_at)
     if (!Number.isNaN(cutoff.getTime()) && cutoff <= now) return true
+  } else {
+    const startAt = shift.start_at
+      ? new Date(shift.start_at)
+      : resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.startAt
+    if (startAt && !Number.isNaN(startAt.getTime()) && startAt <= now) return true
   }
+  const endAt = shift.end_at ? new Date(shift.end_at) : resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt
+  if (endAt && !Number.isNaN(endAt.getTime()) && endAt <= now) return true
   return false
+}
+
+/**
+ * Checks whether a shift is open for registration according to operational rules:
+ * - Shifts where registration is NOT locked
+ * - Registration cutoff has NOT passed (or if no cutoff, start_time is in the future)
+ * - Shift has at least one unfilled role (host, support, or technical)
+ * - Shift status is NOT cancelled / completed / live / paused
+ */
+export function isShiftOpenForRegistration(
+  shift: Shift,
+  registrations?: ShiftRegistration[],
+  now: Date = new Date(),
+): boolean {
+  if (shift.deleted_at || shift.archived_at) return false
+  if (isShiftClosed(shift, now)) return false
+
+  const checkRoles: OperationalRole[] = ['host', 'support', 'technical']
+  return checkRoles.some(role => {
+    const required = shift[requiredField[role]] ?? (role === 'host' ? 1 : 0)
+    if (required <= 0) return false
+
+    if (shift.staffing_summary && shift.staffing_summary.length > 0) {
+      const summary = shift.staffing_summary.find(s => s.role === role)
+      if (summary) return summary.approved < summary.required || summary.remaining > 0
+    }
+
+    if (registrations && registrations.length > 0) {
+      const approvedCount = registrations.filter(
+        r => r.shift_id === shift.id && r.operational_role === role && isStaffed(r),
+      ).length
+      return approvedCount < required
+    }
+
+    const directAssigned =
+      role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
+    return !directAssigned
+  })
+}
+
+export function formatRegistrationErrorMessage(message: string): string {
+  const normalized = message.trim()
+  const upper = normalized.toUpperCase()
+  if (upper.includes('REGISTRATION_CLOSED') || normalized.includes('Registration is closed')) {
+    return 'Ca này đã đóng đăng ký hoặc đã hết thời hạn đăng ký.'
+  }
+  if (upper.includes('SHIFT_CAPACITY_EXCEEDED') || upper.includes('CAPACITY_EXCEEDED') || normalized.includes('No remaining position')) {
+    return 'Vị trí cho vai trò này đã đủ số lượng người đăng ký / phân công.'
+  }
+  if (upper.includes('REGISTRATION_CONFLICT') || normalized.includes('Schedule conflict')) {
+    return 'Bạn bị trùng lịch với một ca trực khác vào cùng thời điểm.'
+  }
+  if (upper.includes('ROLE_NOT_ELIGIBLE') || normalized.includes('role is not assigned') || normalized.includes('không có vai trò')) {
+    return 'Hồ sơ nhân sự của bạn không có vai trò này để đăng ký.'
+  }
+  if (upper.includes('ALREADY_REGISTERED') || normalized.includes('already has this role') || normalized.includes('already registered') || normalized.includes('double registration')) {
+    return 'Bạn đã đăng ký hoặc được phân công vai trò này trong ca.'
+  }
+  if (normalized.includes('cannot occupy multiple roles')) {
+    return 'Nhân sự không thể đảm nhiệm nhiều vai trò trong cùng một ca.'
+  }
+  return normalized || 'Không thể thực hiện đăng ký.'
 }
 
 /**
