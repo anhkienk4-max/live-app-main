@@ -17,6 +17,16 @@ import { Button } from "@/components/ui/button";
 import { resolveSystemPermission } from "@/lib/permissions";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
+const VALID_CALENDAR_TABS = [
+  "calendar",
+  "open",
+  "mine",
+  "attendance",
+  "notes",
+  "import",
+  "history",
+];
+
 export function CalendarWorkspace() {
   const { currentUser } = useCurrentUser();
   const identity = currentUser ? currentUser.id + ':' + resolveSystemPermission(currentUser) + ':' + currentUser.updated_at : '';
@@ -35,7 +45,7 @@ function CalendarIdentityWorkspace() {
   const defaultTab = currentUser?.role === 'staff' ? 'mine' : 'calendar';
   const [tab, setTab] = React.useState(
     initialTab &&
-      ["calendar", "open", "mine", "import", "history"].includes(initialTab)
+      VALID_CALENDAR_TABS.includes(initialTab)
       ? initialTab
       : defaultTab,
   );
@@ -43,6 +53,19 @@ function CalendarIdentityWorkspace() {
   const [visitedTabs, setVisitedTabs] = React.useState(() => new Set([tab]));
   const tabScroll = React.useRef<Record<string, number>>({});
   const workspace = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const currentTab = params.get("tab");
+      if (currentTab && VALID_CALENDAR_TABS.includes(currentTab)) {
+        setTab(currentTab);
+        setVisitedTabs(current => current.has(currentTab) ? current : new Set(current).add(currentTab));
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   React.useEffect(() => {
     const root = workspace.current;
@@ -87,7 +110,7 @@ function CalendarIdentityWorkspace() {
 
       if (
         currentTab &&
-        ["calendar", "open", "mine", "import", "history"].includes(currentTab)
+        VALID_CALENDAR_TABS.includes(currentTab)
       ) {
         nextTab = currentTab;
       }
@@ -136,6 +159,8 @@ function CalendarIdentityWorkspace() {
           <TabsTrigger className="!flex-none px-3 py-2" value="calendar">{t("shiftCalendar")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="open">{t("openShifts")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="mine">{t("myShifts")}</TabsTrigger>
+          <TabsTrigger className="!flex-none px-3 py-2" value="attendance" data-testid="calendar-tab-attendance">{t("attendance")}</TabsTrigger>
+          <TabsTrigger className="!flex-none px-3 py-2" value="notes" data-testid="calendar-tab-notes">{t("shiftNotes")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="import">{t("importSchedule")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="history">{t("importHistory")}</TabsTrigger>
         </TabsList>
@@ -151,6 +176,16 @@ function CalendarIdentityWorkspace() {
       </TabsContent>
       <TabsContent className="min-w-0 w-full" value="mine">
         {visitedTabs.has("mine") && <ShiftRegistrationBoard mode="mine" />}
+      </TabsContent>
+      <TabsContent className="min-w-0 w-full" value="attendance">
+        {visitedTabs.has("attendance") && (
+          <ShiftRegistrationBoard mode="mine" defaultDetailTab="attendance" />
+        )}
+      </TabsContent>
+      <TabsContent className="min-w-0 w-full" value="notes">
+        {visitedTabs.has("notes") && (
+          <ShiftRegistrationBoard mode={currentUser?.role === 'staff' ? 'mine' : 'open'} defaultDetailTab="notes" />
+        )}
       </TabsContent>
       <TabsContent className="min-w-0 w-full" value="import">
         <ScheduleImportPanel />

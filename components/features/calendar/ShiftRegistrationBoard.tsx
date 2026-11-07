@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { addMonths, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
-import { CalendarDays, Camera, ChevronLeft, ChevronRight, Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
+import { CalendarDays, Camera, ChevronLeft, ChevronRight, Download, FileText, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   shiftRegistrationService,
   shiftService,
@@ -118,7 +118,13 @@ function useOperationalLoadState() {
   return { getLatest, isActive, isCurrent, nextVersion, setLatest }
 }
 
-export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
+export function ShiftRegistrationBoard({
+  mode,
+  defaultDetailTab,
+}: {
+  mode: Mode
+  defaultDetailTab?: string
+}) {
   const router = useRouter()
   const { currentUser, loading: userLoading } = useCurrentUser()
   const { language, t } = useTranslation()
@@ -210,6 +216,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
   const handleOpenDetail = (shift: Shift, initialTab?: string) => {
     setDetailInitialTab(initialTab)
+    if (!initialTab && defaultDetailTab) setDetailInitialTab(defaultDetailTab)
     setDetailShift(shift)
   }
   const [exportShiftId, setExportShiftId] = React.useState<string | null>(null)
@@ -787,6 +794,15 @@ function MyShiftCards({ entries, brands, platforms, campaigns, onManage }: MyShi
                 {language === 'en' ? 'Attendance' : 'Chấm công'}
               </Button>
             )}
+            <Button
+              data-testid={`open-my-shift-notes-${shift.id}`}
+              size="sm"
+              variant="outline"
+              onClick={() => onManage(shift, 'notes')}
+            >
+              <FileText className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
+              {language === 'en' ? 'Notes' : 'Ghi chú'}
+            </Button>
             <Button data-testid={`open-my-shift-detail-card-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewShiftDetail')}</Button>
           </div></CardContent>
         </Card>
@@ -819,6 +835,15 @@ function MyShiftCompactList({ entries, brands, platforms, campaigns, onManage }:
               {language === 'en' ? 'Attendance' : 'Chấm công'}
             </Button>
           )}
+          <Button
+            data-testid={`open-my-shift-notes-compact-${shift.id}`}
+            size="sm"
+            variant="outline"
+            onClick={() => onManage(shift, 'notes')}
+          >
+            <FileText className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
+            {language === 'en' ? 'Notes' : 'Ghi chú'}
+          </Button>
           <Button data-testid={`open-my-shift-detail-compact-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button>
         </div>
       </CardContent></Card>
@@ -851,7 +876,16 @@ function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShi
                 {language === 'en' ? 'Attendance' : 'Chấm công'}
               </Button>
             )}
-            <Button data-testid={`open-my-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button>
+            <Button
+                data-testid={`open-my-shift-notes-table-${shift.id}`}
+                size="sm"
+                variant="outline"
+                onClick={() => onManage(shift, 'notes')}
+              >
+                <FileText className="mr-1 h-3.5 w-3.5 text-blue-600" />
+                {language === 'en' ? 'Notes' : 'Ghi chú'}
+              </Button>
+              <Button data-testid={`open-my-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button>
           </div>
         </td>
       </tr>

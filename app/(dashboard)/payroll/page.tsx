@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Banknote,
   Calendar,
@@ -34,19 +35,50 @@ import { PayrollAuditTimeline } from '@/components/features/payroll/PayrollAudit
 import { PayrollRoomRules } from '@/components/features/payroll/PayrollRoomRules'
 
 export default function PayrollPage() {
+  return (
+    <React.Suspense fallback={<PageShell archetype="command" className="p-4 md:p-6"><p role="status">Đang tải bảng lương...</p></PageShell>}>
+      <PayrollContent />
+    </React.Suspense>
+  )
+}
+
+function PayrollContent() {
   const { translate } = useTranslation()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get('tab')
   // One stable, server-revalidated capability hook across mock/admin/member
   // identity changes. Never unmount its observer before a new actor is verified.
   const { currentUser, loading, error, capabilities, identityKey } = useWorkforceCapabilities()
   if (loading) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Đang xác minh phiên đăng nhập và quyền truy cập…')}</p></PageShell>
   if (error) return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate(error)}</p></PageShell>
   if (!currentUser) return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate('Vui lòng đăng nhập.')}</p></PageShell>
+
+  // 1. Direct Personal Payslip request (?tab=personal) - All roles can view their own payslip
+  if (tabParam === 'personal') {
+    return (
+      <div className="space-y-4">
+        {resolveSystemPermission(currentUser) === 'admin' && (
+          <div className="flex items-center justify-between border-b bg-slate-50 px-4 py-2 text-xs">
+            <span className="text-muted-foreground">{translate('Bạn đang xem Phiếu lương cá nhân dưới tư cách Quản trị viên.')}</span>
+            <Button size="sm" variant="outline" onClick={() => router.push('/payroll')}>
+              {translate('Chuyển sang Quản lý bảng lương công ty')}
+            </Button>
+          </div>
+        )}
+        <MyPayslipPanel key={identityKey ?? currentUser.id} />
+      </div>
+    )
+  }
+
+  // 2. Company Payroll request (/payroll without ?tab=personal) - Admin-only
   if (resolveSystemPermission(currentUser) !== 'admin') {
     if (process.env.NEXT_PUBLIC_FEATURE_MY_PAYSLIP === 'true') {
       return <MyPayslipPanel key={identityKey ?? currentUser.id} />
     }
     return <PageShell archetype="command" className="p-4 md:p-6"><p role="alert">{translate('Bạn không có quyền truy cập bảng lương (403).')}</p></PageShell>
   }
+
   if (!capabilities?.payroll) return <PageShell archetype="command" className="p-4 md:p-6"><p role="status">{translate('Tính năng đang tắt. Vui lòng chờ cấu hình được phê duyệt.')}</p></PageShell>
   return <PayrollWorkspace key={identityKey} currentUser={currentUser} />
 }

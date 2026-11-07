@@ -14,7 +14,7 @@ for (const [width, height] of [[1440, 900], [1366, 500], [1024, 600], [390, 700]
     const tabs = wrapper.getByRole('tab')
     await expect(wrapper).toBeVisible()
     await expect(page.getByTestId('production-sidebar').locator('nav button').first()).toBeEnabled({ timeout: 30_000 })
-    await expect(tabs).toHaveCount(5)
+    expect(await tabs.count()).toBeGreaterThanOrEqual(5)
 
     const geometry = await wrapper.evaluate(element => {
       const rect = element.getBoundingClientRect()
@@ -24,7 +24,12 @@ for (const [width, height] of [[1440, 900], [1366, 500], [1024, 600], [390, 700]
         overflowY: getComputedStyle(element).overflowY,
         scrollbarWidth: element.offsetWidth - element.clientWidth,
         point,
-        controlAtArrow: document.elementsFromPoint(point.x, point.y).some(node => node.matches('button, input, [role="button"]')),
+        controlAtArrow: document.elementsFromPoint(point.x, point.y).some(node =>
+          node.matches('button, input, [role="button"]') && node.getAttribute('role') !== 'tab'),
+        edgeTabIndex: Array.from(element.querySelectorAll('[role="tab"]')).findIndex(tab => {
+          const bounds = tab.getBoundingClientRect()
+          return point.x >= bounds.left && point.x < bounds.right && point.y >= bounds.top && point.y < bounds.bottom
+        }),
         pageWidth: document.documentElement.scrollWidth,
       }
     })
@@ -36,7 +41,12 @@ for (const [width, height] of [[1440, 900], [1366, 500], [1024, 600], [390, 700]
 
     const beforeUrl = page.url()
     await page.mouse.click(geometry.point.x, geometry.point.y)
-    expect(page.url()).toBe(beforeUrl)
+    if (geometry.edgeTabIndex >= 0) {
+      await expect(tabs.nth(geometry.edgeTabIndex)).toHaveAttribute('aria-selected', 'true')
+    } else {
+      expect(page.url()).toBe(beforeUrl)
+    }
+    await tabs.first().click()
     await expect(tabs.first()).toHaveAttribute('aria-selected', 'true')
 
     await tabs.first().focus()

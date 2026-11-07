@@ -3,7 +3,8 @@
 import * as React from 'react'
 import { usePagedList } from '@/lib/hooks/usePagedList'
 import { HistoryPagination } from '@/components/ui/history-pagination'
-import { Archive, CheckCircle2, Eye, MoreHorizontal, Pencil, Power, PowerOff, RotateCcw, Search, UserPlus, XCircle } from 'lucide-react'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { Archive, CheckCircle2, Eye, Lock, MoreHorizontal, Pencil, Power, PowerOff, RotateCcw, Search, UserPlus, XCircle } from 'lucide-react'
 import { shiftService, userService } from '@/lib/services/dataService'
 import { OperationalRole, SystemPermission, User } from '@/lib/types/database.types'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
@@ -43,12 +44,30 @@ export function StaffList() {
   const [restoreTarget, setRestoreTarget] = React.useState<User | null>(null)
   const [showArchived, setShowArchived] = React.useState(false)
   const [isFormOpen, setIsFormOpen] = React.useState(false)
-  const [tab, setTab] = React.useState<'staff' | 'requests'>('staff')
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+  const tabParam = searchParams.get('tab')
+  const tab: 'staff' | 'requests' = tabParam === 'accounts' || tabParam === 'requests' ? 'requests' : 'staff'
   const [filters, setFilters] = React.useState<StaffFilters>(initialFilters)
   const { toast } = useToast()
   const { currentUser } = useCurrentUser()
   const { t } = useTranslation()
   const canManage = Boolean(currentUser && hasPermission(currentUser, 'staff.manage'))
+
+  const handleTabChange = (nextTab: 'staff' | 'requests') => {
+    if (nextTab === 'requests') {
+      const next = new URLSearchParams(window.location.search)
+      next.set('tab', 'accounts')
+      const qs = next.toString()
+      router.replace(`${pathname}?${qs}`, { scroll: false })
+    } else {
+      const next = new URLSearchParams(window.location.search)
+      next.delete('tab')
+      const qs = next.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    }
+  }
 
   const [search, setSearch] = React.useState('')
   const list = usePagedList(userService, 'staff', { search, archived: showArchived, systemPermissions: filters.permissionIds, roles: filters.roleIds, statuses: filters.statuses })
@@ -232,8 +251,33 @@ export function StaffList() {
     <p className="mb-2 text-xs text-muted-foreground">{t('currentPage')}</p>
     <div data-testid="staff-summary-grid" className="mb-3 grid min-w-0 grid-cols-2 gap-2 md:grid-cols-4 md:gap-0 md:overflow-hidden md:rounded-lg md:border md:border-slate-200 md:bg-white">{[[t('staff'),list.total],[t('active'),visibleStaff.filter(user=>user.status==='active').length],[t('inactive'),visibleStaff.filter(user=>user.status==='inactive').length],[t('pendingAccounts'),visibleStaff.filter(user=>user.account_status==='pending_approval').length]].map(([label,value])=><div key={String(label)} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3 md:rounded-none md:border-0 md:border-r md:px-3 md:py-2 md:last:border-r-0"><p className="min-h-8 text-xs leading-4 text-slate-600 md:min-h-0">{label}</p><p className="mt-1 text-xl font-semibold tabular-nums md:mt-0 md:text-base">{value}</p></div>)}</div>
 
-    <nav className="mb-4 flex min-w-0 gap-1 overflow-x-auto border-b pb-2 [scrollbar-width:thin] [&_button]:min-h-11 [&_button]:shrink-0 [&_button]:whitespace-nowrap [&_button]:text-xs" aria-label={t('staff')}><Button size="sm" variant={tab === 'staff' && !showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(false)}}>{t('staff')} ({list.total})</Button>{canManage && <><Button size="sm" variant={tab === 'requests' ? 'default' : 'ghost'} onClick={() => setTab('requests')}>{t('pending')}</Button><Button size="sm" variant={showArchived ? 'default' : 'ghost'} onClick={() => {setTab('staff');setShowArchived(true)}}>{t('archivedRecords')}</Button></>}</nav>
-    {tab === 'requests' && canManage ? <AccountRequestPanel /> : <div className={`grid items-start gap-3 ${detailStaff ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : 'grid-cols-1'}`}>    <section data-testid="staff-mobile-layout" className="min-w-0 space-y-3 md:hidden" aria-label={t('staff')}>
+    <nav className="mb-4 flex min-w-0 gap-1 overflow-x-auto border-b pb-2 [scrollbar-width:thin] [&_button]:min-h-11 [&_button]:shrink-0 [&_button]:whitespace-nowrap [&_button]:text-xs" aria-label={t('staff')}><Button size="sm" variant={tab === 'staff' && !showArchived ? 'default' : 'ghost'} onClick={() => {handleTabChange('staff');setShowArchived(false)}}>{t('staff')} ({list.total})</Button>{canManage && <><Button size="sm" data-testid="staff-tab-accounts" variant={tab === 'requests' ? 'default' : 'ghost'} onClick={() => handleTabChange('requests')}>{t('accountManagement') || 'Quản lý tài khoản'}</Button><Button size="sm" variant={showArchived ? 'default' : 'ghost'} onClick={() => {handleTabChange('staff');setShowArchived(true)}}>{t('archivedRecords')}</Button></>}</nav>
+    {tab === 'requests' ? (
+      canManage ? (
+        <AccountRequestPanel />
+      ) : (
+        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center space-y-3" data-testid="staff-accounts-restricted">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+            <Lock className="h-6 w-6" aria-hidden="true" />
+          </div>
+          <h2 className="text-base font-semibold text-slate-900">
+            {t('accessRestricted')}
+          </h2>
+          <p className="mx-auto max-w-md text-sm text-slate-600">
+            {t('accountManagementRestrictedExplanation')}
+          </p>
+          <div className="pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleTabChange('staff')}
+            >
+              {t('returnToStaffDirectory')}
+            </Button>
+          </div>
+        </div>
+      )
+    ) : <div className={`grid items-start gap-3 ${detailStaff ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : 'grid-cols-1'}`}>    <section data-testid="staff-mobile-layout" className="min-w-0 space-y-3 md:hidden" aria-label={t('staff')}>
       <div className="min-w-0 space-y-3 rounded-xl border bg-white p-3">
         <label htmlFor="staff-mobile-search" className="block text-[13px] font-semibold">{t('searchStaff')}</label>
         <div className="relative">
