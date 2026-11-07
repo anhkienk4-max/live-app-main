@@ -22,12 +22,9 @@ import type {
   SupplementalShiftFields,
   ShiftStaffIdentityMatchMethod,
   ShiftStatus,
-  ShiftOperationalNote,
-  ShiftOperationalNoteCategory,
   User,
 } from '@/lib/types/database.types'
-import { shiftNoteService } from '@/lib/services/shiftNoteService'
-import { formatRegistrationErrorMessage } from '@/lib/utils/shiftRegistration'
+import { formatRegistrationErrorMessage, canSelfCancelRegistration } from '@/lib/utils/shiftRegistration'
 import {
   Dialog,
   DialogBody,
@@ -530,6 +527,7 @@ export function ShiftDetailModal({
   const staffingRead = React.useRef(0)
   const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
   const [activeShift, setActiveShift] = React.useState<Shift>(shift)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate active shift from incoming props
   React.useEffect(() => { setActiveShift(shift) }, [shift])
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
@@ -1207,8 +1205,9 @@ export function ShiftDetailModal({
                       currentUser={currentUser}
                       onRegister={registerForRole}
                       onCancel={async (regId) => {
+                        const targetReg = registrations.find(r => r.id === regId)
                         await runStaffingAction(
-                          () => shiftRegistrationService.cancel(regId, currentUser!.id, 'Tự hủy đăng ký'),
+                          () => shiftRegistrationService.cancel(regId, currentUser!.id, 'Tự hủy đăng ký', targetReg?.version),
                           t('registrationCancelled'),
                         )
                       }}
@@ -1338,25 +1337,31 @@ export function ShiftDetailModal({
                                       {t('removeAssignment')}
                                     </Button>
                                   ) : null}
-                                  {currentUser && currentUser.id === registration.user_id && (registration.status === 'pending' || registration.status === 'approved') ? (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50"
-                                      disabled={busy}
-                                      data-testid={`cancel-registration-${registration.id}`}
-                                      onClick={() => {
-                                        if (window.confirm('Bạn có chắc chắn muốn hủy đăng ký ca này?')) {
-                                          void runStaffingAction(
-                                            () => shiftRegistrationService.cancel(registration.id, currentUser.id, 'Tự hủy đăng ký', registration.version),
-                                            t('registrationCancelled'),
-                                          )
-                                        }
-                                      }}
-                                    >
-                                      <X className="mr-1 h-3 w-3" />
-                                      {t('cancelRegistration')}
-                                    </Button>
+                                  {currentUser && currentUser.id === registration.user_id && (registration.status === 'pending' || registration.status === 'approved' || registration.status === 'manually_assigned') ? (
+                                    canSelfCancelRegistration(registration, activeShift) ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                                        disabled={busy}
+                                        data-testid={`cancel-registration-${registration.id}`}
+                                        onClick={() => {
+                                          if (window.confirm('Bạn có chắc chắn muốn hủy đăng ký ca này?')) {
+                                            void runStaffingAction(
+                                              () => shiftRegistrationService.cancel(registration.id, currentUser.id, 'Tự hủy đăng ký', registration.version),
+                                              t('registrationCancelled'),
+                                            )
+                                          }
+                                        }}
+                                      >
+                                        <X className="mr-1 h-3 w-3" />
+                                        {t('cancelRegistration')}
+                                      </Button>
+                                    ) : (registration.source === 'manual_assignment' || registration.status === 'manually_assigned') ? (
+                                      <span className="text-[11px] text-muted-foreground italic" data-testid={`manual-assignment-notice-${registration.id}`}>
+                                        Chỉ định (cần Quản lý gỡ)
+                                      </span>
+                                    ) : null
                                   ) : null}
                                 </div>
                               </div>

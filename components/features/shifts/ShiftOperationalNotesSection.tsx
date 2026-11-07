@@ -27,7 +27,6 @@ import {
   RefreshCw,
   Send,
   ShoppingBag,
-  Sparkles,
   Users,
 } from 'lucide-react'
 
@@ -115,6 +114,7 @@ export function ShiftOperationalNotesSection({
 
   const [notes, setNotes] = React.useState<ShiftOperationalNote[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [schemaUnavailable, setSchemaUnavailable] = React.useState(false)
   const [category, setCategory] = React.useState<ShiftOperationalNoteCategory>('normal')
   const [noteText, setNoteText] = React.useState('')
   const [submitting, setSubmitting] = React.useState(false)
@@ -140,19 +140,35 @@ export function ShiftOperationalNotesSection({
         currentUser.system_permission === 'leader'),
   )
 
-  const canAddNote = isAssignedStaff || isLeaderOrAdmin
+  const canAddNote = (isAssignedStaff || isLeaderOrAdmin) && !schemaUnavailable
 
   const loadNotes = React.useCallback(async () => {
     try {
       setLoading(true)
       const data = await shiftNoteService.getForShift(shift.id)
       setNotes(data)
+      setSchemaUnavailable(false)
+    } catch (err: unknown) {
+      if (
+        err instanceof Error &&
+        (err.message.includes('SCHEMA_NOT_DEPLOYED') ||
+          (err as { code?: string }).code === 'SCHEMA_NOT_DEPLOYED')
+      ) {
+        setSchemaUnavailable(true)
+      } else {
+        toast({
+          title: isVi ? 'Lỗi' : 'Error',
+          description: err instanceof Error ? err.message : 'Không thể tải ghi chú.',
+          variant: 'destructive',
+        })
+      }
     } finally {
       setLoading(false)
     }
-  }, [shift.id])
+  }, [shift.id, isVi, toast])
 
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load of notes for shift
     void loadNotes()
   }, [loadNotes])
 
@@ -172,12 +188,14 @@ export function ShiftOperationalNotesSection({
     try {
       await shiftNoteService.create({
         shiftId: shift.id,
+        businessDate: shift.date,
         date: shift.date,
         category,
         note: noteText.trim(),
         authorId: currentUser.id,
         authorName: currentUser.full_name || currentUser.id,
         authorRole: currentUser.role || 'staff',
+        actualEventTime: new Date().toISOString(),
       })
       toast({
         title: isVi ? 'Thành công' : 'Success',
@@ -209,8 +227,26 @@ export function ShiftOperationalNotesSection({
 
   return (
     <div className="space-y-4" data-testid="shift-operational-notes-section">
-      {canAddNote ? (
-        <Card className="border border-slate-200 shadow-xs">
+      {schemaUnavailable ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900" data-testid="shift-notes-schema-unavailable">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            <span>
+              {isVi
+                ? 'Tính năng Ghi chú vận hành chưa được triển khai trên môi trường này.'
+                : 'Operational Notes feature is not yet deployed in this environment.'}
+            </span>
+          </div>
+          <p className="mt-1 text-muted-foreground">
+            {isVi
+              ? 'Bản di chuyển cơ sở dữ liệu P1 (20261107000000_rc19_shift_operational_notes.sql) đang chờ Owner Review và xác minh môi trường.'
+              : 'P1 database migration (20261107000000_rc19_shift_operational_notes.sql) is pending Owner Review and environment verification.'}
+          </p>
+        </div>
+      ) : (
+        <>
+          {canAddNote ? (
+            <Card className="border border-slate-200 shadow-xs">
           <CardHeader className="p-3 pb-2">
             <CardTitle className="text-sm font-semibold flex items-center justify-between">
               <span className="flex items-center gap-1.5">
@@ -378,7 +414,7 @@ export function ShiftOperationalNotesSection({
                       )}
                     </div>
                     <time className="text-[11px] text-muted-foreground">
-                      {formatNoteTime(note.created_at || note.event_time)}
+                      {formatNoteTime(note.actual_event_time || note.created_at || note.event_time || '')}
                     </time>
                   </div>
                   <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
@@ -390,6 +426,8 @@ export function ShiftOperationalNotesSection({
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   )
 }

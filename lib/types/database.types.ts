@@ -1086,13 +1086,18 @@ export type ShiftOperationalNoteCategory =
 export interface ShiftOperationalNote {
   id: string
   shift_id: string
-  date: string
+  business_date: string
+  date?: string
   category: ShiftOperationalNoteCategory
   note: string
   author_id: string
   author_name?: string
   author_role?: string
-  event_time: string
+  actual_event_time: string
+  event_time?: string
+  affected_role?: OperationalRole | null
+  affected_user_id?: string | null
+  version: number
   created_at: string
   updated_at: string
   deleted_at?: string | null

@@ -47,16 +47,10 @@ const shiftsOverlap = (left: Shift, right: Shift) => {
 
 export const isShiftClosed = (shift: Shift, now: Date = new Date()) => {
   if (shift.registration_locked) return true
-  if (['cancelled', 'completed', 'live', 'paused'].includes(shift.status)) return true
-  if (shift.status !== 'scheduled' && shift.status !== 'preparing') return true
+  if (shift.status !== 'scheduled') return true
   if (shift.registration_cutoff_at) {
     const cutoff = new Date(shift.registration_cutoff_at)
     if (!Number.isNaN(cutoff.getTime()) && cutoff <= now) return true
-  } else {
-    const startAt = shift.start_at
-      ? new Date(shift.start_at)
-      : resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.startAt
-    if (startAt && !Number.isNaN(startAt.getTime()) && startAt <= now) return true
   }
   const endAt = shift.end_at ? new Date(shift.end_at) : resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt
   if (endAt && !Number.isNaN(endAt.getTime()) && endAt <= now) return true
@@ -65,20 +59,22 @@ export const isShiftClosed = (shift: Shift, now: Date = new Date()) => {
 
 /**
  * Checks whether a shift is open for registration according to operational rules:
- * - Shifts where registration is NOT locked
- * - Registration cutoff has NOT passed (or if no cutoff, start_time is in the future)
- * - Shift has at least one unfilled role (host, support, or technical)
- * - Shift status is NOT cancelled / completed / live / paused
+ * - Shift status is strictly 'scheduled' and NOT locked
+ * - Registration cutoff has NOT passed (or if no cutoff, end_at has NOT passed)
+ * - Shift has at least one unfilled role (host, support, or technical, or filtered targetRoles)
  */
 export function isShiftOpenForRegistration(
   shift: Shift,
   registrations?: ShiftRegistration[],
   now: Date = new Date(),
+  targetRoles?: OperationalRole[],
 ): boolean {
   if (shift.deleted_at || shift.archived_at) return false
   if (isShiftClosed(shift, now)) return false
 
-  const checkRoles: OperationalRole[] = ['host', 'support', 'technical']
+  const checkRoles: OperationalRole[] = (targetRoles && targetRoles.length > 0)
+    ? targetRoles
+    : ['host', 'support', 'technical']
   return checkRoles.some(role => {
     const required = shift[requiredField[role]] ?? (role === 'host' ? 1 : 0)
     if (required <= 0) return false
@@ -99,6 +95,39 @@ export function isShiftOpenForRegistration(
       role === 'host' ? shift.host_id : role === 'support' ? shift.support_id : shift.technical_id
     return !directAssigned
   })
+}
+
+/**
+ * Determines whether an assignee/registrant can cancel their own registration.
+ * Aligns strictly with backend RPC public.cancel_own_shift_registration:
+ * - Forbidden for manual assignment (source === 'manual_assignment' or status === 'manually_assigned')
+ * - Registration status must be 'pending' or 'approved'
+ * - Shift status must be 'scheduled' and NOT locked
+ * - Shift registration cutoff must not have passed (if set)
+ * - Shift end_at must not have passed
+ */
+export function canSelfCancelRegistration(
+  registration: ShiftRegistration,
+  shift: Shift,
+  now: Date = new Date(),
+): boolean {
+  if (registration.source === 'manual_assignment' || registration.status === 'manually_assigned') {
+    return false
+  }
+  if (registration.status !== 'pending' && registration.status !== 'approved') {
+    return false
+  }
+  if (shift.status !== 'scheduled' || shift.registration_locked) {
+    return false
+  }
+  if (shift.registration_cutoff_at) {
+    const cutoff = new Date(shift.registration_cutoff_at)
+    if (!Number.isNaN(cutoff.getTime()) && cutoff <= now) return false
+  }
+  const endAt = shift.end_at ? new Date(shift.end_at) : resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)?.endAt
+  if (endAt && !Number.isNaN(endAt.getTime()) && endAt <= now) return false
+
+  return true
 }
 
 export function formatRegistrationErrorMessage(message: string): string {
