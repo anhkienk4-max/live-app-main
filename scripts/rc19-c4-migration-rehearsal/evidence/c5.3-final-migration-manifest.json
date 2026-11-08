@@ -12,7 +12,7 @@
     "ledger_head": "20261101073742",
     "snapshot_source": "Sanitized PostgreSQL schema-only baseline cloned from the prior replay of the 89-receipt Production manifest; the new disposable clone has no historical receipt rows.",
     "snapshot_limitations": [
-      "pg_dump --no-privileges omitted table/function ACLs; C2 and Report/Shift/Storage-route grants are restored from the 2026-11-06 read-only catalog snapshot (74 rows), and seven public table API-role ACLs required by authenticated role assertions are restored from the 2026-11-08 read-only relation ACL capture.",
+      "pg_dump --no-privileges omitted table/function ACLs; current ACLs for all eleven public relations used by C5.3 assertions are restored from the 2026-11-08 read-only Production catalog query. C2 table ACLs remain restored from the 2026-11-06 snapshot and are checked separately.",
       "Schema and Storage relation ACLs were captured separately from Production on 2026-11-08; the disposable clone restores the ACLs for the anon, authenticated, and service_role test actors.",
       "Production Storage owners and internal grants for supabase_admin, supabase_storage_admin, and dashboard_user are not reproduced because those roles are absent from the isolated PostgreSQL cluster.",
       "The schema-only dump omits schema ACLs; private, public, and storage schema permissions for API actors are restored from the read-only ACL capture, with the historical P1B migration independently confirming private USAGE for authenticated.",
@@ -35,7 +35,7 @@
   },
   "schema_acl_snapshot": {
     "file": "scripts/rc19-c4-migration-rehearsal/evidence/production-schema-acl-snapshot-20261108.json",
-    "captured_at_utc": "2026-11-08T18:30:29Z",
+    "captured_at_utc": "2026-11-08T18:33:23Z",
     "contains_schema_storage_and_role_assertion_relation_acl": true,
     "api_role_grants_restored_in_disposable_baseline": true,
     "infrastructure_role_ownership_reproduced": false

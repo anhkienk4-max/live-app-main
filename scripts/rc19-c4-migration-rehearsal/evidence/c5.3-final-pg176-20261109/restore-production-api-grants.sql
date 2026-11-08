@@ -18,26 +18,22 @@ $guard$;
 REVOKE ALL ON SCHEMA private FROM PUBLIC, anon;
 GRANT USAGE ON SCHEMA private TO authenticated;
 
--- Exact non-C2 table grants grouped from production-catalog-snapshot.json (2026-11-06).
-
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
-  ON TABLE public.operational_storage_routes TO service_role;
-GRANT SELECT ON TABLE public.report_images, public.report_revisions, public.reports, public.shifts TO authenticated;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
-  ON TABLE public.report_images, public.reports, public.shifts TO service_role;
-GRANT INSERT, REFERENCES, SELECT, TRIGGER ON TABLE public.report_revisions TO service_role;
-
 -- Exact API-role table grants from a Production-only catalog SELECT (2026-11-08).
 REVOKE ALL ON TABLE public.brands, public.business_users, public.campaigns,
-  public.platforms, public.shift_registrations, public.shifts, public.system_settings
+  public.operational_storage_routes, public.platforms, public.report_images,
+  public.report_revisions, public.reports, public.shift_registrations,
+  public.shifts, public.system_settings
   FROM PUBLIC, anon, authenticated, service_role;
 GRANT INSERT, SELECT, UPDATE ON TABLE public.brands, public.campaigns, public.platforms TO authenticated;
 GRANT SELECT ON TABLE public.business_users, public.shift_registrations,
-  public.shifts, public.system_settings TO authenticated;
+  public.report_images, public.report_revisions, public.reports, public.shifts,
+  public.system_settings TO authenticated;
 GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
   ON TABLE public.brands, public.business_users, public.campaigns,
-  public.platforms, public.shift_registrations, public.shifts, public.system_settings
+  public.operational_storage_routes, public.platforms, public.report_images,
+  public.reports, public.shift_registrations, public.shifts, public.system_settings
   TO service_role;
+GRANT INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER ON TABLE public.report_revisions TO service_role;
 
 DO $verify$
 DECLARE expected record; actual text[]; has_grant_option boolean; private_acl text[];
@@ -63,15 +59,15 @@ BEGIN
   FOR expected IN
     SELECT * FROM (VALUES
       ('public.operational_storage_routes','authenticated',ARRAY[]::text[]),
-      ('public.operational_storage_routes','service_role',ARRAY['DELETE','INSERT','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.operational_storage_routes','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
       ('public.report_images','authenticated',ARRAY['SELECT']::text[]),
-      ('public.report_images','service_role',ARRAY['DELETE','INSERT','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.report_images','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
       ('public.report_revisions','authenticated',ARRAY['SELECT']::text[]),
-      ('public.report_revisions','service_role',ARRAY['INSERT','REFERENCES','SELECT','TRIGGER']::text[]),
+      ('public.report_revisions','service_role',ARRAY['INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER']::text[]),
       ('public.reports','authenticated',ARRAY['SELECT']::text[]),
-      ('public.reports','service_role',ARRAY['DELETE','INSERT','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.reports','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
       ('public.shifts','authenticated',ARRAY['SELECT']::text[]),
-      ('public.shifts','service_role',ARRAY['DELETE','INSERT','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.shifts','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
       ('public.brands','authenticated',ARRAY['INSERT','SELECT','UPDATE']::text[]),
       ('public.brands','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
       ('public.business_users','authenticated',ARRAY['SELECT']::text[]),
@@ -104,7 +100,7 @@ BEGIN
     JOIN pg_namespace n ON n.oid=c.relnamespace
     CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r',c.relowner))) a
     WHERE n.nspname='public'
-      AND c.relname IN ('brands','business_users','campaigns','platforms','shift_registrations','shifts','system_settings')
+      AND c.relname IN ('brands','business_users','campaigns','operational_storage_routes','platforms','report_images','report_revisions','reports','shift_registrations','shifts','system_settings')
       AND a.grantee IN (0, 'anon'::regrole)
   ) THEN
     RAISE EXCEPTION 'C5_3_UNEXPECTED_PUBLIC_OR_ANON_BUSINESS_TABLE_GRANT';
