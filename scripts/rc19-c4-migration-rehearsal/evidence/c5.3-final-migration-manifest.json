@@ -13,12 +13,14 @@
     "snapshot_source": "Sanitized PostgreSQL schema-only baseline cloned from the prior replay of the 89-receipt Production manifest; the new disposable clone has no historical receipt rows.",
     "snapshot_limitations": [
       "pg_dump --no-privileges omitted table/function ACLs; the disposable baseline ACL fixture restores only catalog ACLs verified against the read-only Production catalog snapshot.",
+      "Supabase Storage API grants omitted by the schema-only dump are restored from the repository's standard prerequisite fixture for disposable anon/authenticated role assertions; this is not a live Production ACL attestation.",
       "The final disposable clone does not replay or insert synthetic receipts for the original 89 migrations.",
       "pg_cron worker is not simulated; the 20 forward migration files do not reference pg_cron.",
       "Only synthetic Storage object metadata is present; no provider bytes are stored."
     ],
-    "disposable_database": "rc19_c5_3_reconciled_20261108",
+    "disposable_database": "rc19_c5_3_final_20261109",
     "disposable_marker": "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY",
+    "schema_source_database": "rc19_c4_schema_base_20261107_pg176",
     "postgres_server": "17.6 (Ubuntu 17.6-2.pgdg24.04+1)"
   },
   "required_order": "Production schema snapshot after 89-receipt baseline -> effective entries 1..20; this database records only 20 receipts for SQL actually applied here.",

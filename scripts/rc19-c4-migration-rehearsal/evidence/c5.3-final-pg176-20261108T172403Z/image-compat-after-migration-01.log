@@ -1,0 +1,5 @@
+psql:/mnt/c/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/rc19-c5.3-image-compat/scripts/rc19-c4-migration-rehearsal/fixtures/c5.3-image-public-compatibility-assertions.sql:29: ERROR:  permission denied for schema storage
+LINE 1: (SELECT count(*) FROM storage.objects WHERE bucket_id='live-...
+                              ^
+QUERY:  (SELECT count(*) FROM storage.objects WHERE bucket_id='live-dashboard-images' AND name='synthetic/compatibility-probe.txt') <> 1
+CONTEXT:  PL/pgSQL function inline_code_block line 3 at IF

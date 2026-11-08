@@ -27,6 +27,21 @@ BEGIN
   END IF;
 END
 $anon$;
+DO $anon_write_denied$
+DECLARE denied boolean := false;
+BEGIN
+  BEGIN
+    INSERT INTO storage.objects (id, bucket_id, name, metadata)
+    VALUES ('c5530000-0000-4000-8000-000000000002', 'live-dashboard-images',
+            'synthetic/anon-write-denied.txt', '{"test_only":true}'::jsonb);
+  EXCEPTION WHEN insufficient_privilege THEN
+    denied := true;
+  END;
+  IF NOT denied THEN
+    RAISE EXCEPTION 'C5_3_ANON_STORAGE_WRITE_UNEXPECTEDLY_ALLOWED';
+  END IF;
+END
+$anon_write_denied$;
 COMMIT;
 SELECT 'C5_3_LEGACY_PUBLIC_IMAGE_POLICY_AND_METADATA_RLS: PASS';
 SELECT 'C5_3_PROVIDER_BYTES: NOT TESTED (synthetic metadata row only)';

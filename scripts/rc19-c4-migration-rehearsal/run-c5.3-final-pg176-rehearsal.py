@@ -16,7 +16,8 @@ REHEARSAL = ROOT / "scripts" / "rc19-c4-migration-rehearsal"
 EVIDENCE = REHEARSAL / "evidence"
 MANIFEST = EVIDENCE / "c5.3-final-migration-manifest.json"
 OLD_MANIFEST = EVIDENCE / "c5.2-forward-migration-manifest.json"
-EXPECTED_DATABASE = "rc19_c5_3_reconciled_20261108"
+EXPECTED_DATABASE = "rc19_c5_3_final_20261109"
+BASELINE_SOURCE_DATABASE = "rc19_c4_schema_base_20261107_pg176"
 EXPECTED_MARKER = "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY"
 EXPECTED_SOCKET = "/home/anhkienk4/.codex/pg17.6-c5.3-rehearsal/socket"
 EXPECTED_PORT = "55437"
@@ -30,11 +31,12 @@ EXPECTED_VERSIONS = [
 
 
 def command(args: list[str], *, log: Path | None = None, expect: int = 0,
-            env_overrides: dict[str, str] | None = None) -> str:
+            env_overrides: dict[str, str] | None = None,
+            input_text: str | None = None) -> str:
     env = os.environ.copy()
     if env_overrides:
         env.update(env_overrides)
-    result = subprocess.run(args, cwd=ROOT, text=True, stdout=subprocess.PIPE,
+    result = subprocess.run(args, cwd=ROOT, text=True, input=input_text, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, env=env)
     if log:
         log.parent.mkdir(parents=True, exist_ok=True)
@@ -61,8 +63,10 @@ def run_sql_file(path: Path, log: Path, *, single_transaction: bool = False,
     args = psql_base(database)
     if single_transaction:
         args.append("--single-transaction")
-    command(args + ["-c", "SET ROLE postgres", "-f", str(path)], log=log,
-            env_overrides=env_overrides)
+    source_sql = path.read_text(encoding="utf-8-sig")
+    wrapper_sql = f"-- C5.3 rehearsal source: {path.relative_to(ROOT).as_posix()}\nSET ROLE postgres;\n{source_sql}\n"
+    command(args + ["-f", "-"], log=log, env_overrides=env_overrides,
+            input_text=wrapper_sql)
 
 
 def canonical_sha(path: Path) -> str:
@@ -205,9 +209,16 @@ def main() -> int:
     if query("SELECT count(*) FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND policyname='live dashboard image public read' AND cmd='SELECT'") != "1":
         raise RuntimeError("REFUSED_LEGACY_IMAGE_POLICY_MISSING")
 
+    baseline_dump = command(["pg_dump", "-h", EXPECTED_SOCKET, "-p", EXPECTED_PORT, "-U", os.environ["PGUSER"],
+                             "-d", EXPECTED_DATABASE, "--schema-only", "--no-owner", "--no-privileges",
+                             "-n", "public", "-n", "private", "-n", "auth", "-n", "storage",
+                             "-n", "extensions", "-n", "cron", "-n", "supabase_migrations"])
+    baseline_schema_hash = hashlib.sha256(baseline_dump.encode("utf-8")).hexdigest()
+
     (out / "source.txt").write_text(
         f"source_sha={head}\napplication_candidate_sha=240a0d51b49863167be252d94545ea7c5ab2ac9a\n"
         f"database={fields[0]}\ndatabase_marker={fields[1]}\npostgres_server={fields[2]}\n"
+        f"baseline_schema_source_database={BASELINE_SOURCE_DATABASE}\nbaseline_schema_dump_sha256={baseline_schema_hash}\n"
         "baseline_schema_source=production-shaped schema-only snapshot after the 89-receipt replay\n"
         "historical_receipts_in_this_clone=0 (not replayed or fabricated)\n"
         "forward_migrations=20; receipts inserted only after each SQL file succeeds\n"
@@ -292,6 +303,8 @@ def main() -> int:
         "postgres_server": fields[2],
         "database": fields[0],
         "database_marker": fields[1],
+        "baseline_schema_source_database": BASELINE_SOURCE_DATABASE,
+        "baseline_schema_dump_sha256": baseline_schema_hash,
         "baseline_snapshot_after_production_ledger_receipt_count": 89,
         "historical_receipts_replayed_in_final_clone": 0,
         "effective_migrations_applied": len(entries),

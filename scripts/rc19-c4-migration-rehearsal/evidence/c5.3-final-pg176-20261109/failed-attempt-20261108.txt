@@ -1,0 +1,10 @@
+This retained attempt is NOT a successful rehearsal.
+
+Source SHA: d347542b487ed7264d8022b2dec09447cdaa096f
+PostgreSQL: 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+Database: rc19_c5_3_reconciled_20261108
+Result: migration 20261102110001 completed and its one forward receipt was inserted; the run stopped before migration 2.
+Failure: the sanitized schema-only dump omitted Storage schema/table ACLs, so the synthetic anon role could not read storage.objects during the public-image compatibility assertion.
+Evidence: c5.3-final-pg176-20261108T172403Z/image-compat-after-migration-01.log and migration-01-20261102110001.log.
+
+The database and logs are preserved. The corrected rehearsal uses a fresh clone from rc19_c4_schema_base_20261107_pg176, restores the standard Supabase Storage API grants only in that disposable clone, and asserts anon read through the existing public-read RLS policy.
