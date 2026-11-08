@@ -6,7 +6,7 @@ DECLARE marker text;
 BEGIN
   SELECT shobj_description(oid, 'pg_database') INTO marker
     FROM pg_database WHERE datname = current_database();
-  IF current_database() <> 'rc19_c5_3_final5_20261109'
+  IF current_database() <> 'rc19_c5_3_final6_20261109'
      OR marker IS DISTINCT FROM 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY'
      OR current_user <> 'postgres' THEN
     RAISE EXCEPTION 'REFUSED_NON_DISPOSABLE_C5_3_GRANT_TARGET:%', current_database();
@@ -26,6 +26,18 @@ GRANT SELECT ON TABLE public.report_images, public.report_revisions, public.repo
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
   ON TABLE public.report_images, public.reports, public.shifts TO service_role;
 GRANT INSERT, REFERENCES, SELECT, TRIGGER ON TABLE public.report_revisions TO service_role;
+
+-- Exact API-role table grants from a Production-only catalog SELECT (2026-11-08).
+REVOKE ALL ON TABLE public.brands, public.business_users, public.campaigns,
+  public.platforms, public.shift_registrations, public.shifts, public.system_settings
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT INSERT, SELECT, UPDATE ON TABLE public.brands, public.campaigns, public.platforms TO authenticated;
+GRANT SELECT ON TABLE public.business_users, public.shift_registrations,
+  public.shifts, public.system_settings TO authenticated;
+GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
+  ON TABLE public.brands, public.business_users, public.campaigns,
+  public.platforms, public.shift_registrations, public.shifts, public.system_settings
+  TO service_role;
 
 DO $verify$
 DECLARE expected record; actual text[]; has_grant_option boolean; private_acl text[];
@@ -59,7 +71,19 @@ BEGIN
       ('public.reports','authenticated',ARRAY['SELECT']::text[]),
       ('public.reports','service_role',ARRAY['DELETE','INSERT','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
       ('public.shifts','authenticated',ARRAY['SELECT']::text[]),
-      ('public.shifts','service_role',ARRAY['DELETE','INSERT','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[])
+      ('public.shifts','service_role',ARRAY['DELETE','INSERT','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.brands','authenticated',ARRAY['INSERT','SELECT','UPDATE']::text[]),
+      ('public.brands','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.business_users','authenticated',ARRAY['SELECT']::text[]),
+      ('public.business_users','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.campaigns','authenticated',ARRAY['INSERT','SELECT','UPDATE']::text[]),
+      ('public.campaigns','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.platforms','authenticated',ARRAY['INSERT','SELECT','UPDATE']::text[]),
+      ('public.platforms','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.shift_registrations','authenticated',ARRAY['SELECT']::text[]),
+      ('public.shift_registrations','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('public.system_settings','authenticated',ARRAY['SELECT']::text[]),
+      ('public.system_settings','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[])
     ) AS grants(table_name, role_name, expected_privileges)
   LOOP
     SELECT coalesce(array_agg(a.privilege_type ORDER BY a.privilege_type), ARRAY[]::text[]),
@@ -74,6 +98,17 @@ BEGIN
         expected.table_name, expected.role_name, actual;
     END IF;
   END LOOP;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid=c.relnamespace
+    CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r',c.relowner))) a
+    WHERE n.nspname='public'
+      AND c.relname IN ('brands','business_users','campaigns','platforms','shift_registrations','shifts','system_settings')
+      AND a.grantee IN (0, 'anon'::regrole)
+  ) THEN
+    RAISE EXCEPTION 'C5_3_UNEXPECTED_PUBLIC_OR_ANON_BUSINESS_TABLE_GRANT';
+  END IF;
 END
 $verify$;
 COMMIT;

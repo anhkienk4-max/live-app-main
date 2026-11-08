@@ -12,7 +12,7 @@
     "ledger_head": "20261101073742",
     "snapshot_source": "Sanitized PostgreSQL schema-only baseline cloned from the prior replay of the 89-receipt Production manifest; the new disposable clone has no historical receipt rows.",
     "snapshot_limitations": [
-      "pg_dump --no-privileges omitted table/function ACLs; C2 and application API table grants are restored from the read-only Production catalog snapshot (74 table-grant rows across the C2 and Report/Shift/Storage-route tables).",
+      "pg_dump --no-privileges omitted table/function ACLs; C2 and Report/Shift/Storage-route grants are restored from the 2026-11-06 read-only catalog snapshot (74 rows), and seven public table API-role ACLs required by authenticated role assertions are restored from the 2026-11-08 read-only relation ACL capture.",
       "Schema and Storage relation ACLs were captured separately from Production on 2026-11-08; the disposable clone restores the ACLs for the anon, authenticated, and service_role test actors.",
       "Production Storage owners and internal grants for supabase_admin, supabase_storage_admin, and dashboard_user are not reproduced because those roles are absent from the isolated PostgreSQL cluster.",
       "The schema-only dump omits schema ACLs; private, public, and storage schema permissions for API actors are restored from the read-only ACL capture, with the historical P1B migration independently confirming private USAGE for authenticated.",
@@ -21,7 +21,7 @@
       "pg_cron worker is not simulated; the 20 forward migration files do not reference pg_cron.",
       "The schema-only clone omits business configuration rows; one synthetic system_settings row is inserted for role and shift assertions. Only synthetic Storage object metadata is present; no provider bytes are stored."
     ],
-    "disposable_database": "rc19_c5_3_final5_20261109",
+    "disposable_database": "rc19_c5_3_final6_20261109",
     "disposable_marker": "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY",
     "schema_source_database": "rc19_c4_schema_base_20261107_pg176",
     "postgres_server": "17.6 (Ubuntu 17.6-2.pgdg24.04+1)"
@@ -35,8 +35,8 @@
   },
   "schema_acl_snapshot": {
     "file": "scripts/rc19-c4-migration-rehearsal/evidence/production-schema-acl-snapshot-20261108.json",
-    "captured_at_utc": "2026-11-08T18:13:46Z",
-    "contains_schema_and_storage_relation_acl": true,
+    "captured_at_utc": "2026-11-08T18:30:29Z",
+    "contains_schema_storage_and_role_assertion_relation_acl": true,
     "api_role_grants_restored_in_disposable_baseline": true,
     "infrastructure_role_ownership_reproduced": false
   },

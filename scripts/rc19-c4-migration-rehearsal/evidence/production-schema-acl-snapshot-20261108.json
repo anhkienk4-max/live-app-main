@@ -1,8 +1,8 @@
 {
-  "captured_at_utc": "2026-11-08T18:13:46Z",
+  "captured_at_utc": "2026-11-08T18:30:29Z",
   "source": "Read-only Supabase SQL query against the Production project; SELECT only",
   "project_ref": "egdjnpmoasarrttvhgds",
-  "query_scope": "pg_namespace owner and expanded schema ACL for private, public, storage",
+  "query_scope": "pg_namespace owner and expanded schema ACL for private, public, storage; expanded relation ACL for seven public tables needed by role assertions",
   "schemas": [
     {
       "name": "private",
@@ -79,6 +79,119 @@
         "authenticated:INSERT:grantable=false",
         "authenticated:SELECT:grantable=false",
         "authenticated:UPDATE:grantable=false",
+        "service_role:DELETE:grantable=false",
+        "service_role:INSERT:grantable=false",
+        "service_role:MAINTAIN:grantable=false",
+        "service_role:REFERENCES:grantable=false",
+        "service_role:SELECT:grantable=false",
+        "service_role:TRIGGER:grantable=false",
+        "service_role:TRUNCATE:grantable=false",
+        "service_role:UPDATE:grantable=false"
+      ]
+    }
+  ],
+  "public_relations": [
+    {
+      "name": "public.brands",
+      "owner": "postgres",
+      "api_role_acl": [
+        "authenticated:INSERT:grantable=false",
+        "authenticated:SELECT:grantable=false",
+        "authenticated:UPDATE:grantable=false",
+        "service_role:DELETE:grantable=false",
+        "service_role:INSERT:grantable=false",
+        "service_role:MAINTAIN:grantable=false",
+        "service_role:REFERENCES:grantable=false",
+        "service_role:SELECT:grantable=false",
+        "service_role:TRIGGER:grantable=false",
+        "service_role:TRUNCATE:grantable=false",
+        "service_role:UPDATE:grantable=false"
+      ]
+    },
+    {
+      "name": "public.business_users",
+      "owner": "postgres",
+      "api_role_acl": [
+        "authenticated:SELECT:grantable=false",
+        "service_role:DELETE:grantable=false",
+        "service_role:INSERT:grantable=false",
+        "service_role:MAINTAIN:grantable=false",
+        "service_role:REFERENCES:grantable=false",
+        "service_role:SELECT:grantable=false",
+        "service_role:TRIGGER:grantable=false",
+        "service_role:TRUNCATE:grantable=false",
+        "service_role:UPDATE:grantable=false"
+      ]
+    },
+    {
+      "name": "public.campaigns",
+      "owner": "postgres",
+      "api_role_acl": [
+        "authenticated:INSERT:grantable=false",
+        "authenticated:SELECT:grantable=false",
+        "authenticated:UPDATE:grantable=false",
+        "service_role:DELETE:grantable=false",
+        "service_role:INSERT:grantable=false",
+        "service_role:MAINTAIN:grantable=false",
+        "service_role:REFERENCES:grantable=false",
+        "service_role:SELECT:grantable=false",
+        "service_role:TRIGGER:grantable=false",
+        "service_role:TRUNCATE:grantable=false",
+        "service_role:UPDATE:grantable=false"
+      ]
+    },
+    {
+      "name": "public.platforms",
+      "owner": "postgres",
+      "api_role_acl": [
+        "authenticated:INSERT:grantable=false",
+        "authenticated:SELECT:grantable=false",
+        "authenticated:UPDATE:grantable=false",
+        "service_role:DELETE:grantable=false",
+        "service_role:INSERT:grantable=false",
+        "service_role:MAINTAIN:grantable=false",
+        "service_role:REFERENCES:grantable=false",
+        "service_role:SELECT:grantable=false",
+        "service_role:TRIGGER:grantable=false",
+        "service_role:TRUNCATE:grantable=false",
+        "service_role:UPDATE:grantable=false"
+      ]
+    },
+    {
+      "name": "public.shift_registrations",
+      "owner": "postgres",
+      "api_role_acl": [
+        "authenticated:SELECT:grantable=false",
+        "service_role:DELETE:grantable=false",
+        "service_role:INSERT:grantable=false",
+        "service_role:MAINTAIN:grantable=false",
+        "service_role:REFERENCES:grantable=false",
+        "service_role:SELECT:grantable=false",
+        "service_role:TRIGGER:grantable=false",
+        "service_role:TRUNCATE:grantable=false",
+        "service_role:UPDATE:grantable=false"
+      ]
+    },
+    {
+      "name": "public.shifts",
+      "owner": "postgres",
+      "api_role_acl": [
+        "authenticated:SELECT:grantable=false",
+        "service_role:DELETE:grantable=false",
+        "service_role:INSERT:grantable=false",
+        "service_role:MAINTAIN:grantable=false",
+        "service_role:REFERENCES:grantable=false",
+        "service_role:SELECT:grantable=false",
+        "service_role:TRIGGER:grantable=false",
+        "service_role:TRUNCATE:grantable=false",
+        "service_role:UPDATE:grantable=false"
+      ]
+    },
+    {
+      "name": "public.system_settings",
+      "owner": "postgres",
+      "api_role_acl": [
+        "authenticated:SELECT:grantable=false",
         "service_role:DELETE:grantable=false",
         "service_role:INSERT:grantable=false",
         "service_role:MAINTAIN:grantable=false",
