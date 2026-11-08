@@ -658,7 +658,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   return (
     <div ref={calendarRoot} className="min-w-0 space-y-0">
       {/* Unified Command Toolbar */}
-      <div className="sticky top-0 z-30 flex flex-col bg-background pb-2">
+      <div className="static flex flex-col bg-background pb-2 md:sticky md:top-0 md:z-30">
           <ActiveFilterChips filters={{ ...filters, time: view === 'list' ? listTimeFilter : filters.time }} setFilters={value => {
             if (view === 'list') listNavigate({ calendar_filters: JSON.stringify({ ...value, time: filters.time }), calendar_time: value.time, calendar_list_page: null })
             else setFilters(value)
@@ -830,7 +830,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
          {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">{language === 'vi' ? `Đang tải ca trong kỳ: ${shifts.length}/${listTotal}. Dữ liệu chưa đầy đủ.` : `Loading shifts in range: ${shifts.length}/${listTotal}. Data is incomplete.`}</div>}
         {loadedKey === requestKey && <>
         {view === 'month' && <>
-          <div className={mobileFullCalendar ? "max-w-full overflow-x-auto" : "hidden max-w-full overflow-x-auto lg:block"} role="region" aria-label={t('month')} tabIndex={0} data-testid="calendar-full-month-view"><div className="min-w-[760px] md:min-w-full"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
+          <div className={mobileFullCalendar ? "max-w-full overflow-x-auto" : "hidden max-w-full overflow-x-auto lg:block"} role="region" aria-label={t('month')} tabIndex={0} data-testid="calendar-full-month-view"><div className="min-w-[1400px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
           <section className={mobileFullCalendar ? "hidden" : "min-w-0 lg:hidden"} data-testid="calendar-compact-month-view">
             <MonthView compact complete={windowComplete} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onDayClick={setSelectedDay} />
           </section>

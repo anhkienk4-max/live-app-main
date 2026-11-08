@@ -118,14 +118,14 @@ export function MonthView({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-lg border bg-border">
+      <div className="grid grid-cols-7 gap-px rounded-b-lg border bg-border">
         {calendarDays.map(day => {
           const dayShifts = shiftsForCalendarDate(shifts, day)
           const currentMonth = isSameMonth(day, monthStart)
           const currentDay = isToday(day)
           return (
             <div
-              className={`min-h-36 min-w-0 overflow-hidden bg-background p-1.5 sm:min-h-40 sm:p-2 lg:min-h-44 ${
+              className={`min-h-36 min-w-0 bg-background p-1.5 sm:min-h-40 sm:p-2 lg:min-h-44 ${
                 currentMonth ? '' : 'bg-muted/40 text-muted-foreground'
               } ${currentDay ? 'ring-2 ring-inset ring-primary' : ''}`}
               data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
@@ -150,21 +150,19 @@ export function MonthView({
               <div className="min-w-0 space-y-1">
                 {dayShifts.slice(0, MONTH_VISIBLE_EVENT_LIMITS.large).map((shift) => {
                   const crossesMidnight = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)?.crossesMidnight
-                  const title = shift.title || `${brandName(shift.brand_id)} live`
-                  const displayTitle = shift.studio ? `${title} • ${shift.studio}` : title
                   return (
                       <ShiftCard
                         key={shift.id}
                         shift={shift}
-                        variant="compact"
-                        className="flex min-w-0 h-7 bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border"
+                        variant="month"
+                        className="shadow-sm hover:shadow"
                         style={{ borderLeftColor: brandColor(shift.brand_id) }}
                         onClick={event => {
                           event.stopPropagation()
                           onShiftClick?.(shift)
                         }}
                         context={context}
-                        title={shift.start_time + (crossesMidnight ? ' +1' : '') + ' - ' + displayTitle + ' - ' + shift.status}
+                        title={`${shift.start_time}${crossesMidnight ? ' +1' : ''} - ${brandName(shift.brand_id)} - ${shift.title || ''} - ${platforms.find(platform => platform.id === shift.platform_id)?.name || ''} - ${shift.status}`}
                         data-testid={'calendar-event-' + shift.id}
                       />
                     )

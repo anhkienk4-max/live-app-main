@@ -15,7 +15,7 @@ import { CalendarFilterContext } from '@/lib/utils/calendarFilters'
 export interface ShiftCardProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   shift: Shift
   users?: User[]
-  variant?: 'compact' | 'standard' | 'expanded' | 'embedded'
+  variant?: 'compact' | 'month' | 'standard' | 'expanded' | 'embedded'
   context?: CalendarFilterContext
   isToday?: boolean
   showDate?: boolean
@@ -36,6 +36,36 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
     const brandName = brands.find(b => b.id === shift.brand_id)?.name ?? ''
     const platformName = platforms.find(p => p.id === shift.platform_id)?.name ?? ''
     const displayTitle = shift.title || (brandName + ' · ' + platformName)
+
+    if (variant === 'month') {
+      const missingStaff = getShiftRoleCapacities(
+        shift, registrations.filter(registration => registration.shift_id === shift.id),
+      ).some(capacity => capacity.remaining > 0)
+      return (
+        <button
+          ref={ref}
+          className={cn(
+            'flex w-full min-w-0 flex-col items-start gap-0.5 rounded-sm border border-l-[3px] bg-background px-1.5 py-1 text-left text-[11px] leading-tight transition-colors',
+            'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            selected && 'bg-primary/10',
+            className,
+          )}
+          {...props}
+        >
+          <span data-calendar-field="time" className="block w-full font-semibold tabular-nums text-foreground">
+            {formatShiftTimeRange(shift)}
+          </span>
+          {shift.title && <span data-calendar-field="title" className="block w-full break-words font-medium text-foreground">{shift.title}</span>}
+          {brandName && <span data-calendar-field="brand" className="block w-full break-words text-foreground">{brandName}</span>}
+          {platformName && <span data-calendar-field="platform" className="block w-full break-words text-muted-foreground">{platformName}</span>}
+          {shift.studio && <span data-calendar-field="studio" className="block w-full break-words text-muted-foreground">{shift.studio}</span>}
+          <span className="flex w-full flex-wrap items-center gap-1">
+            {missingStaff && <span role="img" aria-label={t('needsStaffing')} title={t('needsStaffing')} className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-amber-100 text-[10px] font-bold text-amber-900 dark:bg-amber-900/30 dark:text-amber-300">!</span>}
+            <span data-calendar-field="status" className="inline-flex max-w-full"><ShiftStatusBadge status={shift.status} className="h-auto max-w-full whitespace-normal px-1 py-0.5 text-micro" /></span>
+          </span>
+        </button>
+      )
+    }
 
     if (variant === 'compact') {
       const missingStaff = getShiftRoleCapacities(
