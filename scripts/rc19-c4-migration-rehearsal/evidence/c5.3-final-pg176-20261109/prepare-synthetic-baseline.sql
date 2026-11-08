@@ -244,13 +244,13 @@ BEGIN
          ('objects','report-images-authenticated-read','SELECT',ARRAY['authenticated']::name[],'1adb38ae8ebbbfe869275ca4a12e45d6','d41d8cd98f00b204e9800998ecf8427e'),
          ('objects','report-images-delete','DELETE',ARRAY['authenticated']::name[],'9754b5515667ad77ad1fd7e9e382caae','d41d8cd98f00b204e9800998ecf8427e'),
          ('objects','report-images-upload','INSERT',ARRAY['authenticated']::name[],'d41d8cd98f00b204e9800998ecf8427e','c6459c3eac5707c8df4c60c3439d0ec7')
-       ) AS expected(tablename,policyname,cmd,roles,qual_md5,with_check_md5)
+       ) AS policy_expected(tablename,policyname,cmd,roles,qual_md5,with_check_md5)
        WHERE NOT EXISTS (
          SELECT 1 FROM pg_policies p
-         WHERE p.schemaname='storage' AND p.tablename=expected.tablename
-           AND p.policyname=expected.policyname AND p.cmd=expected.cmd AND p.roles=expected.roles
-           AND md5(coalesce(p.qual,''))=expected.qual_md5
-           AND md5(coalesce(p.with_check,''))=expected.with_check_md5
+         WHERE p.schemaname='storage' AND p.tablename=policy_expected.tablename
+           AND p.policyname=policy_expected.policyname AND p.cmd=policy_expected.cmd AND p.roles=policy_expected.roles
+           AND md5(coalesce(p.qual,''))=policy_expected.qual_md5
+           AND md5(coalesce(p.with_check,''))=policy_expected.with_check_md5
        )
      ) THEN
     RAISE EXCEPTION 'C5_3_STORAGE_POLICY_DEFINITION_MISMATCH';
