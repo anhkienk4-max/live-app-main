@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "2216901160bf47fd5988050e2007b8c588f7f0cf",
+    "head": "d0411dde744e8cb77e1ad29ea0641a0ec1c92ac2",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -121,11 +121,11 @@
         "app": 94,
         "components": 190,
         "lib": 287,
-        "scripts": 75,
-        "supabase": 139,
-        "tests": 359
+        "scripts": 76,
+        "supabase": 140,
+        "tests": 360
       },
-      "total": 1144
+      "total": 1147
     },
     "tests": {
       "files": [
@@ -337,6 +337,7 @@
         "tests/rc19-shift-ops-hotfix.test.ts",
         "tests/rc19-staffing-availability-sql.test.ts",
         "tests/rc19-staffing-candidate-contract.test.ts",
+        "tests/rc19-staffing-candidate-scope.test.ts",
         "tests/rc19-staffing-candidates.test.ts",
         "tests/rc19-staffing-failclosed.test.ts",
         "tests/rc19-staffing-refresh-contract.test.ts",
@@ -419,7 +420,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 289
+      "count": 290
     },
     "migrations": {
       "files": [
@@ -533,9 +534,10 @@
         "supabase/migrations/20261104174527_rc19_c3_report_artifact_deletion.sql",
         "supabase/migrations/20261105120000_rc19_c3_scoped_report_export.sql",
         "supabase/migrations/20261107000000_rc19_shift_operational_notes.sql",
-        "supabase/migrations/20261107120000_rc19_open_shifts_server_selection.sql"
+        "supabase/migrations/20261107120000_rc19_open_shifts_server_selection.sql",
+        "supabase/migrations/20261108135226_rc19_staffing_candidate_brand_scope.sql"
       ],
-      "count": 111
+      "count": 112
     }
   },
   "verification": {
@@ -549,5 +551,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-08T17:47:00+07:00"
+  "synced_at": "2026-11-08T21:17:02+07:00"
 }
