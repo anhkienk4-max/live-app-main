@@ -1,0 +1,97 @@
+{
+  "captured_at_utc": "2026-11-08T18:13:46Z",
+  "source": "Read-only Supabase SQL query against the Production project; SELECT only",
+  "project_ref": "egdjnpmoasarrttvhgds",
+  "query_scope": "pg_namespace owner and expanded schema ACL for private, public, storage",
+  "schemas": [
+    {
+      "name": "private",
+      "owner": "postgres",
+      "acl": [
+        "postgres:CREATE:grantable=false",
+        "postgres:USAGE:grantable=false",
+        "authenticated:USAGE:grantable=false"
+      ]
+    },
+    {
+      "name": "public",
+      "owner": "pg_database_owner",
+      "acl": [
+        "PUBLIC:USAGE:grantable=false",
+        "pg_database_owner:CREATE:grantable=false",
+        "pg_database_owner:USAGE:grantable=false",
+        "postgres:USAGE:grantable=false",
+        "anon:USAGE:grantable=false",
+        "authenticated:USAGE:grantable=false",
+        "service_role:USAGE:grantable=false",
+        "supabase_auth_admin:USAGE:grantable=false"
+      ]
+    },
+    {
+      "name": "storage",
+      "owner": "supabase_admin",
+      "acl": [
+        "supabase_admin:CREATE:grantable=false",
+        "supabase_admin:USAGE:grantable=false",
+        "postgres:USAGE:grantable=true",
+        "anon:USAGE:grantable=false",
+        "authenticated:USAGE:grantable=false",
+        "service_role:USAGE:grantable=false",
+        "supabase_storage_admin:CREATE:grantable=true",
+        "supabase_storage_admin:USAGE:grantable=true",
+        "dashboard_user:CREATE:grantable=false",
+        "dashboard_user:USAGE:grantable=false"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "name": "storage.buckets",
+      "owner": "supabase_storage_admin",
+      "api_role_acl": [
+        "anon:DELETE:grantable=false",
+        "anon:INSERT:grantable=false",
+        "anon:SELECT:grantable=false",
+        "anon:UPDATE:grantable=false",
+        "authenticated:DELETE:grantable=false",
+        "authenticated:INSERT:grantable=false",
+        "authenticated:SELECT:grantable=false",
+        "authenticated:UPDATE:grantable=false",
+        "service_role:DELETE:grantable=false",
+        "service_role:INSERT:grantable=false",
+        "service_role:MAINTAIN:grantable=false",
+        "service_role:REFERENCES:grantable=false",
+        "service_role:SELECT:grantable=false",
+        "service_role:TRIGGER:grantable=false",
+        "service_role:TRUNCATE:grantable=false",
+        "service_role:UPDATE:grantable=false"
+      ]
+    },
+    {
+      "name": "storage.objects",
+      "owner": "supabase_storage_admin",
+      "api_role_acl": [
+        "anon:DELETE:grantable=false",
+        "anon:INSERT:grantable=false",
+        "anon:SELECT:grantable=false",
+        "anon:UPDATE:grantable=false",
+        "authenticated:DELETE:grantable=false",
+        "authenticated:INSERT:grantable=false",
+        "authenticated:SELECT:grantable=false",
+        "authenticated:UPDATE:grantable=false",
+        "service_role:DELETE:grantable=false",
+        "service_role:INSERT:grantable=false",
+        "service_role:MAINTAIN:grantable=false",
+        "service_role:REFERENCES:grantable=false",
+        "service_role:SELECT:grantable=false",
+        "service_role:TRIGGER:grantable=false",
+        "service_role:TRUNCATE:grantable=false",
+        "service_role:UPDATE:grantable=false"
+      ]
+    }
+  ],
+  "limits": [
+    "No user or business table data was selected.",
+    "The isolated PG17.6 harness has anon, authenticated, service_role, postgres, pg_database_owner, and supabase_auth_admin roles, but lacks supabase_admin, supabase_storage_admin, and dashboard_user; Storage schema/table ownership and those infrastructure ACL entries are not reproduced there. API-role ACLs are captured for comparison."
+  ]
+}

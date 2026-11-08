@@ -13,14 +13,15 @@
     "snapshot_source": "Sanitized PostgreSQL schema-only baseline cloned from the prior replay of the 89-receipt Production manifest; the new disposable clone has no historical receipt rows.",
     "snapshot_limitations": [
       "pg_dump --no-privileges omitted table/function ACLs; C2 and application API table grants are restored from the read-only Production catalog snapshot (74 table-grant rows across the C2 and Report/Shift/Storage-route tables).",
-      "Supabase Storage API grants omitted by the schema-only dump are restored from the repository's standard prerequisite fixture for disposable anon/authenticated role assertions; this is not a live Production ACL attestation.",
-      "The public schema USAGE grant required by API roles is restored in the disposable clone only; the schema-only dump does not preserve its ACL.",
+      "Schema and Storage relation ACLs were captured separately from Production on 2026-11-08; the disposable clone restores the ACLs for the anon, authenticated, and service_role test actors.",
+      "Production Storage owners and internal grants for supabase_admin, supabase_storage_admin, and dashboard_user are not reproduced because those roles are absent from the isolated PostgreSQL cluster.",
+      "The schema-only dump omits schema ACLs; private, public, and storage schema permissions for API actors are restored from the read-only ACL capture, with the historical P1B migration independently confirming private USAGE for authenticated.",
       "The disposable baseline installs the server-packaged pgcrypto 1.3 extension when the schema-only dump omits extension receipts.",
       "The final disposable clone does not replay or insert synthetic receipts for the original 89 migrations.",
       "pg_cron worker is not simulated; the 20 forward migration files do not reference pg_cron.",
       "The schema-only clone omits business configuration rows; one synthetic system_settings row is inserted for role and shift assertions. Only synthetic Storage object metadata is present; no provider bytes are stored."
     ],
-    "disposable_database": "rc19_c5_3_final4_20261109",
+    "disposable_database": "rc19_c5_3_final5_20261109",
     "disposable_marker": "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY",
     "schema_source_database": "rc19_c4_schema_base_20261107_pg176",
     "postgres_server": "17.6 (Ubuntu 17.6-2.pgdg24.04+1)"
@@ -31,6 +32,13 @@
     "captured_at_utc": "2026-11-06T08:40:48.029Z",
     "table_grant_rows": 74,
     "restored_in_disposable_baseline": true
+  },
+  "schema_acl_snapshot": {
+    "file": "scripts/rc19-c4-migration-rehearsal/evidence/production-schema-acl-snapshot-20261108.json",
+    "captured_at_utc": "2026-11-08T18:13:46Z",
+    "contains_schema_and_storage_relation_acl": true,
+    "api_role_grants_restored_in_disposable_baseline": true,
+    "infrastructure_role_ownership_reproduced": false
   },
   "migration_count": 20,
   "entries": [

@@ -5,7 +5,7 @@ DECLARE marker text;
 BEGIN
   SELECT shobj_description(oid, 'pg_database') INTO marker
     FROM pg_database WHERE datname = current_database();
-  IF current_database() <> 'rc19_c5_3_final4_20261109'
+  IF current_database() <> 'rc19_c5_3_final5_20261109'
      OR marker IS DISTINCT FROM 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY' THEN
     RAISE EXCEPTION 'REFUSED_NON_DISPOSABLE_C5_3_BASELINE:%', current_database();
   END IF;
@@ -30,10 +30,17 @@ $guard$;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 -- Restore Supabase Storage API grants omitted by the schema-only --no-privileges dump.
+ALTER SCHEMA public OWNER TO pg_database_owner;
+REVOKE ALL ON SCHEMA public FROM PUBLIC, anon, authenticated, service_role, supabase_auth_admin, postgres;
+REVOKE ALL ON SCHEMA public FROM pg_database_owner;
+GRANT USAGE ON SCHEMA public TO PUBLIC, anon, authenticated, service_role, supabase_auth_admin, postgres;
+GRANT CREATE, USAGE ON SCHEMA public TO pg_database_owner;
+REVOKE ALL ON SCHEMA storage FROM PUBLIC, anon, authenticated, service_role;
 GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role;
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO anon, authenticated, service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON storage.buckets TO service_role;
+REVOKE ALL ON TABLE storage.objects, storage.buckets FROM PUBLIC, anon, authenticated, service_role;
+GRANT DELETE, INSERT, SELECT, UPDATE ON storage.objects, storage.buckets TO anon, authenticated;
+GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
+  ON storage.objects, storage.buckets TO service_role;
 
 INSERT INTO public.system_settings DEFAULT VALUES;
 INSERT INTO storage.buckets (id, name, public)
@@ -75,6 +82,80 @@ BEGIN
   END IF;
 END
 $verify_settings$;
+
+DO $verify_schema_acl$
+DECLARE actual text[]; storage_api_acl text[];
+BEGIN
+  IF (SELECT nspowner FROM pg_namespace WHERE nspname='public') <> 'pg_database_owner'::regrole THEN
+    RAISE EXCEPTION 'C5_3_PUBLIC_SCHEMA_OWNER_MISMATCH';
+  END IF;
+  SELECT coalesce(array_agg(
+           (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END || ':' ||
+             a.privilege_type || ':grantable=' || a.is_grantable) ORDER BY
+             (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END || ':' ||
+             a.privilege_type || ':grantable=' || a.is_grantable) COLLATE "C"), ARRAY[]::text[])
+    INTO actual
+    FROM pg_namespace n
+    CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
+   WHERE n.nspname='public';
+  IF actual IS DISTINCT FROM ARRAY[
+    'PUBLIC:USAGE:grantable=false',
+    'anon:USAGE:grantable=false',
+    'authenticated:USAGE:grantable=false',
+    'pg_database_owner:CREATE:grantable=false',
+    'pg_database_owner:USAGE:grantable=false',
+    'postgres:USAGE:grantable=false',
+    'service_role:USAGE:grantable=false',
+    'supabase_auth_admin:USAGE:grantable=false'
+  ]::text[] THEN
+    RAISE EXCEPTION 'C5_3_PUBLIC_SCHEMA_ACL_MISMATCH:%', actual;
+  END IF;
+  SELECT coalesce(array_agg(
+           (a.grantee::regrole::text || ':' || a.privilege_type || ':grantable=' || a.is_grantable)
+           ORDER BY (a.grantee::regrole::text || ':' || a.privilege_type || ':grantable=' || a.is_grantable) COLLATE "C"), ARRAY[]::text[])
+    INTO storage_api_acl
+    FROM pg_namespace n
+    CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
+   WHERE n.nspname='storage' AND a.grantee IN ('anon'::regrole,'authenticated'::regrole,'service_role'::regrole);
+  IF storage_api_acl IS DISTINCT FROM ARRAY[
+    'anon:USAGE:grantable=false',
+    'authenticated:USAGE:grantable=false',
+    'service_role:USAGE:grantable=false'
+  ]::text[] OR EXISTS (
+    SELECT 1 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
+     WHERE n.nspname='storage' AND a.grantee=0
+  ) THEN
+    RAISE EXCEPTION 'C5_3_STORAGE_SCHEMA_API_ACL_MISMATCH:%', storage_api_acl;
+  END IF;
+END
+$verify_schema_acl$;
+
+DO $verify_storage_acl$
+DECLARE expected record; actual text[]; has_grant_option boolean;
+BEGIN
+  FOR expected IN
+    SELECT * FROM (VALUES
+      ('storage.objects','anon',ARRAY['DELETE','INSERT','SELECT','UPDATE']::text[]),
+      ('storage.objects','authenticated',ARRAY['DELETE','INSERT','SELECT','UPDATE']::text[]),
+      ('storage.objects','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]),
+      ('storage.buckets','anon',ARRAY['DELETE','INSERT','SELECT','UPDATE']::text[]),
+      ('storage.buckets','authenticated',ARRAY['DELETE','INSERT','SELECT','UPDATE']::text[]),
+      ('storage.buckets','service_role',ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[])
+    ) AS grants(table_name, role_name, expected_privileges)
+  LOOP
+    SELECT coalesce(array_agg(a.privilege_type ORDER BY a.privilege_type), ARRAY[]::text[]),
+           coalesce(bool_or(a.is_grantable), false)
+      INTO actual, has_grant_option
+      FROM pg_class c
+      CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
+     WHERE c.oid = to_regclass(expected.table_name)
+       AND a.grantee = expected.role_name::regrole;
+    IF actual IS DISTINCT FROM expected.expected_privileges OR has_grant_option THEN
+      RAISE EXCEPTION 'C5_3_STORAGE_API_ACL_MISMATCH:%:%:%', expected.table_name, expected.role_name, actual;
+    END IF;
+  END LOOP;
+END
+$verify_storage_acl$;
 
 BEGIN;
 SET LOCAL ROLE anon;

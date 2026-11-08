@@ -6,7 +6,7 @@ DECLARE marker text;
 BEGIN
   SELECT shobj_description(oid, 'pg_database') INTO marker
     FROM pg_database WHERE datname = current_database();
-  IF current_database() <> 'rc19_c5_3_final4_20261109'
+  IF current_database() <> 'rc19_c5_3_final5_20261109'
      OR marker IS DISTINCT FROM 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY'
      OR current_user <> 'postgres' THEN
     RAISE EXCEPTION 'REFUSED_NON_DISPOSABLE_C5_3_GRANT_TARGET:%', current_database();
@@ -14,7 +14,12 @@ BEGIN
 END
 $guard$;
 
+-- private-schema ACL matches the read-only Production capture and historical P1B grant.
+REVOKE ALL ON SCHEMA private FROM PUBLIC, anon;
+GRANT USAGE ON SCHEMA private TO authenticated;
+
 -- Exact non-C2 table grants grouped from production-catalog-snapshot.json (2026-11-06).
+
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
   ON TABLE public.operational_storage_routes TO service_role;
 GRANT SELECT ON TABLE public.report_images, public.report_revisions, public.reports, public.shifts TO authenticated;
@@ -23,8 +28,26 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
 GRANT INSERT, REFERENCES, SELECT, TRIGGER ON TABLE public.report_revisions TO service_role;
 
 DO $verify$
-DECLARE expected record; actual text[]; has_grant_option boolean;
+DECLARE expected record; actual text[]; has_grant_option boolean; private_acl text[];
 BEGIN
+  SELECT coalesce(array_agg(
+           (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END || ':' ||
+             a.privilege_type || ':grantable=' || a.is_grantable) ORDER BY
+             (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END || ':' ||
+             a.privilege_type || ':grantable=' || a.is_grantable) COLLATE "C"), ARRAY[]::text[])
+    INTO private_acl
+    FROM pg_namespace n
+    CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
+   WHERE n.nspname='private';
+  IF (SELECT nspowner FROM pg_namespace WHERE nspname='private') <> 'postgres'::regrole
+     OR private_acl IS DISTINCT FROM ARRAY[
+       'authenticated:USAGE:grantable=false',
+       'postgres:CREATE:grantable=false',
+       'postgres:USAGE:grantable=false'
+     ]::text[] THEN
+    RAISE EXCEPTION 'C5_3_PRIVATE_SCHEMA_BASELINE_GRANT_MISMATCH';
+  END IF;
+
   FOR expected IN
     SELECT * FROM (VALUES
       ('public.operational_storage_routes','authenticated',ARRAY[]::text[]),

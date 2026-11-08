@@ -1,0 +1,10 @@
+This run is NOT a complete rehearsal.
+
+Source SHA: c92c4226afc25dfb561a0f0c61945cdf6fd3a217
+PostgreSQL: 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+Database: rc19_c5_3_final4_20261109
+Result: all 20 effective migration files and receipts passed; role setup passed through synthetic Leader grants and note creation, then failed on a direct helper call.
+Failure: `permission denied for schema private` for authenticated when invoking `private.filtered_shift_ids('open', ...)`.
+Evidence: the baseline `--no-privileges` clone lacked the `GRANT USAGE ON SCHEMA private TO authenticated` established by `20260811110219_p1b_foundation.sql`; the direct source migration also revokes it from PUBLIC and anon. The production catalog snapshot contains table grants, not schema ACLs.
+
+Classification: disposable baseline ACL restoration gap. A later SELECT-only Production ACL query confirmed the exact private schema owner and grants match the P1B contract; see `production-schema-acl-snapshot-20261108.json`. The next clone restores the captured API-role grants and explicitly checks anon denial. Production Storage infrastructure-role ownership remains unreproduced in the isolated cluster.
