@@ -75,9 +75,9 @@ VALUES
   ('c53-report-c','c53-report-shift-c','draft','c4-rehearsal-admin',false,300);
 INSERT INTO public.report_revisions (id,report_id,version,status,event,created_by,metrics)
 VALUES
-  ('c53-revision-a','c53-report-a',1,'draft','created','c4-rehearsal-member','{"synthetic":true}'::jsonb),
-  ('c53-revision-b','c53-report-b',1,'draft','created','c4-rehearsal-admin','{"synthetic":true}'::jsonb),
-  ('c53-revision-c','c53-report-c',1,'draft','created','c4-rehearsal-admin','{"synthetic":true}'::jsonb);
+  ('c53-revision-a','c53-report-a',1,'draft','create','c4-rehearsal-member','{"synthetic":true}'::jsonb),
+  ('c53-revision-b','c53-report-b',1,'draft','create','c4-rehearsal-admin','{"synthetic":true}'::jsonb),
+  ('c53-revision-c','c53-report-c',1,'draft','create','c4-rehearsal-admin','{"synthetic":true}'::jsonb);
 INSERT INTO public.report_images (id,report_id,image_url,storage_path,original_name,mime_type,size_bytes,image_type,uploaded_by)
 VALUES
   ('c53-image-a','c53-report-a','https://synthetic.invalid/c53-a.jpg','c53/report-a/a.jpg','a.jpg','image/jpeg',123,'dashboard','c4-rehearsal-admin'),

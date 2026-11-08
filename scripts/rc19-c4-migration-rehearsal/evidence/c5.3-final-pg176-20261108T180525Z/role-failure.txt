@@ -1,0 +1,10 @@
+This run is NOT a complete rehearsal.
+
+Source SHA: 5d5987f50bd8066c0df15195494280cc5bb54cc0
+PostgreSQL: 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+Database: rc19_c5_3_final3_20261109
+Result: all 20 effective migration files and receipts passed; role fixture reached report-revision seeding and failed on the fixture event value `created`.
+Failure: `report_revisions_event_check` allows `create`, `save`, `ocr_run`, `ocr_rerun`, `confirm`, `reopen`, `upload_image`, `remove_image`, or `archive`; it does not allow `created`.
+Evidence: constraint definition was read directly from PostgreSQL 17.6; `role-brand-shift-assertions.log` and migration `progress.tsv` are in this directory.
+
+Classification: synthetic fixture contract mismatch, not a C4 migration failure. The fixture now uses the schema-defined `create` event and the next rehearsal uses a fresh disposable clone.
