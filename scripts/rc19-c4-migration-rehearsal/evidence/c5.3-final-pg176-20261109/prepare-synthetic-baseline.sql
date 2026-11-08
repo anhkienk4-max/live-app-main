@@ -1,5 +1,6 @@
 \set ON_ERROR_STOP on
 SET ROLE postgres;
+BEGIN;
 DO $guard$
 DECLARE marker text;
 BEGIN
@@ -61,6 +62,8 @@ ALTER TABLE storage.buckets NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE storage.objects NO FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE storage.objects, storage.buckets FROM PUBLIC, anon, authenticated, service_role;
+GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
+  ON TABLE storage.objects, storage.buckets TO supabase_storage_admin WITH GRANT OPTION;
 GRANT DELETE, INSERT, SELECT, UPDATE ON storage.objects, storage.buckets TO anon, authenticated;
 GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
   ON storage.objects, storage.buckets TO service_role;
@@ -255,7 +258,7 @@ BEGIN
 END
 $verify_storage_acl$;
 
-BEGIN;
+SAVEPOINT anon_public_read;
 SET LOCAL ROLE anon;
 DO $public_read$
 BEGIN
@@ -281,7 +284,10 @@ BEGIN
   END IF;
 END
 $anon_write_denied$;
-ROLLBACK;
+ROLLBACK TO SAVEPOINT anon_public_read;
+RELEASE SAVEPOINT anon_public_read;
+SET LOCAL ROLE postgres;
+COMMIT;
 
 SELECT current_database() AS database_name,
        shobj_description(oid, 'pg_database') AS marker,
