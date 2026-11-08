@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "a7226b96953774d2964f3b8ceec3edee258a0328",
+    "head": "de58a800265c1e6267937f8913de25f926a11cf0",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -119,13 +119,13 @@
     "source_files": {
       "roots": {
         "app": 94,
-        "components": 188,
-        "lib": 285,
-        "scripts": 35,
-        "supabase": 137,
-        "tests": 351
+        "components": 190,
+        "lib": 287,
+        "scripts": 75,
+        "supabase": 139,
+        "tests": 359
       },
-      "total": 1090
+      "total": 1144
     },
     "tests": {
       "files": [
@@ -301,8 +301,10 @@
         "tests/rc19-batch05a4-storage-runtime-migration.test.ts",
         "tests/rc19-batch05a41-sequential-migrations.test.ts",
         "tests/rc19-c3-mutation-authorization.test.ts",
+        "tests/rc19-c4.4-rbac-behavior.test.ts",
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
+        "tests/rc19-destination-integrity.test.ts",
         "tests/rc19-dynamic-rbac-server-guard.test.ts",
         "tests/rc19-effective-permission.test.ts",
         "tests/rc19-filter01a-shifts.test.ts",
@@ -310,7 +312,11 @@
         "tests/rc19-g3-import-bulk-export-registration.test.ts",
         "tests/rc19-g4-calendar-staffing-swap.test.ts",
         "tests/rc19-g5-final-ui-completion.test.ts",
+        "tests/rc19-mobile-attendance-entry.test.ts",
+        "tests/rc19-mobile-month-view-parity.test.ts",
         "tests/rc19-my-payslip.test.ts",
+        "tests/rc19-navigation-parity-rbac.test.ts",
+        "tests/rc19-open-shifts-notes-sql.test.ts",
         "tests/rc19-owner23-segmented-staffing.test.ts",
         "tests/rc19-postgres17-concurrency.integration.test.ts",
         "tests/rc19-postgres17-fixture-restore.integration.test.ts",
@@ -327,6 +333,8 @@
         "tests/rc19-reports-photo-groups-164.test.ts",
         "tests/rc19-schedule-source-storage-service.test.ts",
         "tests/rc19-self-attendance-contract.test.ts",
+        "tests/rc19-shift-note-rpc-client.test.ts",
+        "tests/rc19-shift-ops-hotfix.test.ts",
         "tests/rc19-staffing-availability-sql.test.ts",
         "tests/rc19-staffing-candidate-contract.test.ts",
         "tests/rc19-staffing-candidates.test.ts",
@@ -411,7 +419,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 281
+      "count": 289
     },
     "migrations": {
       "files": [
@@ -523,9 +531,11 @@
         "supabase/migrations/20261104113000_rc19_c3_staffing_permission_guard.sql",
         "supabase/migrations/20261104120000_rc19_c3_leader_brand_scope_reports.sql",
         "supabase/migrations/20261104174527_rc19_c3_report_artifact_deletion.sql",
-        "supabase/migrations/20261105120000_rc19_c3_scoped_report_export.sql"
+        "supabase/migrations/20261105120000_rc19_c3_scoped_report_export.sql",
+        "supabase/migrations/20261107000000_rc19_shift_operational_notes.sql",
+        "supabase/migrations/20261107120000_rc19_open_shifts_server_selection.sql"
       ],
-      "count": 109
+      "count": 111
     }
   },
   "verification": {
@@ -539,5 +549,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-05T23:51:03+07:00"
+  "synced_at": "2026-11-08T17:36:06+07:00"
 }
