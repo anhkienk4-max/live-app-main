@@ -1,7 +1,7 @@
 -- Disposable PG17.6 clone of the sanitized 89-receipt schema-only baseline.
 DO $guard$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_database WHERE datname = 'rc19_c5_3_final8_20261109') THEN
+  IF EXISTS (SELECT 1 FROM pg_database WHERE datname = 'rc19_c5_3_final9_20261109') THEN
     RAISE EXCEPTION 'REFUSED_EXISTING_C5_3_TARGET_DATABASE';
   END IF;
   IF NOT EXISTS (
@@ -25,8 +25,8 @@ BEGIN
 END
 $guard$;
 
-CREATE DATABASE rc19_c5_3_final8_20261109
+CREATE DATABASE rc19_c5_3_final9_20261109
   WITH TEMPLATE = rc19_c4_schema_base_20261107_pg176
        OWNER = postgres;
-COMMENT ON DATABASE rc19_c5_3_final8_20261109
+COMMENT ON DATABASE rc19_c5_3_final9_20261109
   IS 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY';

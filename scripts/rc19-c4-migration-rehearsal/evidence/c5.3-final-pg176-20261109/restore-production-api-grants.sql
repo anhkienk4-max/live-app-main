@@ -6,7 +6,7 @@ DECLARE marker text;
 BEGIN
   SELECT shobj_description(oid, 'pg_database') INTO marker
     FROM pg_database WHERE datname = current_database();
-  IF current_database() <> 'rc19_c5_3_final8_20261109'
+  IF current_database() <> 'rc19_c5_3_final9_20261109'
      OR marker IS DISTINCT FROM 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY'
      OR current_user <> 'postgres' THEN
     RAISE EXCEPTION 'REFUSED_NON_DISPOSABLE_C5_3_GRANT_TARGET:%', current_database();
@@ -19,6 +19,15 @@ REVOKE ALL ON SCHEMA private FROM PUBLIC, anon;
 GRANT USAGE ON SCHEMA private TO authenticated;
 
 -- Exact API-role table grants from a Production-only catalog SELECT (2026-11-08).
+REVOKE ALL ON TABLE public.storage_resources, public.storage_resource_scopes,
+  public.storage_resource_user_grants, public.storage_resource_audit_events
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT INSERT, SELECT, UPDATE ON TABLE public.storage_resources,
+  public.storage_resource_scopes, public.storage_resource_user_grants TO authenticated;
+GRANT SELECT ON TABLE public.storage_resource_audit_events TO authenticated;
+GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
+  ON TABLE public.storage_resources, public.storage_resource_scopes,
+  public.storage_resource_user_grants, public.storage_resource_audit_events TO service_role;
 REVOKE ALL ON TABLE public.brands, public.business_users, public.campaigns,
   public.operational_storage_routes, public.platforms, public.report_images,
   public.report_revisions, public.reports, public.shift_registrations,
@@ -119,6 +128,17 @@ BEGIN
       AND a.grantee IN (0, 'anon'::regrole)
   ) THEN
     RAISE EXCEPTION 'C5_3_UNEXPECTED_PUBLIC_OR_ANON_BUSINESS_TABLE_GRANT';
+  END IF;
+
+  IF (SELECT relacl::text FROM pg_class WHERE oid='public.storage_resources'::regclass)
+       IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}'
+     OR (SELECT relacl::text FROM pg_class WHERE oid='public.storage_resource_scopes'::regclass)
+       IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}'
+     OR (SELECT relacl::text FROM pg_class WHERE oid='public.storage_resource_user_grants'::regclass)
+       IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}'
+     OR (SELECT relacl::text FROM pg_class WHERE oid='public.storage_resource_audit_events'::regclass)
+       IS DISTINCT FROM '{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}' THEN
+    RAISE EXCEPTION 'C5_3_PRODUCTION_SNAPSHOT_C2_RELATION_GRANTS_MISMATCH';
   END IF;
 
   FOR expected IN
