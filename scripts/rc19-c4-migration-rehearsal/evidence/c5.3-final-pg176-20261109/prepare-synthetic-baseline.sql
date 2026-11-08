@@ -1,12 +1,11 @@
 \set ON_ERROR_STOP on
 SET ROLE postgres;
-CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 DO $guard$
 DECLARE marker text;
 BEGIN
   SELECT shobj_description(oid, 'pg_database') INTO marker
     FROM pg_database WHERE datname = current_database();
-  IF current_database() <> 'rc19_c5_3_final_20261109'
+  IF current_database() <> 'rc19_c5_3_final2_20261109'
      OR marker IS DISTINCT FROM 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY' THEN
     RAISE EXCEPTION 'REFUSED_NON_DISPOSABLE_C5_3_BASELINE:%', current_database();
   END IF;
@@ -25,8 +24,11 @@ BEGIN
 END
 $guard$;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+
 -- Restore Supabase Storage API grants omitted by the schema-only --no-privileges dump.
 GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO anon, authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON storage.buckets TO service_role;
 
@@ -43,7 +45,10 @@ BEGIN
     RAISE EXCEPTION 'C5_3_ANON_STORAGE_READ_GRANT_MISSING';
   END IF;
   IF NOT has_table_privilege('authenticated', 'storage.objects', 'SELECT')
-     OR NOT has_table_privilege('service_role', 'storage.objects', 'SELECT') THEN
+     OR NOT has_table_privilege('service_role', 'storage.objects', 'SELECT')
+     OR NOT has_schema_privilege('anon', 'public', 'USAGE')
+     OR NOT has_schema_privilege('authenticated', 'public', 'USAGE')
+     OR NOT has_schema_privilege('service_role', 'public', 'USAGE') THEN
     RAISE EXCEPTION 'C5_3_STORAGE_API_GRANTS_MISSING';
   END IF;
 END

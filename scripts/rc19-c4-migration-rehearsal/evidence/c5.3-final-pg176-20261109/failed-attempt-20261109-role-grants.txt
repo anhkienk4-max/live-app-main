@@ -1,0 +1,10 @@
+This retained attempt is NOT a complete rehearsal.
+
+Source SHA: a0200b34a2f39b9bf50375a9512c8d27bb460fdb
+PostgreSQL: 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+Database: rc19_c5_3_final_20261109
+Result: all 20 effective migration files and receipts passed; the run stopped at the first authenticated C2 RLS assertion.
+Failure: `permission denied for schema public` while the synthetic authenticated role read `public.storage_resources`; the sanitized schema-only dump omitted public-schema USAGE grants.
+Evidence log: %TEMP%/rc19-c5.3-final-pg176-run-a0200b34.log.
+
+The database and full 20-migration evidence are preserved. The next attempt uses a fresh clone, restores captured Production application-table ACLs, and restores only omitted API-schema USAGE prerequisites in the disposable baseline. Its ACL fixture verifies exact direct privileges and grant-option state.
