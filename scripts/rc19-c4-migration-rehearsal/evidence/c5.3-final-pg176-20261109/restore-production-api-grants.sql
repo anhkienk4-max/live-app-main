@@ -6,7 +6,7 @@ DECLARE marker text;
 BEGIN
   SELECT shobj_description(oid, 'pg_database') INTO marker
     FROM pg_database WHERE datname = current_database();
-  IF current_database() <> 'rc19_c5_3_final6_20261109'
+  IF current_database() <> 'rc19_c5_3_final7_20261109'
      OR marker IS DISTINCT FROM 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY'
      OR current_user <> 'postgres' THEN
     RAISE EXCEPTION 'REFUSED_NON_DISPOSABLE_C5_3_GRANT_TARGET:%', current_database();
@@ -35,8 +35,23 @@ GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
   TO service_role;
 GRANT INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER ON TABLE public.report_revisions TO service_role;
 
+-- pg_dump --no-privileges omits function ACLs; restore the exact Production C2 grants.
+REVOKE ALL ON FUNCTION private.guard_storage_resource_scope(),
+  private.guard_storage_resource_attendance(), private.audit_storage_resource_change(),
+  private.guard_storage_resource_grant(), private.current_user_has_storage_resource_grant(text),
+  public.storage_resource_registry_create(jsonb,jsonb),
+  public.storage_resource_registry_set_grant(text,text,boolean)
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION private.guard_storage_resource_scope(),
+  private.guard_storage_resource_attendance(), private.audit_storage_resource_change(),
+  private.guard_storage_resource_grant() TO postgres;
+GRANT EXECUTE ON FUNCTION private.current_user_has_storage_resource_grant(text)
+  TO postgres, authenticated;
+GRANT EXECUTE ON FUNCTION public.storage_resource_registry_create(jsonb,jsonb),
+  public.storage_resource_registry_set_grant(text,text,boolean) TO postgres, authenticated, service_role;
+
 DO $verify$
-DECLARE expected record; actual text[]; has_grant_option boolean; private_acl text[];
+DECLARE expected record; actual text[]; actual_function_acl text; has_grant_option boolean; private_acl text[];
 BEGIN
   SELECT coalesce(array_agg(
            (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END || ':' ||
@@ -105,6 +120,25 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'C5_3_UNEXPECTED_PUBLIC_OR_ANON_BUSINESS_TABLE_GRANT';
   END IF;
+
+  FOR expected IN
+    SELECT * FROM (VALUES
+      ('private.guard_storage_resource_scope()','{postgres=X/postgres}'),
+      ('private.guard_storage_resource_attendance()','{postgres=X/postgres}'),
+      ('private.audit_storage_resource_change()','{postgres=X/postgres}'),
+      ('private.guard_storage_resource_grant()','{postgres=X/postgres}'),
+      ('private.current_user_has_storage_resource_grant(text)','{postgres=X/postgres,authenticated=X/postgres}'),
+      ('public.storage_resource_registry_create(jsonb,jsonb)','{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}'),
+      ('public.storage_resource_registry_set_grant(text,text,boolean)','{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}')
+    ) AS routines(signature, expected_acl)
+  LOOP
+    SELECT p.proacl::text INTO actual_function_acl
+      FROM pg_proc p WHERE p.oid=to_regprocedure(expected.signature);
+    IF actual_function_acl IS DISTINCT FROM expected.expected_acl THEN
+      RAISE EXCEPTION 'C5_3_PRODUCTION_C2_ROUTINE_ACL_MISMATCH:%:%',
+        expected.signature, coalesce(actual_function_acl,'default');
+    END IF;
+  END LOOP;
 END
 $verify$;
 COMMIT;

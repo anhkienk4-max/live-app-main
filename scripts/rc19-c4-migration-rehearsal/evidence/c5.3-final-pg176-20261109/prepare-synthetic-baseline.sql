@@ -5,7 +5,7 @@ DECLARE marker text;
 BEGIN
   SELECT shobj_description(oid, 'pg_database') INTO marker
     FROM pg_database WHERE datname = current_database();
-  IF current_database() <> 'rc19_c5_3_final6_20261109'
+  IF current_database() <> 'rc19_c5_3_final7_20261109'
      OR marker IS DISTINCT FROM 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY' THEN
     RAISE EXCEPTION 'REFUSED_NON_DISPOSABLE_C5_3_BASELINE:%', current_database();
   END IF;
@@ -15,6 +15,17 @@ BEGIN
   END IF;
   IF EXISTS (SELECT 1 FROM public.system_settings) THEN
     RAISE EXCEPTION 'REFUSED_SYNTHETIC_OPERATIONAL_SETTINGS_ALREADY_PRESENT';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='supabase_admin' AND rolsuper AND NOT rolcanlogin)
+     OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='supabase_storage_admin' AND NOT rolsuper AND NOT rolcanlogin)
+     OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='dashboard_user' AND NOT rolcanlogin)
+     OR (SELECT nspowner FROM pg_namespace WHERE nspname='storage') <> 'postgres'::regrole
+     OR EXISTS (
+       SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='storage' AND c.relname IN ('objects','buckets')
+         AND c.relowner <> 'postgres'::regrole
+     ) THEN
+    RAISE EXCEPTION 'REFUSED_UNEXPECTED_STORAGE_OWNER_BASELINE';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
@@ -35,8 +46,19 @@ REVOKE ALL ON SCHEMA public FROM PUBLIC, anon, authenticated, service_role, supa
 REVOKE ALL ON SCHEMA public FROM pg_database_owner;
 GRANT USAGE ON SCHEMA public TO PUBLIC, anon, authenticated, service_role, supabase_auth_admin, postgres;
 GRANT CREATE, USAGE ON SCHEMA public TO pg_database_owner;
-REVOKE ALL ON SCHEMA storage FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON SCHEMA storage FROM PUBLIC, anon, authenticated, service_role,
+  postgres, supabase_storage_admin, dashboard_user;
+ALTER SCHEMA storage OWNER TO supabase_admin;
+GRANT CREATE, USAGE ON SCHEMA storage TO supabase_storage_admin WITH GRANT OPTION;
+GRANT CREATE, USAGE ON SCHEMA storage TO dashboard_user;
+GRANT USAGE ON SCHEMA storage TO postgres WITH GRANT OPTION;
 GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role;
+ALTER TABLE storage.objects OWNER TO supabase_storage_admin;
+ALTER TABLE storage.buckets OWNER TO supabase_storage_admin;
+ALTER TABLE storage.buckets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storage.buckets NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storage.objects NO FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE storage.objects, storage.buckets FROM PUBLIC, anon, authenticated, service_role;
 GRANT DELETE, INSERT, SELECT, UPDATE ON storage.objects, storage.buckets TO anon, authenticated;
 GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
@@ -127,12 +149,62 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'C5_3_STORAGE_SCHEMA_API_ACL_MISMATCH:%', storage_api_acl;
   END IF;
+  SELECT coalesce(array_agg(
+           (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END || ':' ||
+             a.privilege_type || ':grantable=' || a.is_grantable) ORDER BY
+             (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END || ':' ||
+             a.privilege_type || ':grantable=' || a.is_grantable) COLLATE "C"), ARRAY[]::text[])
+    INTO actual
+    FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
+   WHERE n.nspname='storage';
+  IF (SELECT nspowner FROM pg_namespace WHERE nspname='storage') <> 'supabase_admin'::regrole
+     OR actual IS DISTINCT FROM ARRAY[
+       'anon:USAGE:grantable=false',
+       'authenticated:USAGE:grantable=false',
+       'dashboard_user:CREATE:grantable=false',
+       'dashboard_user:USAGE:grantable=false',
+       'postgres:USAGE:grantable=true',
+       'service_role:USAGE:grantable=false',
+       'supabase_admin:CREATE:grantable=false',
+       'supabase_admin:USAGE:grantable=false',
+       'supabase_storage_admin:CREATE:grantable=true',
+       'supabase_storage_admin:USAGE:grantable=true'
+     ]::text[] THEN
+    RAISE EXCEPTION 'C5_3_STORAGE_SCHEMA_PRODUCTION_ACL_MISMATCH:%', actual;
+  END IF;
 END
 $verify_schema_acl$;
 
 DO $verify_storage_acl$
-DECLARE expected record; actual text[]; has_grant_option boolean;
+DECLARE expected record; actual text[]; has_grant_option boolean; owner_acl text[]; owner_grant_option boolean;
 BEGIN
+  IF (SELECT relowner::regrole::text FROM pg_class WHERE oid='storage.objects'::regclass) <> 'supabase_storage_admin'
+     OR (SELECT relowner::regrole::text FROM pg_class WHERE oid='storage.buckets'::regclass) <> 'supabase_storage_admin'
+     OR NOT (SELECT relrowsecurity FROM pg_class WHERE oid='storage.objects'::regclass)
+     OR NOT (SELECT relrowsecurity FROM pg_class WHERE oid='storage.buckets'::regclass)
+     OR (SELECT relforcerowsecurity FROM pg_class WHERE oid='storage.objects'::regclass)
+     OR (SELECT relforcerowsecurity FROM pg_class WHERE oid='storage.buckets'::regclass) THEN
+    RAISE EXCEPTION 'C5_3_STORAGE_RELATION_OWNER_OR_RLS_MISMATCH';
+  END IF;
+
+  FOR expected IN
+    SELECT * FROM (VALUES
+      ('storage.objects'), ('storage.buckets')
+    ) AS relations(table_name)
+  LOOP
+    SELECT coalesce(array_agg(a.privilege_type ORDER BY a.privilege_type), ARRAY[]::text[]),
+           coalesce(bool_and(a.is_grantable), false)
+      INTO owner_acl, owner_grant_option
+      FROM pg_class c
+      CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r',c.relowner))) a
+     WHERE c.oid=to_regclass(expected.table_name)
+       AND a.grantee='supabase_storage_admin'::regrole;
+    IF owner_acl IS DISTINCT FROM ARRAY['DELETE','INSERT','MAINTAIN','REFERENCES','SELECT','TRIGGER','TRUNCATE','UPDATE']::text[]
+       OR NOT owner_grant_option THEN
+      RAISE EXCEPTION 'C5_3_STORAGE_OWNER_ACL_MISMATCH:%:%', expected.table_name, owner_acl;
+    END IF;
+  END LOOP;
+
   FOR expected IN
     SELECT * FROM (VALUES
       ('storage.objects','anon',ARRAY['DELETE','INSERT','SELECT','UPDATE']::text[]),
@@ -154,6 +226,31 @@ BEGIN
       RAISE EXCEPTION 'C5_3_STORAGE_API_ACL_MISMATCH:%:%:%', expected.table_name, expected.role_name, actual;
     END IF;
   END LOOP;
+
+  IF (SELECT count(*) FROM pg_policies WHERE schemaname='storage' AND tablename IN ('objects','buckets')) <> 10
+     OR EXISTS (
+       SELECT 1 FROM (VALUES
+         ('objects','live dashboard image delete','DELETE',ARRAY['authenticated']::name[],'bdf831e200e32c8ba34f4a4dc5026609','d41d8cd98f00b204e9800998ecf8427e'),
+         ('objects','live dashboard image public read','SELECT',ARRAY['public']::name[],'d367915a79988cd2f3363c0e4772d6d5','d41d8cd98f00b204e9800998ecf8427e'),
+         ('objects','live dashboard image upload','INSERT',ARRAY['authenticated']::name[],'d41d8cd98f00b204e9800998ecf8427e','e0b6482e2175e1aedb89bf852f389103'),
+         ('objects','profile avatars delete own','DELETE',ARRAY['authenticated']::name[],'0caf0695e411ea9921b316a8845b646a','d41d8cd98f00b204e9800998ecf8427e'),
+         ('objects','profile avatars public read','SELECT',ARRAY['public']::name[],'ee45d0f75d1b107d3711a211bf6b7710','d41d8cd98f00b204e9800998ecf8427e'),
+         ('objects','profile avatars replace own','UPDATE',ARRAY['authenticated']::name[],'0caf0695e411ea9921b316a8845b646a','f8ac0c34364647b391a38496c4868727'),
+         ('objects','profile avatars upload own','INSERT',ARRAY['authenticated']::name[],'d41d8cd98f00b204e9800998ecf8427e','4246a7ba55dff9736b01d4e8ba9ca0de'),
+         ('objects','report-images-authenticated-read','SELECT',ARRAY['authenticated']::name[],'1adb38ae8ebbbfe869275ca4a12e45d6','d41d8cd98f00b204e9800998ecf8427e'),
+         ('objects','report-images-delete','DELETE',ARRAY['authenticated']::name[],'9754b5515667ad77ad1fd7e9e382caae','d41d8cd98f00b204e9800998ecf8427e'),
+         ('objects','report-images-upload','INSERT',ARRAY['authenticated']::name[],'d41d8cd98f00b204e9800998ecf8427e','c6459c3eac5707c8df4c60c3439d0ec7')
+       ) AS expected(tablename,policyname,cmd,roles,qual_md5,with_check_md5)
+       WHERE NOT EXISTS (
+         SELECT 1 FROM pg_policies p
+         WHERE p.schemaname='storage' AND p.tablename=expected.tablename
+           AND p.policyname=expected.policyname AND p.cmd=expected.cmd AND p.roles=expected.roles
+           AND md5(coalesce(p.qual,''))=expected.qual_md5
+           AND md5(coalesce(p.with_check,''))=expected.with_check_md5
+       )
+     ) THEN
+    RAISE EXCEPTION 'C5_3_STORAGE_POLICY_DEFINITION_MISMATCH';
+  END IF;
 END
 $verify_storage_acl$;
 

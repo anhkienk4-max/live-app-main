@@ -12,16 +12,16 @@
     "ledger_head": "20261101073742",
     "snapshot_source": "Sanitized PostgreSQL schema-only baseline cloned from the prior replay of the 89-receipt Production manifest; the new disposable clone has no historical receipt rows.",
     "snapshot_limitations": [
-      "pg_dump --no-privileges omitted table/function ACLs; current ACLs for all eleven public relations used by C5.3 assertions are restored from the 2026-11-08 read-only Production catalog query. C2 table ACLs remain restored from the 2026-11-06 snapshot and are checked separately.",
+      "pg_dump --no-privileges omitted relation and routine ACLs; exact ACLs for the eleven public relations and seven C2 routines are restored from the 2026-11-08 read-only Production catalog queries. C2 Storage relation ACLs remain restored from the earlier Production snapshot and are checked separately.",
       "Schema and Storage relation ACLs were captured separately from Production on 2026-11-08; the disposable clone restores the ACLs for the anon, authenticated, and service_role test actors.",
-      "Production Storage owners and internal grants for supabase_admin, supabase_storage_admin, and dashboard_user are not reproduced because those roles are absent from the isolated PostgreSQL cluster.",
+      "The disposable harness recreates the observed Storage core owners, RLS flags, policy hashes, and role membership. Infrastructure roles are NOLOGIN with no copied credentials; managed-role login behavior and non-core Supabase Storage ownership are not exercised.",
       "The schema-only dump omits schema ACLs; private, public, and storage schema permissions for API actors are restored from the read-only ACL capture, with the historical P1B migration independently confirming private USAGE for authenticated.",
       "The disposable baseline installs the server-packaged pgcrypto 1.3 extension when the schema-only dump omits extension receipts.",
       "The final disposable clone does not replay or insert synthetic receipts for the original 89 migrations.",
       "pg_cron worker is not simulated; the 20 forward migration files do not reference pg_cron.",
       "The schema-only clone omits business configuration rows; one synthetic system_settings row is inserted for role and shift assertions. Only synthetic Storage object metadata is present; no provider bytes are stored."
     ],
-    "disposable_database": "rc19_c5_3_final6_20261109",
+    "disposable_database": "rc19_c5_3_final7_20261109",
     "disposable_marker": "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY",
     "schema_source_database": "rc19_c4_schema_base_20261107_pg176",
     "postgres_server": "17.6 (Ubuntu 17.6-2.pgdg24.04+1)"
@@ -35,10 +35,11 @@
   },
   "schema_acl_snapshot": {
     "file": "scripts/rc19-c4-migration-rehearsal/evidence/production-schema-acl-snapshot-20261108.json",
-    "captured_at_utc": "2026-11-08T18:33:23Z",
-    "contains_schema_storage_and_role_assertion_relation_acl": true,
+    "captured_at_utc": "2026-11-08T18:47:22Z",
+    "contains_schema_storage_relation_c2_routine_and_role_metadata": true,
     "api_role_grants_restored_in_disposable_baseline": true,
-    "infrastructure_role_ownership_reproduced": false
+    "storage_core_ownership_reproduction": "PENDING_EXACT_PG17_ASSERTIONS",
+    "infra_role_login_behavior_reproduced": false
   },
   "migration_count": 20,
   "entries": [

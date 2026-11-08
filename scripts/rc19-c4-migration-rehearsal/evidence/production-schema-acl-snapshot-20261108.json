@@ -1,8 +1,12 @@
 {
-  "captured_at_utc": "2026-11-08T18:33:23Z",
+  "captured_at_utc": "2026-11-08T18:47:22Z",
+  "public_relations_captured_at_utc": "2026-11-08T18:33:23Z",
+  "functions_captured_at_utc": "2026-11-08T18:40:25Z",
+  "roles_captured_at_utc": "2026-11-08T18:44:35Z",
+  "storage_runtime_captured_at_utc": "2026-11-08T18:47:22Z",
   "source": "Read-only Supabase SQL query against the Production project; SELECT only",
   "project_ref": "egdjnpmoasarrttvhgds",
-  "query_scope": "pg_namespace owner and expanded schema ACL for private, public, storage; expanded relation ACL for eleven public tables used by C5.3 role assertions",
+  "query_scope": "pg_namespace owner and expanded schema ACL for private, public, storage; expanded ACL/owner for eleven public tables, metadata/hash/ACL for seven C2 routines, infrastructure role attributes/membership, and Storage bucket/object ownership, RLS and policy hashes",
   "schemas": [
     {
       "name": "private",
@@ -48,6 +52,8 @@
     {
       "name": "storage.buckets",
       "owner": "supabase_storage_admin",
+      "row_security": true,
+      "force_row_security": false,
       "api_role_acl": [
         "anon:DELETE:grantable=false",
         "anon:INSERT:grantable=false",
@@ -65,11 +71,23 @@
         "service_role:TRIGGER:grantable=false",
         "service_role:TRUNCATE:grantable=false",
         "service_role:UPDATE:grantable=false"
+      ],
+      "owner_acl": [
+        "supabase_storage_admin:DELETE:grantable=true",
+        "supabase_storage_admin:INSERT:grantable=true",
+        "supabase_storage_admin:MAINTAIN:grantable=true",
+        "supabase_storage_admin:REFERENCES:grantable=true",
+        "supabase_storage_admin:SELECT:grantable=true",
+        "supabase_storage_admin:TRIGGER:grantable=true",
+        "supabase_storage_admin:TRUNCATE:grantable=true",
+        "supabase_storage_admin:UPDATE:grantable=true"
       ]
     },
     {
       "name": "storage.objects",
       "owner": "supabase_storage_admin",
+      "row_security": true,
+      "force_row_security": false,
       "api_role_acl": [
         "anon:DELETE:grantable=false",
         "anon:INSERT:grantable=false",
@@ -87,6 +105,16 @@
         "service_role:TRIGGER:grantable=false",
         "service_role:TRUNCATE:grantable=false",
         "service_role:UPDATE:grantable=false"
+      ],
+      "owner_acl": [
+        "supabase_storage_admin:DELETE:grantable=true",
+        "supabase_storage_admin:INSERT:grantable=true",
+        "supabase_storage_admin:MAINTAIN:grantable=true",
+        "supabase_storage_admin:REFERENCES:grantable=true",
+        "supabase_storage_admin:SELECT:grantable=true",
+        "supabase_storage_admin:TRIGGER:grantable=true",
+        "supabase_storage_admin:TRUNCATE:grantable=true",
+        "supabase_storage_admin:UPDATE:grantable=true"
       ]
     }
   ],
@@ -259,8 +287,118 @@
       ]
     }
   ],
+  "functions": [
+    {
+      "signature": "private.audit_storage_resource_change()",
+      "owner": "postgres",
+      "security_definer": true,
+      "config": "search_path=\"\"",
+      "normalized_body_md5": "0aee608717e10127e6856773669ca8c6",
+      "function_acl": "{postgres=X/postgres}"
+    },
+    {
+      "signature": "private.current_user_has_storage_resource_grant(p_resource_id text)",
+      "owner": "postgres",
+      "security_definer": true,
+      "config": "search_path=\"\"",
+      "normalized_body_md5": "0b04c60fec0c305ddaa9201905461d9c",
+      "function_acl": "{postgres=X/postgres,authenticated=X/postgres}"
+    },
+    {
+      "signature": "private.guard_storage_resource_attendance()",
+      "owner": "postgres",
+      "security_definer": true,
+      "config": "search_path=\"\"",
+      "normalized_body_md5": "f2bc24fa1ba4de9abd1ce6c65f1a5794",
+      "function_acl": "{postgres=X/postgres}"
+    },
+    {
+      "signature": "private.guard_storage_resource_grant()",
+      "owner": "postgres",
+      "security_definer": false,
+      "config": "search_path=\"\"",
+      "normalized_body_md5": "8a249f67a35ee28017a995f9eacd3113",
+      "function_acl": "{postgres=X/postgres}"
+    },
+    {
+      "signature": "private.guard_storage_resource_scope()",
+      "owner": "postgres",
+      "security_definer": true,
+      "config": "search_path=\"\"",
+      "normalized_body_md5": "a7e953c68e8ca93f8b64dee8b448a56b",
+      "function_acl": "{postgres=X/postgres}"
+    },
+    {
+      "signature": "public.storage_resource_registry_create(p_resource jsonb, p_scope jsonb)",
+      "owner": "postgres",
+      "security_definer": false,
+      "config": "search_path=\"\"",
+      "normalized_body_md5": "6089619af11d4e76301da410a376599c",
+      "function_acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "signature": "public.storage_resource_registry_set_grant(p_resource_id text, p_user_id text, p_active boolean)",
+      "owner": "postgres",
+      "security_definer": false,
+      "config": "search_path=\"\"",
+      "normalized_body_md5": "cea81d2bc7937abdd51cb87e38205df2",
+      "function_acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    }
+  ],
+  "infra_roles": {
+    "roles": [
+      {
+        "role": "dashboard_user",
+        "superuser": false,
+        "inherit": true,
+        "create_role": true,
+        "create_db": true,
+        "can_login": false,
+        "bypass_rls": false
+      },
+      {
+        "role": "supabase_admin",
+        "superuser": true,
+        "inherit": true,
+        "create_role": true,
+        "create_db": true,
+        "can_login": true,
+        "bypass_rls": true
+      },
+      {
+        "role": "supabase_storage_admin",
+        "superuser": false,
+        "inherit": false,
+        "create_role": true,
+        "create_db": false,
+        "can_login": true,
+        "bypass_rls": false
+      }
+    ],
+    "memberships": [
+      {
+        "role": "supabase_storage_admin",
+        "member": "authenticator",
+        "admin_option": false
+      }
+    ],
+    "local_rehearsal_login": false
+  },
+  "storage_policies": [
+    {"name":"live dashboard image delete","table":"objects","command":"DELETE","roles":["authenticated"],"qual_md5":"bdf831e200e32c8ba34f4a4dc5026609","with_check_md5":"d41d8cd98f00b204e9800998ecf8427e"},
+    {"name":"live dashboard image public read","table":"objects","command":"SELECT","roles":["public"],"qual_md5":"d367915a79988cd2f3363c0e4772d6d5","with_check_md5":"d41d8cd98f00b204e9800998ecf8427e"},
+    {"name":"live dashboard image upload","table":"objects","command":"INSERT","roles":["authenticated"],"qual_md5":"d41d8cd98f00b204e9800998ecf8427e","with_check_md5":"e0b6482e2175e1aedb89bf852f389103"},
+    {"name":"profile avatars delete own","table":"objects","command":"DELETE","roles":["authenticated"],"qual_md5":"0caf0695e411ea9921b316a8845b646a","with_check_md5":"d41d8cd98f00b204e9800998ecf8427e"},
+    {"name":"profile avatars public read","table":"objects","command":"SELECT","roles":["public"],"qual_md5":"ee45d0f75d1b107d3711a211bf6b7710","with_check_md5":"d41d8cd98f00b204e9800998ecf8427e"},
+    {"name":"profile avatars replace own","table":"objects","command":"UPDATE","roles":["authenticated"],"qual_md5":"0caf0695e411ea9921b316a8845b646a","with_check_md5":"f8ac0c34364647b391a38496c4868727"},
+    {"name":"profile avatars upload own","table":"objects","command":"INSERT","roles":["authenticated"],"qual_md5":"d41d8cd98f00b204e9800998ecf8427e","with_check_md5":"4246a7ba55dff9736b01d4e8ba9ca0de"},
+    {"name":"report-images-authenticated-read","table":"objects","command":"SELECT","roles":["authenticated"],"qual_md5":"1adb38ae8ebbbfe869275ca4a12e45d6","with_check_md5":"d41d8cd98f00b204e9800998ecf8427e"},
+    {"name":"report-images-delete","table":"objects","command":"DELETE","roles":["authenticated"],"qual_md5":"9754b5515667ad77ad1fd7e9e382caae","with_check_md5":"d41d8cd98f00b204e9800998ecf8427e"},
+    {"name":"report-images-upload","table":"objects","command":"INSERT","roles":["authenticated"],"qual_md5":"d41d8cd98f00b204e9800998ecf8427e","with_check_md5":"c6459c3eac5707c8df4c60c3439d0ec7"}
+  ],
   "limits": [
     "No user or business table data was selected.",
-    "The isolated PG17.6 harness has anon, authenticated, service_role, postgres, pg_database_owner, and supabase_auth_admin roles, but lacks supabase_admin, supabase_storage_admin, and dashboard_user; Storage schema/table ownership and those infrastructure ACL entries are not reproduced there. API-role ACLs are captured for comparison."
+    "Routine bodies are represented by normalized MD5 checksums only; no function source text was exported.",
+    "Local infra roles are created NOLOGIN and have no copied passwords; their effective login path is not rehearsed. The core Storage schema and buckets/objects ownership, RLS flags, ACLs and policy hashes are reproduced; no provider bytes or real Storage records are exported."
   ]
 }
