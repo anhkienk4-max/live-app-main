@@ -16,7 +16,7 @@ REHEARSAL = ROOT / "scripts" / "rc19-c4-migration-rehearsal"
 EVIDENCE = REHEARSAL / "evidence"
 MANIFEST = EVIDENCE / "c5.3-final-migration-manifest.json"
 OLD_MANIFEST = EVIDENCE / "c5.2-forward-migration-manifest.json"
-EXPECTED_DATABASE = "rc19_c5_3_final9_20261109"
+EXPECTED_DATABASE = "rc19_c5_3_final10_20261109"
 BASELINE_SOURCE_DATABASE = "rc19_c4_schema_base_20261107_pg176"
 EXPECTED_MARKER = "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY"
 EXPECTED_SOCKET = "/home/anhkienk4/.codex/pg17.6-c5.3-rehearsal/socket"
@@ -110,7 +110,7 @@ def verify_private_contract(manifest: dict, out: Path, stamp: str) -> dict[str, 
 
     denied_log = out / "private-contract-no-attestation.log"
     command(psql_base(no_attest) + ["-c", "SET ROLE postgres", "-f", str(contract)],
-            log=denied_log, expect=1)
+            log=denied_log, expect=3)
     if "DASHBOARD_IMAGE_PRIVATE_CONTRACT_NOT_ATTESTED" not in denied_log.read_text(encoding="utf-8"):
         raise RuntimeError("PRIVATE_CONTRACT_DENIAL_REASON_MISMATCH")
     if query("SELECT public::text FROM storage.buckets WHERE id='live-dashboard-images'", database=no_attest) != "true":
