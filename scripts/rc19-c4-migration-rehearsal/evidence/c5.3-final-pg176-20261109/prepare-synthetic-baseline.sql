@@ -5,13 +5,16 @@ DECLARE marker text;
 BEGIN
   SELECT shobj_description(oid, 'pg_database') INTO marker
     FROM pg_database WHERE datname = current_database();
-  IF current_database() <> 'rc19_c5_3_final2_20261109'
+  IF current_database() <> 'rc19_c5_3_final3_20261109'
      OR marker IS DISTINCT FROM 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY' THEN
     RAISE EXCEPTION 'REFUSED_NON_DISPOSABLE_C5_3_BASELINE:%', current_database();
   END IF;
   IF EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'live-dashboard-images')
      OR EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id = 'live-dashboard-images') THEN
     RAISE EXCEPTION 'REFUSED_SYNTHETIC_IMAGE_BASELINE_ALREADY_PRESENT';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.system_settings) THEN
+    RAISE EXCEPTION 'REFUSED_SYNTHETIC_OPERATIONAL_SETTINGS_ALREADY_PRESENT';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
@@ -32,6 +35,7 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO anon, authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON storage.buckets TO service_role;
 
+INSERT INTO public.system_settings DEFAULT VALUES;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('live-dashboard-images', 'live-dashboard-images', true);
 INSERT INTO storage.objects (id, bucket_id, name, metadata)
@@ -53,6 +57,24 @@ BEGIN
   END IF;
 END
 $verify_grants$;
+
+DO $verify_settings$
+BEGIN
+  IF (SELECT count(*) FROM public.system_settings) <> 1
+     OR NOT EXISTS (
+       SELECT 1 FROM public.system_settings
+        WHERE registration_cutoff_hours = 6
+          AND require_registration_approval
+          AND auto_lock_filled_shifts
+          AND NOT allow_multi_role_per_shift
+          AND default_host_count = 1
+          AND default_support_count = 1
+          AND default_technical_count = 1
+     ) THEN
+    RAISE EXCEPTION 'C5_3_SYNTHETIC_OPERATIONAL_SETTINGS_INVALID';
+  END IF;
+END
+$verify_settings$;
 
 BEGIN;
 SET LOCAL ROLE anon;

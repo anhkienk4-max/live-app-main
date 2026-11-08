@@ -18,9 +18,9 @@
       "The disposable baseline installs the server-packaged pgcrypto 1.3 extension when the schema-only dump omits extension receipts.",
       "The final disposable clone does not replay or insert synthetic receipts for the original 89 migrations.",
       "pg_cron worker is not simulated; the 20 forward migration files do not reference pg_cron.",
-      "Only synthetic Storage object metadata is present; no provider bytes are stored."
+      "The schema-only clone omits business configuration rows; one synthetic system_settings row is inserted for role and shift assertions. Only synthetic Storage object metadata is present; no provider bytes are stored."
     ],
-    "disposable_database": "rc19_c5_3_final2_20261109",
+    "disposable_database": "rc19_c5_3_final3_20261109",
     "disposable_marker": "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY",
     "schema_source_database": "rc19_c4_schema_base_20261107_pg176",
     "postgres_server": "17.6 (Ubuntu 17.6-2.pgdg24.04+1)"

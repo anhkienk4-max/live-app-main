@@ -16,7 +16,7 @@ REHEARSAL = ROOT / "scripts" / "rc19-c4-migration-rehearsal"
 EVIDENCE = REHEARSAL / "evidence"
 MANIFEST = EVIDENCE / "c5.3-final-migration-manifest.json"
 OLD_MANIFEST = EVIDENCE / "c5.2-forward-migration-manifest.json"
-EXPECTED_DATABASE = "rc19_c5_3_final2_20261109"
+EXPECTED_DATABASE = "rc19_c5_3_final3_20261109"
 BASELINE_SOURCE_DATABASE = "rc19_c4_schema_base_20261107_pg176"
 EXPECTED_MARKER = "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY"
 EXPECTED_SOCKET = "/home/anhkienk4/.codex/pg17.6-c5.3-rehearsal/socket"
@@ -206,6 +206,8 @@ def main() -> int:
         raise RuntimeError("REFUSED_LEGACY_IMAGE_BUCKET_NOT_PUBLIC")
     if query("SELECT count(*) FROM storage.objects WHERE bucket_id='live-dashboard-images' AND name='synthetic/compatibility-probe.txt'") != "1":
         raise RuntimeError("REFUSED_MISSING_SYNTHETIC_STORAGE_METADATA")
+    if query("SELECT count(*) FROM public.system_settings WHERE registration_cutoff_hours=6 AND require_registration_approval AND auto_lock_filled_shifts AND NOT allow_multi_role_per_shift AND default_host_count=1 AND default_support_count=1 AND default_technical_count=1") != "1":
+        raise RuntimeError("REFUSED_MISSING_SYNTHETIC_OPERATIONAL_SETTINGS")
     if query("SELECT count(*) FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND policyname='live dashboard image public read' AND cmd='SELECT'") != "1":
         raise RuntimeError("REFUSED_LEGACY_IMAGE_POLICY_MISSING")
 
@@ -223,7 +225,7 @@ def main() -> int:
         "historical_receipts_in_this_clone=0 (not replayed or fabricated)\n"
         "forward_migrations=20; receipts inserted only after each SQL file succeeds\n"
         "pg_cron_worker=not simulated; no forward migration references pg_cron\n"
-        "provider_object_bytes=not present; only one synthetic Storage metadata row\n"
+        "synthetic_operational_settings_rows=1; provider_object_bytes=not present; only one synthetic Storage metadata row\n"
         f"worktree_clean_at_run_start={str(clean_at_start).lower()}\ncreated_utc={stamp}\n",
         encoding="utf-8")
 
