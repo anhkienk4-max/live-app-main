@@ -18,16 +18,16 @@ $guard$;
 REVOKE ALL ON SCHEMA private FROM PUBLIC, anon;
 GRANT USAGE ON SCHEMA private TO authenticated;
 
--- Exact API-role table grants from a Production-only catalog SELECT (2026-11-08).
+-- Exact Production C2 relation ACLs captured by a SELECT-only catalog query (2026-11-08T19:11:21Z).
 REVOKE ALL ON TABLE public.storage_resources, public.storage_resource_scopes,
   public.storage_resource_user_grants, public.storage_resource_audit_events
   FROM PUBLIC, anon, authenticated, service_role;
-GRANT INSERT, SELECT, UPDATE ON TABLE public.storage_resources,
-  public.storage_resource_scopes, public.storage_resource_user_grants TO authenticated;
-GRANT SELECT ON TABLE public.storage_resource_audit_events TO authenticated;
 GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
   ON TABLE public.storage_resources, public.storage_resource_scopes,
   public.storage_resource_user_grants, public.storage_resource_audit_events TO service_role;
+GRANT INSERT, SELECT, UPDATE ON TABLE public.storage_resources,
+  public.storage_resource_scopes, public.storage_resource_user_grants TO authenticated;
+GRANT SELECT ON TABLE public.storage_resource_audit_events TO authenticated;
 REVOKE ALL ON TABLE public.brands, public.business_users, public.campaigns,
   public.operational_storage_routes, public.platforms, public.report_images,
   public.report_revisions, public.reports, public.shift_registrations,

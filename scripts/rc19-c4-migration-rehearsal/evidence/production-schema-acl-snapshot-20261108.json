@@ -4,9 +4,32 @@
   "functions_captured_at_utc": "2026-11-08T18:40:25Z",
   "roles_captured_at_utc": "2026-11-08T18:44:35Z",
   "storage_runtime_captured_at_utc": "2026-11-08T18:47:22Z",
+  "c2_resource_relations_captured_at_utc": "2026-11-08T19:11:21Z",
   "source": "Read-only Supabase SQL query against the Production project; SELECT only",
   "project_ref": "egdjnpmoasarrttvhgds",
-  "query_scope": "pg_namespace owner and expanded schema ACL for private, public, storage; expanded ACL/owner for eleven public tables, metadata/hash/ACL for seven C2 routines, infrastructure role attributes/membership, and Storage bucket/object ownership, RLS and policy hashes",
+  "query_scope": "pg_namespace owner and expanded schema ACL for private, public, storage; expanded ACL/owner for eleven public tables, metadata/hash/ACL for seven C2 routines, infrastructure role attributes/membership, Storage bucket/object ownership, RLS and policy hashes, and exact ACL strings for four existing C2 resource relations",
+  "c2_resource_relations": [
+    {
+      "name": "public.storage_resource_audit_events",
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}"
+    },
+    {
+      "name": "public.storage_resource_scopes",
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}"
+    },
+    {
+      "name": "public.storage_resource_user_grants",
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}"
+    },
+    {
+      "name": "public.storage_resources",
+      "owner": "postgres",
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=arw/postgres}"
+    }
+  ],
   "schemas": [
     {
       "name": "private",
