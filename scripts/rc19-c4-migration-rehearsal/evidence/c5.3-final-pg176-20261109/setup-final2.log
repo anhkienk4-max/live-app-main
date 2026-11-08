@@ -34,7 +34,7 @@ GRANT
 GRANT
 DO
 COMMIT
-                    ?column?                     
+                    ?column?
 -------------------------------------------------
  C5_3_PRODUCTION_SNAPSHOT_API_TABLE_GRANTS: PASS
 (1 row)
@@ -55,18 +55,18 @@ SET
 DO
 DO
 ROLLBACK
-       database_name       |                  marker                  |          server_version          
+       database_name       |                  marker                  |          server_version
 ---------------------------+------------------------------------------+----------------------------------
  rc19_c5_3_final2_20261109 | CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY | 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
 (1 row)
 
-          id           | public 
+          id           | public
 -----------------------+--------
  live-dashboard-images | t
 (1 row)
 
- synthetic_metadata_rows 
+ synthetic_metadata_rows
 -------------------------
                        1
 (1 row)
-
+Note: terminal column padding and trailing blank lines removed; SQL status and values preserved.
