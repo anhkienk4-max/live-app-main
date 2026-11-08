@@ -21,7 +21,7 @@
       "pg_cron worker is not simulated; the 20 forward migration files do not reference pg_cron.",
       "The schema-only clone omits business configuration rows; one synthetic system_settings row is inserted for role and shift assertions. Only synthetic Storage object metadata is present; no provider bytes are stored."
     ],
-    "disposable_database": "rc19_c5_3_final7_20261109",
+    "disposable_database": "rc19_c5_3_final8_20261109",
     "disposable_marker": "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY",
     "schema_source_database": "rc19_c4_schema_base_20261107_pg176",
     "postgres_server": "17.6 (Ubuntu 17.6-2.pgdg24.04+1)"
@@ -38,7 +38,7 @@
     "captured_at_utc": "2026-11-08T18:47:22Z",
     "contains_schema_storage_relation_c2_routine_and_role_metadata": true,
     "api_role_grants_restored_in_disposable_baseline": true,
-    "storage_core_ownership_reproduction": "PENDING_EXACT_PG17_ASSERTIONS",
+    "storage_core_ownership_reproduction": "PENDING_FINAL8_SETUP_AND_ASSERTIONS",
     "infra_role_login_behavior_reproduced": false
   },
   "migration_count": 20,

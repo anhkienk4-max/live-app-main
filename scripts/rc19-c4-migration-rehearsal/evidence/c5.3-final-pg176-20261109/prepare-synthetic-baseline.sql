@@ -5,7 +5,7 @@ DECLARE marker text;
 BEGIN
   SELECT shobj_description(oid, 'pg_database') INTO marker
     FROM pg_database WHERE datname = current_database();
-  IF current_database() <> 'rc19_c5_3_final7_20261109'
+  IF current_database() <> 'rc19_c5_3_final8_20261109'
      OR marker IS DISTINCT FROM 'CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY' THEN
     RAISE EXCEPTION 'REFUSED_NON_DISPOSABLE_C5_3_BASELINE:%', current_database();
   END IF;
@@ -49,6 +49,7 @@ GRANT CREATE, USAGE ON SCHEMA public TO pg_database_owner;
 REVOKE ALL ON SCHEMA storage FROM PUBLIC, anon, authenticated, service_role,
   postgres, supabase_storage_admin, dashboard_user;
 ALTER SCHEMA storage OWNER TO supabase_admin;
+GRANT CREATE, USAGE ON SCHEMA storage TO supabase_admin;
 GRANT CREATE, USAGE ON SCHEMA storage TO supabase_storage_admin WITH GRANT OPTION;
 GRANT CREATE, USAGE ON SCHEMA storage TO dashboard_user;
 GRANT USAGE ON SCHEMA storage TO postgres WITH GRANT OPTION;
