@@ -658,7 +658,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   return (
     <div ref={calendarRoot} className="min-w-0 space-y-0">
       {/* Unified Command Toolbar */}
-      <div className="static flex flex-col bg-background pb-2 md:sticky md:top-0 md:z-30">
+      <div className={view === 'month' && mobileFullCalendar ? "static flex flex-col bg-background pb-2 md:sticky md:top-0 md:z-30" : "sticky top-0 z-30 flex flex-col bg-background pb-2"}>
           <ActiveFilterChips filters={{ ...filters, time: view === 'list' ? listTimeFilter : filters.time }} setFilters={value => {
             if (view === 'list') listNavigate({ calendar_filters: JSON.stringify({ ...value, time: filters.time }), calendar_time: value.time, calendar_list_page: null })
             else setFilters(value)
