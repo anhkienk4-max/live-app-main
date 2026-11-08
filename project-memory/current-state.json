@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "d0411dde744e8cb77e1ad29ea0641a0ec1c92ac2",
+    "head": "4e23f7b69964bb77657b3a6eb36705bc1f8d185b",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -121,11 +121,11 @@
         "app": 94,
         "components": 190,
         "lib": 287,
-        "scripts": 76,
+        "scripts": 87,
         "supabase": 140,
         "tests": 360
       },
-      "total": 1147
+      "total": 1158
     },
     "tests": {
       "files": [
@@ -516,7 +516,7 @@
         "supabase/migrations/20261025180000_rc19_u14_1_mandatory_checkout_photo.sql",
         "supabase/migrations/20261028010000_rc19_reg02_multi_applicant_approval.sql",
         "supabase/migrations/20261029120000_rc19_staffing_role_scoped_gap_filter.sql",
-        "supabase/migrations/20261102110000_rc19_batch05a_report_storage.sql",
+        "supabase/migrations/20261102110001_rc19_batch05a_report_storage_expand.sql",
         "supabase/migrations/20261102135047_rc19_batch05a3_domain_storage_routes.sql",
         "supabase/migrations/20261102150000_rc19_batch05a4_storage_runtime.sql",
         "supabase/migrations/20261102160334_rc19_batch05a41_storage_release_blockers.sql",
@@ -551,5 +551,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-08T21:17:02+07:00"
+  "synced_at": "2026-11-09T00:09:10+07:00"
 }
