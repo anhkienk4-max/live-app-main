@@ -6,7 +6,7 @@ import test from 'node:test'
 import { PGlite } from '@electric-sql/pglite'
 
 const migrationPaths = [
-  '../supabase/migrations/20261102110000_rc19_batch05a_report_storage.sql',
+  '../supabase/migrations/20261102110001_rc19_batch05a_report_storage_expand.sql',
   '../supabase/migrations/20261102135047_rc19_batch05a3_domain_storage_routes.sql',
   '../supabase/migrations/20261102150000_rc19_batch05a4_storage_runtime.sql',
   '../supabase/migrations/20261102160334_rc19_batch05a41_storage_release_blockers.sql',

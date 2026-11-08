@@ -8,7 +8,7 @@ const databaseUrl = process.env.DATABASE_URL
 const disposableDatabase = 'rc19_sto01_migrations_disposable'
 const baselinePath = path.resolve('tests/fixtures/rc19-batch05a-migration-baseline.sql')
 const migrationPaths = [
-  'supabase/migrations/20261102110000_rc19_batch05a_report_storage.sql',
+  'supabase/migrations/20261102110001_rc19_batch05a_report_storage_expand.sql',
   'supabase/migrations/20261102135047_rc19_batch05a3_domain_storage_routes.sql',
   'supabase/migrations/20261102150000_rc19_batch05a4_storage_runtime.sql',
   'supabase/migrations/20261102160334_rc19_batch05a41_storage_release_blockers.sql',
@@ -166,6 +166,17 @@ test('RC19 05A migration chain on PostgreSQL 17 preserves registry, security, re
       anon_execute: false, authenticated_execute: false, service_role_execute: true,
       anon_dashboard_execute: false, authenticated_dashboard_execute: true,
     })
+    assert.equal((await client.query("SELECT public FROM storage.buckets WHERE id='live-dashboard-images'")).rows[0]?.public, true)
+    const dashboardReadPolicies = await client.query(`
+      SELECT policyname FROM pg_policies
+      WHERE schemaname='storage' AND tablename='objects'
+        AND policyname IN ('live dashboard image public read','live dashboard image scoped read')
+      ORDER BY policyname
+    `)
+    assert.deepEqual(dashboardReadPolicies.rows, [
+      { policyname: 'live dashboard image public read' },
+      { policyname: 'live dashboard image scoped read' },
+    ])
 
     const triggerCount = await client.query(`
       SELECT count(*)::int AS count FROM pg_trigger
@@ -197,13 +208,19 @@ test('RC19 05A migration chain on PostgreSQL 17 preserves registry, security, re
     const authenticatedObjects = await client.query(
       "SELECT name FROM storage.objects WHERE bucket_id = 'live-dashboard-images' ORDER BY name",
     )
-    assert.deepEqual(authenticatedObjects.rows, [{ name: 'dashboard/shift-1/allowed.png' }])
+    assert.deepEqual(authenticatedObjects.rows, [
+      { name: 'dashboard/shift-1/allowed.png' },
+      { name: 'dashboard/shift-2/denied.png' },
+    ])
     await client.query('RESET ROLE')
     await client.query('SET ROLE anon')
     const anonymousObjects = await client.query(
       "SELECT name FROM storage.objects WHERE bucket_id = 'live-dashboard-images' ORDER BY name",
     )
-    assert.deepEqual(anonymousObjects.rows, [])
+    assert.deepEqual(anonymousObjects.rows, [
+      { name: 'dashboard/shift-1/allowed.png' },
+      { name: 'dashboard/shift-2/denied.png' },
+    ])
     await client.query('RESET ROLE')
 
     await assert.rejects(

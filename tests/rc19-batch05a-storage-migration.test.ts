@@ -5,9 +5,9 @@ import test from 'node:test'
 
 import { PGlite } from '@electric-sql/pglite'
 
-const migrationPath = fileURLToPath(new URL('../supabase/migrations/20261102110000_rc19_batch05a_report_storage.sql', import.meta.url))
+const migrationPath = fileURLToPath(new URL('../supabase/migrations/20261102110001_rc19_batch05a_report_storage_expand.sql', import.meta.url))
 
-test('Batch 05A migration applies on isolated PostgreSQL 17 and enforces provider metadata and screenshot ownership', async () => {
+test('Batch 05A expand migration preserves public dashboard reads and enforces provider metadata and screenshot ownership', async () => {
   const db = new PGlite()
   try {
     const version = String((await db.query('select version()')).rows[0]?.version)
@@ -84,9 +84,12 @@ test('Batch 05A migration applies on isolated PostgreSQL 17 and enforces provide
       insert into public.shifts(id, status) values ('shift-1', 'live');
     `)
     await db.exec(await readFile(migrationPath, 'utf8'))
-    assert.equal((await db.query(`select public from storage.buckets where id='live-dashboard-images'`)).rows[0]?.public, false)
-    const imagePolicies = await db.query(`select policyname from pg_policies where schemaname='storage' and tablename='objects'`)
-    assert.deepEqual(imagePolicies.rows, [{ policyname: 'live dashboard image scoped read' }])
+    assert.equal((await db.query(`select public from storage.buckets where id='live-dashboard-images'`)).rows[0]?.public, true)
+    const imagePolicies = await db.query(`select policyname from pg_policies where schemaname='storage' and tablename='objects' order by policyname`)
+    assert.deepEqual(imagePolicies.rows, [
+      { policyname: 'live dashboard image public read' },
+      { policyname: 'live dashboard image scoped read' },
+    ])
     const rpcPrivileges = await db.query(`select
       has_function_privilege('anon', 'public.create_dashboard_update(jsonb)', 'execute') as anon_can_execute,
       has_function_privilege('authenticated', 'public.create_dashboard_update(jsonb)', 'execute') as authenticated_can_execute`)

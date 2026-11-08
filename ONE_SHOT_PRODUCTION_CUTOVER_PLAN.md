@@ -28,9 +28,12 @@
 
 ### Phase 3: Transactional Database Migration Apply
 Apply migrations sequentially with `lock_timeout = '5s'`:
+
+> This historical command list is not a current execution allowlist. The C5.3 release sequence is the versioned 20-file manifest; do not apply individual files until its reviewed Production allowlist is explicitly approved.
+
 ```bash
 # 1. Report storage columns
-supabase db query --file supabase/migrations/20261102110000_rc19_batch05a_report_storage.sql
+supabase db query --file supabase/migrations/20261102110001_rc19_batch05a_report_storage_expand.sql
 # 2. Storage routes & category mapping
 supabase db query --file supabase/migrations/20261102135047_rc19_batch05a3_domain_storage_routes.sql
 # 3. Storage runtime RPCs

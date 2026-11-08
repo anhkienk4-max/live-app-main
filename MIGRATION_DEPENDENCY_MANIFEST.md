@@ -11,7 +11,7 @@
 
 | Sequence | Migration File | Target System | Prerequisite | Irreversible Boundary | Description |
 |:---|:---|:---|:---|:---:|:---|
-| **01** | `20261102110000_rc19_batch05a_report_storage.sql` | `public.report_images` | Baseline Schema | No | Storage attributes, 6 photo categories, metadata columns. |
+| **01** | `20261102110001_rc19_batch05a_report_storage_expand.sql` | `public.report_images` | Baseline Schema | No | Supersedes archived `20261102110000`; adds storage metadata while retaining the dashboard image public-read path during expand. |
 | **02** | `20261102135047_rc19_batch05a3_domain_storage_routes.sql` | `public.storage_routes` | Migration 01 | No | Configures category routing rules, folder mapping, and provider tokens. |
 | **03** | `20261102150000_rc19_batch05a4_storage_runtime.sql` | RPC & Triggers | Migration 02 | No | Storage runtime RPCs, security definer guards, access token validation. |
 | **04** | `20261102160334_rc19_batch05a41_storage_release_blockers.sql` | Storage ACLs | Migration 03 | No | Ancestor path permission checks, sensitive folder quarantine. |
