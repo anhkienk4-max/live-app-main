@@ -2,16 +2,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const migration = readFileSync(new URL('../docs/rc19/staffing_candidate_availability.MIGRATION_DRAFT.sql', import.meta.url), 'utf8')
+const migration = readFileSync(new URL('../supabase/migrations/20261108135226_rc19_staffing_candidate_brand_scope.sql', import.meta.url), 'utf8')
 
 test('RC19.1B SQL contract: permission, safe reads and overlap', () => {
   assert.match(migration, /perform private\.require_shift_actor\(true\)/i)
+  assert.match(migration, /private\.rbac_has_permission\('shifts\.assign_staff'\)/i)
+  assert.match(migration, /private\.rc19_has_any_leader_brand_scope\(s\.brand_id, array\['shifts\.manage'\]/i)
   assert.match(migration, /security definer[\s\S]*set search_path\s*=\s*''/i)
   assert.match(migration, /r\.status in \('pending', 'approved', 'manually_assigned'\)/i)
   assert.match(migration, /other_shift\.start_at < target_shift\.end_at/i)
   assert.match(migration, /other_shift\.end_at > target_shift\.start_at/i)
   assert.match(migration, /revoke all on function public\.search_staffing_candidates/i)
   assert.match(migration, /to authenticated/i)
+  assert.match(migration, /alter function public\.search_staffing_candidates[\s\S]*owner to postgres/i)
+  assert.match(migration, /STAFFING_CANDIDATE_RPC_EXISTS_REQUIRES_RECONCILIATION/i)
+  assert.doesNotMatch(migration, /grant\s+select\s+on\s+(?:table\s+)?public\.business_users/i)
   assert.doesNotMatch(migration, /\b(insert into|delete from|update public\.)\b/i)
 })
 

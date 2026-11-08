@@ -1,0 +1,9 @@
+# Design
+
+The new `SECURITY DEFINER` RPC derives the business actor through the current authenticated-session helpers. It first requires an active Leader/Admin shift actor and effective `shifts.assign_staff`; it then selects only an active target shift that is global for Admin or has a current Leader `shifts.manage` grant for the persisted shift Brand. An out-of-scope shift returns the same not-found error as a missing shift. The migration pins an empty `search_path`, assigns the function to `postgres`, and grants execution only to `authenticated`; it grants no direct table access.
+
+The migration fails closed if the expected C3/RBAC dependencies are absent or if the RPC already exists, leaving cross-environment history reconciliation explicit. It preserves the original candidate filtering, conflict calculation, bounds, ordering, and JSON shape. Write RPCs continue to own assignment checks and uniqueness.
+
+The existing dashboard screenshot route authenticates the request, verifies a persisted shift-scoped reference, and returns private no-store bytes. Current Production aggregate evidence shows one image reference with `screenshot_storage_path` and no legacy URL-only references. Because the live deployment's Git SHA is not returned by Vercel metadata, the private-bucket migration remains gated behind a separately verified compatibility-app deployment. After activation, rollback is limited to that compatible app or a newer build; the prior direct-public reader is not a valid rollback target.
+
+The existing Shift Identity index transition and `private.filtered_shift_ids(text,jsonb)` signature/return contract remain unchanged. The new open-shift selection remains a read-only server query; registration and assignment uniqueness remain enforced by their existing constraints and write RPCs.
