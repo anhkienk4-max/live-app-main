@@ -14,6 +14,7 @@
     "snapshot_limitations": [
       "pg_dump --no-privileges omitted table/function ACLs; the disposable baseline ACL fixture restores only catalog ACLs verified against the read-only Production catalog snapshot.",
       "Supabase Storage API grants omitted by the schema-only dump are restored from the repository's standard prerequisite fixture for disposable anon/authenticated role assertions; this is not a live Production ACL attestation.",
+      "The disposable baseline installs the server-packaged pgcrypto 1.3 extension when the schema-only dump omits extension receipts.",
       "The final disposable clone does not replay or insert synthetic receipts for the original 89 migrations.",
       "pg_cron worker is not simulated; the 20 forward migration files do not reference pg_cron.",
       "Only synthetic Storage object metadata is present; no provider bytes are stored."

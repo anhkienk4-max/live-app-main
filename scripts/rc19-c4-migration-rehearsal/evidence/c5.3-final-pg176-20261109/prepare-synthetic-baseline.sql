@@ -1,5 +1,6 @@
 \set ON_ERROR_STOP on
 SET ROLE postgres;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 DO $guard$
 DECLARE marker text;
 BEGIN
