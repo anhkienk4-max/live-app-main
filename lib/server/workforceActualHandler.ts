@@ -38,10 +38,41 @@ const review = z.object({
   review_note: z.string().trim().min(8).max(2000),
 }).strict()
 
-type Depends = { client?: () => SupabaseClient; resolveUser?: ServerUserResolver; isEnabled?: () => boolean; isAttendanceReviewEnabled?: () => boolean }
+type LeaderScopeClient = Pick<SupabaseClient, 'rpc'>
+type Depends = {
+  client?: () => SupabaseClient
+  resolveUser?: ServerUserResolver
+  isEnabled?: () => boolean
+  isAttendanceReviewEnabled?: () => boolean
+  createScopeClient?: (request: Request) => Promise<LeaderScopeClient> | LeaderScopeClient
+}
 const noStore = { 'Cache-Control': 'no-store' }
 const fail = (code: string, status: number) => Response.json({ ok: false, error: { code } },
   { status, headers: noStore })
+
+async function leaderScopeDenial(
+  request: Request,
+  user: { systemPermission: string; businessUserId?: string },
+  scopeKey: 'workforce.read' | 'staff.manage',
+  brandId: string,
+  createScopeClient?: Depends['createScopeClient'],
+): Promise<Response | null> {
+  if (user.systemPermission !== 'leader') return null
+  if (!user.businessUserId) return fail('WORKFORCE_LEADER_SCOPE_UNAVAILABLE', 503)
+  try {
+    const scopeClient = createScopeClient
+      ? await createScopeClient(request)
+      : await (await import('@/lib/supabase/server')).createClient()
+    const scope = await scopeClient.rpc('rc19_current_leader_brand_ids', { p_scope_key: scopeKey })
+    if (scope.error || !Array.isArray(scope.data)
+      || scope.data.some(value => typeof value !== 'string' || !value.trim())) {
+      return fail('WORKFORCE_LEADER_SCOPE_UNAVAILABLE', 503)
+    }
+    return scope.data.includes(brandId) ? null : fail('WORKFORCE_LEADER_SCOPE_DENIED', 403)
+  } catch {
+    return fail('WORKFORCE_LEADER_SCOPE_UNAVAILABLE', 503)
+  }
+}
 
 
 export interface SwapRecord {
@@ -224,7 +255,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
   return {
     GET(request: Request) {
       return guard(async () => {
-        await requirePermission(request, 'shifts.assign_staff', deps.resolveUser)
+        const user = await requirePermission(request, 'shifts.assign_staff', deps.resolveUser)
         if (!(deps.isEnabled ?? (() => isFeatureEnabled('actual_staffing')))())
           return fail('WORKFORCE_FEATURE_DISABLED', 503)
         const search = new URL(request.url).searchParams
@@ -233,13 +264,19 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
 
         const client = db()
         const attendanceReviewEnabled = (deps.isAttendanceReviewEnabled ?? (() => isFeatureEnabled('self_attendance_review')))()
-        const [segmentsRes, shiftRes, regsRes, swapsRes, attendanceRes, photoEvidenceRes] = await Promise.all([
+        const shiftRes = await client.from('shifts')
+          .select('id,date,start_time,end_time,start_at,end_at,end_date,crosses_midnight,duration_minutes,status,host_id,support_id,technical_id,timezone,brand_id')
+          .eq('id', shiftId).is('deleted_at', null).maybeSingle()
+        if (shiftRes.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
+        if (!shiftRes.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
+        const shiftContext = shiftRes.data
+        const scopeDenied = await leaderScopeDenial(request, user, 'workforce.read', shiftContext.brand_id, deps.createScopeClient)
+        if (scopeDenied) return scopeDenied
+
+        const [segmentsRes, regsRes, swapsRes, attendanceRes, photoEvidenceRes] = await Promise.all([
           client.from('workforce_actual_segments')
             .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
             .eq('shift_id', shiftId).order('created_at', { ascending: true }).limit(200),
-          client.from('shifts')
-            .select('id,date,start_time,end_time,start_at,end_at,end_date,crosses_midnight,duration_minutes,status,host_id,support_id,technical_id,timezone')
-            .eq('id', shiftId).is('deleted_at', null).maybeSingle(),
           client.from('shift_registrations')
             .select('id,user_id,operational_role,status')
             .eq('shift_id', shiftId).in('status', ['approved', 'manually_assigned']),
@@ -266,7 +303,6 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           (photoEvidenceRes.data?.length ?? 0) > 200)
           return fail('SELF_ATTENDANCE_REVIEW_LIMIT_EXCEEDED', 409)
         if (swapsRes?.error || regsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
-        if (!shiftRes?.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
 
         const safeGraceMinutes = WORKFORCE_LATE_GRACE_MINUTES
 
@@ -275,7 +311,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             shiftId,
             staffId: seg.staff_id,
             operationalRole: seg.operational_role,
-            shift: shiftRes.data!,
+            shift: shiftContext,
             registrations: regsRes.data ?? [],
             swaps: swapsRes.data ?? [],
           })
@@ -308,7 +344,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
               .some(photo=>photo.request_id===ev.request_id),
           })),
           attendance_review_enabled: attendanceReviewEnabled,
-          shift_context: shiftRes.data,
+          shift_context: shiftContext,
           planned_staff: regsRes?.data ?? [],
           lateness_policy: {
             grace_minutes: safeGraceMinutes,
@@ -334,16 +370,17 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         const client = db()
 
         if (action.action === 'record') {
-          // Scope shifts to completed, non-deleted, and active staff
-          const [shift, staff] = await Promise.all([
-            client.from('shifts')
-              .select('id,status,host_id,support_id,technical_id')
-              .eq('id', action.shift_id).is('deleted_at', null).maybeSingle(),
-            client.from('business_users')
-              .select('id,status').eq('id', action.staff_id).is('deleted_at', null).maybeSingle(),
-          ])
-          if (shift.error || staff.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
-          if (!shift.data || !staff.data || staff.data.status !== 'active')
+          const shift = await client.from('shifts')
+            .select('id,brand_id,status,host_id,support_id,technical_id')
+            .eq('id', action.shift_id).is('deleted_at', null).maybeSingle()
+          if (shift.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
+          if (!shift.data) return fail('WORKFORCE_SHIFT_OR_STAFF_INVALID', 409)
+          const scopeDenied = await leaderScopeDenial(request, user, 'staff.manage', shift.data.brand_id, deps.createScopeClient)
+          if (scopeDenied) return scopeDenied
+          const staff = await client.from('business_users')
+            .select('id,status').eq('id', action.staff_id).is('deleted_at', null).maybeSingle()
+          if (staff.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
+          if (!staff.data || staff.data.status !== 'active')
             return fail('WORKFORCE_SHIFT_OR_STAFF_INVALID', 409)
           // Future/scheduled shifts cannot be treated as completed attendance,
           // and a missing clock-in must not be called no-show automatically.
@@ -413,6 +450,9 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             ? `[EXCEPTION:UNVERIFIED] ${action.evidence_note}`
             : action.evidence_note
 
+          const finalScopeDenial = await leaderScopeDenial(request, user, 'staff.manage', shift.data.brand_id, deps.createScopeClient)
+          if (finalScopeDenial) return finalScopeDenial
+
           const { data, error } = await client.from('workforce_actual_segments').insert({
             shift_id: action.shift_id, staff_id: action.staff_id,
             operational_role: action.operational_role, event_kind: action.event_kind,
@@ -436,12 +476,23 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           }, { status: 201, headers: noStore })
         }
 
+        const target = await client.from('workforce_actual_segments')
+          .select('id,shift_id').eq('id', action.segment_id).maybeSingle()
+        if (target.error) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
+        if (!target.data) return fail('WORKFORCE_ACTUAL_STALE_OR_LOCKED', 409)
+        const targetShift = await client.from('shifts')
+          .select('id,brand_id').eq('id', target.data.shift_id).is('deleted_at', null).maybeSingle()
+        if (targetShift.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
+        if (!targetShift.data) return fail('WORKFORCE_SHIFT_NOT_FOUND', 404)
+        const scopeDenied = await leaderScopeDenial(request, user, 'staff.manage', targetShift.data.brand_id, deps.createScopeClient)
+        if (scopeDenied) return scopeDenied
+
         // Review is optimistic and only draft evidence can be decided.
         const { data: current, error: lookup } = await client.from('workforce_actual_segments')
           .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,evidence_note,actual_start_at,actual_end_at,review_status,version,created_by')
           .eq('id', action.segment_id).maybeSingle()
         if (lookup) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
-        if (!current || current.review_status !== 'draft' || current.version !== action.expected_version)
+        if (!current || current.shift_id !== target.data.shift_id || current.review_status !== 'draft' || current.version !== action.expected_version)
           return fail('WORKFORCE_ACTUAL_STALE_OR_LOCKED', 409)
 
         // Separate reviewer from evidence submitter; no self-approval.
@@ -486,6 +537,19 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             return fail('WORKFORCE_PLANNED_STAFF_UNSCHEDULED', 409)
           }
 
+          // Clock events are immutable evidence, separate from the supervisor-approved minute interval.
+          if (current.event_kind === 'worked' && current.coverage_kind === 'planned') {
+            const attendance = await client.from('self_attendance_events')
+              .select('event_kind')
+              .eq('shift_id', current.shift_id)
+              .eq('staff_id', current.staff_id)
+              .eq('operational_role', current.operational_role)
+            if (attendance.error) return fail('SELF_ATTENDANCE_REVIEW_UNAVAILABLE', 503)
+            const kinds = new Set((attendance.data ?? []).map(event => event.event_kind))
+            if (!kinds.has('check_in') || !kinds.has('check_out'))
+              return fail('WORKFORCE_ATTENDANCE_EVIDENCE_REQUIRED', 409)
+          }
+
           // If unverified exception, reviewer note must be >= 15 chars justifying the exception approval
           const isException = !verification.assignment_verified || (current.evidence_note && current.evidence_note.includes('[EXCEPTION'))
           if (isException) {
@@ -521,6 +585,8 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           if (contradictions && contradictions.length > 0) return fail('WORKFORCE_APPROVED_NO_SHOW_CONFLICT', 409)
         }
 
+        const finalScopeDenied = await leaderScopeDenial(request, user, 'staff.manage', targetShift.data.brand_id, deps.createScopeClient)
+        if (finalScopeDenied) return finalScopeDenied
         const { data, error } = await client.from('workforce_actual_segments')
           .update({
             review_status: action.decision,

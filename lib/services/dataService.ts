@@ -2552,6 +2552,18 @@ export const shiftRegistrationService = {
     return registration
   },
 
+  async registerForSegment(segmentId: string, userId: string, role: OperationalRole): Promise<ShiftRegistration> {
+    if (getAuthMode() !== 'supabase') throw new Error('SEGMENT_REGISTRATION_REQUIRES_AUTHENTICATED_SUPABASE')
+    const registration = await getSupabaseShiftRegistrationRepository().registerForSegment(segmentId, role)
+    recordScheduleChange('register', registration.shift_id, undefined, { ...registration }, { actor_id: userId })
+    audit('calendar', 'register', 'shift_registration', registration.id, `${registration.user_id} · ${role}`, {
+      actorId: userId,
+      after: { ...registration },
+      relatedRecords: [{ entity_type: 'shift', entity_id: registration.shift_id, entity_name: registration.shift_id }],
+    })
+    return registration
+  },
+
   async assignImported(
     shiftId: string,
     userId: string,

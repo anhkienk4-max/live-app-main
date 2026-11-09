@@ -275,6 +275,18 @@ export interface SupplementalShiftField {
   value: string | number | boolean
 }
 
+export interface PlannedStaffingSegmentDraft {
+  segment_index: number
+  start_time: string
+  end_time: string
+  required_host_count: number
+  required_support_count: number
+  required_technical_count: number
+  planned_host_names: string[]
+  planned_support_names: string[]
+  planned_technical_names: string[]
+}
+
 export type SupplementalShiftFields = Record<string, SupplementalShiftField>
 
 export interface Shift extends LifecycleMetadata {
@@ -303,6 +315,8 @@ export interface Shift extends LifecycleMetadata {
   host_names?: string[]
   assistant_names?: string[]
   technical_names?: string[]
+  /** Import-only planned schedule; persisted by the authenticated create RPC. */
+  staffing_segments?: PlannedStaffingSegmentDraft[]
   /** Authorized read projection; never persisted as shift metadata. */
   staffing_summary?: ShiftStaffingSummary[]
   required_host_count?: number
@@ -890,6 +904,7 @@ export interface Settings {
 export interface ShiftRegistration {
   id: string
   shift_id: string
+  staffing_segment_id?: string
   user_id: string
   operational_role: OperationalRole
   status: RegistrationStatus

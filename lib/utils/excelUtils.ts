@@ -10,6 +10,7 @@ import {
   ReportMetricKey,
   ScheduleImportRow,
   Shift,
+  PlannedStaffingSegmentDraft,
   ShiftRegistration,
   SwapRequest,
   User,
@@ -641,6 +642,58 @@ export function parseScheduleRows(
     const resolvedTime = validIsoDate(date) && validTime(startTime) && validTime(endTime)
       ? resolveShiftDateTime(date, startTime, endTime)
       : null
+    const rawNameFor = (field: 'host_names' | 'assistant_names' | 'technical_names') =>
+      Object.entries(sourceValues).find(([key]) => getCanonicalStaffingNameField(key) === field)?.[1]
+    const rawTimeCell = valueForNormalized(normalizedRow, normalizedScheduleHeaders.timeRange)
+    const timeLines = String(rawTimeCell ?? '').split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    const parsedSegments = parseMultilineTimeSegments(rawTimeCell)
+    let staffingSegments: PlannedStaffingSegmentDraft[] | undefined
+    if (timeLines.length > 1) {
+      if (parsedSegments.length !== timeLines.length || parsedSegments.some(segment =>
+        !validTime(segment.startTime) || !validTime(segment.endTime) || segment.startTime === segment.endTime)) {
+        rowErrors.push('Every staffing segment must contain one valid, non-zero time range.')
+      } else {
+        const groupedNames = {
+          host: parseMultilineStaffingNames(rawNameFor('host_names')),
+          support: parseMultilineStaffingNames(rawNameFor('assistant_names')),
+          technical: parseMultilineStaffingNames(rawNameFor('technical_names')),
+        }
+        for (const [label, groups] of Object.entries(groupedNames)) {
+          if (groups.length > 1 && groups.length !== parsedSegments.length) {
+            rowErrors.push(`${label} staffing lines must match the number of time segments.`)
+          }
+        }
+        const parentStart = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3, 5))
+        const parentDuration = resolvedTime?.durationMinutes ?? 0
+        let previousEnd = -1
+        staffingSegments = parsedSegments.map((segment, segmentOffset) => {
+          const startMinute = Number(segment.startTime.slice(0, 2)) * 60 + Number(segment.startTime.slice(3, 5))
+          const endMinute = Number(segment.endTime.slice(0, 2)) * 60 + Number(segment.endTime.slice(3, 5))
+          const startOffset = (startMinute - parentStart + 1440) % 1440
+          const duration = (endMinute - startMinute + 1440) % 1440
+          const endOffset = startOffset + duration
+          if (startOffset < previousEnd || endOffset > parentDuration) {
+            rowErrors.push(`Staffing segment ${segment.segmentIndex} overlaps or falls outside the parent shift.`)
+          }
+          previousEnd = endOffset
+          const namesAt = (groups: string[][]) => groups.length === parsedSegments.length ? groups[segmentOffset] : []
+          const hostNames = namesAt(groupedNames.host)
+          const supportNames = namesAt(groupedNames.support)
+          const technicalNames = namesAt(groupedNames.technical)
+          return {
+            segment_index: segment.segmentIndex,
+            start_time: segment.startTime,
+            end_time: segment.endTime,
+            required_host_count: Math.max(validatedStaffing.required_host_count ?? 0, hostNames.length),
+            required_support_count: Math.max(validatedStaffing.required_support_count ?? 0, supportNames.length),
+            required_technical_count: Math.max(validatedStaffing.required_technical_count ?? 0, technicalNames.length),
+            planned_host_names: hostNames,
+            planned_support_names: supportNames,
+            planned_technical_names: technicalNames,
+          }
+        })
+      }
+    }
     if (resolvedTime && !resolvedTime.valid) rowErrors.push(resolvedTime.error || 'Shift duration is invalid.')
     if (resolvedTime?.warning) rowWarnings.push(resolvedTime.warning)
     if (resolvedTime?.crossesMidnight) rowWarnings.push(`Ends on the next day (${resolvedTime.endDate}).`)
@@ -689,6 +742,7 @@ export function parseScheduleRows(
         title,
         studio: studio || undefined,
         ...staffingNames,
+        ...(staffingSegments ? { staffing_segments: staffingSegments } : {}),
         required_host_count: validatedStaffing.required_host_count!,
         required_support_count: validatedStaffing.required_support_count!,
         required_technical_count: validatedStaffing.required_technical_count!,

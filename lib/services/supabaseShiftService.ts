@@ -244,6 +244,7 @@ function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>, mo
     host_names: data.host_names ?? [],
     assistant_names: data.assistant_names ?? [],
     technical_names: data.technical_names ?? [],
+    ...(data.staffing_segments?.length ? { staffing_segments: data.staffing_segments } : {}),
     required_host_count: data.required_host_count,
     required_support_count: data.required_support_count,
     required_technical_count: data.required_technical_count,
@@ -485,7 +486,12 @@ export function createSupabaseShiftRepository(
         execution_source: data.execution_source ?? agencySource,
       }
       const payload = createPayload(effectiveData, routingMode)
-      const result = await client.rpc('create_shift', { p_data: payload }).single()
+      const result = effectiveData.staffing_segments?.length
+        ? await client.rpc('create_shift_with_staffing_segments', {
+          p_data: Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'staffing_segments')),
+          p_segments: effectiveData.staffing_segments,
+        }).single()
+        : await client.rpc('create_shift', { p_data: payload }).single()
       const shift = shiftFromRow(
         requiredRow('shift create', result) as unknown as ShiftRow,
         routingMode,

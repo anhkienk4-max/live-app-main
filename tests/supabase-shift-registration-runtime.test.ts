@@ -19,6 +19,7 @@ type Row = Record<string, unknown>
 type TableName = 'shifts' | 'shift_registrations'
 type RpcName =
   | 'register_for_shift'
+  | 'register_for_staffing_segment'
   | 'cancel_own_shift_registration'
   | 'approve_shift_registration'
   | 'reject_shift_registration'
@@ -137,6 +138,28 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
         cancelled_at: null,
         created_at: now,
         updated_at: now,
+      }
+      database.shift_registrations.push({ ...row })
+      return { ...row }
+    },
+    register_for_staffing_segment(args) {
+      const now = '2031-08-20T01:00:00.000Z'
+      const row: Row = {
+        id: 'reg-segment-001',
+        shift_id: 'shift-1',
+        staffing_segment_id: String(args.p_segment_id),
+        user_id: 'current-user',
+        operational_role: String(args.p_role),
+        status: 'pending',
+        source: 'self_registration',
+        requested_at: now,
+        reviewed_by: null,
+        reviewed_at: null,
+        review_notes: null,
+        cancelled_at: null,
+        created_at: now,
+        updated_at: now,
+        version: 1,
       }
       database.shift_registrations.push({ ...row })
       return { ...row }
@@ -469,6 +492,24 @@ test('Supabase mode self registration goes through register_for_shift RPC', asyn
     assert.equal(registration.status, 'pending')
     assert.equal(registration.operational_role, 'technical')
     assert.ok(db.shift_registrations.some(row => row.id === 'reg-reg-001'))
+  })
+})
+
+test('Supabase mode self registration persists a staffing segment through authenticated RPC', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    setSupabaseShiftRegistrationRepositoryForTests(createSupabaseShiftRegistrationRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser({ id: 'u-member', email: 'member@example.test', role: 'staff', system_permission: 'member' }))
+
+    const registration = await shiftRegistrationService.registerForSegment('segment-1', 'u-member', 'host')
+
+    assert.equal(registration.id, 'reg-segment-001')
+    assert.equal(registration.shift_id, 'shift-1')
+    assert.equal(registration.staffing_segment_id, 'segment-1')
+    assert.equal(registration.operational_role, 'host')
+    assert.equal(registration.status, 'pending')
+    assert.equal(db.shift_registrations.find(row => row.id === registration.id)?.staffing_segment_id, 'segment-1')
   })
 })
 

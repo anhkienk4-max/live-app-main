@@ -14,6 +14,7 @@ import type {
 const registrationColumns = [
   'id',
   'shift_id',
+  'staffing_segment_id',
   'user_id',
   'operational_role',
   'status',
@@ -165,6 +166,7 @@ export function registrationFromRow(row: RegistrationRow): ShiftRegistration {
   return {
     id: row.id,
     shift_id: row.shift_id,
+    staffing_segment_id: row.staffing_segment_id ?? undefined,
     user_id: row.user_id,
     operational_role: row.operational_role,
     status: row.status,
@@ -253,6 +255,7 @@ export interface SupabaseShiftRegistrationRepository {
   getCapacity(shiftId: string): Promise<ShiftRoleCapacity[]>
   getMyApprovedShifts(userId: string): Promise<Shift[]>
   register(shiftId: string, role: OperationalRole): Promise<ShiftRegistration>
+  registerForSegment(segmentId: string, role: OperationalRole): Promise<ShiftRegistration>
   cancel(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
   approve(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
   reject(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
@@ -376,6 +379,16 @@ export function createSupabaseShiftRegistrationRepository(
       }).single()
       return registrationFromRow(
         requiredRow('registration register', result) as unknown as RegistrationRow,
+      )
+    },
+
+    async registerForSegment(segmentId, role) {
+      const result = await client.rpc('register_for_staffing_segment', {
+        p_segment_id: segmentId,
+        p_role: role,
+      }).single()
+      return registrationFromRow(
+        requiredRow('segment registration register', result) as unknown as RegistrationRow,
       )
     },
 

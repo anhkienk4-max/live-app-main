@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createWorkforceOverviewHandler } from '@/lib/server/workforceOverviewHandler'
 import { createWorkforceCapabilitiesHandler } from '@/lib/server/workforceCapabilitiesHandler'
+import { createWorkforceActualHandler } from '@/lib/server/workforceActualHandler'
 import type { AuthenticatedServerUser } from '@/lib/server/authGuards'
 
 type Row = Record<string, unknown>
@@ -145,6 +146,46 @@ test('Workforce feature gate runs before scope and database reads', async () => 
   assert.equal(response.status, 503)
   assert.equal((await response.json()).error.code, 'WORKFORCE_FEATURE_DISABLED')
   assert.equal(reads, 0)
+})
+
+test('Leader Workforce actual APIs check authoritative Brand scope before reading or writing evidence', async () => {
+  const reads: string[] = []
+  const db = {
+    from(table: string) {
+      reads.push(table)
+      const query: Record<string, unknown> = {}
+      for (const method of ['select', 'eq', 'is']) query[method] = () => query
+      query.maybeSingle = async () => ({
+        data: table === 'shifts' ? { id: 'foreign-shift', brand_id: 'brand-y', status: 'completed' } : null,
+        error: null,
+      })
+      return query
+    },
+  } as unknown as SupabaseClient
+  const handler = createWorkforceActualHandler({
+    isEnabled: () => true,
+    client: () => db,
+    resolveUser: async () => leader('leader-a'),
+    createScopeClient: async () => ({ rpc: async (_name, args) => ({
+      data: args.p_scope_key === 'workforce.read' ? ['brand-x'] : [], error: null,
+    }) }),
+  })
+  const read = await handler.GET(new Request('https://ops.example/api/workforce/actual?shift_id=foreign-shift'))
+  assert.equal(read.status, 403)
+  assert.equal((await read.json()).error.code, 'WORKFORCE_LEADER_SCOPE_DENIED')
+  assert.deepEqual(reads, ['shifts'])
+
+  reads.length = 0
+  const write = await handler.POST(new Request('https://ops.example/api/workforce/actual', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'record', shift_id: 'foreign-shift', staff_id: 'staff-y',
+      operational_role: 'host', event_kind: 'worked', coverage_kind: 'planned',
+      actual_start_at: '2026-11-20T10:00:00Z', actual_end_at: '2026-11-20T10:15:00Z',
+      evidence_note: 'Cross Brand record must be denied' }),
+  }))
+  assert.equal(write.status, 403)
+  assert.equal((await write.json()).error.code, 'WORKFORCE_LEADER_SCOPE_DENIED')
+  assert.deepEqual(reads, ['shifts'])
 })
 
 test('Workforce capabilities expose Leader team view only with an active authoritative Brand grant', async () => {

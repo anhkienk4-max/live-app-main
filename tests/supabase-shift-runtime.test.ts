@@ -30,6 +30,7 @@ type Row = Record<string, unknown>
 type TableName = 'shifts' | 'shift_registrations' | 'schedule_imports'
 type RpcName =
   | 'create_shift'
+  | 'create_shift_with_staffing_segments'
   | 'update_shift'
   | 'update_shift_staffing_labels'
   | 'set_shift_registration_lock'
@@ -74,6 +75,11 @@ class FakeQuery {
     return this
   }
 
+  in(column: string, values: unknown[]) {
+    this.filters.push(row => values.includes(row[column]))
+    return this
+  }
+
   gte(column: string, value: unknown) {
     this.filters.push(row => String(row[column] ?? '') >= String(value))
     return this
@@ -82,6 +88,23 @@ class FakeQuery {
   lte(column: string, value: unknown) {
     this.filters.push(row => String(row[column] ?? '') <= String(value))
     return this
+  }
+
+  or(expression: string) {
+    const dayMatch = expression.match(/^date\.eq\.(\d{4}-\d{2}-\d{2}),and\(end_date\.eq\.(\d{4}-\d{2}-\d{2}),crosses_midnight\.eq\.true\)$/)
+    if (dayMatch) {
+      this.filters.push(row => row.date === dayMatch[1]
+        || (row.end_date === dayMatch[2] && row.crosses_midnight === true))
+      return this
+    }
+    const cutoffMatch = expression.match(/^registration_cutoff_at\.gt\.(.+),and\(registration_cutoff_at\.is\.null,start_at\.gt\.(.+)\)$/)
+    if (cutoffMatch) {
+      this.filters.push(row => (row.registration_cutoff_at != null
+        && String(row.registration_cutoff_at) > cutoffMatch[1])
+        || (row.registration_cutoff_at == null && String(row.start_at ?? '') > cutoffMatch[2]))
+      return this
+    }
+    throw new Error(`UNSUPPORTED_FAKE_OR_FILTER:${expression}`)
   }
 
   gt(column: string, value: unknown) {
@@ -203,6 +226,9 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       }
       database.shifts.push({ ...row })
       return { ...row }
+    },
+    create_shift_with_staffing_segments(args) {
+      return rpcHandlers.create_shift(args)
     },
     update_shift(args) {
       const id = String(args.p_shift_id ?? '')
@@ -570,6 +596,56 @@ test('Supabase mode create persists through create_shift RPC and updates the pro
     assert.deepEqual((await shiftService.getById(created.id))?.host_names, ['Hương'])
     assert.deepEqual((await shiftService.getById(created.id))?.assistant_names, ['An', 'Linh'])
     assert.deepEqual((await shiftService.getById(created.id))?.technical_names, ['Minh'])
+  })
+})
+
+test('Supabase mode persists imported staffing segments through the segment RPC contract', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    const db = database()
+    const client = fakeClient(db)
+    setSupabaseShiftRepositoryForTests(createSupabaseShiftRepository(client))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    const segments = [{
+      segment_index: 1,
+      start_time: '20:00',
+      end_time: '23:00',
+      required_host_count: 2,
+      required_support_count: 0,
+      required_technical_count: 0,
+      planned_host_names: ['Host A', 'Host B'],
+      planned_support_names: [],
+      planned_technical_names: [],
+    }]
+    const created = await shiftService.create({
+      title: 'Segmented import',
+      date: '2031-08-20',
+      start_time: '20:00',
+      end_time: '23:00',
+      brand_id: 'b1',
+      platform_id: 'p1',
+      host_names: ['Host A', 'Host B'],
+      assistant_names: [],
+      technical_names: [],
+      required_host_count: 2,
+      required_support_count: 0,
+      required_technical_count: 0,
+      status: 'scheduled',
+      registration_locked: false,
+      allow_multi_role: true,
+      staffing_segments: segments,
+    })
+
+    assert.equal(created.id, 'shift-new-001')
+    assert.equal(client.rpcCalls.length, 1)
+    assert.equal(client.rpcCalls[0].name, 'create_shift_with_staffing_segments')
+    assert.deepEqual(client.rpcCalls[0].args.p_segments, segments)
+    assert.equal(
+      'staffing_segments' in (client.rpcCalls[0].args.p_data as Record<string, unknown>),
+      false,
+    )
+    assert.ok(db.shifts.some(row => row.id === created.id))
   })
 })
 
