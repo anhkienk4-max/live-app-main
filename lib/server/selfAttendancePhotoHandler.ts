@@ -14,6 +14,7 @@ import { isFeatureEnabled } from '@/lib/flags'
 import { createAttendancePhotoDrive, prepareAttendancePhotoDestination } from '@/lib/server/attendancePhotoDrive'
 import { OperationalStoragePlacementError } from '@/lib/files/operationalStoragePlacementResolver'
 import { createOperationalStorageDomainRouteRepository } from '@/lib/server/operationalStorageRouteRepository'
+import type { AuthenticatedServerUser } from '@/lib/server/authGuards'
 
 const LIMIT=4*1024*1024
 const UUID=z.string().uuid()
@@ -59,14 +60,38 @@ function contextSnapshot(info:z.infer<typeof contextSchema>) {
     staff_name:info.staff_name,role:info.role}
 }
 
-export async function POST(request:Request) {
+type SelfAttendancePhotoPostDependencies = {
+  authorize: (request: Request) => Promise<AuthenticatedServerUser>
+  createAdmin: () => ReturnType<typeof createSupabaseAdminClient>
+  createSession: (request: Request) => Promise<Awaited<ReturnType<typeof createSessionClient>>>
+  createDrive: (root: string) => ReturnType<typeof createAttendancePhotoDrive>
+  prepareDestination: typeof prepareAttendancePhotoDestination
+}
+
+const defaultPostDependencies: SelfAttendancePhotoPostDependencies = {
+  authorize: request => requirePermission(request, 'attendance.record_own'),
+  createAdmin: createSupabaseAdminClient,
+  createSession: () => createSessionClient(),
+  createDrive: createAttendancePhotoDrive,
+  prepareDestination: prepareAttendancePhotoDestination,
+}
+
+/** Server-only dependency seam for persisted integration tests; the route always uses production defaults. */
+export function createSelfAttendancePhotoPostHandler(
+  overrides: Partial<SelfAttendancePhotoPostDependencies> = {},
+) {
+  const dependencies = { ...defaultPostDependencies, ...overrides }
+  return (request: Request) => handleSelfAttendancePhotoPost(request, dependencies)
+}
+
+async function handleSelfAttendancePhotoPost(request: Request, dependencies: SelfAttendancePhotoPostDependencies) {
   let uploadedId:string|null=null
   let committedMetadata=false
   let drive:ReturnType<typeof createAttendancePhotoDrive>['drive']|null=null
   let currentEventKind:'check_in'|'check_out'='check_in'
   try {
     if(!hasExactOrigin(request))return failed('ATTENDANCE_PHOTO_ORIGIN_INVALID',403)
-    const actor=await requirePermission(request,'attendance.record_own')
+    const actor=await dependencies.authorize(request)
     if(!actor.businessUserId) return failed('ATTENDANCE_BUSINESS_ACTOR_REQUIRED',403)
     if(process.env.FEATURE_SELF_ATTENDANCE_PHOTO!=='true')
       return failed('ATTENDANCE_PHOTO_FEATURE_DISABLED',503)
@@ -99,8 +124,8 @@ export async function POST(request:Request) {
     if(!recoverOnly&&(!(file instanceof File)||file.size<1||file.size>LIMIT))
       return failed('ATTENDANCE_PHOTO_REQUIRED',file instanceof File?413:400)
 
-    const admin=createSupabaseAdminClient()
-    const session=await createSessionClient()
+    const admin=dependencies.createAdmin()
+    const session=await dependencies.createSession(request)
     const evidenceColumns='request_id,shift_id,staff_id,operational_role,event_kind,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256'
     let existingData:ExistingEvidence|null=null
     let correctionContext:z.infer<typeof correctionContextSchema>|null=null
@@ -112,7 +137,7 @@ export async function POST(request:Request) {
       if(retry.data) {
         if(retry.data.attendance_event_id!==correctionEventId||retry.data.submitted_by!==actor.businessUserId)
           return failed('ATTENDANCE_PHOTO_REQUEST_REUSED',409)
-        const {drive:priorDrive}=createAttendancePhotoDrive(retry.data.external_parent_id)
+        const {drive:priorDrive}=dependencies.createDrive(retry.data.external_parent_id)
         const stored=await priorDrive.getMetadata(retry.data.external_file_id)
         if(stored.id!==retry.data.external_file_id||stored.parent_ids?.[0]!==retry.data.external_parent_id||
           stored.name!==retry.data.file_name||stored.size_bytes!==retry.data.size_bytes)
@@ -157,7 +182,7 @@ export async function POST(request:Request) {
     // A retry must not finalize check-in if the previously reserved Drive
     // image was removed, replaced or moved after the first upload.
     if(existing.data) {
-      const {drive:priorDrive}=createAttendancePhotoDrive(existing.data.external_parent_id)
+      const {drive:priorDrive}=dependencies.createDrive(existing.data.external_parent_id)
       const stored=await priorDrive.getMetadata(existing.data.external_file_id)
       if(stored.id!==existing.data.external_file_id ||
         stored.parent_ids?.[0]!==existing.data.external_parent_id ||
@@ -226,7 +251,7 @@ export async function POST(request:Request) {
       }
       let destination
       try {
-        destination=await prepareAttendancePhotoDestination(admin,{
+        destination=await dependencies.prepareDestination(admin,{
           shiftId:prepared.shift_id,shiftDate:prepared.date,role:kind,eventKind,fileName,
           actorBusinessUserId:actor.businessUserId,
         })
@@ -340,20 +365,43 @@ export async function POST(request:Request) {
   }
 }
 
-export async function GET(request:Request) {
+export const POST = createSelfAttendancePhotoPostHandler()
+
+type SelfAttendancePhotoGetDependencies = {
+  authorize: (request: Request) => Promise<AuthenticatedServerUser>
+  createAdmin: () => ReturnType<typeof createSupabaseAdminClient>
+  createSession: (request: Request) => Promise<Awaited<ReturnType<typeof createSessionClient>>>
+  createDrive: (root: string) => ReturnType<typeof createAttendancePhotoDrive>
+}
+
+const defaultGetDependencies: SelfAttendancePhotoGetDependencies = {
+  authorize: request => requirePermission(request, 'attendance.record_own'),
+  createAdmin: createSupabaseAdminClient,
+  createSession: () => createSessionClient(),
+  createDrive: createAttendancePhotoDrive,
+}
+
+export function createSelfAttendancePhotoGetHandler(
+  overrides: Partial<SelfAttendancePhotoGetDependencies> = {},
+) {
+  const dependencies = { ...defaultGetDependencies, ...overrides }
+  return (request: Request) => handleSelfAttendancePhotoGet(request, dependencies)
+}
+
+async function handleSelfAttendancePhotoGet(request: Request, dependencies: SelfAttendancePhotoGetDependencies) {
   try {
-    const actor=await requirePermission(request,'attendance.record_own')
+    const actor=await dependencies.authorize(request)
     if(!actor.businessUserId)return failed('ATTENDANCE_BUSINESS_ACTOR_REQUIRED',403)
     // Photo bytes are personal evidence. Check current DB actor activity on
     // every image read, not just the auth cookie's existence.
-    const session=await createSessionClient()
+    const session=await dependencies.createSession(request)
     const active=await session.rpc('get_my_self_attendance',{p_shift_id:null,p_limit:1})
     if(active.error)return failed('PERMISSION_DENIED',403)
     const url=new URL(request.url)
     const eventId=UUID.parse(url.searchParams.get('event_id'))
     const revisionValue=url.searchParams.get('revision')
     const revision=revisionValue===null?1:z.number().int().min(1).max(100).parse(Number(revisionValue))
-    const admin=createSupabaseAdminClient()
+    const admin=dependencies.createAdmin()
     const event=await admin.from('self_attendance_events')
       .select('request_id,shift_id,staff_id,event_kind').eq('id',eventId).maybeSingle()
     if(event.error||!event.data||!['check_in','check_out'].includes(event.data.event_kind))
@@ -397,7 +445,7 @@ export async function GET(request:Request) {
     if(metadataError)return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
     if(!metadata||('event_id' in metadata&&metadata.event_id!==eventId))return failed('ATTENDANCE_PHOTO_NOT_FOUND',404)
     if(metadata.provider!=='google_drive')return failed('ATTENDANCE_PHOTO_INTEGRITY_FAILED',409)
-    const {drive}=createAttendancePhotoDrive(metadata.external_parent_id)
+    const {drive}=dependencies.createDrive(metadata.external_parent_id)
     const stored=await drive.getMetadata(metadata.external_file_id)
     if(stored.id!==metadata.external_file_id||stored.parent_ids?.[0]!==metadata.external_parent_id||
       stored.name!==metadata.file_name||stored.size_bytes!==metadata.size_bytes)
@@ -417,6 +465,8 @@ export async function GET(request:Request) {
     return failed('ATTENDANCE_PHOTO_READ_FAILED',503)
   }
 }
+
+export const GET = createSelfAttendancePhotoGetHandler()
 
 
 /** GET_PREFLIGHT: Admin-only, read-only runtime identity and Drive ACL check.

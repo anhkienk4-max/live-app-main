@@ -17,6 +17,7 @@ BASELINE = BASELINE_DIR / "schema-after-20.sql"
 BASELINE_RESULT = BASELINE_DIR / "result.json"
 MANIFEST = EVIDENCE / "c5.3-final-migration-manifest.json"
 MIGRATION = ROOT / "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql"
+MIGRATION_C512 = ROOT / "supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql"
 SOURCE_DB = "postgres"
 SOURCE_MARKER = "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY"
 
@@ -78,7 +79,8 @@ def main() -> None:
     log = [f"source_runtime={source.strip()}", f"target_database={db_name}",
            f"c4_schema_snapshot={BASELINE.relative_to(ROOT).as_posix()}",
            f"c4_schema_snapshot_sha256={sha(BASELINE)}", f"c4_forward_migrations_verified={len(manifest['entries'])}",
-           f"c511_migration={MIGRATION.relative_to(ROOT).as_posix()}", f"c511_migration_sha256={sha(MIGRATION)}"]
+           f"c511_migration={MIGRATION.relative_to(ROOT).as_posix()}", f"c511_migration_sha256={sha(MIGRATION)}",
+           f"c512_migration={MIGRATION_C512.relative_to(ROOT).as_posix()}", f"c512_migration_sha256={sha(MIGRATION_C512)}"]
 
     run(["createdb", "-U", "postgres", db_name])
     query(f"comment on database {db_name} is 'CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY';")
@@ -165,6 +167,13 @@ def main() -> None:
         query("insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("+
               "'20261109100000',array['file=supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql','sha256="+sha(MIGRATION)+"'],"+
               "'rc19_c511_persisted_staffing_segments','c511-local-pg1711','c511:20261109100000:"+sha(MIGRATION)+"');", db_name)
+        applied_c512 = run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name],
+                           input_text=MIGRATION_C512.read_text(encoding="utf-8"), timeout=120)
+        log.append("c512_migration_apply=PASS")
+        log.append("c512_migration_output_lines=" + str(len(applied_c512.splitlines())))
+        query("insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("+
+              "'20261109131324',array['file=supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql','sha256="+sha(MIGRATION_C512)+"'],"+
+              "'rc19_c512_attendance_photo_review','c512-local-pg1711','c512:20261109131324:"+sha(MIGRATION_C512)+"');", db_name)
         final = query("select current_setting('server_version_num')||'|'||current_database()||'|'||coalesce(shobj_description(oid,'pg_database'),'')||'|'||(select count(*) from auth.users)||'|'||(select count(*) from public.shift_staffing_segments)||'|'||(select count(*) from supabase_migrations.schema_migrations) from pg_database where datname=current_database()", db_name).strip()
         log.append("final_state=" + final)
         log.append("c511_receipt_inserted_after_successful_apply=1")
@@ -180,6 +189,8 @@ def main() -> None:
             "c4_forward_migration_count_previously_verified": len(manifest["entries"]),
             "c511_migration": str(MIGRATION.relative_to(ROOT).as_posix()),
             "c511_migration_sha256": sha(MIGRATION),
+            "c512_migration": str(MIGRATION_C512.relative_to(ROOT).as_posix()),
+            "c512_migration_sha256": sha(MIGRATION_C512),
             "auth_users_after_restore": 0,
             "storage_objects_after_restore": 0,
             "shift_staffing_segments_created": 0,
@@ -189,7 +200,7 @@ def main() -> None:
         log.append("auth_users_created=0")
         log_path.write_text("\n".join(log) + "\n", encoding="utf-8")
         result_path.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
-        print(f"PASS db={db_name} postgres={b[0]} schema=20-verified+C511 evidence={result_path.relative_to(ROOT).as_posix()}")
+        print(f"PASS db={db_name} postgres={b[0]} schema=20-verified+C511+C512 evidence={result_path.relative_to(ROOT).as_posix()}")
     except Exception as exc:
         log.append("result=FAIL")
         log.append(str(exc))

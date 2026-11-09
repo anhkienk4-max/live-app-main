@@ -126,6 +126,10 @@ def main() -> None:
     rest_source_env = container_env(REST_CONTAINER)
     auth_db_uri = local_uri(auth_source_env["GOTRUE_DB_DATABASE_URL"], database)
     rest_db_uri = local_uri(rest_source_env["PGRST_DB_URI"], database)
+    # The disposable schema snapshot is much larger than an app query; avoid
+    # PostgREST's inherited 3s anon-role timeout aborting schema-cache startup.
+    options = urllib.parse.quote("-c statement_timeout=120s", safe="")
+    rest_db_uri += ("&" if "?" in rest_db_uri else "?") + "options=" + options
     jwt_secret = secrets.token_urlsafe(64)
     auth_name = "c511_auth_" + uuid.uuid4().hex[:10]
     rest_name = "c511_rest_" + uuid.uuid4().hex[:10]

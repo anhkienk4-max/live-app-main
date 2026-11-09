@@ -103,6 +103,19 @@ test('review migration is append-only, scoped, versioned and independent from Ac
   assert.doesNotMatch(sql,/workforce_actual_segments|payroll_lines/i)
 })
 
+test('C5.12 activates the reviewed photo-evidence state machine with direct-RPC RBAC guards', () => {
+  const sql = readFileSync(new URL('../supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql', import.meta.url), 'utf8')
+  assert.match(sql,/create table if not exists public\.self_attendance_photo_review_events/)
+  assert.match(sql,/before update or delete on public\.self_attendance_photo_review_events/)
+  assert.match(sql,/public\.review_self_attendance_photo\(/)
+  assert.match(sql,/public\.rbac01_effective_permission\('reports\.review'\)/)
+  assert.match(sql,/public\.rbac01_effective_permission\('attendance\.record_own'\)/)
+  assert.match(sql,/private\.can_read_shift\(v_event\.shift_id\)/)
+  assert.match(sql,/ATTENDANCE_REVIEW_SELF_REVIEW_BLOCKED/)
+  assert.match(sql,/unique \(attendance_event_id, version\)/)
+  assert.doesNotMatch(sql,/update public\.self_attendance_events|workforce_actual_segments|payroll_lines/i)
+})
+
 test('review UI keeps decisions independent from Actual and Payroll, and prevents empty-reason submission', () => {
   const ui = readFileSync(new URL('../components/features/attendance/AttendancePhotoReviewPanel.tsx',import.meta.url),'utf8')
   assert.match(ui,/does not approve Actual Staffing or Payroll/)

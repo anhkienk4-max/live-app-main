@@ -16,10 +16,14 @@ $env:C511_ANON_KEY = $config.anon_key
 $env:C511_SERVICE_ROLE_KEY = $config.service_role_key
 $env:C511_TEST_PASSWORD = $config.test_password
 $env:C511_DATABASE = $config.database
-$env:C511_EVIDENCE_DIR = Join-Path $RepositoryRoot 'scripts/rc19-c4-migration-rehearsal/evidence/c5.11-local-pg1711/e2e'
+$env:C511_EVIDENCE_DIR = Join-Path $RepositoryRoot 'scripts/rc19-c4-migration-rehearsal/evidence/c5.12-local-pg1711/e2e'
 $env:C511_POSTGRES_VERSION = $config.database_identity.Split('|')[0]
 $env:C511_MIGRATION_SHA256 = (Get-FileHash -LiteralPath $migrationPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$env:C512_MIGRATION_SHA256 = (Get-FileHash -LiteralPath (Join-Path $RepositoryRoot 'supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql') -Algorithm SHA256).Hash.ToLowerInvariant()
 $env:C511_SOURCE_SHA = (git -C $RepositoryRoot rev-parse HEAD).Trim()
+$env:FEATURE_SELF_ATTENDANCE_PHOTO = 'true'
+$env:FILE_STORAGE_ENABLED = 'true'
+$env:FEATURE_SELF_ATTENDANCE_REVIEW = 'true'
 $env:NODE_OPTIONS = '--conditions=react-server'
 
 Push-Location $RepositoryRoot
@@ -30,7 +34,8 @@ try {
   Pop-Location
   @('NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'C511_BASE_URL', 'C511_ANON_KEY',
     'C511_SERVICE_ROLE_KEY', 'C511_TEST_PASSWORD', 'C511_DATABASE', 'C511_EVIDENCE_DIR',
-    'C511_POSTGRES_VERSION', 'C511_MIGRATION_SHA256', 'C511_SOURCE_SHA', 'NODE_OPTIONS') | ForEach-Object {
+    'C511_POSTGRES_VERSION', 'C511_MIGRATION_SHA256', 'C512_MIGRATION_SHA256', 'C511_SOURCE_SHA', 'NODE_OPTIONS',
+    'FEATURE_SELF_ATTENDANCE_PHOTO', 'FILE_STORAGE_ENABLED', 'FEATURE_SELF_ATTENDANCE_REVIEW') | ForEach-Object {
       Remove-Item "Env:$($_)" -ErrorAction SilentlyContinue
     }
 }

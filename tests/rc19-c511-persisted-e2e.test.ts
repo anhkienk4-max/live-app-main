@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
@@ -12,6 +13,10 @@ import { createSupabaseShiftRegistrationRepository } from '../lib/services/supab
 import { createWorkforceActualHandler } from '../lib/server/workforceActualHandler'
 import { createWorkforcePayrollHandler } from '../lib/server/workforcePayrollHandler'
 import { createMyPayslipHandler } from '../lib/server/myPayslipHandler'
+import { createSelfAttendancePhotoGetHandler, createSelfAttendancePhotoPostHandler } from '../lib/server/selfAttendancePhotoHandler'
+import { requirePermission } from '../lib/server/authGuards'
+import { createAttendancePhotoReviewHandler } from '../lib/server/attendancePhotoReviewHandler'
+import sharp from 'sharp'
 
 const baseUrl = process.env.C511_BASE_URL
 const anonKey = process.env.C511_ANON_KEY
@@ -52,7 +57,7 @@ const activeFrom = () => new Date(Date.now() - 60_000).toISOString()
 function apiRequest(path: string, token: string, body?: unknown): Request {
   return new Request(`http://c511.local${path}`, {
     method: body === undefined ? 'GET' : 'POST',
-    headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    headers: { Authorization: `Bearer ${token}`, Origin: 'http://c511.local', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
 }
@@ -119,6 +124,78 @@ function createScopeClient(request: Request) {
   const client = token ? sessions.get(token) : undefined
   if (!client) throw new Error('C511_AUTHENTICATED_SCOPE_SESSION_MISSING')
   return client
+}
+
+function createLocalPhotoAdapter() {
+  type Photo = { id: string; name: string; parent: string; bytes: Uint8Array }
+  const photos = new Map<string, Photo>()
+  const parents = new Set<string>()
+  const driveFor = (root: string) => {
+    if (!parents.has(root)) throw new Error('C511_LOCAL_PHOTO_PARENT_UNKNOWN')
+    return { root, drive: {
+      read: async (id: string) => {
+        const photo = photos.get(id)
+        if (!photo) throw new Error('C511_LOCAL_PHOTO_NOT_FOUND')
+        return photo.bytes
+      },
+      getMetadata: async (id: string) => {
+        const photo = photos.get(id)
+        if (!photo) throw new Error('C511_LOCAL_PHOTO_NOT_FOUND')
+        return { id: photo.id, name: photo.name, size_bytes: photo.bytes.byteLength, parent_ids: [photo.parent] }
+      },
+      delete: async (id: string) => { photos.delete(id) },
+    } as never }
+  }
+  return {
+    photos,
+    post: createSelfAttendancePhotoPostHandler({
+      authorize: request => requirePermission(request, 'attendance.record_own', resolveUser, async () => createScopeClient(request)),
+      createAdmin: () => service as never,
+      createSession: async request => createScopeClient(request) as never,
+      createDrive: root => driveFor(root),
+      prepareDestination: async (_client, input) => {
+        const parentId = `c511-local-parent-${input.eventKind}-${crypto.randomUUID()}`
+        parents.add(parentId)
+        const drive = driveFor(parentId).drive
+        const storage = { upload: async (asset: { name: string; mime_type: string; size_bytes: number; content: Uint8Array; external_parent_id: string }) => {
+          const id = `c511-local-file-${crypto.randomUUID()}`
+          const bytes = new Uint8Array(asset.content)
+          if (asset.external_parent_id !== parentId || bytes.byteLength !== asset.size_bytes) throw new Error('C511_LOCAL_PHOTO_UPLOAD_INVALID')
+          photos.set(id, { id, name: asset.name, parent: parentId, bytes })
+          return { asset: { provider: 'google_drive', external_file_id: id, external_parent_id: parentId,
+            name: asset.name, mime_type: asset.mime_type, size_bytes: bytes.byteLength } }
+        } }
+        return { drive, storage: storage as never, parentId, folderPath: `local-test/${input.eventKind}/${input.role}` }
+      },
+    }),
+    get: createSelfAttendancePhotoGetHandler({
+      authorize: request => requirePermission(request, 'attendance.record_own', resolveUser, async () => createScopeClient(request)),
+      createAdmin: () => service as never,
+      createSession: async request => createScopeClient(request) as never,
+      createDrive: root => driveFor(root),
+    }),
+  }
+}
+
+async function submitAttendancePhoto(
+  handler: ReturnType<typeof createLocalPhotoAdapter>['post'],
+  token: string,
+  shiftId: string,
+  eventKind: 'check_in' | 'check_out',
+  requestId = crypto.randomUUID(),
+) {
+  const bytes = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#b84a32' } }).jpeg().toBuffer()
+  const form = new FormData()
+  form.set('shift_id', shiftId)
+  form.set('role', 'host')
+  form.set('event_kind', eventKind)
+  form.set('request_id', requestId)
+  form.set('capture_source', eventKind === 'check_in' ? 'camera' : 'file_picker')
+  form.set('file', new File([bytes], 'synthetic.jpg', { type: 'image/jpeg' }))
+  const response = await handler(new Request('http://c511.local/api/workforce/self-attendance-photo', {
+    method: 'POST', headers: { Origin: 'http://c511.local', Authorization: `Bearer ${token}` }, body: form,
+  }))
+  return { response, body: await response.json() as { ok: boolean; error?: { code: string }; event?: Record<string, unknown> }, requestId }
 }
 
 function requireOk<T>(result: { data: T | null; error: { message?: string; code?: string } | null }, operation: string): T {
@@ -289,45 +366,66 @@ async function runPersistedScenario(run: number) {
   assert.ok(live)
   live = await shiftRepo.update(shift.id, { status: 'live' }, false, live!.version)
   assert.ok(live)
-  const attendance = await host1Auth.client.rpc('self_attendance_record', {
-    p_shift_id: shift.id, p_operational_role: 'host', p_event_kind: 'check_in',
-    p_request_id: crypto.randomUUID(), p_evidence_note: 'C5.11 synthetic check-in event',
+  const photoAdapter = createLocalPhotoAdapter()
+  const reviewApi = createAttendancePhotoReviewHandler({
+    resolveUser,
+    createClient: async () => reviewerAuth.client as never,
+    createAdminClient: () => service as never,
+    isEnabled: () => true,
   })
-  if (attendance.error) {
-    assert.equal(attendance.error.message, 'ATTENDANCE_PHOTO_REQUIRED',
-      'check-in must remain blocked until the real provider photo receipt exists')
-    records.push({
-      run, brand_ids: [brandA, brandB],
-      actor_business_ids: [admin.businessId, reviewer.businessId, leader.businessId, host1.businessId,
-        host2.businessId, host3.businessId, hostOverflow.businessId, support.businessId],
-      shift_id: shift.id, segment_ids: [segment1, segment2],
-      registration_ids: [registration1.id, registration2.id, foreignRegistration.id, supportRegistration.id],
-      staffing_persistence: 'PASS', attendance_persistence: 'BLOCKED', payroll_persistence: 'BLOCKED',
-      results: {
-        admin_parent_shift_create: 'PASS', duplicate_reimport: 'PREVENTED',
-        leader_same_brand_read_and_approval: 'ALLOW', leader_foreign_brand_read_and_approval: 'DENY',
-        leader_expired_brand_scope: 'DENY', member_self_approval: 'DENY',
-        member_foreign_registration_mutation: 'DENY', staffing_capacity_overflow: 'DENY',
-      },
-      attendance_blocker: 'ATTENDANCE_PHOTO_REQUIRED: Drive-only photo handler requires an approved provider runtime',
-    })
-    return
-  }
-  const checkIn = requireOk(attendance, 'authenticated attendance check-in') as Record<string, unknown>
-  const checkOutRes = await host1Auth.client.rpc('self_attendance_record', {
-    p_shift_id: shift.id, p_operational_role: 'host', p_event_kind: 'check_out',
-    p_request_id: crypto.randomUUID(), p_evidence_note: 'C5.11 synthetic check-out event',
-  })
-  const checkOut = requireOk(checkOutRes, 'authenticated attendance check-out') as Record<string, unknown>
+  const missingPhoto = await photoAdapter.post(new Request('http://c511.local/api/workforce/self-attendance-photo', {
+    method: 'POST', headers: { Origin: 'http://c511.local', Authorization: `Bearer ${host1Auth.token}` },
+    body: new FormData(),
+  }))
+  assert.equal(missingPhoto.status, 400, 'missing evidence remains denied before the upload pipeline')
+  const checkInSubmission = await submitAttendancePhoto(photoAdapter.post, host1Auth.token, shift.id, 'check_in')
+  assert.equal(checkInSubmission.response.status, 200, JSON.stringify(checkInSubmission.body))
+  const checkIn = checkInSubmission.body.event!
+  const checkInEventId = String(checkIn.event_id)
+  const checkInReceipt = requireOk(await service.from('self_attendance_photo_evidence')
+    .select('request_id,provider,external_file_id,external_parent_id,size_bytes,checksum_sha256,event_kind')
+    .eq('request_id', checkInSubmission.requestId).single(), 'check-in upload receipt') as Record<string, unknown>
+  assert.equal(checkInReceipt.event_kind, 'check_in')
+  assert.equal(checkInReceipt.provider, 'google_drive', 'local adapter implements the Drive contract; this is not real Drive evidence')
+  assert.ok(photoAdapter.photos.has(String(checkInReceipt.external_file_id)))
+  assert.ok(String(checkInReceipt.external_parent_id).startsWith('c511-local-parent-check_in-'))
+  const checkInReadback = await photoAdapter.get(new Request(`http://c511.local/api/workforce/self-attendance-photo?event_id=${checkInEventId}`, {
+    headers: { Authorization: `Bearer ${host1Auth.token}` },
+  }))
+  assert.equal(checkInReadback.status, 200)
+  assert.equal(createHash('sha256').update(new Uint8Array(await checkInReadback.arrayBuffer())).digest('hex'), checkInReceipt.checksum_sha256)
+  const checkInRetry = await submitAttendancePhoto(photoAdapter.post, host1Auth.token, shift.id, 'check_in', checkInSubmission.requestId)
+  assert.equal(checkInRetry.response.status, 200, 'same request retries reuse the immutable photo receipt')
+  assert.equal(String(checkInRetry.body.event?.event_id), checkInEventId)
+  assert.equal(photoAdapter.photos.size, 1)
+  const foreignPhotoRead = await photoAdapter.get(new Request(`http://c511.local/api/workforce/self-attendance-photo?event_id=${checkInEventId}`, {
+    headers: { Authorization: `Bearer ${host3Auth.token}` },
+  }))
+  assert.equal(foreignPhotoRead.status, 403, 'foreign actor cannot read another member photo bytes')
+
+  const checkOutSubmission = await submitAttendancePhoto(photoAdapter.post, host1Auth.token, shift.id, 'check_out')
+  assert.equal(checkOutSubmission.response.status, 200, JSON.stringify(checkOutSubmission.body))
+  const checkOut = checkOutSubmission.body.event!
+  const checkOutEventId = String(checkOut.event_id)
+  const checkOutReceipt = requireOk(await service.from('self_attendance_photo_evidence')
+    .select('request_id,event_kind,external_file_id,external_parent_id,checksum_sha256')
+    .eq('request_id', checkOutSubmission.requestId).single(), 'check-out upload receipt') as Record<string, unknown>
+  assert.equal(checkOutReceipt.event_kind, 'check_out')
+  assert.notEqual(checkOutReceipt.external_file_id, checkInReceipt.external_file_id)
+  assert.notEqual(checkOutReceipt.external_parent_id, checkInReceipt.external_parent_id)
+  const checkOutReadback = await photoAdapter.get(new Request(`http://c511.local/api/workforce/self-attendance-photo?event_id=${checkOutEventId}`, {
+    headers: { Authorization: `Bearer ${host1Auth.token}` },
+  }))
+  assert.equal(checkOutReadback.status, 200)
+  assert.equal(createHash('sha256').update(new Uint8Array(await checkOutReadback.arrayBuffer())).digest('hex'), checkOutReceipt.checksum_sha256)
   const eventRead = await host1Auth.client.rpc('get_my_self_attendance', { p_shift_id: shift.id, p_limit: 10 })
   const events = requireOk(eventRead, 'authenticated attendance readback') as Array<Record<string, unknown>>
   assert.deepEqual(new Set(events.map(event => event.event)), new Set(['check_in', 'check_out']))
   assert.ok(events.every(event => event.staff_id === host1.businessId))
-  const foreignAttendance = await host3Auth.client.rpc('self_attendance_record', {
-    p_shift_id: shift.id, p_operational_role: 'host', p_event_kind: 'check_in',
-    p_request_id: crypto.randomUUID(), p_evidence_note: 'C5.11 unauthorized attendance',
-  })
-  assert.ok(foreignAttendance.error)
+  assert.ok(events.every(event => event.verification_status === 'pending_verification'),
+    'photo upload and review do not themselves approve attendance')
+  const foreignPhoto = await submitAttendancePhoto(photoAdapter.post, host3Auth.token, shift.id, 'check_in')
+  assert.notEqual(foreignPhoto.response.status, 200, 'foreign assignment cannot upload attendance evidence')
   const attendanceStored = requireOk(await service.from('self_attendance_events').select('id,event_kind,staff_id,shift_id,request_id').eq('shift_id', shift.id).eq('staff_id', host1.businessId), 'attendance db readback') as Array<Record<string, unknown>>
   assert.equal(attendanceStored.length, 2)
   assert.equal(attendanceStored.filter(row => row.event_kind === 'check_in').length, 1)
@@ -335,6 +433,35 @@ async function runPersistedScenario(run: number) {
   const freshMember = await signIn(host1)
   const freshHistory = requireOk(await freshMember.client.rpc('get_my_self_attendance', { p_shift_id: shift.id, p_limit: 10 }), 'relogin attendance readback') as Array<Record<string, unknown>>
   assert.equal(freshHistory.length, 2)
+  const selfReviewDenied = await apiPost(createAttendancePhotoReviewHandler({
+    resolveUser, createClient: async () => host1Auth.client as never,
+    createAdminClient: () => service as never, isEnabled: () => true,
+  }), '/api/workforce/attendance-photo-review', host1Auth.token, {
+    event_id: checkInEventId, expected_version: 0, expected_evidence_revision: 1,
+    decision: 'approved', reason: 'member cannot self review', idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(selfReviewDenied.status, 403, 'attendance owner cannot approve their own evidence')
+  const reviewPayload = (eventId: string, reason: string) => ({
+    event_id: eventId, expected_version: 0, expected_evidence_revision: 1,
+    decision: 'approved', reason, idempotency_key: crypto.randomUUID(),
+  })
+  const checkInReviewResponse = await apiPost(reviewApi, '/api/workforce/attendance-photo-review', reviewerAuth.token,
+    reviewPayload(checkInEventId, 'independent reviewer verified check-in image'))
+  assert.equal(checkInReviewResponse.status, 200, await checkInReviewResponse.clone().text())
+  const checkInReview = (await checkInReviewResponse.json() as { review: Record<string, unknown> }).review
+  const checkOutReviewResponse = await apiPost(reviewApi, '/api/workforce/attendance-photo-review', reviewerAuth.token,
+    reviewPayload(checkOutEventId, 'independent reviewer verified check-out image'))
+  assert.equal(checkOutReviewResponse.status, 200, await checkOutReviewResponse.clone().text())
+  const checkOutReview = (await checkOutReviewResponse.json() as { review: Record<string, unknown> }).review
+  assert.equal(checkInReview.decision, 'approved')
+  assert.equal(checkOutReview.decision, 'approved')
+  const reviewReadback = requireOk(await service.from('self_attendance_photo_review_events')
+    .select('attendance_event_id,evidence_request_id,version,evidence_revision,decision,reviewer_id')
+    .in('attendance_event_id', [checkInEventId, checkOutEventId]), 'attendance evidence review readback') as Array<Record<string, unknown>>
+  assert.equal(reviewReadback.length, 2)
+  assert.ok(reviewReadback.every(row => row.decision === 'approved' && row.reviewer_id === reviewer.businessId))
+  const afterEvidenceReview = requireOk(await host1Auth.client.rpc('get_my_self_attendance', { p_shift_id: shift.id, p_limit: 10 }), 'attendance remains pending after evidence review') as Array<Record<string, unknown>>
+  assert.ok(afterEvidenceReview.every(event => event.verification_status === 'pending_verification'))
   const completed = await shiftRepo.update(shift.id, { status: 'completed' }, false, live!.version)
   assert.ok(completed)
 
@@ -361,7 +488,7 @@ async function runPersistedScenario(run: number) {
   const actual1Response = await apiPost(admin2Actually, '/api/workforce/actual', adminAuth.token, {
     action: 'record', shift_id: shift.id, staff_id: host1.businessId, operational_role: 'host',
     event_kind: 'worked', coverage_kind: 'planned', actual_start_at: actualStart,
-    actual_end_at: actualEnd, evidence_note: `C5.11 synthetic actual minutes; attendance=${String(checkIn.event_id)},${String(checkOut.event_id)}`,
+    actual_end_at: actualEnd, evidence_note: `C5.11 synthetic actual minutes; attendance=${checkInEventId},${checkOutEventId}`,
   })
   assert.equal(actual1Response.status, 201, await actual1Response.clone().text())
   const actual1 = (await actual1Response.json() as { segment: { id: string; version: number; review_status: string } }).segment
@@ -384,13 +511,23 @@ async function runPersistedScenario(run: number) {
   })
   assert.equal(missingAttendanceReview.status, 409)
   assert.equal((await missingAttendanceReview.json() as { error: { code: string } }).error.code, 'WORKFORCE_ATTENDANCE_EVIDENCE_REQUIRED')
-  const host2Attendance = await Promise.all(['check_in', 'check_out'].map(eventKind => host2Auth.client.rpc('self_attendance_record', {
-    p_shift_id: shift.id, p_operational_role: 'host', p_event_kind: eventKind,
-    p_request_id: crypto.randomUUID(), p_evidence_note: `C5.11 synthetic ${eventKind} event for second Host`,
-  })))
-  assert.ok(host2Attendance.every(result => !result.error))
+  const host2Photos = await Promise.all((['check_in', 'check_out'] as const).map(eventKind =>
+    submitAttendancePhoto(photoAdapter.post, host2Auth.token, shift.id, eventKind)))
+  assert.ok(host2Photos.every(item => item.response.status === 200))
   const storedHost2Events = requireOk(await service.from('self_attendance_events').select('id,event_kind').eq('shift_id', shift.id).eq('staff_id', host2.businessId), 'second Host attendance readback') as Array<Record<string, unknown>>
   assert.equal(storedHost2Events.length, 2)
+  for (const photo of host2Photos) {
+    const event = photo.body.event!
+    const reviewedResponse = await apiPost(reviewApi, '/api/workforce/attendance-photo-review', reviewerAuth.token,
+      reviewPayload(String(event.event_id), 'independent reviewer verified second Host evidence'))
+    assert.equal(reviewedResponse.status, 200, await reviewedResponse.clone().text())
+    const reviewed = (await reviewedResponse.json() as { review: Record<string, unknown> }).review
+    assert.equal(reviewed.decision, 'approved')
+  }
+  const photoReceipts = requireOk(await service.from('self_attendance_photo_evidence')
+    .select('request_id,event_kind,external_file_id,external_parent_id,checksum_sha256')
+    .eq('shift_id', shift.id).eq('staff_id', host1.businessId), 'attendance photo receipt chain') as Array<Record<string, unknown>>
+  assert.equal(photoReceipts.length, 2)
   const review1 = await apiPost(scopedActualHandler, '/api/workforce/actual', leaderAuth.token, {
     action: 'review', segment_id: actual1.id, expected_version: actual1.version,
     decision: 'approved', review_note: 'separate authorized reviewer approves minutes',
@@ -488,13 +625,17 @@ async function runPersistedScenario(run: number) {
     run, brand_ids: [brandA, brandB], actor_business_ids: [admin.businessId, reviewer.businessId, leader.businessId, host1.businessId, host2.businessId, host3.businessId, support.businessId],
     shift_id: shift.id, foreign_shift_id: foreign.shift.id,
     registration_ids: [registration1.id, registration2.id, foreignRegistration.id, supportRegistration.id],
-    actual_segment_ids: [actual1.id, actual2.id], attendance_event_ids: [checkIn.event_id, checkOut.event_id],
+    actual_segment_ids: [actual1.id, actual2.id], attendance_event_ids: [checkInEventId, checkOutEventId],
+    attendance_photo_receipts: photoReceipts,
+    attendance_evidence_reviews: reviewReadback,
     payroll_period_id: periodBody.period.id, payroll_line_ids: afterRetry.map(line => line.id),
     results: {
       leader_same_brand_read: 'ALLOW', leader_foreign_brand_read: 'DENY',
       leader_foreign_brand_approval: 'DENY', leader_revoked_approval: 'DENY',
       capacity_exceeded_approval: 'DENY', member_self_approval: 'DENY', member_foreign_registration_mutation: 'DENY',
-      attendance_persisted_after_new_session: 'PASS', unauthorized_attendance: 'DENY',
+      attendance_persisted_after_new_session: 'PASS', photo_receipt_and_checksum_readback: 'PASS',
+      check_in_out_separate_evidence: 'PASS', photo_retry_idempotent: 'PASS',
+      independent_evidence_review: 'PASS', member_self_review: 'DENY', unauthorized_attendance: 'DENY',
       member_actual_api: 'DENY', expired_session: 'DENY',
       approved_actual_minutes: 'PASS', missing_rate_reconciled_as_skip: 'PASS', payroll_retry_no_double_count: 'PASS',
       payroll_roles_separated_and_locked: 'PASS', member_own_payslip: 'PASS', other_member_payslip: 'DENY', forged_payslip_owner: 'DENY', member_payroll_api: 'DENY',
@@ -506,27 +647,31 @@ function persistedStart(shift: { start_at: string }, offsetMinutes: number) {
   return new Date(Date.parse(shift.start_at) + offsetMinutes * 60_000).toISOString()
 }
 
-test('C5.11 repeats persisted authenticated Staffing and records the required photo-provider blocker', async () => {
+test('C5.12 repeats authenticated persisted Staffing, Attendance, evidence review, Payroll and payslip', async () => {
   try {
     for (const run of [1, 2]) await runPersistedScenario(run)
     mkdirSync(evidenceDir!, { recursive: true })
     const output = {
-      result: 'BLOCKED', source_sha: process.env.C511_SOURCE_SHA,
+      result: 'PASS', source_sha: process.env.C511_SOURCE_SHA,
       postgres: process.env.C511_POSTGRES_VERSION,
       database, isolation: 'local Docker PostgreSQL 17, dedicated marked DB; Auth/PostgREST loopback only',
       migration_sha256: process.env.C511_MIGRATION_SHA256,
+      attendance_review_migration_sha256: process.env.C512_MIGRATION_SHA256,
       runtime_auth_users_before: 0, storage_objects_before: 0,
       repeatable_authenticated_staffing_runs: 2, service_role_used_only_for_fixture_and_server_handler_backend: true,
       authenticated_roles: ['admin', 'leader', 'member'],
       exercised_api_and_rpc: [
         'Supabase Auth sign-up/sign-in/getUser', 'create_shift_with_staffing_segments',
         'rc19_set_leader_brand_scope', 'rc19_current_leader_brand_ids',
-        'register_for_staffing_segment', 'approve_shift_registration', 'self_attendance_record',
+        'register_for_staffing_segment', 'approve_shift_registration', 'server-side photo upload handler',
+        'self_attendance_record', 'review_self_attendance_photo',
         'RLS shifts and staffing-segment reads',
       ],
-      staffing_persistence: 'PASS', attendance_persistence: 'BLOCKED', payroll_persistence: 'BLOCKED',
-      blocker: 'Attendance check-in requires a verified Google Drive photo receipt. Drive I/O is excluded from this task and no local Drive-compatible provider is configured.',
-      production_accessed: false, production_credentials_used: false, drive_io: false,
+      staffing_persistence: 'PASS', attendance_persistence: 'PASS', evidence_review: 'PASS',
+      approved_actual_minutes: 'PASS', payroll_persistence: 'PASS', member_payslip_readback: 'PASS',
+      storage_adapter: 'server-side dependency-injected local byte store; not selectable by client; SHA readback verified',
+      real_drive_e2e: 'BLOCKED: Production Drive OAuth identity and private folder ACL have not been verified in this local task',
+      production_accessed: false, production_credentials_used: false, real_drive_io: false,
       evidence_records: records,
     }
     const path = join(evidenceDir!, `persisted-e2e-${new Date().toISOString().replaceAll(':', '').replaceAll('.', '')}.json`)
