@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "c27440195fc415bf382e1c882f7d6be238f462a8",
+    "head": "3042f9b52cd13034425d213a6f089dcdf0fd509d",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -122,11 +122,11 @@
         "app": 95,
         "components": 190,
         "lib": 288,
-        "scripts": 96,
-        "supabase": 140,
-        "tests": 361
+        "scripts": 111,
+        "supabase": 141,
+        "tests": 363
       },
-      "total": 1170
+      "total": 1188
     },
     "tests": {
       "files": [
@@ -303,6 +303,8 @@
         "tests/rc19-batch05a41-sequential-migrations.test.ts",
         "tests/rc19-c3-mutation-authorization.test.ts",
         "tests/rc19-c4.4-rbac-behavior.test.ts",
+        "tests/rc19-c511-persisted-e2e.test.ts",
+        "tests/rc19-c511-segmented-staffing.test.ts",
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-destination-integrity.test.ts",
@@ -422,7 +424,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 291
+      "count": 293
     },
     "migrations": {
       "files": [
@@ -537,9 +539,10 @@
         "supabase/migrations/20261105120000_rc19_c3_scoped_report_export.sql",
         "supabase/migrations/20261107000000_rc19_shift_operational_notes.sql",
         "supabase/migrations/20261107120000_rc19_open_shifts_server_selection.sql",
-        "supabase/migrations/20261108135226_rc19_staffing_candidate_brand_scope.sql"
+        "supabase/migrations/20261108135226_rc19_staffing_candidate_brand_scope.sql",
+        "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql"
       ],
-      "count": 112
+      "count": 113
     }
   },
   "verification": {
@@ -553,5 +556,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-09T16:34:55+07:00"
+  "synced_at": "2026-11-09T19:29:51+07:00"
 }
