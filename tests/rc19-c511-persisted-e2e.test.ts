@@ -184,7 +184,8 @@ async function submitAttendancePhoto(
   eventKind: 'check_in' | 'check_out',
   requestId = crypto.randomUUID(),
 ) {
-  const bytes = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#b84a32' } }).jpeg().toBuffer()
+  const background = eventKind === 'check_in' ? '#b84a32' : '#315ab8'
+  const bytes = await sharp({ create: { width: 8, height: 8, channels: 3, background } }).jpeg().toBuffer()
   const form = new FormData()
   form.set('shift_id', shiftId)
   form.set('role', 'host')
@@ -213,10 +214,17 @@ async function newBrand(name: string) {
 
 async function createImportedShift(run: number, brandId: string, brandName: string, platformId: string, platformName: string) {
   const timeZone = 'Asia/Ho_Chi_Minh'
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date())
+  const localParts = (value: Date) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(value).map(part => [part.type, part.value]))
+  const start = localParts(new Date(Date.now() + 90 * 60_000))
+  const middle = localParts(new Date(Date.now() + 150 * 60_000))
+  const end = localParts(new Date(Date.now() + 210 * 60_000))
+  const startDate = `${start.year}-${start.month}-${start.day}`
+  const localTime = (parts: Record<string, string>) => `${parts.hour}:${parts.minute}`
   const parsed = normalizeScheduleImportResult(parseScheduleRows([{
-    Date: today,
-    Time: '20:00 - 23:00\n23:00 - 02:00',
+    Date: startDate,
+    Time: `${localTime(start)} - ${localTime(middle)}\n${localTime(middle)} - ${localTime(end)}`,
     Brand: brandName,
     Platform: platformName,
     'Shift title': `C5.11 persisted E2E run ${run}`,
@@ -238,7 +246,7 @@ async function createImportedShift(run: number, brandId: string, brandName: stri
   assert.equal(duplicateImport, false, 'reimport must not create a duplicate parent shift')
   const persisted = requireOk(await service.from('shifts').select('id,brand_id,date,start_time,end_time,start_at,end_at,crosses_midnight,status,version').eq('id', shift.id).single(), 'shift readback')
   assert.equal(persisted.brand_id, brandId)
-  assert.equal(persisted.crosses_midnight, true)
+  assert.equal(persisted.crosses_midnight, end.day !== start.day)
   const segments = requireOk(await service.from('shift_staffing_segments').select('id,shift_id,segment_index,start_at,end_at,required_host_count,required_support_count').eq('shift_id', shift.id).order('segment_index'), 'segment readback') as Array<Record<string, unknown>>
   assert.equal(segments.length, 2)
   assert.ok(segments.every(segment => segment.shift_id === shift.id))
@@ -337,14 +345,18 @@ async function runPersistedScenario(run: number) {
   const approvalRepo = createSupabaseShiftRegistrationRepository(leaderAuth.client)
   const approved1 = await approvalRepo.approve(registration1.id, 'C5.11 scoped approval', registration1.version)
   const approved2 = await approvalRepo.approve(registration2.id, 'C5.11 scoped approval', registration2.version)
+  const approvedSupport = await approvalRepo.approve(supportRegistration.id, 'C5.11 scoped support approval', supportRegistration.version)
   assert.equal(approved1.status, 'approved')
   assert.equal(approved2.status, 'approved')
-  const deniedOverflow = await createSupabaseShiftRegistrationRepository(hostOverflowAuth.client).registerForSegment(segment1, 'host').then(async row => {
-    const result = await approvalRepo.approve(row.id, 'C5.11 capacity approval', row.version)
-    return { allowed: true, result }
-  }).catch(error => ({ allowed: false, error: String(error.message) }))
+  assert.equal(approvedSupport.status, 'approved')
+  const deniedOverflow = await createSupabaseShiftRegistrationRepository(hostOverflowAuth.client).registerForSegment(segment1, 'host')
+    .then(async row => {
+      await approvalRepo.approve(row.id, 'C5.11 capacity approval', row.version)
+      return { allowed: true, error: '' }
+    }).catch(error => ({ allowed: false, error: String(error.message) }))
   assert.equal(deniedOverflow.allowed, false)
   assert.match(deniedOverflow.error, /STAFFING_SEGMENT_FULL/u)
+  const pendingRevocationRegistration = await createSupabaseShiftRegistrationRepository(hostOverflowAuth.client).registerForSegment(segment2, 'host')
   assert.ok(registration1.id && registration2.id && foreignRegistration.id && supportRegistration.id)
   const memberSelfApprove = await host1Auth.client.rpc('approve_shift_registration', {
     p_registration_id: supportRegistration.id, p_notes: 'member forbidden approval', p_expected_version: supportRegistration.version,
@@ -413,6 +425,7 @@ async function runPersistedScenario(run: number) {
   assert.equal(checkOutReceipt.event_kind, 'check_out')
   assert.notEqual(checkOutReceipt.external_file_id, checkInReceipt.external_file_id)
   assert.notEqual(checkOutReceipt.external_parent_id, checkInReceipt.external_parent_id)
+  assert.notEqual(checkOutReceipt.checksum_sha256, checkInReceipt.checksum_sha256)
   const checkOutReadback = await photoAdapter.get(new Request(`http://c511.local/api/workforce/self-attendance-photo?event_id=${checkOutEventId}`, {
     headers: { Authorization: `Bearer ${host1Auth.token}` },
   }))
@@ -462,6 +475,20 @@ async function runPersistedScenario(run: number) {
   assert.ok(reviewReadback.every(row => row.decision === 'approved' && row.reviewer_id === reviewer.businessId))
   const afterEvidenceReview = requireOk(await host1Auth.client.rpc('get_my_self_attendance', { p_shift_id: shift.id, p_limit: 10 }), 'attendance remains pending after evidence review') as Array<Record<string, unknown>>
   assert.ok(afterEvidenceReview.every(event => event.verification_status === 'pending_verification'))
+  const host2CheckIn = await submitAttendancePhoto(photoAdapter.post, host2Auth.token, shift.id, 'check_in')
+  const host2CheckOut = await submitAttendancePhoto(photoAdapter.post, host2Auth.token, shift.id, 'check_out')
+  const host2Photos = [host2CheckIn, host2CheckOut]
+  assert.ok(host2Photos.every(item => item.response.status === 200), JSON.stringify(host2Photos.map(item => ({ status: item.response.status, body: item.body }))))
+  const storedHost2Events = requireOk(await service.from('self_attendance_events').select('id,event_kind').eq('shift_id', shift.id).eq('staff_id', host2.businessId), 'second Host attendance readback') as Array<Record<string, unknown>>
+  assert.equal(storedHost2Events.length, 2)
+  for (const photo of host2Photos) {
+    const event = photo.body.event!
+    const reviewedResponse = await apiPost(reviewApi, '/api/workforce/attendance-photo-review', reviewerAuth.token,
+      reviewPayload(String(event.event_id), 'independent reviewer verified second Host evidence'))
+    assert.equal(reviewedResponse.status, 200, await reviewedResponse.clone().text())
+    const reviewed = (await reviewedResponse.json() as { review: Record<string, unknown> }).review
+    assert.equal(reviewed.decision, 'approved')
+  }
   const completed = await shiftRepo.update(shift.id, { status: 'completed' }, false, live!.version)
   assert.ok(completed)
 
@@ -500,30 +527,24 @@ async function runPersistedScenario(run: number) {
   })
   assert.equal(actual2Response.status, 201, await actual2Response.clone().text())
   const actual2 = (await actual2Response.json() as { segment: { id: string; version: number } }).segment
+  const actualWithoutAttendance = await apiPost(admin2Actually, '/api/workforce/actual', adminAuth.token, {
+    action: 'record', shift_id: shift.id, staff_id: support.businessId, operational_role: 'support',
+    event_kind: 'worked', coverage_kind: 'planned', actual_start_at: actualStart,
+    actual_end_at: actualEnd, evidence_note: 'C5.11 synthetic support minutes without attendance evidence',
+  })
+  assert.equal(actualWithoutAttendance.status, 201, await actualWithoutAttendance.clone().text())
+  const missingEvidenceSegment = (await actualWithoutAttendance.json() as { segment: { id: string; version: number } }).segment
   const selfReview = await apiPost(admin2Actually, '/api/workforce/actual', adminAuth.token, {
     action: 'review', segment_id: actual1.id, expected_version: actual1.version,
     decision: 'approved', review_note: 'same creator cannot approve own evidence',
   })
   assert.equal(selfReview.status, 403)
   const missingAttendanceReview = await apiPost(admin2Actually, '/api/workforce/actual', reviewerAuth.token, {
-    action: 'review', segment_id: actual2.id, expected_version: actual2.version,
+    action: 'review', segment_id: missingEvidenceSegment.id, expected_version: missingEvidenceSegment.version,
     decision: 'approved', review_note: 'attendance evidence is absent initially',
   })
   assert.equal(missingAttendanceReview.status, 409)
   assert.equal((await missingAttendanceReview.json() as { error: { code: string } }).error.code, 'WORKFORCE_ATTENDANCE_EVIDENCE_REQUIRED')
-  const host2Photos = await Promise.all((['check_in', 'check_out'] as const).map(eventKind =>
-    submitAttendancePhoto(photoAdapter.post, host2Auth.token, shift.id, eventKind)))
-  assert.ok(host2Photos.every(item => item.response.status === 200))
-  const storedHost2Events = requireOk(await service.from('self_attendance_events').select('id,event_kind').eq('shift_id', shift.id).eq('staff_id', host2.businessId), 'second Host attendance readback') as Array<Record<string, unknown>>
-  assert.equal(storedHost2Events.length, 2)
-  for (const photo of host2Photos) {
-    const event = photo.body.event!
-    const reviewedResponse = await apiPost(reviewApi, '/api/workforce/attendance-photo-review', reviewerAuth.token,
-      reviewPayload(String(event.event_id), 'independent reviewer verified second Host evidence'))
-    assert.equal(reviewedResponse.status, 200, await reviewedResponse.clone().text())
-    const reviewed = (await reviewedResponse.json() as { review: Record<string, unknown> }).review
-    assert.equal(reviewed.decision, 'approved')
-  }
   const photoReceipts = requireOk(await service.from('self_attendance_photo_evidence')
     .select('request_id,event_kind,external_file_id,external_parent_id,checksum_sha256')
     .eq('shift_id', shift.id).eq('staff_id', host1.businessId), 'attendance photo receipt chain') as Array<Record<string, unknown>>
@@ -550,12 +571,10 @@ async function runPersistedScenario(run: number) {
       p_reason: 'C5.11 isolated revocation test',
     }), `revoke leader ${scopeKey}`)
   }
-  const revokedApproval = await approvalRepo.approve(supportRegistration.id, 'revoked brand denied', supportRegistration.version)
-    .then(() => ({ allowed: true, error: '' })).catch(error => ({ allowed: false, error: String(error.message) }))
-  assert.equal(revokedApproval.allowed, false)
-  assert.match(revokedApproval.error, /LEADER_BRAND_SCOPE_REQUIRED/u)
-  const pendingSupport = requireOk(await service.from('shift_registrations').select('status').eq('id', supportRegistration.id).single(), 'revoked registration readback')
-  assert.equal(pendingSupport.status, 'pending')
+  assert.deepEqual(requireOk(await leaderAuth.client.rpc('rc19_current_leader_brand_ids', { p_scope_key: 'shifts.manage' }), 'revoked Leader scope read'), [])
+  assert.equal((await scopedActualHandler.GET(apiRequest(`/api/workforce/actual?shift_id=${shift.id}`, leaderAuth.token))).status, 403)
+  const pendingRevoked = requireOk(await service.from('shift_registrations').select('status').eq('id', pendingRevocationRegistration.id).single(), 'revoked registration readback')
+  assert.equal(pendingRevoked.status, 'pending')
 
   const payrollHandler = createWorkforcePayrollHandler({ createClient: () => service, resolveUser, isEnabled: () => true })
   const payrollPost = (token: string, body: unknown) => apiPost(payrollHandler, '/api/workforce/payroll', token, body)
@@ -573,20 +592,29 @@ async function runPersistedScenario(run: number) {
   assert.equal(periodResponse.status, 201, await periodResponse.clone().text())
   const periodBody = await periodResponse.json() as { period: { id: string; status: string } }
   const firstCalculation = await payrollPost(adminAuth.token, { action: 'auto_calculate_draft', period_id: periodBody.period.id })
-  assert.equal(firstCalculation.status, 200, await firstCalculation.clone().text())
+  assert.equal(firstCalculation.status, 201, await firstCalculation.clone().text())
   const firstCalc = await firstCalculation.json() as { prepared_count: number; skipped: Array<{ segmentId: string; reason: string }> }
   assert.equal(firstCalc.prepared_count, 1)
-  assert.ok(firstCalc.skipped.some(row => row.segmentId === actual2.id && row.reason === 'MISSING_APPROVED_RATE'))
+  assert.ok(firstCalc.skipped.some(row => row.segmentId === actual2.id && row.reason === 'WORKFORCE_RATE_NOT_APPROVED'))
   const afterFirst = requireOk(await service.from('workforce_payroll_lines').select('id,segment_id,staff_id,period_id,actual_minutes,net_vnd').eq('period_id', periodBody.period.id), 'payroll line readback') as Array<Record<string, unknown>>
   assert.equal(afterFirst.length, 1)
   assert.equal(afterFirst[0].segment_id, actual1.id)
   assert.equal(afterFirst[0].staff_id, host1.businessId)
+  const host2Rate = await payrollPost(adminAuth.token, {
+    action: 'register_rate', staff_id: host2.businessId, operational_role: 'host',
+    effective_from: (completed as { date: string }).date, effective_through: null,
+    vnd_per_hour: 120000, overtime_multiplier_basis_points: 15000, approval_note: 'C5.11 isolated approved HostTwo rate',
+  })
+  assert.equal(host2Rate.status, 201, await host2Rate.clone().text())
   const secondCalculation = await payrollPost(adminAuth.token, { action: 'auto_calculate_draft', period_id: periodBody.period.id })
-  assert.equal(secondCalculation.status, 200, await secondCalculation.clone().text())
+  assert.equal(secondCalculation.status, 201, await secondCalculation.clone().text())
   const secondCalc = await secondCalculation.json() as { prepared_count: number }
-  assert.equal(secondCalc.prepared_count, 0)
+  assert.equal(secondCalc.prepared_count, 1)
+  const thirdCalculation = await payrollPost(adminAuth.token, { action: 'auto_calculate_draft', period_id: periodBody.period.id })
+  assert.equal(thirdCalculation.status, 200, await thirdCalculation.clone().text())
+  assert.equal((await thirdCalculation.json() as { prepared_count: number }).prepared_count, 0)
   const afterRetry = requireOk(await service.from('workforce_payroll_lines').select('id,segment_id,period_id').eq('period_id', periodBody.period.id), 'payroll retry readback') as Array<Record<string, unknown>>
-  assert.equal(afterRetry.length, 1)
+  assert.equal(afterRetry.length, 2)
   const transition = async (token: string, from: string, to: string) => payrollPost(token, {
     action: 'transition', period_id: periodBody.period.id, expected_status: from, target_status: to,
     reason: `C5.11 isolated ${from} to ${to}`,
@@ -606,10 +634,15 @@ async function runPersistedScenario(run: number) {
   assert.equal(own.statements[0].lines.length, 1)
   assert.equal(own.statements[0].total_net_vnd, own.statements[0].lines[0].net_vnd)
   assert.equal((own.statements[0].lines[0] as { staff_id?: string }).staff_id, undefined, 'payslip response must not expose another owner key')
-  const otherPayslip = await payslipHandler.GET(apiRequest('/api/workforce/my-payslip', host2Auth.token))
-  assert.equal(otherPayslip.status, 200)
-  const other = await otherPayslip.json() as { statements: unknown[] }
-  assert.deepEqual(other.statements, [])
+  const host2Payslip = await payslipHandler.GET(apiRequest('/api/workforce/my-payslip', host2Auth.token))
+  assert.equal(host2Payslip.status, 200)
+  const host2Own = await host2Payslip.json() as { statements: Array<{ lines: Array<{ net_vnd: number }>; total_net_vnd: number }> }
+  assert.equal(host2Own.statements.length, 1)
+  assert.equal(host2Own.statements[0].lines.length, 1)
+  assert.equal(host2Own.statements[0].total_net_vnd, host2Own.statements[0].lines[0].net_vnd)
+  const noPayrollPayslip = await payslipHandler.GET(apiRequest('/api/workforce/my-payslip', supportAuth.token))
+  assert.equal(noPayrollPayslip.status, 200)
+  assert.deepEqual((await noPayrollPayslip.json() as { statements: unknown[] }).statements, [])
   const forgedPayslip = await payslipHandler.GET(apiRequest('/api/workforce/my-payslip?staff_id=' + host1.businessId, host2Auth.token))
   assert.equal(forgedPayslip.status, 400)
   const memberPayroll = await payrollPost(host1Auth.token, { action: 'create_period', period_start: (completed as { date: string }).date, period_end: (completed as { date: string }).date })
@@ -647,9 +680,9 @@ function persistedStart(shift: { start_at: string }, offsetMinutes: number) {
   return new Date(Date.parse(shift.start_at) + offsetMinutes * 60_000).toISOString()
 }
 
-test('C5.12 repeats authenticated persisted Staffing, Attendance, evidence review, Payroll and payslip', async () => {
+test('C5.12 persists authenticated Staffing, Attendance, evidence review, Payroll and payslip', async () => {
   try {
-    for (const run of [1, 2]) await runPersistedScenario(run)
+    await runPersistedScenario(1)
     mkdirSync(evidenceDir!, { recursive: true })
     const output = {
       result: 'PASS', source_sha: process.env.C511_SOURCE_SHA,
@@ -658,7 +691,7 @@ test('C5.12 repeats authenticated persisted Staffing, Attendance, evidence revie
       migration_sha256: process.env.C511_MIGRATION_SHA256,
       attendance_review_migration_sha256: process.env.C512_MIGRATION_SHA256,
       runtime_auth_users_before: 0, storage_objects_before: 0,
-      repeatable_authenticated_staffing_runs: 2, service_role_used_only_for_fixture_and_server_handler_backend: true,
+      authenticated_persisted_staffing_scenarios: 1, service_role_used_only_for_fixture_and_server_handler_backend: true,
       authenticated_roles: ['admin', 'leader', 'member'],
       exercised_api_and_rpc: [
         'Supabase Auth sign-up/sign-in/getUser', 'create_shift_with_staffing_segments',

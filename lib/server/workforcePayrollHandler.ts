@@ -733,7 +733,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             lines: insertedLines,
             recalculated_lines: recalculatedLines,
             skipped: skippedSegments,
-          }, { status: 201, headers: noStore })
+          }, { status: insertedLines.length > 0 ? 201 : 200, headers: noStore })
         }
 
         const p=await db.from('workforce_payroll_periods')

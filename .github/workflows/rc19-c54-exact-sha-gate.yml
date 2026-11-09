@@ -129,7 +129,9 @@ jobs:
             tests/rc19-shift-note-rpc-client.test.ts \
             tests/rc19-g2-inapp-camera.test.ts \
             tests/rc19-attendance-evidence-review-api.test.ts \
+            tests/rc19-attendance-photo-review.test.ts \
             tests/rc19-self-attendance-contract.test.ts \
+            tests/payroll-scope-completeness.test.ts \
             tests/rc17c-attendance-api-integration.test.ts \
             tests/rc17c-attendance-atomic-rpc-boundary.test.ts \
             tests/rc19-navigation-parity-rbac.test.ts \

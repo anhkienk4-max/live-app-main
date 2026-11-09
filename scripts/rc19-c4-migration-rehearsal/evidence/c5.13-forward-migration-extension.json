@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "release_track": "RC19 C5.13",
+  "repository": "anhkienk4-max/live-app-main",
+  "branch": "release/rc19-c5.4-candidate",
+  "source_baseline_sha": "7e962bb81d523107aa62bff5ff87e8e18170029e",
+  "production_project_ref": "egdjnpmoasarrttvhgds",
+  "base_manifest_file": "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-migration-manifest.json",
+  "base_manifest_sha256": "4513aec1757b16e97133f3963e2667156c4b7a1c12cb2b971dbb4859cd8640b6",
+  "base_migration_count": 20,
+  "total_forward_migration_count": 22,
+  "entries": [
+    {
+      "order": 21,
+      "group": "c5_11_persisted_staffing",
+      "version": "20261109100000",
+      "file": "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql",
+      "sha256": "d7abbe6cce5356af5a134fb2cbf97b3d0d295a50bd737bd2737db7977d41bce0",
+      "sha256_canonicalization": "UTF-8 bytes after CRLF/CR to LF normalization",
+      "depends_on": "C4 effective migration entries 1..20"
+    },
+    {
+      "order": 22,
+      "group": "c5_12_attendance_photo_review",
+      "version": "20261109131324",
+      "file": "supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql",
+      "sha256": "a8e81fe5c771bc2c2f8fd06bd32eab372759966c9686c026ab1259c3c4ace877",
+      "sha256_canonicalization": "UTF-8 bytes after CRLF/CR to LF normalization",
+      "depends_on": "20261109100000",
+      "review_test": "tests/rc19-attendance-photo-review.test.ts"
+    }
+  ],
+  "review_test": "tests/rc19-attendance-photo-review.test.ts",
+  "production_sql_authorized": false,
+  "executable_allowlist": [],
+  "rehearsal_evidence": {
+    "result": "PASS",
+    "file": "scripts/rc19-c4-migration-rehearsal/evidence/c5.11-local-pg1711/isolated-db-20261109T165754Z.json",
+    "sha256": "400b667de025438c4f038fffbddb8cb2de109fd332644f4670a7de37b2dd9acc",
+    "postgres_server_version_num": "170011",
+    "c4_forward_migration_count_previously_verified": 20,
+    "c511_applied_after_c4": true,
+    "c512_applied_after_c511": true,
+    "persisted_e2e_evidence": "scripts/rc19-c4-migration-rehearsal/evidence/c5.12-local-pg1711/e2e/persisted-e2e-2026-11-09T165846926Z.json",
+    "persisted_e2e_sha256": "3846f83512e81d1af07110a231eb746a28da3d6ad41ade576a0049bdefafe28b"
+  },
+  "persisted_e2e_source_provenance": {
+    "head_sha": "7e962bb81d523107aa62bff5ff87e8e18170029e",
+    "tracked_diff_sha256": "ea265b9f2fcff7ad50dfb5f2cf601c0a8fa868e87486d4d8d8a4207f03dd2257",
+    "tracked_diff_paths": [
+      "lib/server/workforcePayrollHandler.ts",
+      "scripts/rc19-c4-migration-rehearsal/run-c5.11-isolated-db.py",
+      "scripts/rc19-c4-migration-rehearsal/run-c5.11-persisted-e2e.ps1",
+      "scripts/rc19-c4-migration-rehearsal/start-c5.11-local-auth-runtime.py",
+      "tests/rc19-c511-persisted-e2e.test.ts"
+    ]
+  }
+}

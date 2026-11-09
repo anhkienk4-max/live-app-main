@@ -11,11 +11,12 @@ import subprocess
 import tempfile
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
 
-DB_CONTAINER = "supabase_db_rc19-supabase-recovery"
+DB_CONTAINER = os.environ.get("C511_DB_CONTAINER", "supabase_db_rc19-supabase-recovery")
 AUTH_CONTAINER = "supabase_auth_rc19-supabase-recovery"
 REST_CONTAINER = "supabase_rest_rc19-supabase-recovery"
 MARKER = "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY"
@@ -62,19 +63,31 @@ def available(port: int) -> bool:
 def run_container(name: str, image: str, env: dict[str, str], port: int, internal_port: int) -> None:
     fd, env_path = tempfile.mkstemp(prefix="c511-env-")
     try:
-        os.fchmod(fd, 0o600)
+        if os.name != "nt":
+            os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             for key, value in env.items():
                 if "\n" in value or "\r" in value:
                     raise RuntimeError("LOCAL_ENV_VALUE_INVALID")
                 stream.write(f"{key}={value}\n")
-        subprocess.run(
+        result = subprocess.run(
             ["docker", "run", "-d", "--name", name, "--network", NETWORK,
              "-p", f"127.0.0.1:{port}:{internal_port}", "--env-file", env_path, image],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=False,
         )
     finally:
-        Path(env_path).unlink(missing_ok=True)
+        for attempt in range(5):
+            try:
+                Path(env_path).unlink(missing_ok=True)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise RuntimeError("LOCAL_ENV_FILE_CLEANUP_FAILED")
+                time.sleep(0.2)
+    if result.returncode:
+        detail = re.sub(r"(?i)(postgres(?:ql)?://[^:/@\s]+:)[^@\s]+@", r"\1[redacted]@", result.stderr or result.stdout)
+        detail = re.sub(r"(?i)(password|secret|token|key)=\S+", r"\1=[redacted]", detail)
+        raise RuntimeError(f"LOCAL_CONTAINER_START_FAILED:{name}:{detail[-1200:]}")
 
 
 def wait_health(url: str, expected: int = 200) -> None:
@@ -89,6 +102,26 @@ def wait_health(url: str, expected: int = 200) -> None:
         except Exception:
             time.sleep(1)
     raise RuntimeError(f"LOCAL_AUTH_SERVICE_UNHEALTHY:{last}")
+
+
+def wait_postgrest(url: str, anon_key: str) -> None:
+    deadline = time.time() + 45
+    last = "unreachable"
+    request = urllib.request.Request(
+        url + "/business_users?select=id&limit=0",
+        headers={"apikey": anon_key, "Authorization": f"Bearer {anon_key}"},
+    )
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(request, timeout=2) as response:
+                if response.status == 200:
+                    return
+                last = str(response.status)
+        except urllib.error.HTTPError as exc:
+            last = f"{exc.code}:{exc.read().decode('utf-8', errors='replace')[:400]}"
+        except Exception:
+            time.sleep(1)
+    raise RuntimeError(f"LOCAL_POSTGREST_API_UNHEALTHY:{last}")
 
 
 def b64url(raw: bytes) -> str:
@@ -159,14 +192,15 @@ def main() -> None:
     rest_env.update({"PGRST_DB_URI": rest_db_uri, "PGRST_JWT_SECRET": jwt_secret,
                      "PGRST_DB_SCHEMAS": "public",
                      "PGRST_SERVER_HOST": "0.0.0.0", "PGRST_SERVER_PORT": "3000"})
+    issued_at = int(time.time())
+    base_claims = {"iss": "supabase", "aud": "authenticated", "iat": issued_at, "exp": issued_at + 3600}
+    anon_key = sign(jwt_secret, {**base_claims, "role": "anon"})
 
     try:
         run_container(auth_name, auth_source["Config"]["Image"], auth_env, AUTH_PORT, 9999)
         run_container(rest_name, rest_source["Config"]["Image"], rest_env, REST_PORT, 3000)
         wait_health(f"http://127.0.0.1:{AUTH_PORT}/health")
-        wait_health(f"http://127.0.0.1:{REST_PORT}/")
-        issued_at = int(time.time())
-        base_claims = {"iss": "supabase", "aud": "authenticated", "iat": issued_at, "exp": issued_at + 3600}
+        wait_postgrest(f"http://127.0.0.1:{REST_PORT}", anon_key)
         config = {
             "database": database,
             "auth_container": auth_name,
@@ -174,7 +208,7 @@ def main() -> None:
             "auth_url": f"http://127.0.0.1:{AUTH_PORT}",
             "rest_url": f"http://127.0.0.1:{REST_PORT}",
             "local_jwt_secret": jwt_secret,
-            "anon_key": sign(jwt_secret, {**base_claims, "role": "anon"}),
+            "anon_key": anon_key,
             "service_role_key": sign(jwt_secret, {**base_claims, "role": "service_role"}),
             "database_identity": target,
             "auth_users": 0,

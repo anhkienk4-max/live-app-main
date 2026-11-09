@@ -4,9 +4,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$configJson = & wsl.exe -e python3 -c "import pathlib; print(pathlib.Path('$RuntimeConfigPath').read_text())"
-if ($LASTEXITCODE -ne 0) { throw 'LOCAL_RUNTIME_CONFIG_UNAVAILABLE' }
-$config = ($configJson -join "`n") | ConvertFrom-Json
+$config = Get-Content -LiteralPath $RuntimeConfigPath -Raw | ConvertFrom-Json
 
 $migrationPath = Join-Path $RepositoryRoot 'supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql'
 $env:NEXT_PUBLIC_SUPABASE_URL = 'http://c511.local'

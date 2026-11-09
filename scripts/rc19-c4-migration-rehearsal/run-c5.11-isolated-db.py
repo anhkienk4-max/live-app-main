@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -22,7 +23,7 @@ SOURCE_DB = "postgres"
 SOURCE_MARKER = "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY"
 
 
-DB_CONTAINER = "supabase_db_rc19-supabase-recovery"
+DB_CONTAINER = os.environ.get("C511_DB_CONTAINER", "supabase_db_rc19-supabase-recovery")
 
 
 def run(args: list[str], *, input_text: str | None = None, timeout: int = 180) -> str:
@@ -67,7 +68,11 @@ def main() -> None:
         raise RuntimeError("REFUSED_SOURCE_PG_VERSION_OR_AUTH_STATE")
     docker_running = run(["docker", "inspect", "--format", "{{.State.Running}}", DB_CONTAINER], timeout=10)
     listeners = run(["docker", "port", DB_CONTAINER], timeout=10)
-    if docker_running.strip() != "true" or "127.0.0.1:54322" not in listeners:
+    db_port = os.environ.get("C511_LOCAL_DB_PORT", "54322")
+    published = [line.strip() for line in listeners.splitlines() if line.strip()]
+    if (not db_port.isdecimal() or not 1 <= int(db_port) <= 65535 or
+            docker_running.strip() != "true" or not published or
+            any(not line.endswith(f"127.0.0.1:{db_port}") for line in published)):
         raise RuntimeError("REFUSED_NON_LOOPBACK_SUPABASE_RUNTIME")
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
