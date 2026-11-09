@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "3042f9b52cd13034425d213a6f089dcdf0fd509d",
+    "head": "3d55ae854d9e720174793b04d9d422ff7c87ab8b",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -122,11 +122,11 @@
         "app": 95,
         "components": 190,
         "lib": 288,
-        "scripts": 111,
-        "supabase": 141,
+        "scripts": 114,
+        "supabase": 142,
         "tests": 363
       },
-      "total": 1188
+      "total": 1192
     },
     "tests": {
       "files": [
@@ -540,9 +540,10 @@
         "supabase/migrations/20261107000000_rc19_shift_operational_notes.sql",
         "supabase/migrations/20261107120000_rc19_open_shifts_server_selection.sql",
         "supabase/migrations/20261108135226_rc19_staffing_candidate_brand_scope.sql",
-        "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql"
+        "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql",
+        "supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql"
       ],
-      "count": 113
+      "count": 114
     }
   },
   "verification": {
@@ -556,5 +557,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-09T19:29:51+07:00"
+  "synced_at": "2026-11-10T00:23:51+07:00"
 }
