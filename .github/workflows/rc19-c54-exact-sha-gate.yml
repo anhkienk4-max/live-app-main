@@ -1,0 +1,237 @@
+name: RC19 C5.4 Exact-SHA Release Gate
+
+on:
+  push:
+    branches:
+      - release/rc19-c5.4-candidate
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc19-c54-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-gate:
+    name: Exact-SHA type, lint, tests, migrations and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres17:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: rc19_ci
+          POSTGRES_PASSWORD: rc19-ci-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U rc19_ci -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - name: Checkout triggering commit
+        id: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact commit SHA
+        id: sha
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD)"
+          echo "GITHUB_SHA=${GITHUB_SHA}"
+          echo "HEAD=${actual}"
+          test "${actual}" = "${GITHUB_SHA}"
+          echo "commit=${actual}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify isolated PostgreSQL 17 service
+        id: postgres
+        env:
+          PGPASSWORD: rc19-ci-only
+        shell: bash
+        run: |
+          version_num="$(psql -h localhost -U rc19_ci -d postgres -Atqc 'SHOW server_version_num')"
+          case "$version_num" in
+            17*) echo "PostgreSQL server version: ${version_num}" ;;
+            *) echo "::error::Expected PostgreSQL 17; received ${version_num}"; exit 1 ;;
+          esac
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_sto01_disposable IS 'RC19_STO01_DISPOSABLE_TEST_DATABASE'"
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_sto01_migrations_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE rc19_sto01_migrations_disposable IS 'RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE'"
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac01_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac01b_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac02_disposable'
+          psql -h localhost -U rc19_ci -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE rc19_rbac_enforcement_disposable'
+          echo "PostgreSQL ${version_num}; isolated disposable databases only." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up pinned Node.js
+        id: node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.18.0
+
+      - name: Install pinned pnpm and lockfile dependencies
+        id: install
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+          pnpm install --frozen-lockfile
+
+      - name: Verify C5.4 migration order, checksums and release boundaries
+        id: manifest
+        run: node scripts/verify-c54-release-gate.mjs
+
+      - name: TypeScript
+        id: typecheck
+        run: pnpm run type-check
+
+      - name: Full ESLint
+        id: eslint
+        run: pnpm run lint
+
+      - name: Focused C5.4 RBAC, Staffing, Shift Ops, Attendance, Navigation and Storage tests
+        id: focused
+        shell: bash
+        run: |
+          node --import ./tests/typescript-alias-loader.mjs --test \
+            tests/rc19-effective-permission.test.ts \
+            tests/rc19-dynamic-rbac-server-guard.test.ts \
+            tests/rc19-c3-mutation-authorization.test.ts \
+            tests/rc19-rbac01-security.test.ts \
+            tests/rc19-rbac01b-audit-slice.test.ts \
+            tests/rbac02-account-overrides.test.ts \
+            tests/rbac-capabilities.test.ts \
+            tests/report-artifact-export-authority.test.ts \
+            tests/rc19-reports-export-authority.test.ts \
+            tests/rc19-workforce-authority.test.ts \
+            tests/rc19-owner23-segmented-staffing.test.ts \
+            tests/p1c-import-idempotency.test.ts \
+            tests/schedule-import-batch.test.ts \
+            tests/schedule-import-recovery.test.ts \
+            tests/supabase-p1c-shift-migration-contract.test.ts \
+            tests/rc19-batch05a-dashboard-screenshot.test.ts \
+            tests/rc14-live-image-migration.test.ts \
+            tests/rc19-staffing-candidate-scope.test.ts \
+            tests/rc19-staffing-candidate-contract.test.ts \
+            tests/rc19-staffing-availability-sql.test.ts \
+            tests/rc19-staffing-failclosed.test.ts \
+            tests/rc19-g4-calendar-staffing-swap.test.ts \
+            tests/rc19-shift-ops-hotfix.test.ts \
+            tests/rc19-open-shifts-notes-sql.test.ts \
+            tests/rc19-shift-note-rpc-client.test.ts \
+            tests/rc19-g2-inapp-camera.test.ts \
+            tests/rc19-attendance-evidence-review-api.test.ts \
+            tests/rc19-self-attendance-contract.test.ts \
+            tests/rc17c-attendance-api-integration.test.ts \
+            tests/rc17c-attendance-atomic-rpc-boundary.test.ts \
+            tests/rc19-navigation-parity-rbac.test.ts \
+            tests/rc16-ui-navigation-rbac.test.ts \
+            tests/rc19-batch05a4-storage-runtime-migration.test.ts \
+            tests/rc19-batch05a4-storage-runtime-integration.test.ts \
+            tests/rc19-storage-security-patch.test.ts \
+            tests/rc19-sto01-storage-seed-preflight.test.ts \
+            tests/rc19-storage-scoped-search.test.ts \
+            tests/rc19-schedule-source-storage-service.test.ts
+
+      - name: PostgreSQL 17 RBAC and RLS fixture assertions
+        id: rls
+        env:
+          PGPASSWORD: rc19-ci-only
+        shell: bash
+        run: |
+          psql -h localhost -U rc19_ci -d rc19_rbac01_disposable -v ON_ERROR_STOP=1 -f tests/rbac01/pg17_fixture.sql -f tests/rbac01/pg17_assertions.sql
+          psql -h localhost -U rc19_ci -d rc19_rbac01b_disposable -v ON_ERROR_STOP=1 -f tests/rbac01b/pg17_fixture.sql -f tests/rbac01b/pg17_assertions.sql
+          psql -h localhost -U rc19_ci -d rc19_rbac02_disposable -v ON_ERROR_STOP=1 -f tests/rbac02/pg17_fixture.sql -f tests/rbac02/pg17_assertions.sql
+          psql -h localhost -U rc19_ci -d rc19_rbac_enforcement_disposable -v ON_ERROR_STOP=1 -f tests/rbac-enforcement/pg17_fixture.sql -f tests/rbac-enforcement/pg17_assertions.sql
+
+      - name: Guarded PostgreSQL 17 Storage tests on separate disposable databases
+        id: storage_pg
+        env:
+          CI: 'true'
+          PGPASSWORD: rc19-ci-only
+          RC19_STO01_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+          RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE: I_UNDERSTAND
+        shell: bash
+        run: |
+          DATABASE_URL=postgresql://rc19_ci:rc19-ci-only@localhost:5432/rc19_sto01_disposable \
+            node --import ./tests/typescript-alias-loader.mjs --test tests/rc19-sto01-storage-seed-postgres17.test.ts
+          DATABASE_URL=postgresql://rc19_ci:rc19-ci-only@localhost:5432/rc19_sto01_migrations_disposable \
+            node --import ./tests/typescript-alias-loader.mjs --test tests/rc19-batch05a-storage-migrations-postgres17.test.ts
+
+      - name: Credential-free production build
+        id: build
+        env:
+          CI: 'true'
+          VERCEL: ''
+          VERCEL_ENV: ''
+          VERCEL_TARGET_ENV: ''
+          NEXT_PUBLIC_USE_MOCK_DATA: 'false'
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+
+      - name: Write sanitized exact-SHA gate evidence
+        if: always()
+        id: evidence
+        env:
+          JOB_STATUS: ${{ job.status }}
+          GATE_SHA: ${{ steps.sha.outcome }}
+          GATE_POSTGRES: ${{ steps.postgres.outcome }}
+          GATE_INSTALL: ${{ steps.install.outcome }}
+          GATE_MANIFEST: ${{ steps.manifest.outcome }}
+          GATE_TYPESCRIPT: ${{ steps.typecheck.outcome }}
+          GATE_ESLINT: ${{ steps.eslint.outcome }}
+          GATE_FOCUSED_TESTS: ${{ steps.focused.outcome }}
+          GATE_RLS: ${{ steps.rls.outcome }}
+          GATE_STORAGE_PG: ${{ steps.storage_pg.outcome }}
+          GATE_BUILD: ${{ steps.build.outcome }}
+        shell: bash
+        run: |
+          mkdir -p c54-ci-evidence
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs'
+          const result = {
+            commit: process.env.GITHUB_SHA,
+            workflow: 'rc19-c54-exact-sha-gate',
+            jobStatus: process.env.JOB_STATUS,
+            gates: Object.fromEntries([
+              'SHA', 'POSTGRES', 'INSTALL', 'MANIFEST', 'TYPESCRIPT', 'ESLINT',
+              'FOCUSED_TESTS', 'RLS', 'STORAGE_PG', 'BUILD',
+            ].map((name) => [name.toLowerCase(), process.env[`GATE_${name}`] ?? 'skipped'])),
+            productionCredentialsUsed: false,
+            externalSystemsMutated: false,
+            fullC54MigrationRehearsalRepeated: false,
+          }
+          writeFileSync('c54-ci-evidence/gates.json', `${JSON.stringify(result, null, 2)}\n`)
+          const lines = Object.entries(result.gates).map(([gate, status]) => `| ${gate} | ${status} |`)
+          writeFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            `## C5.4 exact-SHA gate: ${result.jobStatus}`,
+            '',
+            `Commit: \`${result.commit}\``,
+            '',
+            '| Gate | Result |',
+            '| --- | --- |',
+            ...lines,
+            '',
+            'Production credentials and external business systems were not used.',
+          ].join('\n') + '\n', { flag: 'a' })
+          NODE
+
+      - name: Upload sanitized gate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rc19-c54-gate-${{ github.sha }}
+          path: c54-ci-evidence/gates.json
+          if-no-files-found: error
