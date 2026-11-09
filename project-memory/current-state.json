@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "5a503c731cceb67219c829299d074fe53253a9f7",
+    "head": "c27440195fc415bf382e1c882f7d6be238f462a8",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -70,6 +70,7 @@
       "app/api/dashboard-screenshots/route.ts",
       "app/api/file-sources/ingest/route.ts",
       "app/api/internal/file-provider-diagnostics/route.ts",
+      "app/api/internal/release-provenance/route.ts",
       "app/api/internal/storage-drive-probe/route.ts",
       "app/api/media/jwks/route.ts",
       "app/api/media/viewer-grant/route.ts",
@@ -118,14 +119,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 94,
+        "app": 95,
         "components": 190,
-        "lib": 287,
-        "scripts": 95,
+        "lib": 288,
+        "scripts": 96,
         "supabase": 140,
-        "tests": 360
+        "tests": 361
       },
-      "total": 1166
+      "total": 1170
     },
     "tests": {
       "files": [
@@ -363,6 +364,7 @@
         "tests/rc19-workforce-authority.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
+        "tests/release-provenance.test.ts",
         "tests/report-artifact-export-authority.test.ts",
         "tests/report-history-access.test.ts",
         "tests/report-null-semantics-consumers.test.ts",
@@ -420,7 +422,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 290
+      "count": 291
     },
     "migrations": {
       "files": [
@@ -551,5 +553,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-09T14:00:36+07:00"
+  "synced_at": "2026-11-09T16:34:55+07:00"
 }
