@@ -1,0 +1,18 @@
+{
+  "result": "PASS",
+  "target_database": "rc19_c511_e2e_20261109122443",
+  "target_marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "postgres_server_version_num": "170011",
+  "source_c5_11_candidate_head": "04d0e167a3ef0db9910117d2028c8a678d9fdbcc",
+  "worktree_dirty_at_run": false,
+  "c4_schema_snapshot": "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-pg176-20261108T191556Z/schema-after-20.sql",
+  "c4_schema_snapshot_sha256": "eb40c3f3db6786f646ac4f6f0cbc94f042e5570be30b8c0c39a5b915292a7276",
+  "c4_forward_migration_count_previously_verified": 20,
+  "c511_migration": "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql",
+  "c511_migration_sha256": "d7abbe6cce5356af5a134fb2cbf97b3d0d295a50bd737bd2737db7977d41bce0",
+  "auth_users_after_restore": 0,
+  "storage_objects_after_restore": 0,
+  "shift_staffing_segments_created": 0,
+  "actual_auth_users_created": 0,
+  "log": "scripts/rc19-c4-migration-rehearsal/evidence/c5.11-local-pg1711/isolated-db-20261109T122443Z.log"
+}
