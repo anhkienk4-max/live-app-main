@@ -6,7 +6,7 @@
   "source_baseline_sha": "7e962bb81d523107aa62bff5ff87e8e18170029e",
   "production_project_ref": "egdjnpmoasarrttvhgds",
   "base_manifest_file": "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-migration-manifest.json",
-  "base_manifest_sha256": "4513aec1757b16e97133f3963e2667156c4b7a1c12cb2b971dbb4859cd8640b6",
+  "base_manifest_sha256": "7bb595ab566b6188bd84e1007bac4641359303cbb0d751c298af3987723a1cec",
   "base_migration_count": 20,
   "total_forward_migration_count": 22,
   "entries": [
@@ -36,13 +36,14 @@
   "rehearsal_evidence": {
     "result": "PASS",
     "file": "scripts/rc19-c4-migration-rehearsal/evidence/c5.11-local-pg1711/isolated-db-20261109T165754Z.json",
-    "sha256": "400b667de025438c4f038fffbddb8cb2de109fd332644f4670a7de37b2dd9acc",
+    "sha256": "1ea3afc5e2a262755f5753d3e87313fcf41ffdd9231d849c60253669f6e5b6a5",
     "postgres_server_version_num": "170011",
     "c4_forward_migration_count_previously_verified": 20,
     "c511_applied_after_c4": true,
     "c512_applied_after_c511": true,
     "persisted_e2e_evidence": "scripts/rc19-c4-migration-rehearsal/evidence/c5.12-local-pg1711/e2e/persisted-e2e-2026-11-09T165846926Z.json",
-    "persisted_e2e_sha256": "3846f83512e81d1af07110a231eb746a28da3d6ad41ade576a0049bdefafe28b"
+    "persisted_e2e_sha256": "3846f83512e81d1af07110a231eb746a28da3d6ad41ade576a0049bdefafe28b",
+    "sha256_canonicalization": "UTF-8 bytes after CRLF/CR to LF normalization"
   },
   "persisted_e2e_source_provenance": {
     "head_sha": "7e962bb81d523107aa62bff5ff87e8e18170029e",
@@ -54,5 +55,6 @@
       "scripts/rc19-c4-migration-rehearsal/start-c5.11-local-auth-runtime.py",
       "tests/rc19-c511-persisted-e2e.test.ts"
     ]
-  }
+  },
+  "base_manifest_sha256_canonicalization": "UTF-8 bytes after CRLF/CR to LF normalization"
 }

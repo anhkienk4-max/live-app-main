@@ -13,13 +13,17 @@ const extension = JSON.parse(readFileSync(path.join(root, extensionPath), 'utf8'
 const config = JSON.parse(readFileSync(path.join(root, 'vercel.json'), 'utf8'))
 const deploymentEnabled = config.git?.deploymentEnabled
 const entries = manifest.entries
+const canonicalTextSha256 = (file) => createHash('sha256')
+  .update(Buffer.from(readFileSync(path.join(root, file), 'utf8').replace(/\r\n?/g, '\n'), 'utf8'))
+  .digest('hex')
 
 assert.equal(manifest.forward_migration_count, 20)
 assert.equal(entries.length, 20)
 assert.equal(manifest.production_sql_authorized, false)
 assert.deepEqual(manifest.executable_allowlist, [])
 assert.equal(extension.base_manifest_file, manifestPath)
-assert.equal(extension.base_manifest_sha256, createHash('sha256').update(readFileSync(path.join(root, manifestPath))).digest('hex'))
+assert.equal(extension.base_manifest_sha256_canonicalization, 'UTF-8 bytes after CRLF/CR to LF normalization')
+assert.equal(extension.base_manifest_sha256, canonicalTextSha256(manifestPath))
 assert.equal(extension.base_migration_count, entries.length)
 assert.equal(extension.total_forward_migration_count, entries.length + extension.entries.length)
 assert.equal(extension.total_forward_migration_count, 22)
@@ -72,9 +76,10 @@ assert.deepEqual([...extensionFiles], [
 assert.equal(extension.entries[1].depends_on, extension.entries[0].version)
 assert.equal(extension.review_test, 'tests/rc19-attendance-photo-review.test.ts')
 assert.equal(extension.rehearsal_evidence.file, 'scripts/rc19-c4-migration-rehearsal/evidence/c5.11-local-pg1711/isolated-db-20261109T165754Z.json')
-assert.equal(extension.rehearsal_evidence.sha256, createHash('sha256').update(readFileSync(path.join(root, extension.rehearsal_evidence.file))).digest('hex'))
+assert.equal(extension.rehearsal_evidence.sha256_canonicalization, 'UTF-8 bytes after CRLF/CR to LF normalization')
+assert.equal(extension.rehearsal_evidence.sha256, canonicalTextSha256(extension.rehearsal_evidence.file))
 assert.equal(extension.rehearsal_evidence.postgres_server_version_num, '170011')
-assert.equal(extension.rehearsal_evidence.persisted_e2e_sha256, createHash('sha256').update(readFileSync(path.join(root, extension.rehearsal_evidence.persisted_e2e_evidence))).digest('hex'))
+assert.equal(extension.rehearsal_evidence.persisted_e2e_sha256, canonicalTextSha256(extension.rehearsal_evidence.persisted_e2e_evidence))
 assert.match(extension.persisted_e2e_source_provenance.head_sha, /^[a-f0-9]{40}$/)
 assert.match(extension.persisted_e2e_source_provenance.tracked_diff_sha256, /^[a-f0-9]{64}$/)
 assert.deepEqual(extension.persisted_e2e_source_provenance.tracked_diff_paths, [
