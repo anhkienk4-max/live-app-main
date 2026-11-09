@@ -147,17 +147,52 @@ test('Workforce feature gate runs before scope and database reads', async () => 
   assert.equal(reads, 0)
 })
 
-test('Workforce capabilities hide team performance from Leaders while retaining their shift-scoped tools', async () => {
-  for (const role of ['leader', 'admin'] as const) {
+test('Workforce capabilities expose Leader team view only with an active authoritative Brand grant', async () => {
+  const leaderCases = [
+    { data: ['brand-x'], error: null, expected: true },
+    { data: [], error: null, expected: false },
+    { data: ['brand-x', null], error: null, expected: false },
+    { data: null, error: { message: 'scope unavailable' }, expected: false },
+  ]
+  for (const scopeResult of leaderCases) {
+    let requestedScope: unknown
     const handler = createWorkforceCapabilitiesHandler({
-      resolveUser: async () => ({ id: `auth-${role}`, businessUserId: `${role}-1`, systemPermission: role }),
+      resolveUser: async () => leader('leader-a'),
       enabled: flag => flag === 'actual_staffing',
+      createScopeClient: async () => ({
+        rpc: async (name, args) => {
+          assert.equal(name, 'rc19_current_leader_brand_ids')
+          requestedScope = args.p_scope_key
+          return scopeResult
+        },
+      }),
     })
     const response = await handler.GET(new Request('https://ops.example/api/workforce/capabilities'))
     assert.equal(response.status, 200)
     const { capabilities } = await response.json() as { capabilities: Record<string, boolean> }
-    assert.equal(capabilities.team_performance, role === 'admin')
+    assert.equal(capabilities.team_performance, scopeResult.expected)
     assert.equal(capabilities.actual_staffing, true)
     assert.equal(capabilities.own_performance, true)
+    assert.equal(requestedScope, 'workforce.read')
+  }
+})
+
+test('Workforce Admin remains global and Member never receives team capability', async () => {
+  for (const [role, expectedTeam] of [['admin', true], ['member', false]] as const) {
+    let scopeReads = 0
+    const handler = createWorkforceCapabilitiesHandler({
+      resolveUser: async () => ({ id: `auth-${role}`, businessUserId: `${role}-1`, systemPermission: role }),
+      enabled: flag => flag === 'actual_staffing',
+      createScopeClient: async () => {
+        scopeReads += 1
+        return { rpc: async () => ({ data: ['brand-x'], error: null }) }
+      },
+    })
+    const response = await handler.GET(new Request('https://ops.example/api/workforce/capabilities'))
+    assert.equal(response.status, 200)
+    const { capabilities } = await response.json() as { capabilities: Record<string, boolean> }
+    assert.equal(capabilities.team_performance, expectedTeam)
+    assert.equal(capabilities.actual_staffing, role === 'admin')
+    assert.equal(scopeReads, 0)
   }
 })

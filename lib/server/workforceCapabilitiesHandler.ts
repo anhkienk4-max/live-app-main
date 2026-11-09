@@ -6,6 +6,7 @@ import { authorizationErrorResponse, isAuthorizationError, requireUser,
 export function createWorkforceCapabilitiesHandler(options:{
   resolveUser?:ServerUserResolver
   enabled?:(flag:FeatureFlag)=>boolean
+  createScopeClient?:()=>Promise<{rpc:(name:string,args:Record<string,unknown>)=>PromiseLike<{data:unknown,error:unknown}>}>
 }={}) {
   return {async GET(request:Request):Promise<Response>{
     try{
@@ -13,7 +14,21 @@ export function createWorkforceCapabilitiesHandler(options:{
       const enabled=options.enabled??isFeatureEnabled
       const workforce=enabled('actual_staffing')
       const supervisor=user.systemPermission==='admin'||user.systemPermission==='leader'
-      const teamScopeAvailable=user.systemPermission==='admin'
+      let teamScopeAvailable=user.systemPermission==='admin'
+      if(workforce&&user.systemPermission==='leader'){
+        if(user.businessUserId){
+          try{
+            const scopeClient=options.createScopeClient
+              ?await options.createScopeClient()
+              :await (await import('@/lib/supabase/server')).createClient()
+            const scope=await scopeClient.rpc('rc19_current_leader_brand_ids',{p_scope_key:'workforce.read'})
+            teamScopeAvailable=!scope.error&&Array.isArray(scope.data)
+              &&scope.data.length>0&&scope.data.every(id=>typeof id==='string'&&id.trim().length>0)
+          }catch{
+            teamScopeAvailable=false
+          }
+        }
+      }
       return Response.json({ok:true,capabilities:{
         actual_staffing:workforce&&supervisor,
         self_attendance_review:enabled('self_attendance_review')&&supervisor,

@@ -170,6 +170,8 @@ jobs:
         id: build
         env:
           CI: 'true'
+          RC19_BUILD_COMMIT_SHA: ${{ github.sha }}
+          RC19_BUILD_WORKFLOW_RUN_ID: ${{ github.run_id }}
           VERCEL: ''
           VERCEL_ENV: ''
           VERCEL_TARGET_ENV: ''
