@@ -54,7 +54,7 @@ function managerQueryClient(params: {rows?: number; journalError?: boolean; phot
   const client=()=>({
     from(name:string) {
       calls.push(name)
-      const dataFor=()=>name==='shifts'?{id:'shift-1',status:'completed',host_id:'staff-1'}:
+      const dataFor=()=>name==='shifts'?{id:'shift-1',status:'completed',host_id:'staff-1',brand_id:'brand-1'}:
         name==='self_attendance_events'?
           Array.from({length:params.rows??0},(_,i)=>({
             id:'evt-'+i,request_id:'req-'+i,shift_id:'shift-1',staff_id:'staff-1',operational_role:'host',
@@ -76,10 +76,11 @@ function managerQueryClient(params: {rows?: number; journalError?: boolean; phot
 }
 const request = ()=>new Request('https://unit.test/api/workforce/actual?shift_id=shift-1')
 const manager = async()=>({id:'auth-leader',businessUserId:'leader-1',systemPermission:'leader' as const})
+const managerScope=()=>({rpc:async()=>({data:['brand-1'],error:null})})
 test('existing Workforce GET never queries the journal when review flag is OFF',async()=>{
   const db=managerQueryClient({rows:2,journalError:true})
   const handler=createWorkforceActualHandler({client:db.client as never,isEnabled:()=>true,
-    isAttendanceReviewEnabled:()=>false,resolveUser:manager})
+    isAttendanceReviewEnabled:()=>false,resolveUser:manager,createScopeClient:managerScope})
   const response=await handler.GET(request())
   assert.equal(response.status,200)
   const body=await response.json()
@@ -90,7 +91,7 @@ test('existing Workforce GET never queries the journal when review flag is OFF',
 test('enabled manager review reads raw evidence without marking it as approved wages',async()=>{
   const db=managerQueryClient({rows:2})
   const handler=createWorkforceActualHandler({client:db.client as never,isEnabled:()=>true,
-    isAttendanceReviewEnabled:()=>true,resolveUser:manager})
+    isAttendanceReviewEnabled:()=>true,resolveUser:manager,createScopeClient:managerScope})
   const response=await handler.GET(request())
   assert.equal(response.status,200)
   const body=await response.json()
@@ -104,7 +105,7 @@ test('enabled reviewer fails closed when journal missing or response is truncate
   for(const conf of [{journalError:true},{rows:201}]){
     const db=managerQueryClient(conf)
     const handler=createWorkforceActualHandler({client:db.client as never,isEnabled:()=>true,
-      isAttendanceReviewEnabled:()=>true,resolveUser:manager})
+      isAttendanceReviewEnabled:()=>true,resolveUser:manager,createScopeClient:managerScope})
     const response=await handler.GET(request())
     assert.ok(response.status===503||response.status===409)
   }
@@ -184,7 +185,8 @@ test('self attendance photo handler gates evidence by session, Drive root and or
   const modal=readFileSync(new URL('../components/features/shifts/ShiftDetailModal.tsx',import.meta.url),'utf8')
   assert.match(handler,/FEATURE_SELF_ATTENDANCE_PHOTO!=='true'/)
   assert.match(handler,/hasExactOrigin\(request\)/)
-  assert.match(handler,/await requirePermission\(request,'attendance\.record_own'\)/)
+  assert.match(handler,/authorize: request => requirePermission\(request, 'attendance\.record_own'\)/)
+  assert.match(handler,/const actor=await dependencies\.authorize\(request\)/)
   assert.match(handler,/actor\.businessUserId/)
   assert.match(handler,/get_self_attendance_photo_context/)
   assert.match(photoDrive,/createGoogleDriveFileProvider/)
@@ -232,7 +234,7 @@ test('self attendance photo handler gates evidence by session, Drive root and or
 test('leader attendance reviewer exposes only an authenticated photo flag, never the Drive ID or upload token',async()=>{
   const db=managerQueryClient({rows:2,photo:true})
   const handler=createWorkforceActualHandler({client:db.client as never,isEnabled:()=>true,
-    isAttendanceReviewEnabled:()=>true,resolveUser:manager})
+    isAttendanceReviewEnabled:()=>true,resolveUser:manager,createScopeClient:managerScope})
   const response=await handler.GET(request())
   assert.equal(response.status,200)
   const payload=await response.json()
