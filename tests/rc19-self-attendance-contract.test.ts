@@ -282,6 +282,7 @@ test('admin-only attendance Drive preflight is read-only and hides provider iden
   assert.match(preflight,/await drive\.healthCheck\(\)/)
   assert.match(preflight,/health\.root_readable!==true/)
   assert.match(preflight,/health\.root_can_add_children!==true/)
+  assert.match(preflight,/catch\s*\(error\)\s*\{\s*if\s*\(error instanceof OperationalStoragePlacementError\)\s*return failed\(error\.code,503\)/)
   assert.match(preflight,/feature_enabled:process\.env\.FEATURE_SELF_ATTENDANCE_PHOTO==='true'/)
   assert.doesNotMatch(preflight,/\.upload\(|\.ensureFolder\(|\.delete\(|external_file_id|refresh_token|private_key/i)
   // Referencing a private environment KEY for runtime ACL checks is safe;

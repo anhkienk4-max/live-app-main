@@ -497,7 +497,8 @@ export async function GET_PREFLIGHT(request:Request) {
       const configured=createAttendancePhotoDrive(checkIn.baseFolderId)
       root=configured.root
       drive=configured.drive
-    } catch {
+    } catch (error) {
+      if (error instanceof OperationalStoragePlacementError) return failed(error.code,503)
       return failed('ATTENDANCE_DRIVE_NOT_CONFIGURED',503)
     }
 
