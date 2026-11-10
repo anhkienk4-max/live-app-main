@@ -2,8 +2,6 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
-  DAILY_PASS_MIN_LEAD_MINUTES,
-  CAMPAIGN_PASS_MIN_LEAD_MINUTES,
   isCampaignShift,
   validateSwapTiming,
   validateSwapApprovalTiming,
@@ -13,9 +11,8 @@ import {
   shiftRegistrationService,
   shiftService,
   swapRequestService,
-  userService,
 } from '../lib/services/dataService.ts'
-import type { Shift, ShiftRegistration, User } from '../lib/types/database.types.ts'
+import type { Shift, User } from '../lib/types/database.types.ts'
 
 process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'true'
 process.env.NODE_ENV = 'development'

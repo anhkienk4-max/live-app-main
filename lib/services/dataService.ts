@@ -43,7 +43,7 @@ import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
 import { addDays, format, parseISO } from 'date-fns'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, hasShiftTimeConflict, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
-import { validateSwapTiming, validateSubstituteStaff, validateSwapApprovalTiming } from '@/lib/utils/swapValidation'
+import { validateSwapTiming, validateSwapApprovalTiming } from '@/lib/utils/swapValidation'
 import {
   normalizeStaffingDisplayNames,
   toCanonicalScheduleImportPreviewRow,

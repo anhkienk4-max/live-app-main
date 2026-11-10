@@ -5,7 +5,6 @@ import {
   getSourcePriority,
   computeContentChecksum,
   areContentsEqual,
-  detectBrandKnowledgeConflict,
   ingestBrandKnowledgeWithProvenance,
   resolveOwnerConfirmation,
   assertNoExternalNotionMutation,
