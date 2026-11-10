@@ -117,14 +117,17 @@ function exportHandler(
   let calls=0
   const handler=createWorkforcePayrollHandler({
     isEnabled:()=>true,resolveUser:admin,
-    createClient:(()=>({rpc(name:string){
-      calls++
-      assert.equal(name,'get_payroll_period_snapshot')
-      return Promise.resolve({data:{
-        period:{status:options.status??'locked',period_start:'2026-09-01',period_end:'2026-09-30'},
-        lines,audit:[],lineCount:options.expectedCount??lines.length,auditCount:0,
-      },error:null})
-    }})) as never,
+    createClient:(()=>({
+      rpc(name:string){
+        calls++
+        assert.equal(name,'get_payroll_period_snapshot')
+        return Promise.resolve({data:{
+          period:{status:options.status??'locked',period_start:'2026-09-01',period_end:'2026-09-30'},
+          lines,audit:[],lineCount:options.expectedCount??lines.length,auditCount:0,
+        },error:null})
+      },
+      from(){return {select(){return {eq(){return {order(){return {limit:async()=>({data:null,error:{code:'PGRST205'}})}}}}}}}}
+    })) as never,
   })
   return {handler,calls:()=>calls}
 }

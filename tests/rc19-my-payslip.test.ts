@@ -6,24 +6,26 @@ import { readFileSync } from 'node:fs'
 const person=(id:string)=>async()=>({id:'auth-'+id,businessUserId:id,systemPermission:'member' as const})
 const locked={id:'period-1',period_start:'2026-10-01',period_end:'2026-10-31',status:'locked',locked_at:'2026-11-05T10:00:00Z',revision:1}
 const line={id:'line-1',period_id:'period-1',segment_id:'seg-1',staff_id:'staff-one',operational_role:'host',
-  actual_minutes:120,payable_minutes:120,overtime_minutes:0,rate_vnd_per_hour:100000,
+  actual_minutes:120,payable_minutes:120,overtime_minutes:0,actual_seconds:null,payable_seconds:null,overtime_seconds:null,rate_vnd_per_hour:100000,
   overtime_multiplier_basis_points:10000,gross_vnd:200000,adjustment_vnd:0,net_vnd:200000,
   adjustment_reason:null,voided_at:null}
 const actual={id:'seg-1',staff_id:'staff-one',shift_id:'shift-1',operational_role:'host',event_kind:'worked',
   review_status:'approved',actual_start_at:'2026-10-20T10:00:00Z',actual_end_at:'2026-10-20T12:00:00Z'}
 const shift={id:'shift-1',date:'2026-10-20',title:'Livestream shift',brand_id:'b1',platform_id:'p1'}
-type DBName='workforce_payroll_periods'|'workforce_payroll_lines'|'workforce_actual_segments'|'shifts'
-function fakeDb(options:{periods?:object[],lines?:object[],actuals?:object[],shifts?:object[],errors?:string[],ignoreStaffScope?:boolean}={}){
+type DBName='workforce_payroll_periods'|'workforce_payroll_lines'|'workforce_actual_segments'|'shifts'|'workforce_payroll_adjustments'|'workforce_cancellation_compensation_cases'
+function fakeDb(options:{periods?:object[],lines?:object[],actuals?:object[],shifts?:object[],adjustments?:object[],cases?:object[],errors?:string[],ignoreStaffScope?:boolean}={}){
   const calls:Array<{table:string;method:string;field?:string;value?:unknown}>=[]
   const pools:Record<DBName,object[]>={
     workforce_payroll_periods: options.periods??[locked],
     workforce_payroll_lines: options.lines??[line],
     workforce_actual_segments: options.actuals??[actual],
     shifts: options.shifts??[shift],
+    workforce_payroll_adjustments:options.adjustments??[],
+    workforce_cancellation_compensation_cases:options.cases??[],
   }
   const client=()=>({
-    from(table:DBName){
-      let rows=[...pools[table]]
+        from(table:string){
+          let rows=[...(pools[table as DBName]??[])]
       const filters:Array<{field:string;value:unknown}>=[]
       const builder={
         select(){return builder},
@@ -73,6 +75,36 @@ test('member receives only own locked, non-voided, approved actual payroll lines
   assert.ok(db.calls.some(c=>c.table==='workforce_payroll_lines'&&c.method==='eq'&&c.field==='staff_id'&&c.value==='staff-one'))
   assert.ok(db.calls.some(c=>c.table==='workforce_actual_segments'&&c.method==='eq'&&c.field==='staff_id'&&c.value==='staff-one'))
   assert.equal(JSON.stringify(body).includes('auth-staff-one'),false)
+})
+test('member payslip verifies and returns persisted second precision without minute conversion',async()=>{
+  const secondsLine={...line,actual_minutes:236,payable_minutes:236,overtime_minutes:0,
+    actual_seconds:14205,payable_seconds:14205,overtime_seconds:0,gross_vnd:394583,net_vnd:394583}
+  const secondsActual={...actual,actual_start_at:'2026-11-10T10:03:27.987Z',actual_end_at:'2026-11-10T14:00:12.123Z'}
+  const db=fakeDb({lines:[secondsLine],actuals:[secondsActual],shifts:[{...shift,date:'2026-11-10'}],
+    periods:[{...locked,period_start:'2026-11-01',period_end:'2026-11-30'}]})
+  const handler=createMyPayslipHandler({createClient:db.client as never,resolveUser:person('staff-one'),isEnabled:()=>true})
+  const response=await handler.GET(request('?year=2026'))
+  assert.equal(response.status,200)
+  const body=await response.json()
+  assert.equal(body.statements[0].lines[0].actual_seconds,14205)
+  assert.equal(body.statements[0].lines[0].payable_seconds,14205)
+  assert.equal(body.statements[0].lines[0].actual_minutes,236)
+})
+test('member payslip includes only Admin-confirmed cancellation adjustments for the same member and locked period',async()=>{
+  const adjustment={id:'adjustment-1',period_id:'period-1',compensation_case_id:'case-1',staff_id:'staff-one',
+    operational_role:'host',amount_vnd:50000,reason:'Discretionary Brand cancellation support',confirmed_by:'admin-one',created_at:'2026-11-10T12:00:00Z'}
+  const caze={id:'case-1',period_id:'period-1',shift_id:'shift-cancelled',staff_id:'staff-one',operational_role:'host',
+    proposed_amount_vnd:50000,admin_confirmed_by:'admin-one',state:'admin_confirmed',reason:adjustment.reason}
+  const db=fakeDb({adjustments:[adjustment],cases:[caze]})
+  const handler=createMyPayslipHandler({createClient:db.client as never,resolveUser:person('staff-one'),isEnabled:()=>true})
+  const response=await handler.GET(request('?year=2026'))
+  assert.equal(response.status,200)
+  const body=await response.json()
+  assert.equal(body.statements[0].total_net_vnd,250000)
+  assert.equal(body.statements[0].compensation_adjustments[0].amount_vnd,50000)
+  const forged=fakeDb({adjustments:[{...adjustment,staff_id:'staff-two'}],cases:[caze],ignoreStaffScope:true})
+  const forgedHandler=createMyPayslipHandler({createClient:forged.client as never,resolveUser:person('staff-one'),isEnabled:()=>true})
+  assert.equal((await forgedHandler.GET(request())).status,409)
 })
 test('cross-user leakage and unapproved actual evidence fail closed even if DB filter is bypassed',async()=>{
   const cases=[{lines:[{...line,staff_id:'other-user'}]},

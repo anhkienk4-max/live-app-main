@@ -48,7 +48,7 @@ export function createMyPayslipHandler(deps: Dependencies = {}) {
         if(!periods.length)return Response.json({ok:true,statements:[],scope:'own_locked_only',limited_to:12},{headers:noStore})
         const periodIds=periods.map(p=>p.id)
         const linesRes=await client.from('workforce_payroll_lines')
-          .select('id,period_id,segment_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,voided_at')
+          .select('id,period_id,segment_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,actual_seconds,payable_seconds,overtime_seconds,overtime_request_id,overtime_day_class,overtime_time_class,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,voided_at')
           .eq('staff_id',actor.businessUserId)
           .in('period_id',periodIds).is('voided_at',null)
           .order('created_at',{ascending:true}).limit(201)
@@ -59,6 +59,13 @@ export function createMyPayslipHandler(deps: Dependencies = {}) {
         if(rows.some(l=>l.staff_id!==actor.businessUserId || !periodsById.has(l.period_id) ||
           !idValue(l.id)||!idValue(l.segment_id)||!['host','support','technical'].includes(l.operational_role) ||
           !safeNumber(l.actual_minutes)||!safeNumber(l.payable_minutes)||!safeNumber(l.overtime_minutes) ||
+          (l.actual_seconds!==null&&!safeNumber(l.actual_seconds)) ||
+          (l.payable_seconds!==null&&!safeNumber(l.payable_seconds)) ||
+          (l.overtime_seconds!==null&&!safeNumber(l.overtime_seconds)) ||
+          ((l.actual_seconds===null)!==(l.payable_seconds===null)) ||
+          ((l.actual_seconds===null)!==(l.overtime_seconds===null)) ||
+          (l.actual_seconds!==null && (l.actual_seconds<1 || l.payable_seconds>l.actual_seconds
+            || l.overtime_seconds>l.payable_seconds)) ||
           !safeNumber(l.rate_vnd_per_hour)||!safeNumber(l.overtime_multiplier_basis_points) ||
           !safeNumber(l.gross_vnd)||!signedNumber(l.adjustment_vnd)||!safeNumber(l.net_vnd) ||
           l.gross_vnd+l.adjustment_vnd!==l.net_vnd || l.voided_at!==null))
@@ -74,7 +81,8 @@ export function createMyPayslipHandler(deps: Dependencies = {}) {
           const s=segmentsById.get(l.segment_id)
           return !s||s.staff_id!==actor.businessUserId||s.operational_role!==l.operational_role||
             s.event_kind!=='worked'||s.review_status!=='approved'||!s.actual_start_at||!s.actual_end_at||
-            !idValue(s.shift_id)
+            !idValue(s.shift_id) || (l.actual_seconds!==null &&
+              Math.floor(Date.parse(s.actual_end_at)/1000)-Math.floor(Date.parse(s.actual_start_at)/1000)!==l.actual_seconds)
         }))return failed('MY_PAYSLIP_ACTUAL_NOT_APPROVED',409)
         const shiftIds=[...new Set((segments.data??[]).map(s=>s.shift_id))]
         const shifts=shiftIds.length?await client.from('shifts')
@@ -84,6 +92,37 @@ export function createMyPayslipHandler(deps: Dependencies = {}) {
         const shiftsById=new Map((shifts.data??[]).map(s=>[s.id,s]))
         if(rows.some(l=>!shiftsById.has(segmentsById.get(l.segment_id)?.shift_id)))
           return failed('MY_PAYSLIP_SHIFT_SCOPE_INVALID',409)
+        let compensationAvailable=true
+        let compensationCases:Array<Record<string,unknown>>=[]
+        const adjustmentsRes=await client.from('workforce_payroll_adjustments')
+          .select('id,period_id,compensation_case_id,staff_id,operational_role,amount_vnd,reason,confirmed_by,created_at')
+          .eq('staff_id',actor.businessUserId).in('period_id',periodIds).order('created_at',{ascending:true}).limit(201)
+        if(adjustmentsRes.error && ['PGRST205','42P01'].includes(adjustmentsRes.error.code??'')) compensationAvailable=false
+        else if(adjustmentsRes.error)return failed('MY_PAYSLIP_ADJUSTMENT_READ_FAILED',503)
+        else {
+          const adjustments=adjustmentsRes.data??[]
+          if(adjustments.length>200)return failed('MY_PAYSLIP_ADJUSTMENT_LIMIT',409)
+          if(adjustments.some(a=>a.staff_id!==actor.businessUserId||!periodIds.includes(a.period_id)
+            ||!safeNumber(a.amount_vnd)||a.amount_vnd<1||!idValue(a.compensation_case_id)
+            ||!idValue(a.confirmed_by)||!['host','support','technical'].includes(a.operational_role)))
+            return failed('MY_PAYSLIP_ADJUSTMENT_INTEGRITY',409)
+          if(adjustments.length){
+            const caseRes=await client.from('workforce_cancellation_compensation_cases')
+              .select('id,period_id,staff_id,operational_role,proposed_amount_vnd,admin_confirmed_by,state,reason')
+              .eq('staff_id',actor.businessUserId).eq('state','admin_confirmed')
+              .in('id',adjustments.map(a=>a.compensation_case_id)).limit(201)
+            if(caseRes.error)return failed('MY_PAYSLIP_COMPENSATION_CASE_READ_FAILED',503)
+            if((caseRes.data??[]).length!==adjustments.length)return failed('MY_PAYSLIP_COMPENSATION_CASE_INCOMPLETE',409)
+            const casesById=new Map((caseRes.data??[]).map(c=>[c.id,c]))
+            if(adjustments.some(a=>{
+              const c=casesById.get(a.compensation_case_id)
+              return !c||c.period_id!==a.period_id||c.staff_id!==a.staff_id
+                ||c.operational_role!==a.operational_role||c.proposed_amount_vnd!==a.amount_vnd
+                ||c.admin_confirmed_by!==a.confirmed_by||c.state!=='admin_confirmed'
+            }))return failed('MY_PAYSLIP_COMPENSATION_SCOPE_INVALID',409)
+            compensationCases=caseRes.data??[]
+          }
+        }
         const statements=periods.map(p=>{
           const details=rows.filter(l=>l.period_id===p.id).map(l=>{
             const s=segmentsById.get(l.segment_id)!
@@ -91,16 +130,23 @@ export function createMyPayslipHandler(deps: Dependencies = {}) {
             return {line_id:l.id,shift_id:s.shift_id,shift_date:shift.date,shift_title:shift.title,
               operational_role:l.operational_role,actual_start_at:s.actual_start_at,actual_end_at:s.actual_end_at,
               actual_minutes:l.actual_minutes,payable_minutes:l.payable_minutes,overtime_minutes:l.overtime_minutes,
+              actual_seconds:l.actual_seconds,payable_seconds:l.payable_seconds,overtime_seconds:l.overtime_seconds,
+              overtime_request_id:l.overtime_request_id,overtime_day_class:l.overtime_day_class,
+              overtime_time_class:l.overtime_time_class,
               rate_vnd_per_hour:l.rate_vnd_per_hour, overtime_multiplier_basis_points:l.overtime_multiplier_basis_points,
               gross_vnd:l.gross_vnd,adjustment_vnd:l.adjustment_vnd,
               adjustment_reason:l.adjustment_reason,net_vnd:l.net_vnd,attendance_review:'approved'}
           })
-          const total=details.reduce((sum,l)=>sum+l.net_vnd,0)
+          const cancellationAdjustments=compensationAvailable?(adjustmentsRes.data??[]).filter(a=>a.period_id===p.id)
+            .map(a=>({id:a.id,compensation_case_id:a.compensation_case_id,staff_id:a.staff_id,
+              operational_role:a.operational_role,amount_vnd:a.amount_vnd,reason:a.reason,confirmed_by:a.confirmed_by,
+              shift_id:(compensationCases.find(c=>c.id===a.compensation_case_id)?.shift_id as string|undefined)??null})) : []
+          const total=details.reduce((sum,l)=>sum+l.net_vnd,0)+cancellationAdjustments.reduce((sum,a)=>sum+a.amount_vnd,0)
           if(!Number.isSafeInteger(total))throw new Error('MY_PAYSLIP_TOTAL_UNSAFE')
           return {period_id:p.id,period_start:p.period_start,period_end:p.period_end,status:'locked',
-            locked_at:p.locked_at,lines:details,total_net_vnd:total}
+            locked_at:p.locked_at,lines:details,compensation_adjustments:cancellationAdjustments,total_net_vnd:total}
         }).filter(p=>p.lines.length>0)
-        return Response.json({ok:true,scope:'own_locked_only',limited_to:12,statements},{headers:noStore})
+        return Response.json({ok:true,scope:'own_locked_only',limited_to:12,compensation_available:compensationAvailable,statements},{headers:noStore})
       }catch(error){
         if(isAuthorizationError(error))return authorizationErrorResponse(error)
         return failed('MY_PAYSLIP_READ_FAILED',503)

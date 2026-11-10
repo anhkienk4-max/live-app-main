@@ -26,6 +26,8 @@ import {
   type PayrollPeriod,
   type PayrollLine,
   type PayrollAudit,
+  type CancellationCompensationCase,
+  type PayrollAdjustment,
 } from '@/lib/services/workforceService'
 import { PayrollOverview } from '@/components/features/payroll/PayrollOverview'
 import { PayrollPeriodManager } from '@/components/features/payroll/PayrollPeriodManager'
@@ -91,6 +93,9 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
   const [selectedPeriod, setSelectedPeriod] = React.useState<PayrollPeriod | null>(null)
   const [lines, setLines] = React.useState<PayrollLine[]>([])
   const [audit, setAudit] = React.useState<PayrollAudit[]>([])
+  const [compensationCases,setCompensationCases]=React.useState<CancellationCompensationCase[]>([])
+  const [compensationAdjustments,setCompensationAdjustments]=React.useState<PayrollAdjustment[]>([])
+  const [compensationAvailable,setCompensationAvailable]=React.useState(false)
   const [loadingDetails, setLoadingDetails] = React.useState(false)
 
   // Load period details whenever selectedPeriod changes
@@ -100,6 +105,9 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
     const sequence = ++readSequence.current
     setLines([])
     setAudit([])
+    setCompensationCases([])
+    setCompensationAdjustments([])
+    setCompensationAvailable(false)
     setReadError(null)
     setLoadingDetails(true)
     try {
@@ -108,6 +116,9 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
       setSelectedPeriod(res.period)
       setLines(res.lines)
       setAudit(res.audit)
+      setCompensationCases(res.compensation_cases??[])
+      setCompensationAdjustments(res.compensation_adjustments??[])
+      setCompensationAvailable(res.compensation_available===true)
     } catch (err: unknown) {
       if (sequence !== readSequence.current) return
       setReadError(workforceErrorMessage(err))
@@ -232,6 +243,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
           <PayrollOverview
             period={selectedPeriod}
             lines={lines}
+            compensationAdjustments={compensationAdjustments}
             loading={loadingDetails}
           />
 
@@ -240,6 +252,7 @@ function PayrollWorkspace({ currentUser }: { currentUser: BusinessUser }) {
               {!loadingDetails && !readError && <PayrollDraftWorkspace
                 period={selectedPeriod}
                 lines={lines}
+                compensationCases={compensationAvailable?compensationCases:[]}
                 currentUserId={currentUser?.id}
                 currentUserRole={permission}
                 audit={audit}

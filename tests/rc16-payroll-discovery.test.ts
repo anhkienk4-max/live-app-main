@@ -302,10 +302,14 @@ test('legacy period GET preserves current correction/void evidence and audit env
   const lines=[{id:'corrected',version:2,net_vnd:124000,voided_at:null},
     {id:'voided',version:3,net_vnd:100000,voided_at:'2026-10-01T00:00:00Z'}]
   const audit=[{id:7,action:'correct_line',line_version:2,previous_values:{version:1},updated_values:lines[0]}]
-  const db=()=>({rpc:async()=>({data:{period,lines,audit,lineCount:lines.length,auditCount:audit.length},error:null})})
+  const db=()=>({
+    rpc:async()=>({data:{period,lines,audit,lineCount:lines.length,auditCount:audit.length},error:null}),
+    from(){return {select(){return {eq(){return {order(){return {limit:async()=>({data:null,error:{code:'PGRST205'}})}}}}}}}}
+  })
   const h=createWorkforcePayrollHandler({isEnabled:()=>true,resolveUser:admin,createClient:db as never})
   const response=await h.GET(request('period_id=legacy-period'))
   assert.equal(response.status,200)
-  assert.deepEqual(await response.json(),{ok:true,period,lines,audit})
+  assert.deepEqual(await response.json(),{ok:true,period,lines,audit,
+    compensation_available:false,compensation_cases:[],compensation_adjustments:[]})
   assert.equal(response.headers.get('Cache-Control'),'no-store')
 })

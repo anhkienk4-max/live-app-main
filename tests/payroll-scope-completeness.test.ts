@@ -9,17 +9,17 @@ function request(action:string='auto_calculate_draft'){
   return new Request(url,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({action,period_id:'period-1'})})
 }
-function mockDb(fault:'none'|'shift_count_drift'|'segment_missing_count'|'rate_duplicate'|'payroll_missing_count'='none'){
+function mockDb(fault:'none'|'shift_count_drift'|'segment_missing_count'|'rate_duplicate'|'payroll_missing_count'='none',shiftDate='2026-09-01'){
   const shifts:Row[]=Array.from({length:1205},(_,i)=>({
-    id:'shift-'+String(i).padStart(5,'0'),date:'2026-09-01',deleted_at:null,
+    id:'shift-'+String(i).padStart(5,'0'),date:shiftDate,deleted_at:null,
   }))
   const registrations:Row[]=[]
   const lines:Row[]=[]
   const segments:Row[]=[{
     id:'seg-1',shift_id:'shift-01204',staff_id:'staff-1',operational_role:'host',
     event_kind:'worked',review_status:'approved',
-    actual_start_at:'2026-09-01T09:00:00+07:00',
-    actual_end_at:'2026-09-01T10:00:00+07:00',
+    actual_start_at:shiftDate==='2026-11-10'?'2026-11-10T10:03:27+07:00':'2026-09-01T09:00:00+07:00',
+    actual_end_at:shiftDate==='2026-11-10'?'2026-11-10T14:00:12+07:00':'2026-09-01T10:00:00+07:00',
     review_note:'Supervisor verified actual hours',evidence_note:null,
   }]
   const rates:Row[]=[{
@@ -32,6 +32,7 @@ function mockDb(fault:'none'|'shift_count_drift'|'segment_missing_count'|'rate_d
     workforce_rate_cards:rates,workforce_payroll_lines:lines,
   }
   let writes=0
+  let gateCalls=0
   let reads=0
   let inserted:Row[]=[]
   const db={
@@ -48,9 +49,11 @@ function mockDb(fault:'none'|'shift_count_drift'|'segment_missing_count'|'rate_d
         order(){return q},
         async maybeSingle(){
           if(table==='workforce_payroll_periods')return {
-            data:{id:'period-1',status:'draft',period_start:'2026-09-01',period_end:'2026-09-30'},
+            data:{id:'period-1',status:'draft',period_start:shiftDate,period_end:shiftDate},
             error:null,
           }
+          if(table==='workforce_actual_segments')return {data:segments[0],error:null}
+          if(table==='shifts')return {data:{id:'shift-01204',date:shiftDate,deleted_at:null},error:null}
           throw Error('UNEXPECTED_SINGLE_'+table)
         },
         async range(from:number,to:number){
@@ -76,7 +79,16 @@ function mockDb(fault:'none'|'shift_count_drift'|'segment_missing_count'|'rate_d
       return {data:{inserted_lines:inserted,recalculated_lines:[]},error:null}
     },
   }
-  return {db,reads:()=>reads,writes:()=>writes,inserted:()=>inserted}
+  const createSessionClient=async()=>({
+    rpc:async(name:string,args:Record<string,unknown>)=>{
+      gateCalls++
+      assert.equal(name,'rc19_c515_refresh_payroll_gates')
+      assert.deepEqual(args.p_segment_ids,['seg-1'])
+      return {data:[{segment_id:'seg-1',state:'payroll_hold',version:1,
+        missing_evidence:['final_report'],verified_complete:false}],error:null}
+    },
+  })
+  return {db,reads:()=>reads,writes:()=>writes,gateCalls:()=>gateCalls,inserted:()=>inserted,createSessionClient}
 }
 
 test('Payroll auto-calc reads all 1,205 shifts, detects last shift evidence and inserts only approved actual',async()=>{
@@ -94,6 +106,32 @@ test('Payroll auto-calc reads all 1,205 shifts, detects last shift evidence and 
   assert.equal(fixture.inserted()[0]?.segment_id,'seg-1')
   assert.equal(fixture.writes(),1)
   assert.ok(fixture.reads()>4)
+})
+
+test('Payroll auto-calc holds post-cutover shifts until report completeness is verified',async()=>{
+  const fixture=mockDb('none','2026-11-10')
+  const handler=createWorkforcePayrollHandler({createClient:(()=>fixture.db) as never,createSessionClient:fixture.createSessionClient as never,
+    resolveUser:admin,isEnabled:()=>true})
+  const response=await handler.POST(request())
+  assert.equal(response.status,200,JSON.stringify(await response.clone().json()))
+  const result=await response.json() as {prepared_count:number;payroll_holds:Array<{segmentId:string;reason:string}>}
+  assert.equal(result.prepared_count,0)
+  assert.equal(result.payroll_holds[0]?.segmentId,'seg-1')
+  assert.equal(result.payroll_holds[0]?.reason,'REQUIRED_EVIDENCE_INCOMPLETE')
+  assert.equal(fixture.writes(),0)
+  assert.equal(fixture.gateCalls(),1)
+})
+
+test('manual Payroll prepare is fail-closed until post-cutover report completeness is authoritative',async()=>{
+  const fixture=mockDb('none','2026-11-10')
+  const handler=createWorkforcePayrollHandler({createClient:(()=>fixture.db) as never,
+    resolveUser:admin,isEnabled:()=>true})
+  const response=await handler.POST(new Request(url,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'prepare_line',period_id:'period-1',segment_id:'seg-1',
+      payable_minutes:240,overtime_minutes:0,adjustment_vnd:0,adjustment_reason:null})}))
+  assert.equal(response.status,409)
+  assert.equal((await response.json()).error.code,'WORKFORCE_PAYROLL_EVIDENCE_COMPLETENESS_UNVERIFIED')
+  assert.equal(fixture.writes(),0)
 })
 
 for(const [fault,code] of [

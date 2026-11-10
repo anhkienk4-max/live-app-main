@@ -42,12 +42,17 @@ import {
   type RecalculationLineDiff,
   type RecalculationDiffSummary,
   type PayrollReconciliationSummary,
+  type CancellationCompensationCase,
   WorkforceServiceError,
 } from '@/lib/services/workforceService'
+
+const payrollDuration=(seconds:number|null|undefined,minutes:number)=>seconds==null?`${minutes}p`:
+  `${Math.floor(seconds/3600)}g ${Math.floor(seconds%3600/60)}p ${seconds%60}s`
 
 interface PayrollDraftWorkspaceProps {
   period: PayrollPeriod
   lines: PayrollLine[]
+  compensationCases?:CancellationCompensationCase[]
   currentUserId?: string
   currentUserRole?: string
   audit?: PayrollAudit[]
@@ -57,6 +62,7 @@ interface PayrollDraftWorkspaceProps {
 export function PayrollDraftWorkspace({
   period,
   lines,
+  compensationCases = [],
   currentUserId,
   currentUserRole,
   audit = [],
@@ -66,6 +72,20 @@ export function PayrollDraftWorkspace({
   const correctionIntent = React.useRef<Parameters<typeof workforceService.correctLine>[0] | null>(null)
   const voidIntent = React.useRef<Parameters<typeof workforceService.voidLine>[0] | null>(null)
   const [showVoided, setShowVoided] = React.useState(true)
+  const [compensationFilter,setCompensationFilter]=React.useState({brand:'',agency:'',role:'',staff:'',reason:'',state:'',dateFrom:'',dateTo:''})
+  const [compensationReasons,setCompensationReasons]=React.useState<Record<string,string>>({})
+  const [compensationErrors,setCompensationErrors]=React.useState<Record<string,string>>({})
+  const [compensationSubmitting,setCompensationSubmitting]=React.useState<string|null>(null)
+  const visibleCompensationCases=React.useMemo(()=>compensationCases.filter(item=>
+    (!compensationFilter.brand||item.shift.brand_id===compensationFilter.brand)
+    &&(!compensationFilter.agency||item.shift.agency_code===compensationFilter.agency)
+    &&(!compensationFilter.role||item.operational_role===compensationFilter.role)
+    &&(!compensationFilter.staff||item.staff_id.toLocaleLowerCase().includes(compensationFilter.staff.toLocaleLowerCase()))
+    &&(!compensationFilter.reason||`${item.cancellation_reason} ${item.reason}`.toLocaleLowerCase().includes(compensationFilter.reason.toLocaleLowerCase()))
+    &&(!compensationFilter.state||item.state===compensationFilter.state)
+    &&(!compensationFilter.dateFrom||item.shift.date>=compensationFilter.dateFrom)
+    &&(!compensationFilter.dateTo||item.shift.date<=compensationFilter.dateTo),
+  ),[compensationCases,compensationFilter])
 
   // Transition Modal State
   const [isTransitionOpen, setIsTransitionOpen] = React.useState(false)
@@ -114,6 +134,16 @@ export function PayrollDraftWorkspace({
   const [unapprovedOtExceptions, setUnapprovedOtExceptions] = React.useState<
     Array<{ segmentId: string; staffId: string; shiftDate: string; reason: string }>
   >([])
+  const [payrollHolds,setPayrollHolds]=React.useState<Array<{
+    segmentId:string;shiftId:string;staffId:string;shiftDate:string;
+    reason:'REQUIRED_EVIDENCE_INCOMPLETE'|'REQUIRED_EVIDENCE_COMPLETENESS_UNVERIFIED';missingEvidence:string[];
+    role?:string|null;brandId?:string|null;agencyCode?:string|null;executionSource?:string|null;
+    approvalState?:string|null;decisionVersion?:number
+  }>>([])
+  const [holdFilters,setHoldFilters]=React.useState({brand:'',agency:'',role:'',staff:'',reason:'',approval:'',dateFrom:'',dateTo:''})
+  const [holdReasons,setHoldReasons]=React.useState<Record<string,string>>({})
+  const [holdErrors,setHoldErrors]=React.useState<Record<string,string>>({})
+  const [confirmingHoldId,setConfirmingHoldId]=React.useState<string|null>(null)
 
   const isDraft = period.status === 'draft'
 
@@ -123,6 +153,55 @@ export function PayrollDraftWorkspace({
     () => (showVoided ? lines : activeLines),
     [lines, activeLines, showVoided]
   )
+  const visiblePayrollHolds=React.useMemo(()=>payrollHolds.filter(hold=>
+    (!holdFilters.brand||hold.brandId===holdFilters.brand)
+    &&(!holdFilters.agency||hold.agencyCode===holdFilters.agency)
+    &&(!holdFilters.role||hold.role===holdFilters.role)
+    &&(!holdFilters.staff||hold.staffId.toLocaleLowerCase().includes(holdFilters.staff.toLocaleLowerCase()))
+    &&(!holdFilters.reason||hold.missingEvidence.includes(holdFilters.reason))
+    &&(!holdFilters.approval||hold.approvalState===holdFilters.approval)
+    &&(!holdFilters.dateFrom||hold.shiftDate>=holdFilters.dateFrom)
+    &&(!holdFilters.dateTo||hold.shiftDate<=holdFilters.dateTo),
+  ),[payrollHolds,holdFilters])
+
+  const confirmHeldSegment=async(hold:typeof payrollHolds[number])=>{
+    const reason=holdReasons[hold.segmentId]?.trim()??''
+    if(reason.length<8)return
+    setConfirmingHoldId(hold.segmentId)
+    setHoldErrors(current=>({...current,[hold.segmentId]:''}))
+    try{
+      const response=await workforceService.confirmPayrollSegment({
+        segmentId:hold.segmentId,expectedVersion:hold.decisionVersion??0,
+        idempotencyKey:crypto.randomUUID(),reason,
+      })
+      if(response.decision.state==='admin_confirmed'){
+        setPayrollHolds(current=>current.map(item=>item.segmentId===hold.segmentId
+          ? {...item,approvalState:'admin_confirmed',missingEvidence:[]} : item))
+        toast({title:'Admin đã xác nhận Payroll',description:'Bấm Tự động tính lương để tạo dòng lương nháp.'})
+      }else{
+        setHoldErrors(current=>({...current,[hold.segmentId]:`Vẫn đang HOLD: ${response.decision.missing_evidence.join(', ')||'chưa đủ điều kiện'}`}))
+        setPayrollHolds(current=>current.map(item=>item.segmentId===hold.segmentId
+          ? {...item,approvalState:response.decision.state,decisionVersion:response.decision.version,missingEvidence:response.decision.missing_evidence} : item))
+      }
+    }catch(error){
+      setHoldErrors(current=>({...current,[hold.segmentId]:workforceErrorMessage(error)}))
+    }finally{setConfirmingHoldId(null)}
+  }
+
+  const decideCompensation=async(item:CancellationCompensationCase,decision:'admin_confirm'|'reject')=>{
+    const reason=compensationReasons[item.id]?.trim()??''
+    if(reason.length<8)return
+    setCompensationSubmitting(item.id)
+    setCompensationErrors(current=>({...current,[item.id]:''}))
+    try{
+      await workforceService.decideCancellationCompensation({caseId:item.id,expectedVersion:item.version,
+        decision,reason,newAmountVnd:null,idempotencyKey:crypto.randomUUID()})
+      toast({title:decision==='admin_confirm'?'Khoản hỗ trợ đã được Admin xác nhận':'Đề xuất hỗ trợ đã bị từ chối',
+        description:'Bản ghi điều chỉnh được xử lý trong kỳ lương nháp; kỳ đã khóa không thể sửa.'})
+      onRefresh()
+    }catch(error){setCompensationErrors(current=>({...current,[item.id]:workforceErrorMessage(error)}))}
+    finally{setCompensationSubmitting(null)}
+  }
 
   // --- TRANSITIONS ---
   const nextTransitionConfig: Partial<
@@ -226,6 +305,7 @@ export function PayrollDraftWorkspace({
       if (res.unapproved_ot_exceptions) {
         setUnapprovedOtExceptions(res.unapproved_ot_exceptions)
       }
+      setPayrollHolds(res.payroll_holds??[])
       if (res.prepared_count > 0) {
         toast({
           title: 'Tự động tính lương thành công',
@@ -234,7 +314,7 @@ export function PayrollDraftWorkspace({
       } else if (res.reconciliation && !res.reconciliation.is_fully_reconciled) {
         toast({
           title: 'Còn ca chưa được đối soát',
-          description: `Có ${res.reconciliation.unreconciled_count} ca làm việc chưa thể tính lương do thiếu đơn giá được duyệt.`,
+          description: `Có ${res.reconciliation.unreconciled_count} ca làm việc chưa thể tính lương; xem lý do đối soát và Payroll Hold bên dưới.`,
           variant: 'destructive',
         })
       } else if (res.skipped_count > 0) {
@@ -616,7 +696,7 @@ export function PayrollDraftWorkspace({
             {!reconciliation.is_fully_reconciled && (
               <div className="mt-2.5 pt-2 border-t border-amber-200/60 text-[11px] space-y-1">
                 <p className="font-medium text-amber-800">
-                  ⚠️ Lưu ý: Theo chính sách chốt lương, bạn sẽ không thể chuyển bảng lương sang trạng thái &ldquo;Reviewed&rdquo; hoặc &ldquo;Locked&rdquo; nếu còn ca chấm công chưa có đơn giá hợp lệ.
+                  ⚠️ Chỉ được chuyển kỳ lương khi mọi ca có dữ liệu nguồn, phê duyệt và bằng chứng hợp lệ; nguyên nhân cụ thể được liệt kê bên dưới.
                 </p>
                 {reconciliation.unreconciled_segments.length > 0 && (
                   <div className="mt-1 max-h-28 overflow-y-auto space-y-1 bg-white/70 rounded p-2 border border-amber-200/80">
@@ -634,6 +714,93 @@ export function PayrollDraftWorkspace({
             )}
           </div>
         )}
+
+        {compensationCases.length>0&&<section aria-label="Cancellation compensation admin queue" className="rounded-lg border border-amber-300 bg-amber-50/80 p-3.5 text-xs text-amber-950">
+          <h3 className="font-semibold">Ngoại lệ hỗ trợ khi Brand/ADA hủy ca</h3>
+          <p className="mt-1">Không có lương tối thiểu cho thời gian chưa làm. Giờ thực tế đã duyệt vẫn nằm ở dòng lương ca; khoản hỗ trợ này chỉ được cộng sau Admin xác nhận trong kỳ nháp.</p>
+          <p className="mt-1 text-[11px]">Kỳ đang xem: {period.period_start} → {period.period_end}</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <select aria-label="Lọc Brand compensation" value={compensationFilter.brand} onChange={e=>setCompensationFilter(v=>({...v,brand:e.target.value}))} className="rounded border bg-white p-2">
+              <option value="">Tất cả Brand</option>{Array.from(new Set(compensationCases.map(v=>v.shift.brand_id))).map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+            <select aria-label="Lọc Agency compensation" value={compensationFilter.agency} onChange={e=>setCompensationFilter(v=>({...v,agency:e.target.value}))} className="rounded border bg-white p-2">
+              <option value="">Tất cả Agency</option>{Array.from(new Set(compensationCases.map(v=>v.shift.agency_code).filter((v):v is string=>Boolean(v)))).map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+            <select aria-label="Lọc vai trò compensation" value={compensationFilter.role} onChange={e=>setCompensationFilter(v=>({...v,role:e.target.value}))} className="rounded border bg-white p-2">
+              <option value="">Tất cả vai trò</option>{['host','support','technical'].map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+            <Input aria-label="Lọc nhân sự compensation" placeholder="Staff ID" value={compensationFilter.staff} onChange={e=>setCompensationFilter(v=>({...v,staff:e.target.value}))} />
+            <Input aria-label="Từ ngày compensation" type="date" value={compensationFilter.dateFrom} onChange={e=>setCompensationFilter(v=>({...v,dateFrom:e.target.value}))} />
+            <Input aria-label="Đến ngày compensation" type="date" value={compensationFilter.dateTo} onChange={e=>setCompensationFilter(v=>({...v,dateTo:e.target.value}))} />
+            <Input aria-label="Lọc lý do compensation" placeholder="Tìm lý do hủy/đề xuất" value={compensationFilter.reason} onChange={e=>setCompensationFilter(v=>({...v,reason:e.target.value}))} />
+            <select aria-label="Lọc trạng thái compensation" value={compensationFilter.state} onChange={e=>setCompensationFilter(v=>({...v,state:e.target.value}))} className="rounded border bg-white p-2">
+              <option value="">Tất cả trạng thái</option>{['pending_admin_confirmation','admin_confirmed','rejected'].map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <ul className="mt-3 space-y-3">
+            {visibleCompensationCases.map(item=><li key={item.id} className="rounded border border-amber-200 bg-white p-3">
+              <div className="font-semibold">{item.shift.date} · {item.shift.title||item.shift_id} · {item.operational_role} · {item.staff_id}</div>
+              <div>Brand {item.shift.brand_id} · Agency {item.shift.agency_code??'—'} · trạng thái {item.state} · actual {payrollDuration(item.actual_seconds,Math.floor(item.actual_seconds/60))}</div>
+              <div className="mt-1">Lý do hủy: {item.cancellation_reason}</div>
+              <div>Đề xuất: {item.reason} · {formatCurrency(item.proposed_amount_vnd)} · actual wage {item.actual_earnings_vnd===null?'chưa có dòng lương':formatCurrency(item.actual_earnings_vnd)}</div>
+              <div className="break-all text-[10px] text-slate-500">Evidence receipt: {item.evidence_receipt_id} · proposer {item.proposed_by} · Leader {item.leader_preapproved_by??'—'} · Admin {item.admin_confirmed_by??'—'}</div>
+              {currentUserRole==='admin'&&item.state==='pending_admin_confirmation'&&period.status==='draft'&&<div className="mt-2 space-y-2">
+                <Textarea aria-label={`Lý do Admin xử lý hỗ trợ ${item.staff_id}`} rows={2} minLength={8} maxLength={2000}
+                  placeholder="Lý do xác nhận hoặc từ chối (tối thiểu 8 ký tự)" value={compensationReasons[item.id]??''}
+                  onChange={e=>setCompensationReasons(v=>({...v,[item.id]:e.target.value}))} />
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" disabled={compensationSubmitting===item.id||(compensationReasons[item.id]?.trim().length??0)<8}
+                    onClick={()=>void decideCompensation(item,'admin_confirm')}>{compensationSubmitting===item.id?'Đang lưu...':'Admin xác nhận hỗ trợ'}</Button>
+                  <Button size="sm" variant="outline" disabled={compensationSubmitting===item.id||(compensationReasons[item.id]?.trim().length??0)<8}
+                    onClick={()=>void decideCompensation(item,'reject')}>Từ chối</Button>
+                </div>
+              </div>}
+              {compensationErrors[item.id]&&<p role="alert" className="mt-2 text-rose-700">{compensationErrors[item.id]}</p>}
+            </li>)}
+            {visibleCompensationCases.length===0&&<li className="text-slate-600">Không có ngoại lệ phù hợp bộ lọc hiện tại.</li>}
+          </ul>
+        </section>}
+
+        {payrollHolds.length>0&&<section aria-label="Payroll Hold admin queue" className="rounded-lg border border-rose-300 bg-rose-50/80 p-3.5 text-xs text-rose-950">
+          <h3 className="font-semibold">PAYROLL_HOLD — Admin review queue</h3>
+          <p className="mt-1">Chưa tạo dòng phải trả cho đến khi evidence bắt buộc được lưu và Admin xác nhận. Thiếu evidence không chuyển thành lương 0đ.</p>
+          <p className="mt-1 text-[11px]">Kỳ đang xem: {period.period_start} → {period.period_end}</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <select aria-label="Lọc Brand Payroll Hold" value={holdFilters.brand} onChange={e=>setHoldFilters(v=>({...v,brand:e.target.value}))} className="rounded border bg-white p-2">
+              <option value="">Tất cả Brand</option>{Array.from(new Set(payrollHolds.map(h=>h.brandId).filter((v):v is string=>Boolean(v)))).map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+            <select aria-label="Lọc Agency Payroll Hold" value={holdFilters.agency} onChange={e=>setHoldFilters(v=>({...v,agency:e.target.value}))} className="rounded border bg-white p-2">
+              <option value="">Tất cả Agency</option>{Array.from(new Set(payrollHolds.map(h=>h.agencyCode).filter((v):v is string=>Boolean(v)))).map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+            <select aria-label="Lọc vai trò Payroll Hold" value={holdFilters.role} onChange={e=>setHoldFilters(v=>({...v,role:e.target.value}))} className="rounded border bg-white p-2">
+              <option value="">Tất cả vai trò</option>{['host','support','technical'].map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+            <Input aria-label="Lọc nhân sự Payroll Hold" placeholder="Staff ID" value={holdFilters.staff} onChange={e=>setHoldFilters(v=>({...v,staff:e.target.value}))} />
+            <Input aria-label="Từ ngày Payroll Hold" type="date" value={holdFilters.dateFrom} onChange={e=>setHoldFilters(v=>({...v,dateFrom:e.target.value}))} />
+            <Input aria-label="Đến ngày Payroll Hold" type="date" value={holdFilters.dateTo} onChange={e=>setHoldFilters(v=>({...v,dateTo:e.target.value}))} />
+            <select aria-label="Lọc lý do Payroll Hold" value={holdFilters.reason} onChange={e=>setHoldFilters(v=>({...v,reason:e.target.value}))} className="rounded border bg-white p-2">
+              <option value="">Tất cả lý do</option>{Array.from(new Set(payrollHolds.flatMap(h=>h.missingEvidence))).map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+            <select aria-label="Lọc trạng thái xác nhận Payroll" value={holdFilters.approval} onChange={e=>setHoldFilters(v=>({...v,approval:e.target.value}))} className="rounded border bg-white p-2">
+              <option value="">Tất cả trạng thái</option>{['payroll_hold','pending_admin_confirmation','admin_confirmed'].map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <ul className="mt-3 space-y-3">
+            {visiblePayrollHolds.map(hold=><li key={hold.segmentId} className="rounded border border-rose-200 bg-white p-3">
+              <div><strong>{hold.staffId}</strong> · {hold.role??'—'} · {hold.shiftDate} · Brand {hold.brandId??'—'} · {hold.agencyCode??hold.executionSource??'—'}</div>
+              <div className="mt-1">{hold.reason} · trạng thái {hold.approvalState??'unverified'} · thiếu: {hold.missingEvidence.join(', ')||'Admin confirmation'}</div>
+              {currentUserRole==='admin'&&hold.approvalState!=='admin_confirmed'&&<div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                <Textarea aria-label={`Lý do Admin xác nhận ${hold.staffId}`} rows={2} minLength={8} maxLength={2000}
+                  placeholder="Lý do xác nhận/review (tối thiểu 8 ký tự)" value={holdReasons[hold.segmentId]??''}
+                  onChange={e=>setHoldReasons(v=>({...v,[hold.segmentId]:e.target.value}))} />
+                <Button size="sm" disabled={confirmingHoldId===hold.segmentId||(holdReasons[hold.segmentId]?.trim().length??0)<8}
+                  onClick={()=>void confirmHeldSegment(hold)}>{confirmingHoldId===hold.segmentId?'Đang xác minh...':'Admin review / confirm'}</Button>
+              </div>}
+              {holdErrors[hold.segmentId]&&<p role="alert" className="mt-2 text-rose-700">{holdErrors[hold.segmentId]}</p>}
+            </li>)}
+            {visiblePayrollHolds.length===0&&<li className="text-slate-600">Không có Hold phù hợp bộ lọc hiện tại.</li>}
+          </ul>
+        </section>}
 
         {/* Unapproved OT Exceptions Warning */}
         {unapprovedOtExceptions.length > 0 && (
@@ -664,7 +831,7 @@ export function PayrollDraftWorkspace({
               <tr>
                 <th className="px-3 py-2.5">Nhân sự & Vai trò</th>
                 <th className="px-3 py-2.5">Phân đoạn ca</th>
-                <th className="px-3 py-2.5 text-right">Phút thực tế</th>
+                <th className="px-3 py-2.5 text-right">Thời lượng thực tế</th>
                 <th className="px-3 py-2.5 text-right">Tính lương</th>
                 <th className="px-3 py-2.5 text-right">Tăng ca</th>
                 <th className="px-3 py-2.5 text-right">Đơn giá / OT</th>
@@ -732,17 +899,20 @@ export function PayrollDraftWorkspace({
 
                       {/* Actual Minutes */}
                       <td className="px-3 py-2.5 text-right font-mono">
-                        {line.actual_minutes}p
+                        {payrollDuration(line.actual_seconds,line.actual_minutes)}
                       </td>
 
                       {/* Payable Minutes */}
                       <td className="px-3 py-2.5 text-right font-mono font-semibold text-slate-900">
-                        {line.payable_minutes}p
+                        {payrollDuration(line.payable_seconds,line.payable_minutes)}
                       </td>
 
                       {/* OT Minutes */}
                       <td className="px-3 py-2.5 text-right font-mono text-indigo-600">
-                        {line.overtime_minutes > 0 ? `+${line.overtime_minutes}p` : '—'}
+                        {(line.overtime_seconds??0)>0 ? <>
+                          +{payrollDuration(line.overtime_seconds,line.overtime_minutes)}
+                          <span className="block text-[9px] text-slate-500">{line.overtime_day_class??'—'} · {line.overtime_time_class??'—'}</span>
+                        </> : '—'}
                       </td>
 
                       {/* Rate */}
@@ -760,7 +930,9 @@ export function PayrollDraftWorkspace({
                         <div>{formatCurrency(line.gross_vnd)}</div>
                         <div
                           className="text-[9px] text-slate-400 font-mono cursor-help truncate max-w-[140px] ml-auto"
-                          title={`Công thức: (${line.payable_minutes - line.overtime_minutes}p chuẩn × ${formatCurrency(line.rate_vnd_per_hour)} ÷ 60) + (${line.overtime_minutes}p OT × ${formatCurrency(line.rate_vnd_per_hour)} × ${(line.overtime_multiplier_basis_points / 10000).toFixed(2)}x ÷ 60)`}
+                          title={line.payable_seconds!=null
+                            ? `Tính theo giây: (${line.payable_seconds-(line.overtime_seconds??0)}s chuẩn + ${line.overtime_seconds??0}s OT × ${(line.overtime_multiplier_basis_points/10000).toFixed(2)}x) × ${formatCurrency(line.rate_vnd_per_hour)} ÷ 3600; làm tròn tiền một lần ở kết quả cuối.`
+                            : `Công thức: (${line.payable_minutes - line.overtime_minutes}p chuẩn × ${formatCurrency(line.rate_vnd_per_hour)} ÷ 60) + (${line.overtime_minutes}p OT × ${formatCurrency(line.rate_vnd_per_hour)} × ${(line.overtime_multiplier_basis_points / 10000).toFixed(2)}x ÷ 60)`}
                         >
                           {line.payable_minutes}p @ {formatCurrency(line.rate_vnd_per_hour)}/h
                         </div>
@@ -815,10 +987,13 @@ export function PayrollDraftWorkspace({
                               <Button
                                 size="sm"
                                 variant="ghost"
+                                disabled={line.actual_seconds!=null}
                                 onClick={() => openCorrectModal(line)}
                                 className="h-7 w-7 p-0 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
                                 aria-label="Điều chỉnh dòng lương"
-                                title="Điều chỉnh dòng lương"
+                                title={line.actual_seconds!=null
+                                  ? 'Dòng tính theo giây cần quy trình điều chỉnh tương thích trước khi sửa'
+                                  : 'Điều chỉnh dòng lương'}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>

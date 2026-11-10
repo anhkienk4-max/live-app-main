@@ -5,27 +5,36 @@ import { Button } from '@/components/ui/button'
 type Line={
   line_id:string;shift_id:string;shift_date:string;shift_title:string|null;operational_role:string
   actual_start_at:string;actual_end_at:string;actual_minutes:number;payable_minutes:number
+  actual_seconds:number|null;payable_seconds:number|null;overtime_seconds:number|null
+  overtime_request_id:string|null;overtime_day_class:'weekday'|'weekend'|'holiday'|null;overtime_time_class:'day'|'night'|null
   overtime_minutes:number;rate_vnd_per_hour:number;gross_vnd:number;adjustment_vnd:number
   adjustment_reason:string|null;net_vnd:number;attendance_review:'approved'
 }
-type Statement={period_id:string;period_start:string;period_end:string;status:'locked';locked_at:string;lines:Line[];total_net_vnd:number}
-type PayslipResponse={ok:true;scope:'own_locked_only';statements:Statement[];limited_to:12}
+type Compensation={id:string;compensation_case_id:string;staff_id:string;operational_role:string;amount_vnd:number;reason:string;confirmed_by:string;shift_id:string|null}
+type Statement={period_id:string;period_start:string;period_end:string;status:'locked';locked_at:string;lines:Line[];compensation_adjustments:Compensation[];total_net_vnd:number}
+type PayslipResponse={ok:true;scope:'own_locked_only';statements:Statement[];limited_to:12;compensation_available:boolean}
 const money=(n:number)=>new Intl.NumberFormat('vi-VN').format(n)+' đ'
+const duration=(seconds:number|null,minutes:number)=>seconds===null?`${minutes} phút`:
+  `${Math.floor(seconds/3600)} giờ ${Math.floor(seconds%3600/60)} phút ${seconds%60} giây`
 const actualTime=(value:string)=>{
   const date=new Date(value)
-  return Number.isNaN(date.getTime())?'—':new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(date)
+  return Number.isNaN(date.getTime())?'—':new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(date)
 }
 function decode(value:unknown):PayslipResponse {
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('PAYSLIP_RESPONSE_INVALID')
   const v=value as Record<string,unknown>
-  if(v.ok!==true||v.scope!=='own_locked_only'||!Array.isArray(v.statements)||v.statements.length>12)
+  if(v.ok!==true||v.scope!=='own_locked_only'||typeof v.compensation_available!=='boolean'||!Array.isArray(v.statements)||v.statements.length>12)
     throw new Error('PAYSLIP_RESPONSE_INVALID')
   for(const item of v.statements){
     if(!item||item.status!=='locked'||!Array.isArray(item.lines)||item.lines.length>200||
       !Number.isSafeInteger(item.total_net_vnd))throw new Error('PAYSLIP_RESPONSE_INVALID')
-    if(item.lines.some((l:Line)=>!l||l.attendance_review!=='approved'||!Number.isSafeInteger(l.net_vnd)))
+    if(item.lines.some((l:Line)=>!l||l.attendance_review!=='approved'||!Number.isSafeInteger(l.net_vnd)||
+      ![l.actual_seconds,l.payable_seconds,l.overtime_seconds].every(v=>v===null||Number.isSafeInteger(v))))
       throw new Error('PAYSLIP_RESPONSE_INVALID')
-    if(item.lines.reduce((n:number,l:Line)=>n+l.net_vnd,0)!==item.total_net_vnd)
+    if(!Array.isArray(item.compensation_adjustments)||item.compensation_adjustments.some((a:Compensation)=>
+      !a||!Number.isSafeInteger(a.amount_vnd)||a.amount_vnd<1||typeof a.reason!=='string'||!a.reason.trim()))
+      throw new Error('PAYSLIP_COMPENSATION_INVALID')
+    if(item.lines.reduce((n:number,l:Line)=>n+l.net_vnd,0)+item.compensation_adjustments.reduce((n:number,a:Compensation)=>n+a.amount_vnd,0)!==item.total_net_vnd)
       throw new Error('PAYSLIP_TOTAL_MISMATCH')
   }
   return v as unknown as PayslipResponse
@@ -82,18 +91,25 @@ export function MyPayslipPanel() {
           <p className="text-xs text-muted-foreground">Đã khóa, dữ liệu chính thức theo kỳ</p></div>
         <p className="font-semibold">{money(selected.total_net_vnd)}</p>
       </div>
+      {!current?.data?.compensation_available?<p role="status" className="text-xs text-amber-700">Danh sách hỗ trợ hủy ca chưa sẵn sàng ở môi trường này; tổng phiếu lương chỉ gồm các dòng lương hiện có.</p>:null}
       <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-xs">
         <thead><tr className="border-b"><th className="p-2">Ngày / ca</th><th className="p-2">Vai trò</th><th className="p-2">Giờ thực tế / phút tính lương</th><th className="p-2">Đơn giá giờ</th><th className="p-2">Tăng ca</th><th className="p-2">Tiền ca</th><th className="p-2">Điều chỉnh</th><th className="p-2">Thành tiền</th></tr></thead>
         <tbody>{selected.lines.map(line=><tr key={line.line_id} className="border-b">
           <td className="p-2">{line.shift_date} · {line.shift_title||line.shift_id}</td>
-          <td className="p-2">{line.operational_role}</td><td className="p-2">{actualTime(line.actual_start_at)} — {actualTime(line.actual_end_at)}<br />{line.actual_minutes} phút thực tế / {line.payable_minutes} phút tính lương</td>
+          <td className="p-2">{line.operational_role}</td><td className="p-2">{actualTime(line.actual_start_at)} — {actualTime(line.actual_end_at)}<br />{duration(line.actual_seconds,line.actual_minutes)} thực tế / {duration(line.payable_seconds,line.payable_minutes)} tính lương</td>
           <td className="p-2">{money(line.rate_vnd_per_hour)}</td>
-          <td className="p-2">{line.overtime_minutes} phút</td>
+          <td className="p-2">{duration(line.overtime_seconds,line.overtime_minutes)}</td>
           <td className="p-2">{money(line.gross_vnd)}</td>
           <td className="p-2">{money(line.adjustment_vnd)}{line.adjustment_reason?' · '+line.adjustment_reason:''}</td>
-          <td className="p-2 font-medium">{money(line.net_vnd)}</td>
+          <td className="p-2 font-medium">{money(line.net_vnd)}{line.overtime_request_id?<small className="block text-slate-500">OT {line.overtime_day_class}/{line.overtime_time_class}</small>:null}</td>
         </tr>)}</tbody>
       </table></div>
+      {selected.compensation_adjustments.length>0?<section aria-label="Điều chỉnh hỗ trợ hủy ca" className="space-y-2">
+        <h3 className="text-sm font-semibold">Hỗ trợ hủy ca đã Admin xác nhận</h3>
+        <ul className="divide-y rounded-md border text-sm">{selected.compensation_adjustments.map(item=><li key={item.id} className="flex flex-wrap justify-between gap-2 p-3">
+          <span>{item.shift_id??'Ca đã hủy'} · {item.operational_role} · {item.reason}</span><strong>{money(item.amount_vnd)}</strong>
+        </li>)}</ul>
+      </section>:null}
     </section>:null}
     <p className="text-xs text-muted-foreground">Chỉ hiển thị tối đa 12 kỳ lương đã khóa gần nhất. Mọi điều chỉnh phải có lý do và được xử lý theo quy trình duyệt độc lập. Không có cơ chế trừ phạt tự động tại đây.</p>
   </section>

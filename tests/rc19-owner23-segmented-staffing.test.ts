@@ -222,6 +222,10 @@ test('Owner ID 23: KAO November parser and in-memory semantics (persisted workfl
     const segmentInputs: AutoCalculateSegmentInput[] = workedSegments.map(segment => ({
       segment,
       shiftDate: '2026-11-15',
+      // This in-memory calculation fixture assumes the separately verified
+      // evidence and payroll-approval gate returned complete for each segment.
+      payrollEvidenceCompleteness: 'verified_complete',
+      missingEvidence: [],
     }))
 
     const payrollResult = autoCalculatePeriodLines({

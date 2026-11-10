@@ -33,6 +33,12 @@ export interface PayrollLine {
   actual_minutes: number
   payable_minutes: number
   overtime_minutes: number
+  actual_seconds?: number | null
+  payable_seconds?: number | null
+  overtime_seconds?: number | null
+  overtime_request_id?: string | null
+  overtime_day_class?: 'weekday'|'weekend'|'holiday'|null
+  overtime_time_class?: 'day'|'night'|null
   rate_vnd_per_hour: number
   overtime_multiplier_basis_points: number
   gross_vnd: number
@@ -44,6 +50,28 @@ export interface PayrollLine {
   voided_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface CancellationCompensationCase {
+  id:string;shift_id:string;staff_id:string;operational_role:WorkforceRole
+  actual_seconds:number;actual_earnings_vnd:number|null;actual_segment_id:string|null;registration_id:string|null
+  cancellation_reason:string;reason:string;evidence_receipt_id:string;proposed_amount_vnd:number
+  proposed_by:string;leader_preapproved_by:string|null;admin_confirmed_by:string|null
+  state:'pending_admin_confirmation'|'admin_confirmed'|'rejected';version:number;created_at:string
+  shift:{id:string;date:string;title:string|null;brand_id:string;agency_code:string|null;platform_id?:string;status?:string}
+  history?:CancellationCompensationEvent[]
+}
+export interface CancellationCompensationEvent {
+  id:string;case_id:string;actor_id:string;action:'proposed'|'leader_preapproved'|'admin_confirmed'|'rejected'|'edited'
+  from_state:string|null;to_state:string;reason:string;amount_vnd:number;version:number;created_at:string
+}
+export interface CancellationCompensationPage {
+  ok:true;cases:CancellationCompensationCase[];brand_ids:string[]|null
+  pagination:Pagination
+}
+export interface PayrollAdjustment {
+  id:string;period_id:string;compensation_case_id:string;staff_id:string;operational_role:WorkforceRole
+  amount_vnd:number;reason:string;confirmed_by:string;created_at:string
 }
 
 export interface PayrollAudit {
@@ -142,6 +170,9 @@ export interface PeriodDetailResponse {
   period: PayrollPeriod
   lines: PayrollLine[]
   audit: PayrollAudit[]
+  compensation_available?:boolean
+  compensation_cases?:CancellationCompensationCase[]
+  compensation_adjustments?:PayrollAdjustment[]
 }
 
 export interface RawSelfAttendanceReviewEvent {
@@ -184,6 +215,12 @@ export interface ActualSegmentsResponse {
     operational_role: string
     status: string
   }>
+  cancellation_compensation_context?: {
+    available:boolean
+    periods:Array<{id:string;period_start:string;period_end:string}>
+    evidence_receipts:Array<{id:string;created_at:string}>
+    registrations:Array<{id:string;user_id:string;operational_role:WorkforceRole}>
+  }
   lateness_policy?: {
     grace_minutes: number
     policy_status: string
@@ -217,6 +254,26 @@ export interface ActualSegment {
   version: number
   created_at: string
   coverage_verification?: CoverageVerification
+  payroll_decision?: {
+    state: 'payroll_hold' | 'pending_admin_confirmation' | 'admin_confirmed'
+    reviewed_by: string | null
+    preapproved_by: string | null
+    confirmed_by: string | null
+    confirmed_at: string | null
+    reason: string
+    missing_evidence: string[]
+    version: number
+  } | null
+  payroll_decision_available?: boolean
+  overtime_available?:boolean
+  overtime_request?:OvertimeRequestSummary|null
+}
+
+export interface OvertimeRequestSummary {
+  id:string;segment_id:string;day_class:'weekday'|'weekend'|'holiday';time_class:'day'|'night'
+  overtime_seconds:number;requested_by:string;leader_preapproved_by:string|null;admin_confirmed_by:string|null
+  state:'pending_admin_confirmation'|'admin_confirmed'|'rejected';version:number;rate_card_id:string|null
+  multiplier_basis_points:number|null
 }
 
 export interface WorkforcePerformanceSummary {
@@ -561,6 +618,8 @@ export const workforceService = {
     recalculated_count?: number
     skipped_count: number
     unapproved_ot_exceptions?: Array<{ segmentId: string; staffId: string; shiftDate: string; reason: string }>
+    payroll_holds?: Array<{segmentId:string;shiftId:string;staffId:string;shiftDate:string;
+      reason:'REQUIRED_EVIDENCE_INCOMPLETE'|'REQUIRED_EVIDENCE_COMPLETENESS_UNVERIFIED';missingEvidence:string[]}>
     reconciliation?: PayrollReconciliationSummary
     lines: PayrollLine[]
     recalculated_lines?: PayrollLine[]
@@ -702,6 +761,22 @@ export const workforceService = {
     )
   },
 
+  async listCancellationCompensationCases(filters: {
+    dateFrom?:string;dateTo?:string;brandId?:string;staffId?:string
+    state?:CancellationCompensationCase['state'];reason?:string;page?:number;pageSize?:number
+  }): Promise<CancellationCompensationPage> {
+    const query=new URLSearchParams({action:'cancellation_compensation_cases'})
+    if(filters.dateFrom)query.set('date_from',filters.dateFrom)
+    if(filters.dateTo)query.set('date_to',filters.dateTo)
+    if(filters.brandId)query.set('brand_id',filters.brandId)
+    if(filters.staffId)query.set('staff_id',filters.staffId)
+    if(filters.state)query.set('state',filters.state)
+    if(filters.reason)query.set('reason',filters.reason)
+    query.set('page',String(filters.page??1))
+    query.set('page_size',String(filters.pageSize??25))
+    return requestJson<CancellationCompensationPage>(`/api/workforce/actual?${query.toString()}`)
+  },
+
   async recordActualSegment(payload: {
     shiftId: string
     staffId: string
@@ -744,6 +819,77 @@ export const workforceService = {
         review_note: payload.reviewNote,
       }),
     })
+  },
+
+  async confirmPayrollSegment(payload: {
+    segmentId: string
+    expectedVersion: number
+    idempotencyKey: string
+    reason: string
+  }): Promise<{ ok: true; decision: {
+    state: 'payroll_hold' | 'pending_admin_confirmation' | 'admin_confirmed'
+    version: number
+    missing_evidence: string[]
+    replayed: boolean
+  } }> {
+    return requestJson('/api/workforce/actual', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'confirm_payroll',
+        segment_id: payload.segmentId,
+        expected_version: payload.expectedVersion,
+        idempotency_key: payload.idempotencyKey,
+        reason: payload.reason,
+      }),
+    })
+  },
+
+  async requestOvertime(payload: {
+    segmentId: string; startAt: string; endAt: string
+    dayClass: 'weekday'|'weekend'|'holiday'; timeClass: 'day'|'night'
+    reason: string; evidenceReceiptId: string; idempotencyKey: string
+  }): Promise<{ok:true;overtime:Record<string,unknown>}> {
+    return requestJson('/api/workforce/actual',{method:'POST',body:JSON.stringify({
+      action:'request_overtime',segment_id:payload.segmentId,overtime_start_at:payload.startAt,
+      overtime_end_at:payload.endAt,day_class:payload.dayClass,time_class:payload.timeClass,
+      reason:payload.reason,evidence_receipt_id:payload.evidenceReceiptId,idempotency_key:payload.idempotencyKey,
+    })})
+  },
+
+  async decideOvertimeRequest(payload: {
+    requestId:string; expectedVersion:number; decision:'leader_preapprove'|'admin_confirm'|'reject'
+    reason:string; idempotencyKey:string
+  }): Promise<{ok:true;overtime:Record<string,unknown>}> {
+    return requestJson('/api/workforce/actual',{method:'POST',body:JSON.stringify({
+      action:'decide_overtime',request_id:payload.requestId,expected_version:payload.expectedVersion,
+      decision:payload.decision,reason:payload.reason,idempotency_key:payload.idempotencyKey,
+    })})
+  },
+
+  async proposeCancellationCompensation(payload: {
+    shiftId:string; staffId:string; operationalRole:WorkforceRole
+    actualSegmentId:string|null; registrationId:string|null; periodId:string
+    cancellationReason:string; reason:string; evidenceReceiptId:string
+    proposedAmountVnd:number; idempotencyKey:string
+  }): Promise<{ok:true;case:Record<string,unknown>;adjustment:Record<string,unknown>|null;replayed:boolean}> {
+    return requestJson('/api/workforce/actual',{method:'POST',body:JSON.stringify({
+      action:'propose_cancellation_compensation',shift_id:payload.shiftId,staff_id:payload.staffId,
+      operational_role:payload.operationalRole,actual_segment_id:payload.actualSegmentId,registration_id:payload.registrationId,
+      period_id:payload.periodId,cancellation_reason:payload.cancellationReason,reason:payload.reason,
+      evidence_receipt_id:payload.evidenceReceiptId,proposed_amount_vnd:payload.proposedAmountVnd,
+      idempotency_key:payload.idempotencyKey,
+    })})
+  },
+
+  async decideCancellationCompensation(payload: {
+    caseId:string; expectedVersion:number; decision:'edit'|'admin_confirm'|'reject'; reason:string
+    newAmountVnd:number|null; idempotencyKey:string
+  }): Promise<{ok:true;case:Record<string,unknown>;adjustment:Record<string,unknown>|null;replayed:boolean}> {
+    return requestJson('/api/workforce/actual',{method:'POST',body:JSON.stringify({
+      action:'decide_cancellation_compensation',case_id:payload.caseId,expected_version:payload.expectedVersion,
+      decision:payload.decision,reason:payload.reason,new_amount_vnd:payload.newAmountVnd,
+      idempotency_key:payload.idempotencyKey,
+    })})
   },
 
   // WORKFORCE PERFORMANCE & OVERVIEW

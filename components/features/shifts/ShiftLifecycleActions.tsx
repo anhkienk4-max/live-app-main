@@ -91,7 +91,7 @@ export function ShiftLifecycleActions({ shift, onSuccess, className = '' }: Shif
         : shift.status === 'preparing'
           ? ['scheduled', 'preparing', 'live', 'paused', 'cancelled']
           : shift.status === 'live'
-            ? ['live', 'paused', 'completed']
+            ? ['live', 'paused', 'completed', 'cancelled']
             : ['live', 'paused', 'completed']
 
   return (

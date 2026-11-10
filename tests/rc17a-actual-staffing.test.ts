@@ -20,7 +20,49 @@ const leaderUser = async () => ({ id: 'auth-leader', businessUserId: 'leader-1',
 const reviewerUser = async () => ({ id: 'auth-reviewer', businessUserId: 'leader-2', systemPermission: 'leader' as const })
 const adminUser = async () => ({ id: 'auth-admin', businessUserId: 'admin-1', systemPermission: 'admin' as const })
 
+function createScopedWorkforceActualHandler(deps: Parameters<typeof createWorkforceActualHandler>[0] = {}) {
+  return createWorkforceActualHandler({
+    createScopeClient: () => ({
+      rpc: async (name, args) => {
+        if(name === 'rc19_current_leader_brand_ids') {
+          assert.ok(['workforce.read', 'staff.manage'].includes(String(args?.p_scope_key)))
+          return { data: ['rc17a-brand-fixture'], error: null }
+        }
+        if(name === 'rc19_c515_record_payroll_review') return {data:{state:'pending_admin_confirmation'},error:null}
+        throw new Error(`Unexpected scope RPC ${name}`)
+      },
+    }) as never,
+    ...deps,
+  })
+}
+
 function safeDbFallback(table: string) {
+  if (table === 'shifts') {
+    let shiftId = 'rc17a-shift-fixture'
+    return {
+      select() { return this },
+      eq(column: string, value: string) { if (column === 'id') shiftId = value; return this },
+      is() { return this },
+      maybeSingle() { return Promise.resolve({data:{id:shiftId,brand_id:'rc17a-brand-fixture',date:'2026-10-17',
+        status:'completed',host_id:'host-1',support_id:'support-1',technical_id:'tech-1',deleted_at:null},error:null}) },
+    }
+  }
+  if (table === 'self_attendance_events') {
+    return {
+      select() { return this },
+      eq() { return this },
+      then(resolve?: (value: {data: Array<{event_kind:string}>;error:null}) => unknown) {
+        return Promise.resolve({data:[{event_kind:'check_in'},{event_kind:'check_out'}],error:null}).then(resolve)
+      },
+    }
+  }
+  if (table === 'workforce_overtime_requests') {
+    return {
+      select() { return this },
+      in() { return this },
+      limit() { return Promise.resolve({data:[],error:null}) },
+    }
+  }
   if (table === 'swap_requests') {
     return {
       select() { return this },
@@ -54,7 +96,7 @@ const memberUser = async () => {
 // TEST 1: Feature Flag Fail-Closed
 // ---------------------------------------------------------------------------
 test('RC1.7A: Actual Staffing fails closed (HTTP 503) when feature flag is disabled', async () => {
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => false,
     client: mustNotUseDb,
     resolveUser: leaderUser,
@@ -127,8 +169,7 @@ test('RC1.7A: Actual Staffing GET returns segments, shift_context, and lateness_
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: {
-                id: 'shift-100',
+              data: { id: 'shift-100', brand_id: 'rc17a-brand-fixture',
                 date: '2026-10-17',
                 start_time: '19:00:00',
                 end_time: '21:00:00',
@@ -173,7 +214,7 @@ test('RC1.7A: Actual Staffing GET returns segments, shift_context, and lateness_
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -207,7 +248,7 @@ test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported',
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-cohost', status: 'completed', host_id: 'host-A', deleted_at: null },
+              data: { id: 'shift-cohost', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-A', deleted_at: null },
               error: null,
             })
           },
@@ -274,7 +315,7 @@ test('RC1.7A: Multi-Host / Co-Hosting on the same completed shift is supported',
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -325,7 +366,7 @@ test('RC1.7A: Assistant (Trợ live) cross-shift overlapping hours are strictly 
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-split-2', status: 'completed', support_id: 'support-1', deleted_at: null },
+              data: { id: 'shift-split-2', brand_id: 'rc17a-brand-fixture', status: 'completed', support_id: 'support-1', deleted_at: null },
               error: null,
             })
           },
@@ -369,7 +410,7 @@ test('RC1.7A: Assistant (Trợ live) cross-shift overlapping hours are strictly 
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -426,7 +467,7 @@ test('RC1.7A: Segregation of Duties: Creator cannot approve their own recorded e
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser, // leaderUser has businessUserId: 'leader-1'
@@ -475,7 +516,7 @@ test('RC1.7A: Segregation of Duties: Blocks self-approval when created_by matche
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser, // leaderUser has id: 'auth-leader'
@@ -554,9 +595,10 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
         return {
           select() { return this },
           eq() { return this },
+          is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-100', status: 'completed', host_id: 'host-1' },
+              data: { id: 'shift-100', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-1' },
               error: null,
             })
           },
@@ -566,7 +608,7 @@ test('RC1.7A: Independent Reviewer can approve with optimistic locking version i
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: reviewerUser, // reviewerUser has businessUserId: 'leader-2'
@@ -620,7 +662,7 @@ test('RC1.7A: Optimistic Locking rejects stale expected_version with HTTP 409', 
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: reviewerUser,
@@ -653,7 +695,7 @@ test('RC1.7A: Contradictory attendance (no_show when worked already approved) is
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-contra', status: 'completed', host_id: 'host-1', deleted_at: null },
+              data: { id: 'shift-contra', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-1', deleted_at: null },
               error: null,
             })
           },
@@ -691,7 +733,7 @@ test('RC1.7A: Contradictory attendance (no_show when worked already approved) is
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -764,7 +806,7 @@ test('RC1.7A: Overnight shifts resolve start_at and end_at crossing midnight cor
 // TEST 10: Role Access Matrix (Operator, Host, Assistant, Member rejected 403)
 // ---------------------------------------------------------------------------
 test('RC1.7A: Role Access Matrix strictly rejects Member/Operator/Host/Trợ with HTTP 403', async () => {
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: mustNotUseDb,
     resolveUser: memberUser, // Non-leader/non-admin user
@@ -859,8 +901,7 @@ test('RC1.7A: Coverage kind planned requires scheduled assignment or registratio
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: {
-                id: 'shift-strict',
+              data: { id: 'shift-strict', brand_id: 'rc17a-brand-fixture',
                 status: 'completed',
                 host_id: 'host-official',
                 support_id: null,
@@ -900,7 +941,7 @@ test('RC1.7A: Coverage kind planned requires scheduled assignment or registratio
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -980,9 +1021,10 @@ test('RC1.7A: Concurrent approval race condition maps DB trigger exception to HT
         return {
           select() { return this },
           eq() { return this },
+          is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-race', status: 'completed', host_id: 'host-raced' },
+              data: { id: 'shift-race', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-raced' },
               error: null,
             })
           },
@@ -992,7 +1034,7 @@ test('RC1.7A: Concurrent approval race condition maps DB trigger exception to HT
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: reviewerUser,
@@ -1015,7 +1057,7 @@ test('RC1.7A: Concurrent approval race condition maps DB trigger exception to HT
 // TEST 15: Admin user has full access to workforce actual staffing
 // ---------------------------------------------------------------------------
 test('RC1.7A: Admin user has full access to record and review actual staffing', async () => {
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: mustNotUseDb,
     resolveUser: adminUser,
@@ -1066,8 +1108,7 @@ test('RC1.7A: Coverage kind cover/replacement is verified when approved swap_req
           is() { return this; },
           maybeSingle() {
             return Promise.resolve({
-              data: {
-                id: 'shift-swapped',
+              data: { id: 'shift-swapped', brand_id: 'rc17a-brand-fixture',
                 status: 'completed',
                 host_id: 'host-original',
                 support_id: null,
@@ -1147,7 +1188,7 @@ test('RC1.7A: Coverage kind cover/replacement is verified when approved swap_req
     },
   });
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -1186,8 +1227,7 @@ test('RC1.7A: Unverified cover/replacement/extra flags requires_exception_approv
           is() { return this; },
           maybeSingle() {
             return Promise.resolve({
-              data: {
-                id: 'shift-unverified',
+              data: { id: 'shift-unverified', brand_id: 'rc17a-brand-fixture',
                 status: 'completed',
                 host_id: 'host-orig',
                 support_id: null,
@@ -1252,7 +1292,7 @@ test('RC1.7A: Unverified cover/replacement/extra flags requires_exception_approv
     },
   });
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -1307,7 +1347,7 @@ test('RC1.7A: swap_requests DB error returns HTTP 503 WORKFORCE_SCOPE_LOOKUP_FAI
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-swap-err', status: 'completed', host_id: 'host-diff' },
+              data: { id: 'shift-swap-err', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-diff' },
               error: null,
             })
           },
@@ -1347,7 +1387,7 @@ test('RC1.7A: swap_requests DB error returns HTTP 503 WORKFORCE_SCOPE_LOOKUP_FAI
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -1405,9 +1445,10 @@ test('RC1.7A: Unscheduled Planned segment is blocked on Review with HTTP 409', a
         return {
           select() { return this },
           eq() { return this },
+          is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-planned-check', status: 'completed', host_id: 'host-official' },
+              data: { id: 'shift-planned-check', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-official' },
               error: null,
             })
           },
@@ -1424,7 +1465,7 @@ test('RC1.7A: Unscheduled Planned segment is blocked on Review with HTTP 409', a
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: reviewerUser,
@@ -1503,9 +1544,10 @@ test('RC1.7A: Exception approval requires reviewer note >= 15 chars', async () =
         return {
           select() { return this },
           eq() { return this },
+          is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-exc-check', status: 'completed', host_id: 'host-official' },
+              data: { id: 'shift-exc-check', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-official' },
               error: null,
             })
           },
@@ -1529,7 +1571,7 @@ test('RC1.7A: Exception approval requires reviewer note >= 15 chars', async () =
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: reviewerUser,
@@ -1577,8 +1619,7 @@ test('RC1.7A: Handover staff after PASS is NOT verified even if remaining in old
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: {
-                id: 'shift-handover',
+              data: { id: 'shift-handover', brand_id: 'rc17a-brand-fixture',
                 status: 'completed',
                 host_id: 'host-alice', // Alice is still in old roster!
                 support_id: null,
@@ -1628,7 +1669,7 @@ test('RC1.7A: Handover staff after PASS is NOT verified even if remaining in old
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -1680,8 +1721,7 @@ test('RC1.7A: Replacement staff is verified on source shift when approved swap e
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: {
-                id: 'shift-pass-src',
+              data: { id: 'shift-pass-src', brand_id: 'rc17a-brand-fixture',
                 status: 'completed',
                 host_id: 'host-alice',
               },
@@ -1751,7 +1791,7 @@ test('RC1.7A: Replacement staff is verified on source shift when approved swap e
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -1804,6 +1844,7 @@ test('RC1.7A: Exchange mode correctly verifies bidirectional staffing on source 
             return Promise.resolve({
               data: {
                 id: currentShiftId,
+                brand_id: 'rc17a-brand-fixture',
                 status: 'completed',
                 host_id: currentShiftId === 'shift-A' ? 'host-alice' : 'host-bob',
               },
@@ -1862,7 +1903,7 @@ test('RC1.7A: Exchange mode correctly verifies bidirectional staffing on source 
   })
 
   // Direction 1: Bob works on Shift A (source) -> Verified!
-  const handlerA = createWorkforceActualHandler({
+  const handlerA = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: makeDb('shift-A', 'host-bob') as never,
     resolveUser: leaderUser,
@@ -1884,7 +1925,7 @@ test('RC1.7A: Exchange mode correctly verifies bidirectional staffing on source 
   assert.equal(bodyA.coverage_verification.matched_source, 'swap_request')
 
   // Direction 2: Alice works on Shift B (target) -> Verified!
-  const handlerB = createWorkforceActualHandler({
+  const handlerB = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: makeDb('shift-B', 'host-alice') as never,
     resolveUser: leaderUser,
@@ -1906,7 +1947,7 @@ test('RC1.7A: Exchange mode correctly verifies bidirectional staffing on source 
   assert.equal(bodyB.coverage_verification.matched_source, 'swap_request')
 
   // Inverse: Alice on Shift A (surrendered) is NOT verified
-  const handlerASurrendered = createWorkforceActualHandler({
+  const handlerASurrendered = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: makeDb('shift-A', 'host-alice') as never,
     resolveUser: leaderUser,
@@ -1925,7 +1966,7 @@ test('RC1.7A: Exchange mode correctly verifies bidirectional staffing on source 
   assert.equal(resASurrender.status, 409)
 
   // Inverse: Bob on Shift B (surrendered) is NOT verified
-  const handlerBSurrendered = createWorkforceActualHandler({
+  const handlerBSurrendered = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: makeDb('shift-B', 'host-bob') as never,
     resolveUser: leaderUser,
@@ -1957,7 +1998,7 @@ test('RC1.7A: Operational role mismatch between swap request and segment is reje
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-mismatch', status: 'completed', host_id: 'host-orig', support_id: 'supp-orig' },
+              data: { id: 'shift-mismatch', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-orig', support_id: 'supp-orig' },
               error: null,
             })
           },
@@ -2001,7 +2042,7 @@ test('RC1.7A: Operational role mismatch between swap request and segment is reje
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -2040,7 +2081,7 @@ test('RC1.7A: Pending, rejected, and cancelled swaps do NOT verify assignment', 
             is() { return this },
             maybeSingle() {
               return Promise.resolve({
-                data: { id: `shift-${status}`, status: 'completed', host_id: 'host-orig' },
+            data: { id: `shift-${status}`, brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-orig' },
                 error: null,
               })
             },
@@ -2084,7 +2125,7 @@ test('RC1.7A: Pending, rejected, and cancelled swaps do NOT verify assignment', 
       },
     })
 
-    const handler = createWorkforceActualHandler({
+    const handler = createScopedWorkforceActualHandler({
       isEnabled: () => true,
       client: fakeDb as never,
       resolveUser: leaderUser,
@@ -2119,7 +2160,7 @@ test('RC1.7A: Accepted status is NOT yet admin approved; completed and approved 
             is() { return this },
             maybeSingle() {
               return Promise.resolve({
-                data: { id: `shift-st-${status}`, status: 'completed', host_id: 'host-orig' },
+            data: { id: `shift-st-${status}`, brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-orig' },
                 error: null,
               })
             },
@@ -2186,7 +2227,7 @@ test('RC1.7A: Accepted status is NOT yet admin approved; completed and approved 
       },
     })
 
-    const handler = createWorkforceActualHandler({
+    const handler = createScopedWorkforceActualHandler({
       isEnabled: () => true,
       client: fakeDb as never,
       resolveUser: leaderUser,
@@ -2227,7 +2268,7 @@ test('RC1.7A: Soft-deleted swap requests (deleted_at NOT NULL) are ignored', asy
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-soft-del', status: 'completed', host_id: 'host-orig' },
+              data: { id: 'shift-soft-del', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-orig' },
               error: null,
             })
           },
@@ -2271,7 +2312,7 @@ test('RC1.7A: Soft-deleted swap requests (deleted_at NOT NULL) are ignored', asy
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -2306,7 +2347,7 @@ test('RC1.7A: Database error on swap_requests fails closed with HTTP 503 across 
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-dberr', status: 'completed', host_id: 'host-orig' },
+              data: { id: 'shift-dberr', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-orig' },
               error: null,
             })
           },
@@ -2352,7 +2393,7 @@ test('RC1.7A: Database error on swap_requests fails closed with HTTP 503 across 
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: dbErrorDb as never,
     resolveUser: reviewerUser,
@@ -2399,6 +2440,7 @@ test('RC1.7A: Database error on swap_requests fails closed with HTTP 503 across 
 test('RC1.7A: GET, record, and review return identical verification outcomes', async () => {
   const shiftRecord = {
     id: 'shift-identical',
+    brand_id: 'rc17a-brand-fixture',
     status: 'completed',
     host_id: 'host-alice',
     support_id: null,
@@ -2515,7 +2557,7 @@ test('RC1.7A: GET, record, and review return identical verification outcomes', a
     },
   })
 
-  const recorderHandler = createWorkforceActualHandler({
+  const recorderHandler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: sharedDb as never,
     resolveUser: leaderUser,
@@ -2550,7 +2592,7 @@ test('RC1.7A: GET, record, and review return identical verification outcomes', a
   assert.equal(getVerification.is_exception, recordBody.coverage_verification.is_exception)
 
   // 3. POST review: reviewer approves without needing exception override because assignment is verified
-  const reviewerHandler = createWorkforceActualHandler({
+  const reviewerHandler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: sharedDb as never,
     resolveUser: reviewerUser,
@@ -2580,7 +2622,7 @@ test('RC1.7A: Swap with mode NULL fails closed (unverified exception)', async ()
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-null-mode', status: 'completed', host_id: 'host-orig' },
+              data: { id: 'shift-null-mode', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-orig' },
               error: null,
             })
           },
@@ -2624,7 +2666,7 @@ test('RC1.7A: Swap with mode NULL fails closed (unverified exception)', async ()
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -2657,7 +2699,7 @@ test('RC1.7A: Legacy swap with mode MOVE fails closed (unverified exception)', a
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-legacy-move', status: 'completed', host_id: 'host-orig' },
+              data: { id: 'shift-legacy-move', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-orig' },
               error: null,
             })
           },
@@ -2701,7 +2743,7 @@ test('RC1.7A: Legacy swap with mode MOVE fails closed (unverified exception)', a
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -2734,7 +2776,7 @@ test('RC1.7A: Operational role mismatch (swap role host vs segment role support)
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-role-mismatch', status: 'completed', host_id: 'host-orig' },
+              data: { id: 'shift-role-mismatch', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-orig' },
               error: null,
             })
           },
@@ -2778,7 +2820,7 @@ test('RC1.7A: Operational role mismatch (swap role host vs segment role support)
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -2812,7 +2854,7 @@ test('RC1.7A: Missing operational_role (NULL/undefined) on swap fails closed (no
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-null-role', status: 'completed', host_id: 'host-orig' },
+              data: { id: 'shift-null-role', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-orig' },
               error: null,
             })
           },
@@ -2856,7 +2898,7 @@ test('RC1.7A: Missing operational_role (NULL/undefined) on swap fails closed (no
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -2889,7 +2931,7 @@ test('RC1.7A: Target shift in mode replacement does NOT verify incoming staff', 
           is() { return this },
           maybeSingle() {
             return Promise.resolve({
-              data: { id: 'shift-target-pass', status: 'completed', host_id: 'host-counterpart' },
+              data: { id: 'shift-target-pass', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-counterpart' },
               error: null,
             })
           },
@@ -2935,7 +2977,7 @@ test('RC1.7A: Target shift in mode replacement does NOT verify incoming staff', 
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,
@@ -2970,7 +3012,7 @@ test('RC1.7A: Stale roster after handover: Handover staff remaining in roster ca
           maybeSingle() {
             return Promise.resolve({
               // Stale roster: Alice is STILL listed as host_id on shift-stale-roster
-              data: { id: 'shift-stale-roster', status: 'completed', host_id: 'host-alice' },
+              data: { id: 'shift-stale-roster', brand_id: 'rc17a-brand-fixture', status: 'completed', host_id: 'host-alice' },
               error: null,
             })
           },
@@ -3014,7 +3056,7 @@ test('RC1.7A: Stale roster after handover: Handover staff remaining in roster ca
     },
   })
 
-  const handler = createWorkforceActualHandler({
+  const handler = createScopedWorkforceActualHandler({
     isEnabled: () => true,
     client: fakeDb as never,
     resolveUser: leaderUser,

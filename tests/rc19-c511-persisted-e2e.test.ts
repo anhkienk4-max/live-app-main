@@ -212,14 +212,14 @@ async function newBrand(name: string) {
   return brandId
 }
 
-async function createImportedShift(run: number, brandId: string, brandName: string, platformId: string, platformName: string) {
+async function createImportedShift(run: number, brandId: string, brandName: string, platformId: string, platformName: string, startOffsetMinutes = 90) {
   const timeZone = 'Asia/Ho_Chi_Minh'
   const localParts = (value: Date) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
     timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   }).formatToParts(value).map(part => [part.type, part.value]))
-  const start = localParts(new Date(Date.now() + 90 * 60_000))
-  const middle = localParts(new Date(Date.now() + 150 * 60_000))
-  const end = localParts(new Date(Date.now() + 210 * 60_000))
+  const start = localParts(new Date(Date.now() + startOffsetMinutes * 60_000))
+  const middle = localParts(new Date(Date.now() + (startOffsetMinutes + 60) * 60_000))
+  const end = localParts(new Date(Date.now() + (startOffsetMinutes + 120) * 60_000))
   const startDate = `${start.year}-${start.month}-${start.day}`
   const localTime = (parts: Record<string, string>) => `${parts.hour}:${parts.minute}`
   const parsed = normalizeScheduleImportResult(parseScheduleRows([{
@@ -318,6 +318,7 @@ async function runPersistedScenario(run: number) {
   assert.equal(leaderCannotReadForeign.data, null)
   const scopedActualHandler = createWorkforceActualHandler({
     client: () => service, resolveUser, isEnabled: () => true,
+    isPayrollEnabled: () => true,
     createScopeClient: async request => createScopeClient(request),
   })
   assert.equal((await scopedActualHandler.GET(apiRequest(`/api/workforce/actual?shift_id=${shift.id}`, leaderAuth.token))).status, 200)
@@ -494,6 +495,7 @@ async function runPersistedScenario(run: number) {
 
   const actualHandler = createWorkforceActualHandler({
     client: () => service, resolveUser, isEnabled: () => true, isAttendanceReviewEnabled: () => false,
+    isPayrollEnabled: () => true,
     createScopeClient: async request => createScopeClient(request),
   })
   const apiDeniedMember = await apiPost(actualHandler, '/api/workforce/actual', host1Auth.token, {
@@ -509,7 +511,10 @@ async function runPersistedScenario(run: number) {
   })
   assert.equal(invalidSession.status, 401)
 
-  const admin2Actually = createWorkforceActualHandler({ client: () => service, resolveUser, isEnabled: () => true })
+  const admin2Actually = createWorkforceActualHandler({
+    client: () => service, resolveUser, isEnabled: () => true,
+    createScopeClient: async request => createScopeClient(request),
+  })
   const actualStart = persistedStart(completed, 0)
   const actualEnd = persistedStart(completed, 15)
   const actual1Response = await apiPost(admin2Actually, '/api/workforce/actual', adminAuth.token, {
@@ -538,13 +543,30 @@ async function runPersistedScenario(run: number) {
     action: 'review', segment_id: actual1.id, expected_version: actual1.version,
     decision: 'approved', review_note: 'same creator cannot approve own evidence',
   })
-  assert.equal(selfReview.status, 403)
+  assert.equal(selfReview.status, 403, await selfReview.clone().text())
   const missingAttendanceReview = await apiPost(admin2Actually, '/api/workforce/actual', reviewerAuth.token, {
     action: 'review', segment_id: missingEvidenceSegment.id, expected_version: missingEvidenceSegment.version,
     decision: 'approved', review_note: 'attendance evidence is absent initially',
   })
   assert.equal(missingAttendanceReview.status, 409)
   assert.equal((await missingAttendanceReview.json() as { error: { code: string } }).error.code, 'WORKFORCE_ATTENDANCE_EVIDENCE_REQUIRED')
+  const reportDraft = requireOk(await adminAuth.client.rpc('create_report', { p_data: {
+    shift_id: shift.id, dashboard_platform: 'other', revenue: 0, orders: 0,
+    normalized_metrics: { synthetic: true },
+  } }), 'create synthetic report draft') as { id: string }
+  const visibilityBytes = Buffer.from(`C5.15 synthetic Visibility/KV receipt ${run}`)
+  const visibilityChecksum = createHash('sha256').update(visibilityBytes).digest('hex')
+  const visibilityImage = requireOk(await adminAuth.client.rpc('upsert_live_report_image_with_storage_metadata', { p_data: {
+    report_id: reportDraft.id, category: 'key_visual', file_url: 'https://c511.invalid/synthetic-visibility.jpg',
+    file_name: 'synthetic-visibility.jpg', mime_type: 'image/jpeg', size_bytes: visibilityBytes.byteLength,
+    is_cover: true, provider: 'google_drive', external_file_id: `c511-local-visibility-${run}`,
+    external_parent_id: `c511-local-visibility-parent-${run}`, checksum_sha256: visibilityChecksum,
+  } }), 'seed synthetic Visibility/KV receipt') as Record<string, unknown>
+  const report = requireOk(await adminAuth.client.rpc('update_report', {
+    p_report_id: reportDraft.id,
+    p_patch: { status: 'confirmed', metrics_confirmed: true, confirmed_at: new Date().toISOString(), confirmed_by: reviewer.businessId },
+    p_reason: 'C5.15 synthetic report completeness fixture', p_event: 'confirm',
+  }), 'confirm synthetic report fixture') as { id: string }
   const photoReceipts = requireOk(await service.from('self_attendance_photo_evidence')
     .select('request_id,event_kind,external_file_id,external_parent_id,checksum_sha256')
     .eq('shift_id', shift.id).eq('staff_id', host1.businessId), 'attendance photo receipt chain') as Array<Record<string, unknown>>
@@ -554,11 +576,15 @@ async function runPersistedScenario(run: number) {
     decision: 'approved', review_note: 'separate authorized reviewer approves minutes',
   })
   assert.equal(review1.status, 200, await review1.clone().text())
+  const review1Body = await review1.json() as { segment: { payroll_decision: { state: string; version: number } } }
+  assert.equal(review1Body.segment.payroll_decision.state, 'pending_admin_confirmation')
   const review2 = await apiPost(admin2Actually, '/api/workforce/actual', reviewerAuth.token, {
     action: 'review', segment_id: actual2.id, expected_version: actual2.version,
     decision: 'approved', review_note: 'separate authorized reviewer approves minutes',
   })
   assert.equal(review2.status, 200, await review2.clone().text())
+  const review2Body = await review2.json() as { segment: { payroll_decision: { state: string } } }
+  assert.equal(review2Body.segment.payroll_decision.state, 'admin_confirmed')
   const approvedActuals = requireOk(await service.from('workforce_actual_segments').select('id,shift_id,staff_id,review_status,actual_start_at,actual_end_at').in('id', [actual1.id, actual2.id]), 'approved actual readback') as Array<Record<string, unknown>>
   assert.equal(approvedActuals.length, 2)
   assert.ok(approvedActuals.every(row => row.review_status === 'approved' && row.shift_id === shift.id))
@@ -576,8 +602,67 @@ async function runPersistedScenario(run: number) {
   const pendingRevoked = requireOk(await service.from('shift_registrations').select('status').eq('id', pendingRevocationRegistration.id).single(), 'revoked registration readback')
   assert.equal(pendingRevoked.status, 'pending')
 
-  const payrollHandler = createWorkforcePayrollHandler({ createClient: () => service, resolveUser, isEnabled: () => true })
+  for (const scopeKey of ['shifts.manage', 'workforce.read', 'staff.manage']) {
+    const current = requireOk(await service.from('rc19_leader_brand_scopes').select('version').eq('leader_business_user_id', leader.businessId).eq('brand_id', brandA).eq('scope_key', scopeKey).single(), `restore Leader ${scopeKey} scope`)
+    requireOk(await adminAuth.client.rpc('rc19_set_leader_brand_scope', {
+      p_user_id: leader.businessId, p_brand_id: brandA, p_scope_key: scopeKey,
+      p_enabled: true, p_expected_version: current.version, p_valid_from: activeFrom(), p_valid_until: null,
+      p_reason: 'C5.15 authenticated payroll confirmation scenario',
+    }), `restore Leader ${scopeKey} scope`)
+  }
+
+  const payrollHandler = createWorkforcePayrollHandler({ createClient: () => service,
+    createSessionClient: async () => adminAuth.client, resolveUser, isEnabled: () => true })
   const payrollPost = (token: string, body: unknown) => apiPost(payrollHandler, '/api/workforce/payroll', token, body)
+  const actualRows = requireOk(await service.from('workforce_actual_segments')
+    .select('id,version,reviewed_by,created_by').in('id', [actual1.id, actual2.id]), 'payroll decision actual readback') as Array<Record<string, unknown>>
+  const actual1Row = actualRows.find(row => row.id === actual1.id)!
+  const actual2Row = actualRows.find(row => row.id === actual2.id)!
+  const leaderPreapproval = requireOk(await leaderAuth.client.rpc('rc19_c515_record_payroll_review', {
+    p_segment_id: actual1.id, p_segment_version: actual1Row.version,
+    p_reason: 'Leader reviewed actual hours; Admin confirmation remains required',
+  }), 'Leader payroll preapproval') as { state: string; version: number }
+  assert.equal(leaderPreapproval.state, 'pending_admin_confirmation')
+  assert.ok((await service.from('workforce_payroll_segment_decisions').select('segment_id')
+    .eq('segment_id', actual1.id).eq('state', 'admin_confirmed').maybeSingle()).data === null,
+  'Leader preapproval cannot authorize a payable Payroll line')
+  const leaderSelfEscalation = await leaderAuth.client.rpc('rc19_c515_confirm_payroll_segment', {
+    p_segment_id: actual1.id, p_expected_version: leaderPreapproval.version,
+    p_idempotency_key: crypto.randomUUID(), p_reason: 'Leader cannot confirm own Payroll preapproval',
+  })
+  assert.ok(leaderSelfEscalation.error, 'Leader cannot perform final Payroll confirmation')
+  const adminDirect = requireOk(await reviewerAuth.client.rpc('rc19_c515_record_payroll_review', {
+    p_segment_id: actual2.id, p_segment_version: actual2Row.version,
+    p_reason: 'Admin directly confirms complete evidence and approved actual hours',
+  }), 'Admin direct Payroll confirmation') as { state: string; version: number }
+  assert.equal(adminDirect.state, 'admin_confirmed')
+  const adminFinal = requireOk(await reviewerAuth.client.rpc('rc19_c515_confirm_payroll_segment', {
+    p_segment_id: actual1.id, p_expected_version: leaderPreapproval.version,
+    p_idempotency_key: crypto.randomUUID(), p_reason: 'Admin confirms Leader-preapproved actual hours',
+  }), 'Admin confirms Leader preapproval') as { state: string }
+  assert.equal(adminFinal.state, 'admin_confirmed')
+  requireOk(await reviewerAuth.client.rpc('reopen_report', {
+    p_report_id: report.id, p_reason: 'C5.15 isolated missing final report Hold test',
+  }), 'reopen synthetic report for Hold test')
+  const holdRefresh = requireOk(await reviewerAuth.client.rpc('rc19_c515_refresh_payroll_gates', {
+    p_segment_ids: [actual1.id, actual2.id],
+  }), 'Payroll Hold refresh after report reopened') as Array<{ segment_id: string; state: string; missing_evidence: string[]; verified_complete: boolean }>
+  assert.equal(holdRefresh.length, 2)
+  assert.ok(holdRefresh.every(gate => gate.state === 'payroll_hold' && gate.missing_evidence.includes('final_report') && !gate.verified_complete))
+  requireOk(await reviewerAuth.client.rpc('update_report', {
+    p_report_id: report.id,
+    p_patch: { status: 'confirmed', metrics_confirmed: true, confirmed_at: new Date().toISOString(), confirmed_by: reviewer.businessId },
+    p_reason: 'C5.15 isolated report completeness restored', p_event: 'confirm',
+  }), 'restore synthetic confirmed report')
+  for (const segmentId of [actual1.id, actual2.id]) {
+    const current = requireOk(await service.from('workforce_payroll_segment_decisions')
+      .select('version').eq('segment_id', segmentId).single(), 'Payroll Hold decision readback')
+    const release = requireOk(await reviewerAuth.client.rpc('rc19_c515_confirm_payroll_segment', {
+      p_segment_id: segmentId, p_expected_version: current.version,
+      p_idempotency_key: crypto.randomUUID(), p_reason: 'Admin rechecks complete evidence and releases Payroll Hold',
+    }), 'Admin Payroll Hold release') as { state: string }
+    assert.equal(release.state, 'admin_confirmed')
+  }
   const rateResponse = await payrollPost(adminAuth.token, {
     action: 'register_rate', staff_id: host1.businessId, operational_role: 'host',
     effective_from: (completed as { date: string }).date, effective_through: null,
@@ -586,6 +671,55 @@ async function runPersistedScenario(run: number) {
   assert.equal(rateResponse.status, 201, await rateResponse.clone().text())
   const rateBody = await rateResponse.json() as { rate: { id: string; approved_by: string } }
   assert.equal(rateBody.rate.approved_by, admin.businessId)
+  const otReceiptHash = createHash('sha256').update(`C5.15 synthetic OT evidence ${run}`).digest('hex')
+  const otReceipt = requireOk(await service.from('operational_files').insert({
+    scope_key: `shift:${shift.id}`, category: 'staffing_document', brand_id: brandA, platform_id: platformId,
+    shift_id: shift.id, period_date: completed.date, execution_source: 'internal', provider: 'google_drive',
+    external_file_id: `c511-local-ot-${run}`, external_parent_id: `c511-local-ot-parent-${run}`,
+    provider_metadata: { test_fixture: true }, folder_path: `c511-local/${shift.id}/overtime`,
+    file_name: `c511-overtime-${run}.txt`, mime_type: 'text/plain', size_bytes: 1,
+    checksum_sha256: otReceiptHash, integrity_status: 'sha256_verified', artifact_key: `c511-ot-${otReceiptHash}`,
+    uploaded_by: admin.businessId,
+  }).select('id,shift_id,brand_id,platform_id,checksum_sha256').single(), 'seed synthetic OT evidence receipt') as Record<string, unknown>
+  const localStartHour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', hourCycle: 'h23',
+  }).format(new Date(actualStart)))
+  const otDayClass = [0, 6].includes(new Date(`${completed.date}T00:00:00Z`).getUTCDay()) ? 'weekend' : 'weekday'
+  const otTimeClass = localStartHour < 6 || localStartHour >= 22 ? 'night' : 'day'
+  const otRequestResponse = await apiPost(scopedActualHandler, '/api/workforce/actual', leaderAuth.token, {
+    action: 'request_overtime', segment_id: actual1.id,
+    overtime_start_at: actualStart, overtime_end_at: persistedStart(completed, 5),
+    day_class: otDayClass, time_class: otTimeClass,
+    reason: 'Approved actual segment includes documented overtime', evidence_receipt_id: String(otReceipt.id),
+    idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(otRequestResponse.status, 201, await otRequestResponse.clone().text())
+  const otRequest = (await otRequestResponse.json() as { overtime: { id: string; state: string; version: number; leader_preapproved_by: string } }).overtime
+  assert.equal(otRequest.state, 'pending_admin_confirmation')
+  assert.equal(otRequest.leader_preapproved_by, leader.businessId)
+  const memberOtDenied = await apiPost(scopedActualHandler, '/api/workforce/actual', host1Auth.token, {
+    action: 'request_overtime', segment_id: actual1.id,
+    overtime_start_at: actualStart, overtime_end_at: persistedStart(completed, 5),
+    day_class: otDayClass, time_class: otTimeClass, reason: 'Member cannot request Payroll overtime',
+    evidence_receipt_id: String(otReceipt.id), idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(memberOtDenied.status, 403)
+  const duplicateOtDenied = await apiPost(scopedActualHandler, '/api/workforce/actual', leaderAuth.token, {
+    action: 'request_overtime', segment_id: actual1.id,
+    overtime_start_at: actualStart, overtime_end_at: persistedStart(completed, 5),
+    day_class: otDayClass, time_class: otTimeClass, reason: 'Duplicate overtime interval cannot be added',
+    evidence_receipt_id: String(otReceipt.id), idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(duplicateOtDenied.status, 409)
+  const otAdminConfirm = await apiPost(scopedActualHandler, '/api/workforce/actual', reviewerAuth.token, {
+    action: 'decide_overtime', request_id: otRequest.id, expected_version: otRequest.version,
+    decision: 'admin_confirm', reason: 'Admin confirms configured OT rate and evidence', idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(otAdminConfirm.status, 200, await otAdminConfirm.clone().text())
+  const confirmedOvertime = (await otAdminConfirm.json() as { overtime: { state: string; multiplier_basis_points: number; rate_card_id: string } }).overtime
+  assert.equal(confirmedOvertime.state, 'admin_confirmed')
+  assert.equal(confirmedOvertime.multiplier_basis_points, 15000)
+  assert.equal(confirmedOvertime.rate_card_id, rateBody.rate.id)
   const periodResponse = await payrollPost(adminAuth.token, {
     action: 'create_period', period_start: (completed as { date: string }).date, period_end: (completed as { date: string }).date,
   })
@@ -596,10 +730,16 @@ async function runPersistedScenario(run: number) {
   const firstCalc = await firstCalculation.json() as { prepared_count: number; skipped: Array<{ segmentId: string; reason: string }> }
   assert.equal(firstCalc.prepared_count, 1)
   assert.ok(firstCalc.skipped.some(row => row.segmentId === actual2.id && row.reason === 'WORKFORCE_RATE_NOT_APPROVED'))
-  const afterFirst = requireOk(await service.from('workforce_payroll_lines').select('id,segment_id,staff_id,period_id,actual_minutes,net_vnd').eq('period_id', periodBody.period.id), 'payroll line readback') as Array<Record<string, unknown>>
+  const afterFirst = requireOk(await service.from('workforce_payroll_lines').select('id,segment_id,staff_id,period_id,actual_minutes,actual_seconds,payable_seconds,overtime_seconds,overtime_request_id,overtime_multiplier_basis_points,gross_vnd,net_vnd').eq('period_id', periodBody.period.id), 'payroll line readback') as Array<Record<string, unknown>>
   assert.equal(afterFirst.length, 1)
   assert.equal(afterFirst[0].segment_id, actual1.id)
   assert.equal(afterFirst[0].staff_id, host1.businessId)
+  assert.equal(afterFirst[0].actual_seconds, 900)
+  assert.equal(afterFirst[0].payable_seconds, 900)
+  assert.equal(afterFirst[0].overtime_seconds, 300)
+  assert.equal(afterFirst[0].overtime_request_id, otRequest.id)
+  assert.equal(afterFirst[0].overtime_multiplier_basis_points, 15000)
+  assert.equal(afterFirst[0].gross_vnd, 35000)
   const host2Rate = await payrollPost(adminAuth.token, {
     action: 'register_rate', staff_id: host2.businessId, operational_role: 'host',
     effective_from: (completed as { date: string }).date, effective_through: null,
@@ -615,17 +755,214 @@ async function runPersistedScenario(run: number) {
   assert.equal((await thirdCalculation.json() as { prepared_count: number }).prepared_count, 0)
   const afterRetry = requireOk(await service.from('workforce_payroll_lines').select('id,segment_id,period_id').eq('period_id', periodBody.period.id), 'payroll retry readback') as Array<Record<string, unknown>>
   assert.equal(afterRetry.length, 2)
-  const transition = async (token: string, from: string, to: string) => payrollPost(token, {
-    action: 'transition', period_id: periodBody.period.id, expected_status: from, target_status: to,
+  const cancellationPlatformId = `platform_cancel_${crypto.randomUUID().replaceAll('-', '').slice(0, 14)}`
+  const cancellationPlatformName = `C5.15 cancellation platform ${run}`
+  requireOk(await service.from('platforms').insert({ id: cancellationPlatformId, name: cancellationPlatformName, status: 'active' }).select('id').single(), 'seed cancellation platform')
+  const cancellationHost1 = await seedUser(run, 'CancellationHostOne', 'member', ['host'])
+  const cancellationHost1Auth = await signIn(cancellationHost1)
+  const cancellationHost2 = await seedUser(run, 'CancellationHostTwo', 'member', ['host'])
+  const cancellationHost2Auth = await signIn(cancellationHost2)
+  const cancellationShiftSetup = await createImportedShift(run, brandA, `C5.11 Brand A ${run}`, cancellationPlatformId, cancellationPlatformName)
+  const cancellationShift = cancellationShiftSetup.shift
+  assert.notEqual(cancellationShift.id, shift.id)
+  const cancellationHost1Registration = await createSupabaseShiftRegistrationRepository(cancellationHost1Auth.client)
+    .registerForSegment(cancellationShiftSetup.segments[0].id as string, 'host')
+  const cancellationHost2Registration = await createSupabaseShiftRegistrationRepository(cancellationHost2Auth.client)
+    .registerForSegment(cancellationShiftSetup.segments[0].id as string, 'host')
+  await approvalRepo.approve(cancellationHost1Registration.id, 'C5.15 approved cancellation fixture HostOne', cancellationHost1Registration.version)
+  await approvalRepo.approve(cancellationHost2Registration.id, 'C5.15 approved cancellation fixture HostTwo', cancellationHost2Registration.version)
+  const cancellationCurrent = await shiftRepo.getById(cancellationShift.id)
+  assert.ok(cancellationCurrent)
+  const cancellationDate = cancellationShift.date
+  const cancellationPreparing = await shiftRepo.update(cancellationShift.id, { status: 'preparing' }, false, cancellationCurrent!.version)
+  assert.ok(cancellationPreparing)
+  const cancellationLive = await shiftRepo.update(cancellationShift.id, { status: 'live' }, false, cancellationPreparing!.version)
+  assert.ok(cancellationLive)
+  const cancellationReportDraft = requireOk(await adminAuth.client.rpc('create_report', { p_data: {
+    shift_id: cancellationShift.id, dashboard_platform: 'other', revenue: 0, orders: 0,
+    normalized_metrics: { synthetic: true, cancelled_after_partial_work: true },
+  } }), 'create cancelled shift final report before cancellation') as { id: string }
+  const cancellationVisibilityBytes = Buffer.from(`C5.15 cancellation Visibility evidence ${run}`)
+  const cancellationVisibilityChecksum = createHash('sha256').update(cancellationVisibilityBytes).digest('hex')
+  requireOk(await adminAuth.client.rpc('upsert_live_report_image_with_storage_metadata', { p_data: {
+    report_id: cancellationReportDraft.id, category: 'key_visual', file_url: 'https://c511.invalid/cancelled-visibility.jpg',
+    file_name: 'cancelled-visibility.jpg', mime_type: 'image/jpeg', size_bytes: cancellationVisibilityBytes.byteLength,
+    is_cover: true, provider: 'google_drive', external_file_id: `c511-local-cancelled-kv-${run}`,
+    external_parent_id: `c511-local-cancelled-kv-parent-${run}`, checksum_sha256: cancellationVisibilityChecksum,
+  } }), 'seed cancelled shift Visibility receipt')
+  requireOk(await adminAuth.client.rpc('update_report', {
+    p_report_id: cancellationReportDraft.id,
+    p_patch: { status: 'confirmed', metrics_confirmed: true, confirmed_at: new Date().toISOString(), confirmed_by: reviewer.businessId },
+    p_reason: 'C5.15 synthetic cancellation report completeness', p_event: 'confirm',
+  }), 'confirm cancelled shift report before cancellation')
+  const cancellationPhotos = [
+    await submitAttendancePhoto(photoAdapter.post, cancellationHost1Auth.token, cancellationShift.id, 'check_in'),
+    await submitAttendancePhoto(photoAdapter.post, cancellationHost1Auth.token, cancellationShift.id, 'check_out'),
+    await submitAttendancePhoto(photoAdapter.post, cancellationHost2Auth.token, cancellationShift.id, 'check_in'),
+    await submitAttendancePhoto(photoAdapter.post, cancellationHost2Auth.token, cancellationShift.id, 'check_out'),
+  ]
+  assert.ok(cancellationPhotos.every(photo => photo.response.status === 200), JSON.stringify(cancellationPhotos.map(photo => photo.body)))
+  for (const photo of cancellationPhotos) {
+    const eventId = String(photo.body.event?.event_id)
+    const response = await apiPost(reviewApi, '/api/workforce/attendance-photo-review', reviewerAuth.token,
+      reviewPayload(eventId, 'Independent review of cancelled-shift attendance photo'))
+    assert.equal(response.status, 200, await response.clone().text())
+  }
+  const memberCancelAttempt = await cancellationHost1Auth.client.rpc('update_shift', {
+    p_shift_id: cancellationShift.id, p_patch: { status: 'cancelled' },
+    p_confirm_impact: false, p_expected_version: cancellationLive!.version,
+  })
+  assert.ok(memberCancelAttempt.error, 'Members cannot directly cancel a live shift')
+  assert.equal((await shiftRepo.getById(cancellationShift.id))?.status, 'live', 'Denied member call leaves the shift live')
+  const cancelledShift = await shiftRepo.update(cancellationShift.id, { status: 'cancelled' }, false, cancellationLive!.version)
+  assert.ok(cancelledShift)
+  const cancellationActualEndDate = new Date(Date.now() - 60_000)
+  const cancellationActualEnd = cancellationActualEndDate.toISOString()
+  const cancellationActualStart = new Date(cancellationActualEndDate.getTime() - 15 * 60_000).toISOString()
+  const cancellationActuals = await Promise.all([cancellationHost1, cancellationHost2].map(async (staff) => {
+    const response = await apiPost(admin2Actually, '/api/workforce/actual', adminAuth.token, {
+      action: 'record', shift_id: cancellationShift.id, staff_id: staff.businessId, operational_role: 'host',
+      event_kind: 'worked', coverage_kind: 'planned', actual_start_at: cancellationActualStart,
+      actual_end_at: cancellationActualEnd, evidence_note: 'Synthetic approved work before Brand cancellation',
+    })
+    assert.equal(response.status, 201, await response.clone().text())
+    return (await response.json() as { segment: { id: string; version: number } }).segment
+  }))
+  const cancellationReviews = await Promise.all(cancellationActuals.map(segment => apiPost(
+    scopedActualHandler, '/api/workforce/actual', leaderAuth.token, {
+      action: 'review', segment_id: segment.id, expected_version: segment.version,
+      decision: 'approved', review_note: 'Leader reviewed actual work before Brand cancellation',
+    })))
+  assert.ok(cancellationReviews.every(response => response.status === 200), await Promise.all(cancellationReviews.map(response => response.clone().text())))
+  const cancellationPeriod = periodBody.period
+  assert.equal(cancellationPeriod.status, 'draft')
+  for (const staff of [cancellationHost1, cancellationHost2]) {
+    const cancellationRate = await payrollPost(adminAuth.token, {
+      action: 'register_rate', staff_id: staff.businessId, operational_role: 'host',
+      effective_from: cancellationDate, effective_through: null, vnd_per_hour: 120000,
+      overtime_multiplier_basis_points: 15000, approval_note: 'C5.15 cancellation fixture effective rate',
+    })
+    assert.equal(cancellationRate.status, 201, await cancellationRate.clone().text())
+  }
+  const cancellationLeaderReviews = await Promise.all(cancellationActuals.map(async segment => {
+    const current = requireOk(await service.from('workforce_actual_segments').select('id,version').eq('id', segment.id).single(), 'cancelled actual segment readback')
+    return leaderAuth.client.rpc('rc19_c515_record_payroll_review', {
+      p_segment_id: segment.id, p_segment_version: current.version,
+      p_reason: 'Leader preapproval for actual seconds worked before cancellation',
+    })
+  }))
+  cancellationLeaderReviews.forEach(result => assert.ifError(result.error))
+  const cancellationActualPayrollConfirmations = await Promise.all(cancellationActuals.map(async segment => {
+    const decision = requireOk(await service.from('workforce_payroll_segment_decisions').select('version').eq('segment_id', segment.id).single(), 'cancelled payroll review readback')
+    return reviewerAuth.client.rpc('rc19_c515_confirm_payroll_segment', {
+      p_segment_id: segment.id, p_expected_version: decision.version,
+      p_idempotency_key: crypto.randomUUID(), p_reason: 'Admin confirms actual seconds worked before cancellation',
+    })
+  }))
+  cancellationActualPayrollConfirmations.forEach(result => assert.ifError(result.error))
+  const cancellationCalculation = await payrollPost(adminAuth.token, { action: 'auto_calculate_draft', period_id: cancellationPeriod.id })
+  assert.equal(cancellationCalculation.status, 201, await cancellationCalculation.clone().text())
+  const cancellationLines = requireOk(await service.from('workforce_payroll_lines')
+    .select('id,segment_id,staff_id,actual_seconds,gross_vnd').eq('period_id', cancellationPeriod.id)
+    .in('segment_id', cancellationActuals.map(segment => segment.id)), 'cancelled shift payroll readback') as Array<Record<string, unknown>>
+  assert.equal(cancellationLines.length, 2)
+  assert.ok(cancellationLines.every(line => line.actual_seconds === 900 && line.gross_vnd === 30000), 'co-hosts retain their own actual payable seconds after cancellation')
+  const cancellationEvidenceHash = createHash('sha256').update(`C5.15 synthetic cancellation evidence ${run}`).digest('hex')
+  const cancellationReceipt = requireOk(await service.from('operational_files').insert({
+    scope_key: `shift:${cancellationShift.id}`, category: 'acceptance_document', brand_id: brandA, platform_id: cancellationPlatformId,
+    shift_id: cancellationShift.id, period_date: cancellationDate, execution_source: 'internal', provider: 'google_drive',
+    external_file_id: `c511-local-cancel-${run}`, external_parent_id: `c511-local-cancel-parent-${run}`,
+    provider_metadata: { test_fixture: true }, folder_path: `c511-local/${cancellationShift.id}/cancellation`,
+    file_name: `c511-cancellation-${run}.txt`, mime_type: 'text/plain', size_bytes: 1,
+    checksum_sha256: cancellationEvidenceHash, integrity_status: 'sha256_verified',
+    artifact_key: `c511-cancel-${cancellationEvidenceHash}`, uploaded_by: admin.businessId,
+  }).select('id').single(), 'seed synthetic cancellation evidence receipt') as { id: string }
+  const compensationKey = crypto.randomUUID()
+  const compensationProposal = await apiPost(scopedActualHandler, '/api/workforce/actual', leaderAuth.token, {
+    action: 'propose_cancellation_compensation', shift_id: cancellationShift.id, staff_id: cancellationHost1.businessId,
+    operational_role: 'host', actual_segment_id: cancellationActuals[0].id, registration_id: null,
+    period_id: cancellationPeriod.id, cancellation_reason: 'Brand cancelled remaining live time',
+    reason: 'Discretionary synthetic compensation proposal for review', evidence_receipt_id: cancellationReceipt.id,
+    proposed_amount_vnd: 5000, idempotency_key: compensationKey,
+  })
+  assert.equal(compensationProposal.status, 201, await compensationProposal.clone().text())
+  const proposalBody = await compensationProposal.json() as { case: { id: string; state: string; version: number; actual_seconds: number; actual_earnings_vnd: number } }
+  assert.equal(proposalBody.case.state, 'pending_admin_confirmation')
+  assert.equal(proposalBody.case.actual_seconds, 900)
+  assert.equal(proposalBody.case.actual_earnings_vnd, 30000)
+  const proposalReplay = await apiPost(scopedActualHandler, '/api/workforce/actual', leaderAuth.token, {
+    action: 'propose_cancellation_compensation', shift_id: cancellationShift.id, staff_id: cancellationHost1.businessId,
+    operational_role: 'host', actual_segment_id: cancellationActuals[0].id, registration_id: null,
+    period_id: cancellationPeriod.id, cancellation_reason: 'Brand cancelled remaining live time',
+    reason: 'Discretionary synthetic compensation proposal for review', evidence_receipt_id: cancellationReceipt.id,
+    proposed_amount_vnd: 5000, idempotency_key: compensationKey,
+  })
+  assert.equal(proposalReplay.status, 201)
+  assert.equal((await proposalReplay.json() as { replayed: boolean }).replayed, true)
+  const memberCompensationDenied = await apiPost(scopedActualHandler, '/api/workforce/actual', host1Auth.token, {
+    action: 'propose_cancellation_compensation', shift_id: cancellationShift.id, staff_id: cancellationHost1.businessId,
+    operational_role: 'host', actual_segment_id: cancellationActuals[0].id, registration_id: null,
+    period_id: cancellationPeriod.id, cancellation_reason: 'Brand cancelled remaining live time',
+    reason: 'Member cannot propose a payroll compensation amount', evidence_receipt_id: cancellationReceipt.id,
+    proposed_amount_vnd: 5000, idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(memberCompensationDenied.status, 403)
+  const compensationEdit = await apiPost(scopedActualHandler, '/api/workforce/actual', leaderAuth.token, {
+    action: 'decide_cancellation_compensation', case_id: proposalBody.case.id,
+    expected_version: proposalBody.case.version, decision: 'edit', reason: 'Leader adjusts synthetic proposal for Admin review',
+    new_amount_vnd: 6000, idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(compensationEdit.status, 200, await compensationEdit.clone().text())
+  const editedCase = (await compensationEdit.json() as { case: { version: number; state: string; proposed_amount_vnd: number } }).case
+  assert.equal(editedCase.state, 'pending_admin_confirmation')
+  assert.equal(editedCase.proposed_amount_vnd, 6000)
+  const compensationQueue = await scopedActualHandler.GET(apiRequest(
+    `/api/workforce/actual?action=cancellation_compensation_cases&brand_id=${brandA}&state=pending_admin_confirmation`, leaderAuth.token))
+  assert.equal(compensationQueue.status, 200, await compensationQueue.clone().text())
+  assert.ok(((await compensationQueue.json() as { cases: Array<{ id: string; history: unknown[] }> }).cases)
+    .some(row => row.id === proposalBody.case.id && row.history.length >= 2))
+  const compensationConfirm = await apiPost(scopedActualHandler, '/api/workforce/actual', reviewerAuth.token, {
+    action: 'decide_cancellation_compensation', case_id: proposalBody.case.id,
+    expected_version: editedCase.version, decision: 'admin_confirm', reason: 'Admin confirms discretionary synthetic amount',
+    new_amount_vnd: null, idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(compensationConfirm.status, 200, await compensationConfirm.clone().text())
+  const confirmedCase = (await compensationConfirm.json() as { case: { state: string; admin_confirmed_by: string }; adjustment: { amount_vnd: number } }).case
+  assert.equal(confirmedCase.state, 'admin_confirmed')
+  assert.equal(confirmedCase.admin_confirmed_by, reviewer.businessId)
+  const compensationAdjustment = requireOk(await service.from('workforce_payroll_adjustments')
+    .select('id,period_id,compensation_case_id,staff_id,amount_vnd,confirmed_by')
+    .eq('compensation_case_id', proposalBody.case.id).single(), 'cancellation Payroll adjustment readback') as Record<string, unknown>
+  assert.equal(compensationAdjustment.amount_vnd, 6000)
+  assert.equal(compensationAdjustment.confirmed_by, reviewer.businessId)
+  const lockedCaseProposal = await apiPost(scopedActualHandler, '/api/workforce/actual', leaderAuth.token, {
+    action: 'propose_cancellation_compensation', shift_id: cancellationShift.id, staff_id: cancellationHost2.businessId,
+    operational_role: 'host', actual_segment_id: cancellationActuals[1].id, registration_id: null,
+    period_id: cancellationPeriod.id, cancellation_reason: 'Brand cancelled remaining live time',
+    reason: 'Pending synthetic case for locked-period protection', evidence_receipt_id: cancellationReceipt.id,
+    proposed_amount_vnd: 3000, idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(lockedCaseProposal.status, 201, await lockedCaseProposal.clone().text())
+  const lockedProposalCase = (await lockedCaseProposal.json() as { case: { id: string; version: number } }).case
+  const transition = async (token: string, periodId: string, from: string, to: string) => payrollPost(token, {
+    action: 'transition', period_id: periodId, expected_status: from, target_status: to,
     reason: `C5.11 isolated ${from} to ${to}`,
   })
-  assert.equal((await transition(reviewerAuth.token, 'draft', 'reviewed')).status, 200)
-  assert.equal((await transition(adminAuth.token, 'reviewed', 'confirmed')).status, 200)
-  assert.equal((await transition(reviewerAuth.token, 'confirmed', 'payroll_ready')).status, 200)
-  assert.equal((await transition(adminAuth.token, 'payroll_ready', 'locked')).status, 200)
+  for (const lockedPeriodId of new Set([periodBody.period.id, cancellationPeriod.id])) {
+    assert.equal((await transition(reviewerAuth.token, lockedPeriodId, 'draft', 'reviewed')).status, 200)
+    assert.equal((await transition(adminAuth.token, lockedPeriodId, 'reviewed', 'confirmed')).status, 200)
+    assert.equal((await transition(reviewerAuth.token, lockedPeriodId, 'confirmed', 'payroll_ready')).status, 200)
+    assert.equal((await transition(adminAuth.token, lockedPeriodId, 'payroll_ready', 'locked')).status, 200)
+  }
   const lockedPeriod = requireOk(await service.from('workforce_payroll_periods').select('status,locked_at,created_by,reviewed_by,confirmed_by,locked_by').eq('id', periodBody.period.id).single(), 'locked period readback')
   assert.equal(lockedPeriod.status, 'locked')
   assert.ok(lockedPeriod.locked_at)
+  const lockedCompensationConfirm = await apiPost(scopedActualHandler, '/api/workforce/actual', reviewerAuth.token, {
+    action: 'decide_cancellation_compensation', case_id: lockedProposalCase.id,
+    expected_version: lockedProposalCase.version, decision: 'admin_confirm', reason: 'Locked Payroll period must reject late adjustment',
+    new_amount_vnd: null, idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(lockedCompensationConfirm.status, 403)
   const payslipHandler = createMyPayslipHandler({ createClient: () => service, resolveUser, isEnabled: () => true })
   const ownPayslip = await payslipHandler.GET(apiRequest('/api/workforce/my-payslip', host1Auth.token))
   assert.equal(ownPayslip.status, 200, await ownPayslip.clone().text())
@@ -690,6 +1027,12 @@ test('C5.12 persists authenticated Staffing, Attendance, evidence review, Payrol
       database, isolation: 'local Docker PostgreSQL 17, dedicated marked DB; Auth/PostgREST loopback only',
       migration_sha256: process.env.C511_MIGRATION_SHA256,
       attendance_review_migration_sha256: process.env.C512_MIGRATION_SHA256,
+      c515_migration_sha256: {
+        second_precision: process.env.C515_SECONDS_MIGRATION_SHA256,
+        approval_hold: process.env.C515_APPROVAL_MIGRATION_SHA256,
+        overtime_cancellation: process.env.C515_OT_CANCELLATION_MIGRATION_SHA256,
+        live_shift_cancellation: process.env.C515_LIVE_CANCELLATION_MIGRATION_SHA256,
+      },
       runtime_auth_users_before: 0, storage_objects_before: 0,
       authenticated_persisted_staffing_scenarios: 1, service_role_used_only_for_fixture_and_server_handler_backend: true,
       authenticated_roles: ['admin', 'leader', 'member'],

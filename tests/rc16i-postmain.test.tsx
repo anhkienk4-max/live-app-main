@@ -13,13 +13,13 @@ import { summarizeWorkforcePerformance } from '@/lib/workforce/workforcePerforma
 
 const render = (content: React.ReactNode) => renderToStaticMarkup(<LanguageProvider>{content}</LanguageProvider>)
 
-test('Capabilities hide each module independently and fail closed for malformed booleans',async()=>{
+test('Capabilities mark each module independently and fail closed for malformed booleans',async()=>{
   const items=[{href:'/calendar'},{href:'/payroll'},{href:'/workforce'}]
   for(const payroll of [false,true])for(const workforce of [false,true]){
     const visible=filterWorkforceNavigation(items,{payroll,actual_staffing:workforce,team_performance:workforce,own_performance:workforce})
-    assert.equal(visible.some(row=>row.href==='/payroll'),payroll)
-    assert.equal(visible.some(row=>row.href==='/workforce'),workforce)
-    assert.ok(visible.some(row=>row.href==='/calendar'))
+    assert.equal(visible.find(row=>row.href==='/payroll')?.accessStatus,payroll?'available':'restricted')
+    assert.equal(visible.find(row=>row.href==='/workforce')?.accessStatus,workforce?'available':'restricted')
+    assert.equal(visible.find(row=>row.href==='/calendar')?.accessStatus,undefined)
   }
   const previous=globalThis.fetch
   try{

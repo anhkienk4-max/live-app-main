@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Table2,
   LayoutGrid,
+  Banknote,
 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { PageShell } from '@/components/ui/archetypes'
@@ -37,6 +38,7 @@ import { WorkforceTeamOverview } from '@/components/features/workforce/Workforce
 import { WorkforceIndividualView } from '@/components/features/workforce/WorkforceIndividualView'
 import { WorkforceLeaderboard } from '@/components/features/workforce/WorkforceLeaderboard'
 import { AttendanceEvidenceReviewPanel } from '@/components/features/workforce/AttendanceEvidenceReviewPanel'
+import { CancellationCompensationPanel } from '@/components/features/workforce/CancellationCompensationPanel'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { parseWorkforceYearDraft } from '@/lib/workforce/workforcePeriod'
 import { useListPagination } from '@/lib/hooks/useListPagination'
@@ -71,7 +73,12 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   const role: WorkforceRole = roleParam === 'support' || roleParam === 'technical' ? roleParam : 'host'
   const viewParam = params.get('workforce_view')
   const canReviewAttendanceEvidence = process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_REVIEW === 'true'
-  const activeTab = viewParam === 'table' || viewParam === 'cards' || viewParam === 'individual' || viewParam === 'leaderboard' || (canReviewAttendanceEvidence && viewParam === 'attendance_reviews') ? viewParam : 'team'
+  const canReviewCancellationCases = permission === 'leader'
+  const tabGridClass = canReviewAttendanceEvidence && canReviewCancellationCases ? 'md:grid-cols-7'
+    : canReviewAttendanceEvidence || canReviewCancellationCases ? 'md:grid-cols-6' : 'md:grid-cols-5'
+  const activeTab = viewParam === 'table' || viewParam === 'cards' || viewParam === 'individual' || viewParam === 'leaderboard'
+    || (canReviewAttendanceEvidence && viewParam === 'attendance_reviews')
+    || (canReviewCancellationCases && viewParam === 'cancellation_compensation') ? viewParam : 'team'
   const search = params.get('workforce_search') || ''
   const staffFilter = params.get('workforce_staff_id') || ''
   const sortParam = params.get('workforce_sort')
@@ -274,7 +281,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className={`flex group-data-[orientation=horizontal]/tabs:h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 [scrollbar-width:thin] md:grid ${canReviewAttendanceEvidence ? 'md:grid-cols-6' : 'md:grid-cols-5'}`}>
+        <TabsList className={`flex group-data-[orientation=horizontal]/tabs:h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 [scrollbar-width:thin] md:grid ${tabGridClass}`}>
           <TabsTrigger value="team" className="min-h-11 min-w-[98px] shrink-0 whitespace-normal px-2 py-1.5 text-xs font-medium md:min-w-0 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Users className="h-3.5 w-3.5 mr-1.5" />
             {en ? 'Overview' : 'Tổng quan'}
@@ -296,6 +303,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
             {en ? 'Ranking' : 'Xếp hạng'}
           </TabsTrigger>
           {canReviewAttendanceEvidence ? <TabsTrigger value="attendance_reviews" data-testid="attendance-evidence-review-tab">Photo review</TabsTrigger> : null}
+          {canReviewCancellationCases ? <TabsTrigger value="cancellation_compensation" data-testid="cancellation-compensation-tab"><Banknote className="mr-1.5 h-3.5 w-3.5"/>Hủy ca</TabsTrigger> : null}
         </TabsList>
 
         {(['team', 'table', 'cards'] as const).map(view => <TabsContent key={view} value={view} className="mt-0">
@@ -326,6 +334,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
         </TabsContent>
 
         {canReviewAttendanceEvidence ? <TabsContent value="attendance_reviews" className="mt-0"><AttendanceEvidenceReviewPanel /></TabsContent> : null}
+        {canReviewCancellationCases ? <TabsContent value="cancellation_compensation" className="mt-0"><CancellationCompensationPanel /></TabsContent> : null}
 
         {/* LEADERBOARD TAB */}
         <TabsContent value="leaderboard" className="mt-0">

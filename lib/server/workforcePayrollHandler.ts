@@ -7,7 +7,8 @@ import { authorizationErrorResponse, isAuthorizationError, requirePermission,
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { autoCalculatePeriodLines, calculatePayrollAmounts, calculatePayrollLine,
-  calculateRecalculationDiffs, selectApprovedRate, WorkforceCalculationError,
+  calculateRecalculationDiffs, calculateSecondPrecisionPayrollLine, selectApprovedRate,
+  PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM, WorkforceCalculationError,
   type ActualStaffingEvidence, type ApprovedPayrollRate, type ExistingPayrollLineForRecalc,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
 import { readCompleteWorkforceRows, readWorkforceRowsForShifts,
@@ -28,6 +29,13 @@ const line = z.object({
   action:z.literal('prepare_line'),period_id:id,segment_id:id,
   payable_minutes:z.number().int().min(0).max(1440),
   overtime_minutes:z.number().int().min(0).max(1440),
+  adjustment_vnd:z.number().int().min(-1e12).max(1e12),
+  adjustment_reason:z.string().trim().min(8).max(1000).nullable(),
+}).strict()
+const secondPrecisionLine = z.object({
+  action:z.literal('prepare_line'),period_id:id,segment_id:id,
+  payable_seconds:z.number().int().min(0).max(86400),
+  overtime_seconds:z.number().int().min(0).max(86400),
   adjustment_vnd:z.number().int().min(-1e12).max(1e12),
   adjustment_reason:z.string().trim().min(8).max(1000).nullable(),
 }).strict()
@@ -95,7 +103,7 @@ const correctionErrors = new Set([
   'WORKFORCE_PAYROLL_LINE_VOIDED','WORKFORCE_PAYROLL_IDEMPOTENCY_CONFLICT',
   'WORKFORCE_PAYROLL_LINE_NOT_FOUND','WORKFORCE_PAYROLL_GROSS_MISMATCH',
 ])
-type Options={createClient?:()=>SupabaseClient;resolveUser?:ServerUserResolver;isEnabled?:()=>boolean}
+type Options={createClient?:()=>SupabaseClient;createSessionClient?:()=>Promise<SupabaseClient>;resolveUser?:ServerUserResolver;isEnabled?:()=>boolean}
 const noStore={'Cache-Control':'no-store'}
 const failure=(code:string,status:number)=>Response.json({ok:false,error:{code}},{status,headers:noStore})
 function csvEscape(input:unknown):string {
@@ -108,9 +116,11 @@ function csvEscape(input:unknown):string {
 // strict integer literal before emitting a numeric CSV cell.
 const csvNumericColumns=new Set([
   'actual_minutes','payable_minutes','overtime_minutes','rate_vnd_per_hour',
+  'actual_seconds','payable_seconds','overtime_seconds',
   'overtime_multiplier_basis_points','gross_vnd','adjustment_vnd','net_vnd',
 ])
 function csvNumber(input:unknown):string {
+  if(input===null||input===undefined)return '""'
   const value=String(input??'')
   if(!/^-?(?:0|[1-9]\d*)$/u.test(value))
     throw new WorkforceCalculationError('WORKFORCE_PAYROLL_CSV_NUMERIC_INVALID')
@@ -123,7 +133,7 @@ function csvNumber(input:unknown):string {
 async function fetchAllShifts(db: SupabaseClient, periodStart: string, periodEnd: string) {
   return readCompleteWorkforceRows(
     (from,to)=>db.from('shifts')
-      .select('id,date,deleted_at', { count:'exact' })
+      .select('id,date,deleted_at,brand_id,agency_code,execution_source', { count:'exact' })
       .gte('date',periodStart).lte('date',periodEnd).is('deleted_at',null)
       .order('id',{ascending:true}).range(from,to),
     'WORKFORCE_SHIFT_READ_FAILED',
@@ -151,10 +161,20 @@ async function fetchAllApprovedRateCards(db: SupabaseClient) {
   )
 }
 
+async function fetchAllAdminConfirmedOvertime(db: SupabaseClient, segmentIds: string[]) {
+  if (!segmentIds.length) return []
+  return readWorkforceRowsForShifts(segmentIds,
+    (chunk,from,to)=>db.from('workforce_overtime_requests')
+      .select('id,segment_id,overtime_seconds,day_class,time_class,multiplier_basis_points',{count:'exact'})
+      .in('segment_id',chunk).eq('state','admin_confirmed')
+      .order('segment_id',{ascending:true}).range(from,to),
+    'C515_OT_APPROVAL_READ_FAILED')
+}
+
 async function fetchAllPeriodLines(db: SupabaseClient, periodId: string) {
   return readCompleteWorkforceRows(
     (from,to)=>db.from('workforce_payroll_lines')
-      .select('id,period_id,segment_id,rate_card_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,calculation_version,version,voided_at',{count:'exact'})
+      .select('id,period_id,segment_id,rate_card_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,actual_seconds,payable_seconds,overtime_seconds,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,calculation_version,version,voided_at',{count:'exact'})
       .eq('period_id',periodId)
       .order('id',{ascending:true}).range(from,to),
     'WORKFORCE_PAYROLL_READ_FAILED',
@@ -255,12 +275,41 @@ export function createWorkforcePayrollHandler(options:Options={}) {
         if (!Array.isArray(lines.data) || !Array.isArray(audit.data)
           || lines.data.length !== snapshot.data.lineCount || audit.data.length !== snapshot.data.auditCount)
           return failure('WORKFORCE_PAYROLL_READ_INCOMPLETE',503)
+        let compensationAvailable=true
+        let compensationCases:Array<Record<string,unknown>>=[]
+        let compensationAdjustments:Array<Record<string,unknown>>=[]
+        const casesRes=await client.from('workforce_cancellation_compensation_cases')
+          .select('id,shift_id,staff_id,operational_role,actual_seconds,actual_earnings_vnd,actual_segment_id,registration_id,cancellation_reason,reason,evidence_receipt_id,proposed_amount_vnd,proposed_by,leader_preapproved_by,admin_confirmed_by,state,version,created_at')
+          .eq('period_id',r.data.id).order('created_at',{ascending:false}).limit(201)
+        if(casesRes.error && ['PGRST205','42P01'].includes(casesRes.error.code??'')) compensationAvailable=false
+        else if(casesRes.error)return failure('C515_COMPENSATION_READ_FAILED',503)
+        else {
+          const rows=casesRes.data??[]
+          if(rows.length>200)return failure('C515_COMPENSATION_CASE_LIMIT',409)
+          const shiftIds=[...new Set(rows.map(row=>row.shift_id))]
+          const shiftRes=shiftIds.length?await client.from('shifts')
+            .select('id,date,title,brand_id,agency_code').in('id',shiftIds).limit(201):{data:[],error:null}
+          if(shiftRes.error||!Array.isArray(shiftRes.data)||shiftRes.data.length!==shiftIds.length)
+            return failure('C515_COMPENSATION_SHIFT_READ_INCOMPLETE',503)
+          const shifts=new Map(shiftRes.data.map(row=>[row.id,row]))
+          compensationCases=rows.map(row=>({...row,shift:shifts.get(row.shift_id)}))
+          const adjustmentsRes=await client.from('workforce_payroll_adjustments')
+            .select('id,period_id,compensation_case_id,staff_id,operational_role,amount_vnd,reason,confirmed_by,created_at')
+            .eq('period_id',r.data.id).order('created_at',{ascending:true}).limit(201)
+          if(adjustmentsRes.error)return failure('C515_COMPENSATION_ADJUSTMENT_READ_FAILED',503)
+          if((adjustmentsRes.data?.length??0)>200)return failure('C515_COMPENSATION_ADJUSTMENT_LIMIT',409)
+          compensationAdjustments=adjustmentsRes.data??[]
+          const confirmedCases=new Set(rows.filter(row=>row.state==='admin_confirmed').map(row=>row.id))
+          if(compensationAdjustments.some(row=>!confirmedCases.has(row.compensation_case_id)
+            ||typeof row.amount_vnd!=='number'||!Number.isSafeInteger(row.amount_vnd)||row.amount_vnd<=0))
+            return failure('C515_COMPENSATION_ADJUSTMENT_INTEGRITY',503)
+        }
         if(q.get('export')==='csv'){
           if(r.data.status!=='locked')return failure('WORKFORCE_PAYROLL_EXPORT_REQUIRES_LOCK',409)
           const columns=['staff_id','operational_role','segment_id','actual_minutes',
-            'payable_minutes','overtime_minutes','rate_vnd_per_hour',
-            'overtime_multiplier_basis_points','gross_vnd','adjustment_vnd','net_vnd',
-            'adjustment_reason','calculation_version']
+            'payable_minutes','overtime_minutes','actual_seconds','payable_seconds','overtime_seconds','rate_vnd_per_hour',
+            'overtime_multiplier_basis_points','overtime_request_id','overtime_day_class','overtime_time_class',
+            'gross_vnd','adjustment_vnd','net_vnd','adjustment_reason','calculation_version','adjustment_type','source_case_id']
           // A snapshot with duplicate/blank active evidence cannot be
           // exported as a misleading locked payroll statement.
           const activeLines=lines.data.filter(row=>!row.voided_at)
@@ -271,15 +320,26 @@ export function createWorkforcePayrollHandler(options:Options={}) {
               return failure('WORKFORCE_PAYROLL_EXPORT_INCOMPLETE',503)
             uniqueSegments.add(segmentId)
           }
+          const adjustmentLines:Array<Record<string,unknown>>=compensationAdjustments.map(row=>({
+            staff_id:row.staff_id,operational_role:row.operational_role,
+            segment_id:`CANCELLATION_COMPENSATION:${row.compensation_case_id}`,
+            actual_minutes:0,payable_minutes:0,overtime_minutes:0,actual_seconds:0,payable_seconds:0,overtime_seconds:0,
+            rate_vnd_per_hour:0,overtime_multiplier_basis_points:10000,overtime_request_id:'',
+            overtime_day_class:'',overtime_time_class:'',gross_vnd:0,adjustment_vnd:row.amount_vnd,
+            net_vnd:row.amount_vnd,adjustment_reason:row.reason,calculation_version:'c515-adjustment-v1',
+            adjustment_type:'cancellation_compensation',source_case_id:row.compensation_case_id,
+          }))
+          const exportRows:Array<Record<string,unknown>>=[...activeLines.map(row=>({...row,adjustment_type:'payroll_line',source_case_id:''})),...adjustmentLines]
           const csv='\ufeff'+[columns.map(csvEscape).join(','),
-            ...activeLines.map(row=>columns.map(k=>
-              csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
+            ...exportRows.map(row=>columns.map(k=>csvNumericColumns.has(k)?csvNumber(row[k]):csvEscape(row[k])).join(','))].join('\r\n')+'\r\n'
           const filename='payroll-'+r.data.period_start+'-'+r.data.period_end+'.csv'
           return new Response(csv,{headers:{'Content-Type':'text/csv; charset=utf-8',
             'Content-Disposition':'attachment; filename="'+filename+'"',
             'X-Content-Type-Options':'nosniff','Cache-Control':'no-store'}})
         }
-        return Response.json({ok:true,period:r.data,lines:lines.data??[],audit:audit.data??[]},
+        return Response.json({ok:true,period:r.data,lines:lines.data??[],audit:audit.data??[],
+          compensation_available:compensationAvailable,compensation_cases:compensationCases,
+          compensation_adjustments:compensationAdjustments},
           {headers:noStore})
       })
     },
@@ -290,7 +350,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           return failure('WORKFORCE_PAYROLL_FEATURE_DISABLED',503)
         const actor=user.businessUserId
         if(!actor)return failure('WORKFORCE_BUSINESS_USER_REQUIRED',403)
-        const input=z.union([rate,period,line,transition,correction,voidLine,autoCalculateDraft,previewRecalculation,recalculateDraft])
+        const input=z.union([rate,period,line,secondPrecisionLine,transition,correction,voidLine,autoCalculateDraft,previewRecalculation,recalculateDraft])
           .parse(await readJsonBody(request,16384))
         const db=connect()
 
@@ -359,10 +419,12 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           let gross:number|null=null
           if(input.action==='correct_line'){
             const current=await db.from('workforce_payroll_lines')
-              .select('actual_minutes,rate_vnd_per_hour,overtime_multiplier_basis_points')
+              .select('actual_minutes,actual_seconds,rate_vnd_per_hour,overtime_multiplier_basis_points')
               .eq('id',input.line_id).eq('period_id',input.period_id).maybeSingle()
             if(current.error)return failure('WORKFORCE_PAYROLL_LINE_READ_FAILED',503)
             if(!current.data)return failure('WORKFORCE_PAYROLL_LINE_NOT_FOUND',409)
+            if(current.data.actual_seconds!=null)
+              return failure('WORKFORCE_PAYROLL_SECONDS_CORRECTION_REQUIRED',409)
             gross=calculatePayrollAmounts({
               actualMinutes:current.data.actual_minutes,
               rateVndPerHour:current.data.rate_vnd_per_hour,
@@ -453,6 +515,9 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             actualMinutes: l.actual_minutes as number,
             payableMinutes: l.payable_minutes as number,
             overtimeMinutes: l.overtime_minutes as number,
+            actualSeconds:l.actual_seconds as number|null,
+            payableSeconds:l.payable_seconds as number|null,
+            overtimeSeconds:l.overtime_seconds as number|null,
             rateVndPerHour: l.rate_vnd_per_hour as number,
             overtimeMultiplierBasisPoints: l.overtime_multiplier_basis_points as number,
             grossVnd: l.gross_vnd as number,
@@ -514,6 +579,9 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             actualMinutes: l.actual_minutes as number,
             payableMinutes: l.payable_minutes as number,
             overtimeMinutes: l.overtime_minutes as number,
+            actualSeconds:l.actual_seconds as number|null,
+            payableSeconds:l.payable_seconds as number|null,
+            overtimeSeconds:l.overtime_seconds as number|null,
             rateVndPerHour: l.rate_vnd_per_hour as number,
             overtimeMultiplierBasisPoints: l.overtime_multiplier_basis_points as number,
             grossVnd: l.gross_vnd as number,
@@ -588,10 +656,51 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           }
 
           const shiftDateMap = new Map<string, string>()
-          shiftRows.forEach(s => shiftDateMap.set(s.id, s.date))
+          const shiftById = new Map<string, { brand_id: string | null; agency_code: string | null; execution_source: string | null }>()
+          shiftRows.forEach(s => {
+            shiftDateMap.set(s.id, s.date)
+            shiftById.set(s.id, { brand_id: s.brand_id ?? null, agency_code: s.agency_code ?? null,
+              execution_source: s.execution_source ?? null })
+          })
           const shiftIds = Array.from(shiftDateMap.keys())
 
           const segmentRows = await fetchAllSegmentsForShifts(db, shiftIds)
+          const overtimeRows = await fetchAllAdminConfirmedOvertime(db, segmentRows.map(row=>row.id))
+          if(overtimeRows.some(row=>!segmentRows.some(segment=>segment.id===row.segment_id)
+            ||!Number.isSafeInteger(row.overtime_seconds)||row.overtime_seconds<=0
+            ||!Number.isSafeInteger(row.multiplier_basis_points)
+            ||!['weekday','weekend','holiday'].includes(row.day_class)
+            ||!['day','night'].includes(row.time_class)))
+            return failure('C515_OT_APPROVAL_READ_INCOMPLETE',503)
+          const approvedOvertimeBySegment=new Map(overtimeRows.map(row=>[row.segment_id,{
+            id:row.id,overtimeSeconds:row.overtime_seconds,
+            dayClass:row.day_class as 'weekday'|'weekend'|'holiday',
+            timeClass:row.time_class as 'day'|'night',
+            multiplierBasisPoints:row.multiplier_basis_points,
+          }]))
+          const modernSegmentIds = segmentRows
+            .filter(segment => (shiftDateMap.get(segment.shift_id) ?? '') >= PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM)
+            .map(segment => segment.id)
+          const payrollGateBySegment = new Map<string, { state: string; version: number; verified_complete: boolean; missing_evidence: string[] }>()
+          if (modernSegmentIds.length) {
+            const session = options.createSessionClient
+              ? await options.createSessionClient()
+              : await (await import('@/lib/supabase/server')).createClient()
+            for (let offset = 0; offset < modernSegmentIds.length; offset += 100) {
+              const ids = modernSegmentIds.slice(offset, offset + 100)
+              const { data, error } = await session.rpc('rc19_c515_refresh_payroll_gates', { p_segment_ids: ids })
+              if (error || !Array.isArray(data)) return failure('C515_PAYROLL_GATE_UNAVAILABLE', 503)
+              const gates = data as Array<{ segment_id: string; state: string; version: number; verified_complete: boolean; missing_evidence: string[] }>
+              if (gates.length !== ids.length || new Set(gates.map(gate => gate.segment_id)).size !== ids.length
+                || gates.some(gate => !ids.includes(gate.segment_id)
+                  || typeof gate.verified_complete !== 'boolean'
+                  || !Array.isArray(gate.missing_evidence)
+                  || gate.missing_evidence.some(item => typeof item !== 'string'))) {
+                return failure('C515_PAYROLL_GATE_INCOMPLETE', 503)
+              }
+              for (const gate of gates) payrollGateBySegment.set(gate.segment_id, gate)
+            }
+          }
 
           const cardRows = await fetchAllApprovedRateCards(db)
           const approvedRates: ApprovedPayrollRate[] = cardRows.map(v => ({
@@ -613,13 +722,35 @@ export function createWorkforcePayrollHandler(options:Options={}) {
               evidenceNote: seg.evidence_note,
             },
             shiftDate: shiftDateMap.get(seg.shift_id) ?? '',
+            ...(((shiftDateMap.get(seg.shift_id) ?? '') >= PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM)
+              ? {
+                payrollEvidenceCompleteness: payrollGateBySegment.get(seg.id)?.verified_complete === true
+                  ? 'verified_complete' as const
+                  : 'incomplete' as const,
+                missingEvidence: payrollGateBySegment.get(seg.id)?.missing_evidence ?? ['payroll_authorization_unverified'],
+              }
+              : {}),
           }))
 
-          const { preparedLines, skippedSegments, unapprovedOtExceptions } = autoCalculatePeriodLines({
+          const { preparedLines, skippedSegments, unapprovedOtExceptions, payrollHolds } = autoCalculatePeriodLines({
             period: { periodStart: periodRecord.period_start, periodEnd: periodRecord.period_end },
             segments: segmentInputs,
             rates: approvedRates,
+            approvedOvertimeBySegment,
             existingSegmentIds,
+          })
+          const enrichedPayrollHolds = payrollHolds.map(hold => {
+            const segment = segmentRows.find(row => row.id === hold.segmentId)
+            const gate = payrollGateBySegment.get(hold.segmentId)
+            return {
+              ...hold,
+              role: segment?.operational_role ?? null,
+              brandId: shiftById.get(hold.shiftId)?.brand_id ?? null,
+              agencyCode: shiftById.get(hold.shiftId)?.agency_code ?? null,
+              executionSource: shiftById.get(hold.shiftId)?.execution_source ?? null,
+              approvalState: gate ? (gate as { state?: string }).state ?? null : null,
+              decisionVersion: gate ? (gate as { version?: number }).version ?? 0 : 0,
+            }
           })
 
           let insertedLines: Array<Record<string, unknown>> = []
@@ -630,6 +761,11 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             staff_id: total.staffId, operational_role: total.role,
             actual_minutes: total.actualMinutes, payable_minutes: total.payableMinutes,
             overtime_minutes: total.overtimeMinutes, rate_vnd_per_hour: total.rateVndPerHour,
+            actual_seconds:total.actualSeconds??null,payable_seconds:total.payableSeconds??null,
+            overtime_seconds:total.overtimeSeconds??null,
+            overtime_request_id:total.overtimeRequestId??null,
+            overtime_day_class:total.overtimeDayClass??null,
+            overtime_time_class:total.overtimeTimeClass??null,
             overtime_multiplier_basis_points: total.overtimeMultiplierBasisPoints,
             gross_vnd: total.grossVnd, adjustment_vnd: total.adjustmentVnd,
             adjustment_reason: total.adjustmentReason, calculation_version: total.calculationVersion,
@@ -650,6 +786,9 @@ export function createWorkforcePayrollHandler(options:Options={}) {
               actualMinutes: l.actual_minutes as number,
               payableMinutes: l.payable_minutes as number,
               overtimeMinutes: l.overtime_minutes as number,
+              actualSeconds:l.actual_seconds as number|null,
+              payableSeconds:l.payable_seconds as number|null,
+              overtimeSeconds:l.overtime_seconds as number|null,
               rateVndPerHour: l.rate_vnd_per_hour as number,
               overtimeMultiplierBasisPoints: l.overtime_multiplier_basis_points as number,
               grossVnd: l.gross_vnd as number,
@@ -723,6 +862,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             recalculated_count: recalculatedLines.length,
             skipped_count: skippedSegments.length,
             unapproved_ot_exceptions: unapprovedOtExceptions,
+            payroll_holds:enrichedPayrollHolds,
             reconciliation: {
               total_approved_segments: totalApprovedSegments,
               reconciled_count: reconciledCount,
@@ -752,6 +892,8 @@ export function createWorkforcePayrollHandler(options:Options={}) {
         if(shift.error)return failure('WORKFORCE_SHIFT_READ_FAILED',503)
         if(!shift.data||shift.data.deleted_at||shift.data.date<p.data.period_start
           ||shift.data.date>p.data.period_end)return failure('WORKFORCE_SHIFT_OUTSIDE_PERIOD',409)
+        if(shift.data.date>=PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM)
+          return failure('WORKFORCE_PAYROLL_EVIDENCE_COMPLETENESS_UNVERIFIED',409)
         const cardRows = await fetchAllApprovedRateCards(db)
         const cards = cardRows.filter(c => c.operational_role === segmentData.operational_role)
         const evidence:ActualStaffingEvidence={
@@ -770,16 +912,27 @@ export function createWorkforcePayrollHandler(options:Options={}) {
           approvedBy:v.approved_by,
         }))
         const selected=selectApprovedRate(evidence,shift.data.date,approvedRates)
-        const total=calculatePayrollLine({
-          segment:evidence,shiftDate:shift.data.date,rate:selected,
-          payableMinutes:input.payable_minutes,overtimeMinutes:input.overtime_minutes,
-          adjustmentVnd:input.adjustment_vnd,adjustmentReason:input.adjustment_reason,
-        })
+        const secondPrecision=shift.data.date>=PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM
+        if(secondPrecision!==('payable_seconds' in input))
+          return failure('WORKFORCE_PAYROLL_PRECISION_INPUT_MISMATCH',400)
+        const total='payable_seconds' in input
+          ? calculateSecondPrecisionPayrollLine({
+            segment:evidence,shiftDate:shift.data.date,rate:selected,
+            payableSeconds:input.payable_seconds,overtimeSeconds:input.overtime_seconds,
+            adjustmentVnd:input.adjustment_vnd,adjustmentReason:input.adjustment_reason,
+          })
+          : calculatePayrollLine({
+            segment:evidence,shiftDate:shift.data.date,rate:selected,
+            payableMinutes:input.payable_minutes,overtimeMinutes:input.overtime_minutes,
+            adjustmentVnd:input.adjustment_vnd,adjustmentReason:input.adjustment_reason,
+          })
         const {data,error}=await db.from('workforce_payroll_lines').insert({
           period_id:p.data.id,segment_id:total.segmentId,rate_card_id:total.rateCardId,
           staff_id:total.staffId,operational_role:total.role,
           actual_minutes:total.actualMinutes,payable_minutes:total.payableMinutes,
           overtime_minutes:total.overtimeMinutes,rate_vnd_per_hour:total.rateVndPerHour,
+          actual_seconds:total.actualSeconds??null,payable_seconds:total.payableSeconds??null,
+          overtime_seconds:total.overtimeSeconds??null,
           overtime_multiplier_basis_points:total.overtimeMultiplierBasisPoints,
           gross_vnd:total.grossVnd,adjustment_vnd:total.adjustmentVnd,
           adjustment_reason:total.adjustmentReason,calculation_version:total.calculationVersion,

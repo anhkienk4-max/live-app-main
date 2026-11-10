@@ -19,6 +19,12 @@ BASELINE_RESULT = BASELINE_DIR / "result.json"
 MANIFEST = EVIDENCE / "c5.3-final-migration-manifest.json"
 MIGRATION = ROOT / "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql"
 MIGRATION_C512 = ROOT / "supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql"
+MIGRATIONS_C515 = [
+    ("20261110115529", ROOT / "supabase/migrations/20261110115529_rc19_c515_payroll_second_precision.sql", "rc19_c515_payroll_second_precision"),
+    ("20261110130000", ROOT / "supabase/migrations/20261110130000_rc19_c515_payroll_approval_hold.sql", "rc19_c515_payroll_approval_hold"),
+    ("20261110140000", ROOT / "supabase/migrations/20261110140000_rc19_c515_overtime_cancellation_approvals.sql", "rc19_c515_overtime_cancellation_approvals"),
+    ("20261111000000", ROOT / "supabase/migrations/20261111000000_rc19_c515_live_cancellation_transition.sql", "rc19_c515_live_cancellation_transition"),
+]
 SOURCE_DB = "postgres"
 SOURCE_MARKER = "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY"
 
@@ -45,11 +51,17 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")).hexdigest()
 
 
+def exact_sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+
 def main() -> None:
     source_head = sys.argv[1] if len(sys.argv) > 1 else "UNRECORDED"
     worktree_dirty = sys.argv[2].lower() == "true" if len(sys.argv) > 2 else True
     baseline_result = json.loads(BASELINE_RESULT.read_text(encoding="utf-8-sig"))
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8-sig"))
+    c515_manifest_path = ROOT / "docs/releases/c5.15-payroll-migration-extension.json"
+    c515_manifest = json.loads(c515_manifest_path.read_text(encoding="utf-8-sig"))
     if baseline_result.get("result") != "PASS" or baseline_result.get("effective_migrations_applied") != 20:
         raise RuntimeError("REFUSED_UNVERIFIED_C4_BASELINE")
     if sha(BASELINE) != baseline_result.get("final_schema_dump_sha256"):
@@ -59,6 +71,12 @@ def main() -> None:
     for item in manifest["entries"]:
         if sha(ROOT / item["file"]) != item["sha256"]:
             raise RuntimeError("REFUSED_C4_MIGRATION_SOURCE_HASH:" + item["file"])
+    if len(c515_manifest.get("additional_migrations", [])) != len(MIGRATIONS_C515):
+        raise RuntimeError("REFUSED_C515_MIGRATION_MANIFEST_COUNT")
+    for version, path, _name in MIGRATIONS_C515:
+        item = next((entry for entry in c515_manifest["additional_migrations"] if entry.get("version") == version), None)
+        if not item or item.get("file") != path.relative_to(ROOT).as_posix() or item.get("sha256") != exact_sha(path):
+            raise RuntimeError("REFUSED_C515_MIGRATION_SOURCE_HASH:" + version)
 
     source = query("select current_setting('server_version_num')||'|'||current_database()||'|'||coalesce(shobj_description(oid,'pg_database'),'')||'|'||(select count(*) from auth.users) from pg_database where datname=current_database()")
     fields = source.strip().split("|")
@@ -179,6 +197,36 @@ def main() -> None:
         query("insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("+
               "'20261109131324',array['file=supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql','sha256="+sha(MIGRATION_C512)+"'],"+
               "'rc19_c512_attendance_photo_review','c512-local-pg1711','c512:20261109131324:"+sha(MIGRATION_C512)+"');", db_name)
+        c515_receipts = []
+        for version, path, name in MIGRATIONS_C515:
+            migration_hash = exact_sha(path)
+            started_at = datetime.now(timezone.utc).isoformat()
+            atomic_args = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name]
+            if version == "20261110115529":
+                atomic_args.append("-1")
+            output = run(atomic_args, input_text=path.read_text(encoding="utf-8"), timeout=180)
+            ended_at = datetime.now(timezone.utc).isoformat()
+            receipt_sql = (
+                "insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("
+                f"'{version}',array['file={path.relative_to(ROOT).as_posix()}','sha256={migration_hash}'],"
+                f"'{name}','c515-local-pg1711','c515:{version}:{migration_hash}');"
+            )
+            query(receipt_sql, db_name)
+            receipt = query(
+                "select version||'|'||name||'|'||array_to_string(statements,';') from supabase_migrations.schema_migrations "
+                f"where version='{version}' and name='{name}'", db_name,
+            ).strip()
+            if migration_hash not in receipt:
+                raise RuntimeError("C515_MIGRATION_RECEIPT_MISMATCH:" + version)
+            schema_dump = run(["pg_dump", "-U", "postgres", "-d", db_name, "--schema-only", "--no-owner", "--no-acl"], timeout=120)
+            schema_fingerprint = hashlib.sha256(schema_dump.encode("utf-8")).hexdigest().upper()
+            c515_receipts.append({
+                "version": version, "file": path.relative_to(ROOT).as_posix(), "sha256": migration_hash,
+                "database": db_name, "database_marker": SOURCE_MARKER, "postgres_server_version_num": b[0],
+                "started_at_utc": started_at, "ended_at_utc": ended_at, "transaction_result": "COMMIT",
+                "migration_receipt_readback": receipt, "schema_dump_sha256_after_migration": schema_fingerprint,
+                "migration_output_lines": len(output.splitlines()),
+            })
         final = query("select current_setting('server_version_num')||'|'||current_database()||'|'||coalesce(shobj_description(oid,'pg_database'),'')||'|'||(select count(*) from auth.users)||'|'||(select count(*) from public.shift_staffing_segments)||'|'||(select count(*) from supabase_migrations.schema_migrations) from pg_database where datname=current_database()", db_name).strip()
         log.append("final_state=" + final)
         log.append("c511_receipt_inserted_after_successful_apply=1")
@@ -196,6 +244,7 @@ def main() -> None:
             "c511_migration_sha256": sha(MIGRATION),
             "c512_migration": str(MIGRATION_C512.relative_to(ROOT).as_posix()),
             "c512_migration_sha256": sha(MIGRATION_C512),
+            "c515_migrations": c515_receipts,
             "auth_users_after_restore": 0,
             "storage_objects_after_restore": 0,
             "shift_staffing_segments_created": 0,

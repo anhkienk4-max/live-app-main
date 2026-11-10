@@ -1,0 +1,55 @@
+{
+  "release": "RC19 C5.15 Payroll precision, approval and hold",
+  "base_source_sha": "fbf1a93f442e4818ff6f529f9bd942a67b00cea5",
+  "base_migration_manifest": "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-migration-manifest.json",
+  "base_forward_migration_count": 20,
+  "additional_migrations": [
+    {
+      "version": "20261110115529",
+      "file": "supabase/migrations/20261110115529_rc19_c515_payroll_second_precision.sql",
+      "sha256": "C7C86F3717E8062703CA8C51D506F7121F6CF7ABE925AC93CE260BD9F0A7D9EA",
+      "depends_on": [
+        "20261012000000",
+        "20261019000000"
+      ],
+      "execution_status": "NOT_RUN",
+      "production_execution_authorized": false
+    },
+    {
+      "version": "20261110130000",
+      "file": "supabase/migrations/20261110130000_rc19_c515_payroll_approval_hold.sql",
+      "sha256": "3A911FDF8EAFA28CE034A2C6C6A22DE87811CD955CCA7536BEF36920DF912C9B",
+      "depends_on": [
+        "20261110115529",
+        "20261109131324",
+        "20261102110001"
+      ],
+      "execution_status": "NOT_RUN",
+      "production_execution_authorized": false
+    },
+    {
+      "version": "20261110140000",
+      "file": "supabase/migrations/20261110140000_rc19_c515_overtime_cancellation_approvals.sql",
+      "sha256": "F00974E5B790E034CE19DAED6CD2D69BCE6CB8396C6B8887A5CCB482DE848C02",
+      "depends_on": [
+        "20261110115529",
+        "20261110130000",
+        "20261109100000",
+        "20261109131324",
+        "20261102110001"
+      ],
+      "execution_status": "NOT_RUN",
+      "production_execution_authorized": false
+    },
+    {
+      "version": "20261111000000",
+      "file": "supabase/migrations/20261111000000_rc19_c515_live_cancellation_transition.sql",
+      "sha256": "4DF3C7E0CA54B4996D7470F4E418B2F178EFC5E787FB655FB7B84E8E4D717E39",
+      "depends_on": [
+        "20261110140000"
+      ],
+      "execution_status": "NOT_RUN",
+      "production_execution_authorized": false
+    }
+  ]
+}
