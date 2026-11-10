@@ -127,6 +127,20 @@ export function createBrandCatalogHandler(resolveUser?: ServerUserResolver) {
         const parsed = actionSchema.safeParse(await readJsonBody(request, 24 * 1024))
         if (!parsed.success) return Response.json({ ok: false, error: 'BRAND_INPUT_INVALID' }, { status: 400 })
         const input = parsed.data
+        if (input.action === 'knowledge.confirm_resolution') {
+          // Check explicit Owner authority: differentiate Admin (data manager) vs Owner (content authority)
+          const isOwner = Boolean(actor.isOwner === true || actor.role === 'owner')
+          if (!isOwner) {
+            return Response.json(
+              {
+                ok: false,
+                error: 'OWNER_CONFIRMATION_REQUIRED',
+                message: 'Chỉ Owner có thẩm quyền xác nhận nội dung khi nguồn dữ liệu mâu thuẫn. Admin quản lý dữ liệu không có quyền tự ý thay thế quyết định của Owner.',
+              },
+              { status: 403, headers: { 'Cache-Control': 'no-store' } },
+            )
+          }
+        }
         const supabase = await createClient()
         if (input.action === 'product.create') {
           const { data, error } = await supabase.rpc('brand01_admin_create_product', { p_product_code: input.product_code, p_name: input.name, p_category: input.category ?? null, p_internal_description: input.description ?? null, p_owner_id: input.owner_id ?? actor.businessUserId, p_brand_ids: input.brand_ids })

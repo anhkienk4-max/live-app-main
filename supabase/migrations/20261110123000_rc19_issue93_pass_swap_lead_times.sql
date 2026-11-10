@@ -133,10 +133,15 @@ begin
     end if;
 
     -- Enforce lead times for PASS using verified campaign relational data
-    if source_shift.campaign_id is not null and exists (
-      select 1 from public.campaigns c
-      where c.id = source_shift.campaign_id and c.deleted_at is null
-    ) then
+    if source_shift.campaign_id is not null
+       and btrim(source_shift.campaign_id) <> ''
+       and lower(btrim(source_shift.campaign_id)) <> 'none'
+       and exists (
+         select 1 from public.campaigns c
+         where c.id = source_shift.campaign_id
+           and c.archived_at is null
+           and c.deleted_at is null
+       ) then
       -- Campaign PASS requires minimum 24 hours lead time
       if statement_timestamp() > (source_shift.start_at - interval '24 hours') then
         raise exception using errcode = 'P0001', message = 'CAMPAIGN_PASS_DEADLINE_EXCEEDED';
@@ -350,10 +355,15 @@ begin
     end if;
 
     -- Campaign PASS MUST be approved at least 24 hours (1440 minutes) before live start
-    if source_shift.campaign_id is not null and exists (
-      select 1 from public.campaigns c
-      where c.id = source_shift.campaign_id and c.deleted_at is null
-    ) then
+    if source_shift.campaign_id is not null
+       and btrim(source_shift.campaign_id) <> ''
+       and lower(btrim(source_shift.campaign_id)) <> 'none'
+       and exists (
+         select 1 from public.campaigns c
+         where c.id = source_shift.campaign_id
+           and c.archived_at is null
+           and c.deleted_at is null
+       ) then
       if now_at > (source_shift.start_at - interval '24 hours') then
         raise exception using errcode = 'P0001', message = 'CAMPAIGN_PASS_APPROVAL_DEADLINE_EXCEEDED';
       end if;

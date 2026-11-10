@@ -348,12 +348,22 @@ export function resolveOwnerConfirmation(
     confirmed_content: unknown
     chosen_source: BrandKnowledgeSource
     confirmed_by: string
+    is_owner?: boolean
     approve?: boolean
     reason?: string
   },
 ): BrandKnowledgeItem {
   if (item.confirmation_status !== 'NEEDS_OWNER_CONFIRMATION' && !item.conflict_details) {
     return item
+  }
+
+  // Strict check: Only confirmed Owner authority can resolve conflicts.
+  // Admin data managers without explicit Owner authority cannot clear NEEDS_OWNER_CONFIRMATION.
+  if (decision.is_owner !== true) {
+    return {
+      ...item,
+      confirmation_status: 'NEEDS_OWNER_CONFIRMATION',
+    }
   }
 
   const checksum = computeContentChecksum(decision.confirmed_content)

@@ -167,18 +167,25 @@ Per Owner explicit instruction:
    - *OR* `attendance.status = 'admin_confirmed'`
    - A record that is only `status = 'leader_approved'` or `status = 'recorded'` is **strictly excluded** from payable hours.
 2. **Admin Direct Confirmation:** Admin has full operational authority to execute Level 2 Confirmation directly on `pending_approval` or `recorded` records, setting both `reviewed_by` and `admin_confirmed_by` atomically.
-3. **Strict Policy on Payroll Hold:**
-   - **Do NOT invent arbitrary HOLD criteria.**
-   - Payroll Hold is applied **strictly per Owner specification**:
-     * Explicit Admin Dispute Flag (`admin_payroll_hold = true` set manually by Admin during an active dispute).
-     * System Hold applied strictly when identity proof / mandatory photo check-in is physically missing and unverified.
-   - Any line with active Hold is rendered with badge `TẠM GIỮ (ON_HOLD)` with zero payable amount until released by Admin.
+3. **Strict Policy on Payroll Hold (Aligned with #76 & #164):**
+   - **Do NOT invent arbitrary HOLD criteria, and do NOT over-restrict HOLD to only Admin disputes.**
+   - Payroll Hold is applied **strictly under four mandatory conditions**:
+     1. **Thiếu ảnh chấm công (Missing Attendance Photos):** Missing mandatory photo check-in/check-out identity proof (#74).
+     2. **Thiếu báo cáo cuối ca (Missing Final Shift Report):** Shift lacks the mandatory post-stream final report (#164).
+     3. **Thiếu bằng chứng Visibility / Key Visual (KV) khi có quy định:** Shift for a brand/campaign requiring Key Visual lacks verified KV photo evidence in Group 2 (#164).
+     4. **Cờ tranh chấp Admin (Admin Dispute Flag):** Explicit `admin_payroll_hold = true` flagged manually by Admin during an active operational or hours dispute (#76).
+   - **Exclusions from Payroll Hold (Non-blocking):**
+     * **Ảnh chụp Dashboard định kỳ 30 phút (Group 4):** Advisory / reminder only. Missing 30-minute interval photos emits a reminder banner but does NOT block report submission or trigger a Payroll Hold.
+     * **Ảnh sự cố (Group 6):** Conditional. Only required if an incident actually occurred (`incident_reported = true`). A normal shift without incidents does NOT trigger a Hold.
+     * **Ảnh kỹ thuật background:** Currently non-mandatory; absence never causes a Hold.
+   - Any line with active Hold is rendered with badge `TẠM GIỮ (ON_HOLD)` with zero payable amount until all blocking requirements are satisfied and/or released by Admin.
 
 ### 5.4 Acceptance Test Specifications
 - `TEST-76-01`: Shifts with only Leader approval (`leader_approved`) contribute 0 payable hours to draft payroll.
 - `TEST-76-02`: Admin confirmation following Leader approval transitions status to `admin_confirmed` and enables inclusion in payroll draft.
 - `TEST-76-03`: Admin direct confirmation on a pending attendance record bypasses Leader step and enables payroll inclusion immediately.
-- `TEST-76-04`: Shifts with explicit `admin_payroll_hold = true` generate a payslip line with status `HELD` and 0 net pay until lifted.
+- `TEST-76-04`: Shifts with missing attendance photos, missing final report, missing required KV evidence, or explicit `admin_payroll_hold = true` generate a payslip line with status `HELD` and 0 net pay until cleared.
+- `TEST-76-05`: Shifts with missing 30-minute interval dashboard photos or normal shifts without incident photos do NOT enter Payroll Hold.
 
 ---
 

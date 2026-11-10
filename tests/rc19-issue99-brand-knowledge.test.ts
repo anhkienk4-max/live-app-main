@@ -228,6 +228,7 @@ test('Issue #99: Owner explicit resolution clears NEEDS_OWNER_CONFIRMATION and u
     confirmed_content: 'Content from Notion Official (Verified by Brand Manager)',
     chosen_source: 'notion',
     confirmed_by: 'owner-user-01',
+    is_owner: true,
     approve: true,
     reason: 'Owner validated with Brand representative directly',
   })
@@ -239,6 +240,38 @@ test('Issue #99: Owner explicit resolution clears NEEDS_OWNER_CONFIRMATION and u
   assert.equal(resolved.is_approved, true)
   assert.equal(resolved.source_metadata.source, 'notion')
   assert.equal(resolved.content, 'Content from Notion Official (Verified by Brand Manager)')
+})
+
+
+test('Issue #99: resolveOwnerConfirmation without explicit is_owner authority preserves NEEDS_OWNER_CONFIRMATION', () => {
+  const conflictedItem: BrandKnowledgeItem = {
+    id: 'conf-item-no-owner',
+    product_id: 'prod-no-owner',
+    knowledge_type: 'claim',
+    content: 'Unconfirmed Content',
+    version: 1,
+    status: 'draft',
+    confirmation_status: 'NEEDS_OWNER_CONFIRMATION',
+    source_metadata: {
+      source: 'google_drive',
+      source_id: 'drive-no-owner',
+      retrieved_at: '2026-11-10T00:00:00Z',
+    },
+    created_at: '2026-11-10T00:00:00Z',
+  }
+
+  // Attempt to resolve by Admin data manager WITHOUT Owner authority
+  const unresolved = resolveOwnerConfirmation(conflictedItem, {
+    confirmed_content: 'Forced Content By Admin Data Manager',
+    chosen_source: 'app_ops',
+    confirmed_by: 'admin-manager-not-owner',
+    is_owner: false,
+    approve: true,
+  })
+
+  // RULE CHECK: NEEDS_OWNER_CONFIRMATION MUST BE PRESERVED!
+  assert.equal(unresolved.confirmation_status, 'NEEDS_OWNER_CONFIRMATION')
+  assert.equal(unresolved.content, 'Unconfirmed Content')
 })
 
 test('Issue #99: Server API knowledge.confirm_resolution denies non-Admin callers', async () => {
@@ -292,6 +325,43 @@ test('Issue #99: Server API knowledge.confirm_resolution denies non-Admin caller
   )
   assert.equal(unmappedRes.status, 403)
   assert.deepEqual(await unmappedRes.json(), { ok: false, error: 'BUSINESS_USER_REQUIRED' })
+
+  // 4. Admin caller WITHOUT Owner authority -> 403 OWNER_CONFIRMATION_REQUIRED
+  const adminDataOnly = createBrandCatalogHandler(async () => ({
+    id: 'auth-admin-data',
+    businessUserId: 'admin-data-01',
+    systemPermission: 'admin',
+    isOwner: false,
+  }))
+  const adminDataRes = await adminDataOnly.POST(
+    new Request('http://local.test/api/brand-catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  )
+  assert.equal(adminDataRes.status, 403)
+  const adminDataJson = await adminDataRes.json()
+  assert.equal(adminDataJson.ok, false)
+  assert.equal(adminDataJson.error, 'OWNER_CONFIRMATION_REQUIRED')
+
+  // 5. Admin caller WITH explicit Owner authority -> passes authorization check
+  const ownerAdmin = createBrandCatalogHandler(async () => ({
+    id: 'auth-owner-admin',
+    businessUserId: 'owner-admin-01',
+    systemPermission: 'admin',
+    isOwner: true,
+  }))
+  const ownerRes = await ownerAdmin.POST(
+    new Request('http://local.test/api/brand-catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  )
+  // Reaching supabase/database layer (not rejected at 403 authorization gate)
+  assert.notEqual(ownerRes.status, 403)
+
 })
 
 test('Issue #99: Architectural safeguard prevents direct mutation of external Notion', () => {

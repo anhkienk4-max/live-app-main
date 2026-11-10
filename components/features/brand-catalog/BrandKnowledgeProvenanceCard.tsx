@@ -19,6 +19,7 @@ interface BrandKnowledgeProvenanceCardProps {
   item: BrandKnowledgeItem
   className?: string
   canResolveConflict?: boolean
+  isOwner?: boolean
   onResolve?: (decision: {
     confirmed_content: unknown
     chosen_source: BrandKnowledgeSource
@@ -30,6 +31,7 @@ export function BrandKnowledgeProvenanceCard({
   item,
   className = '',
   canResolveConflict = false,
+  isOwner = false,
   onResolve,
 }: BrandKnowledgeProvenanceCardProps) {
   const isConflict = item.confirmation_status === 'NEEDS_OWNER_CONFIRMATION' || Boolean(item.conflict_details)
@@ -171,6 +173,16 @@ export function BrandKnowledgeProvenanceCard({
             Yêu cầu Owner xác nhận phiên bản chính xác qua API có kiểm tra quyền.
           </p>
 
+          {!isOwner && (
+            <div
+              data-testid="owner-authority-required-notice"
+              className="rounded bg-amber-200/60 p-2 border border-amber-300/80 text-[11px] text-amber-950"
+            >
+              <strong>Lưu ý phân quyền:</strong> Tài khoản Admin quản lý dữ liệu không có thẩm quyền thay thế quyết định của Owner.
+              Trạng thái <code className="font-mono font-semibold">NEEDS_OWNER_CONFIRMATION</code> được bảo lưu cho đến khi Owner trực tiếp xác nhận.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
             {/* Source A */}
             <div className="rounded bg-white/80 p-2 border border-amber-200">
@@ -183,7 +195,7 @@ export function BrandKnowledgeProvenanceCard({
                   ? item.conflict_details.content_a
                   : JSON.stringify(item.conflict_details.content_a)}
               </div>
-              {canResolveConflict && (
+              {isOwner && canResolveConflict && (
                 <button
                   type="button"
                   onClick={() =>
@@ -211,7 +223,7 @@ export function BrandKnowledgeProvenanceCard({
                   ? item.conflict_details.content_b
                   : JSON.stringify(item.conflict_details.content_b)}
               </div>
-              {canResolveConflict && (
+              {isOwner && canResolveConflict && (
                 <button
                   type="button"
                   onClick={() =>
