@@ -6,6 +6,7 @@ import { Loader2, Calendar, CheckCircle2, AlertCircle, RotateCcw, Search } from 
 import { isStaffedRegistration, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import type { Brand, OperationalRole, Platform, Shift, ShiftRegistration, SwapExchangeCandidate, UserDirectoryEntry } from '@/lib/types/database.types'
 import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
+import { validateSwapTiming } from '@/lib/utils/swapValidation'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
@@ -70,6 +71,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const source = open && sourceSnapshot?.key === sourceKey ? sourceSnapshot : null
   const sourceRows = source?.items.filter(shift => source.registrations.some(reg => reg.shift_id === shift.id && reg.user_id === owner && isStaffedRegistration(reg))) ?? []
   const selectedSource = sourceRows.find(shift => shift.id === sourceId)
+  const timingValidation = React.useMemo(() => selectedSource ? validateSwapTiming(selectedSource) : null, [selectedSource])
   const assigned = source?.registrations.filter(reg => reg.shift_id === sourceId && reg.user_id === owner && isStaffedRegistration(reg)) ?? []
   const sourceRegistration = assigned.find(reg => reg.operational_role === role)
   const sourceRegistrationId = sourceRegistration?.id
@@ -451,6 +453,24 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                 <Button type="button" size="sm" variant="outline" disabled={source.page * pageSize >= source.total} onClick={() => { setSourcePage(source.page + 1); clearSource() }}>
                   {copy('Sau', 'Next')}
                 </Button>
+              </div>
+            )}
+
+            {/* Lead time & live shift validation alert */}
+            {timingValidation && !timingValidation.allowed && (
+              <div role="alert" className="p-2.5 rounded-md bg-destructive/10 border border-destructive/20 text-xs text-destructive space-y-1">
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{copy(timingValidation.messageVi || '', timingValidation.messageEn || '')}</span>
+                </div>
+                {timingValidation.isEmergencyBackupEligible && (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {copy(
+                      'Lưu ý: Ca đang diễn ra không thể tạo PASS tự phục vụ. Nhân sự mệt hoặc phát sinh khẩn cấp phải thực hiện Emergency Backup Reassignment bởi Leader/Quản lý.',
+                      'Notice: Live shifts do not allow self-service PASS. Emergency substitutions during live require Emergency Backup Reassignment by Leader/Manager.',
+                    )}
+                  </p>
+                )}
               </div>
             )}
 
@@ -841,7 +861,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
             <Button
               type="submit"
               size="sm"
-              disabled={busy || !sourceRegistration || !validCandidate || reason.trim().length < 10}
+              disabled={busy || !sourceRegistration || !validCandidate || reason.trim().length < 10 || Boolean(timingValidation && !timingValidation.allowed)}
               className="font-medium"
             >
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
