@@ -71,7 +71,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const source = open && sourceSnapshot?.key === sourceKey ? sourceSnapshot : null
   const sourceRows = source?.items.filter(shift => source.registrations.some(reg => reg.shift_id === shift.id && reg.user_id === owner && isStaffedRegistration(reg))) ?? []
   const selectedSource = sourceRows.find(shift => shift.id === sourceId)
-  const timingValidation = React.useMemo(() => selectedSource ? validateSwapTiming(selectedSource) : null, [selectedSource])
+  const timingValidation = React.useMemo(() => selectedSource ? validateSwapTiming(selectedSource, undefined, mode) : null, [selectedSource, mode])
   const assigned = source?.registrations.filter(reg => reg.shift_id === sourceId && reg.user_id === owner && isStaffedRegistration(reg)) ?? []
   const sourceRegistration = assigned.find(reg => reg.operational_role === role)
   const sourceRegistrationId = sourceRegistration?.id

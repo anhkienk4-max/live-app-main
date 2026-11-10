@@ -7,7 +7,9 @@ export const CAMPAIGN_PASS_MIN_LEAD_MINUTES = 1440 // 24 hours
 export type SwapTimingErrorCode =
   | 'DAILY_PASS_DEADLINE_EXCEEDED'
   | 'CAMPAIGN_PASS_DEADLINE_EXCEEDED'
+  | 'CAMPAIGN_PASS_APPROVAL_DEADLINE_EXCEEDED'
   | 'PASS_DURING_LIVE_NOT_ALLOWED'
+  | 'EXCHANGE_DURING_LIVE_NOT_ALLOWED'
   | 'SHIFT_ALREADY_ENDED'
   | 'SHIFT_NOT_SCHEDULED'
 
@@ -37,23 +39,42 @@ export interface SubstituteValidationResult {
 
 /**
  * Determine if a shift is associated with a marketing / sales campaign.
+ * Uses reliable business data: checks shift.campaign_id foreign key,
+ * avoiding heuristics like titles, tags, or unverified notes.
  */
-export function isCampaignShift(shift: Shift): boolean {
-  return Boolean(shift.campaign_id && shift.campaign_id.trim() !== '')
+export function isCampaignShift(
+  shift: Shift,
+  campaigns?: Array<{ id: string; status?: string }>,
+): boolean {
+  if (!shift.campaign_id || typeof shift.campaign_id !== 'string') {
+    return false
+  }
+  const normalized = shift.campaign_id.trim()
+  if (normalized === '' || normalized.toLowerCase() === 'none') {
+    return false
+  }
+  if (campaigns && campaigns.length > 0) {
+    return campaigns.some(c => c.id === normalized && c.status !== 'archived')
+  }
+  return true
 }
 
 /**
  * Validates lead time and live status for PASS / Swap requests per Issue #93.
  *
  * Rules:
- * - Daily PASS: Must be requested at least 2 hours (120 mins) before live start.
- * - Campaign PASS: Must be requested at least 24 hours (1440 mins) before live start.
+ * - Daily PASS (replacement): Must be requested at least 2 hours (120 mins) before live start.
+ * - Campaign PASS (replacement): Must be requested at least 24 hours (1440 mins) before live start.
  * - During Live: Ordinary PASS is prohibited. Emergency replacements during live
  *   must use Emergency Backup Reassignment by Leader/Manager, not staff self-service PASS.
+ * - Exchange: Does NOT apply PASS lead time rules (120m / 1440m); only ensures
+ *   neither shift has already started live or ended.
  */
 export function validateSwapTiming(
   shift: Shift,
   requestTime: Date = new Date(),
+  mode: 'replacement' | 'exchange' = 'replacement',
+  campaigns?: Array<{ id: string; status?: string }>,
 ): SwapTimingValidationResult {
   if (shift.status !== 'scheduled') {
     return {
@@ -66,7 +87,6 @@ export function validateSwapTiming(
 
   const timing = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
   if (!timing || !timing.valid) {
-    // If timing cannot be parsed, fail closed
     return {
       allowed: false,
       code: 'DAILY_PASS_DEADLINE_EXCEEDED',
@@ -84,28 +104,44 @@ export function validateSwapTiming(
     return {
       allowed: false,
       code: 'SHIFT_ALREADY_ENDED',
-      messageVi: 'Ca làm việc đã kết thúc, không thể tạo yêu cầu PASS/đổi ca.',
-      messageEn: 'Shift has already ended. PASS or swap request cannot be created.',
+      messageVi: 'Ca làm việc đã kết thúc, không thể tạo yêu cầu.',
+      messageEn: 'Shift has already ended. Request cannot be created.',
     }
   }
 
-  // 2. Ordinary PASS prohibited during live (between start and end)
+  // 2. Prohibition during live
   if (requestTimeMs >= startAtMs && requestTimeMs < endAtMs) {
-    return {
-      allowed: false,
-      code: 'PASS_DURING_LIVE_NOT_ALLOWED',
-      isEmergencyBackupEligible: true,
-      messageVi:
-        'Không cho phép tạo yêu cầu PASS thông thường khi ca đang diễn ra. Trường hợp mệt hoặc phát sinh khẩn cấp phải thực hiện Emergency Backup Reassignment bởi Leader/Quản lý.',
-      messageEn:
-        'Ordinary PASS is not allowed while the shift is live. Emergency replacements during live must use Emergency Backup Reassignment by Leader/Manager.',
+    if (mode === 'replacement') {
+      return {
+        allowed: false,
+        code: 'PASS_DURING_LIVE_NOT_ALLOWED',
+        isEmergencyBackupEligible: true,
+        messageVi:
+          'Không cho phép tạo yêu cầu PASS thông thường khi ca đang diễn ra. Trường hợp mệt hoặc phát sinh khẩn cấp phải thực hiện Emergency Backup Reassignment bởi Leader/Quản lý.',
+        messageEn:
+          'Ordinary PASS is not allowed while the shift is live. Emergency replacements during live must use Emergency Backup Reassignment by Leader/Manager.',
+      }
+    } else {
+      return {
+        allowed: false,
+        code: 'EXCHANGE_DURING_LIVE_NOT_ALLOWED',
+        isEmergencyBackupEligible: false,
+        messageVi: 'Không cho phép đổi ca (Exchange) khi ca đang diễn ra trực tiếp.',
+        messageEn: 'Shift exchange is not allowed while the shift is live.',
+      }
     }
   }
 
-  const leadMinutes = Math.floor((startAtMs - requestTimeMs) / 60_000)
-  const isCampaign = isCampaignShift(shift)
+  // For Exchange, PASS lead-time restrictions (120m / 1440m) do not apply
+  if (mode === 'exchange') {
+    return { allowed: true }
+  }
 
-  // 3. Campaign PASS: minimum 24 hours (1440 minutes)
+  // 3. PASS mode lead time validations
+  const leadMinutes = Math.floor((startAtMs - requestTimeMs) / 60_000)
+  const isCampaign = isCampaignShift(shift, campaigns)
+
+  // Campaign PASS: minimum 24 hours (1440 minutes)
   if (isCampaign) {
     if (leadMinutes < CAMPAIGN_PASS_MIN_LEAD_MINUTES) {
       return {
@@ -119,7 +155,7 @@ export function validateSwapTiming(
       }
     }
   } else {
-    // 4. Daily PASS: minimum 2 hours (120 minutes)
+    // Daily PASS: minimum 2 hours (120 minutes)
     if (leadMinutes < DAILY_PASS_MIN_LEAD_MINUTES) {
       return {
         allowed: false,
@@ -129,6 +165,115 @@ export function validateSwapTiming(
         actualLeadMinutes: leadMinutes,
         messageVi: `Yêu cầu PASS ca thường (Daily) phải gửi trước giờ live tối thiểu 2 giờ (120 phút). Hiện tại còn ${leadMinutes} phút. Vui lòng liên hệ Leader/Quản lý nếu phát sinh đột xuất.`,
         messageEn: `Daily PASS must be requested at least 2 hours (120 minutes) prior to live start (currently ${leadMinutes} minutes remaining).`,
+      }
+    }
+  }
+
+  return { allowed: true }
+}
+
+/**
+ * Validates approval timing for PASS / Swap requests per Issue #93.
+ *
+ * Rules:
+ * - Campaign PASS (replacement): MUST be approved at least 24 hours (1440 minutes) before live start.
+ * - Ordinary PASS: Cannot be approved during live.
+ * - Exchange: Cannot be approved if either shift is already live or ended.
+ */
+export function validateSwapApprovalTiming(params: {
+  sourceShift: Shift
+  mode: 'replacement' | 'exchange'
+  targetShift?: Shift | null
+  approvalTime?: Date
+  campaigns?: Array<{ id: string; status?: string }>
+}): SwapTimingValidationResult {
+  const { sourceShift, mode, targetShift, approvalTime = new Date(), campaigns } = params
+
+  if (sourceShift.status !== 'scheduled') {
+    return {
+      allowed: false,
+      code: 'SHIFT_NOT_SCHEDULED',
+      messageVi: 'Ca nguồn không ở trạng thái đã lên lịch (scheduled).',
+      messageEn: 'Source shift is not in scheduled status.',
+    }
+  }
+
+  const srcTiming = resolveShiftDateTime(
+    sourceShift.date,
+    sourceShift.start_time,
+    sourceShift.end_time,
+    sourceShift.timezone,
+  )
+  if (!srcTiming || !srcTiming.valid) {
+    return {
+      allowed: false,
+      code: 'DAILY_PASS_DEADLINE_EXCEEDED',
+      messageVi: 'Không thể xác định thời gian bắt đầu ca làm việc nguồn.',
+      messageEn: 'Could not determine source shift start time.',
+    }
+  }
+
+  const approvalTimeMs = approvalTime.getTime()
+  const srcStartMs = srcTiming.startAt.getTime()
+  const srcEndMs = srcTiming.endAt.getTime()
+
+  if (approvalTimeMs >= srcEndMs) {
+    return {
+      allowed: false,
+      code: 'SHIFT_ALREADY_ENDED',
+      messageVi: 'Ca làm việc nguồn đã kết thúc, không thể phê duyệt.',
+      messageEn: 'Source shift has already ended. Cannot approve.',
+    }
+  }
+
+  if (approvalTimeMs >= srcStartMs) {
+    return {
+      allowed: false,
+      code: 'PASS_DURING_LIVE_NOT_ALLOWED',
+      isEmergencyBackupEligible: true,
+      messageVi: 'Không cho phép phê duyệt PASS khi ca đang diễn ra trực tiếp.',
+      messageEn: 'Cannot approve PASS while shift is live.',
+    }
+  }
+
+  if (mode === 'replacement') {
+    const isCampaign = isCampaignShift(sourceShift, campaigns)
+    if (isCampaign) {
+      const leadMinutes = Math.floor((srcStartMs - approvalTimeMs) / 60_000)
+      if (leadMinutes < CAMPAIGN_PASS_MIN_LEAD_MINUTES) {
+        return {
+          allowed: false,
+          code: 'CAMPAIGN_PASS_APPROVAL_DEADLINE_EXCEEDED',
+          requiredLeadMinutes: CAMPAIGN_PASS_MIN_LEAD_MINUTES,
+          actualLeadMinutes: leadMinutes,
+          messageVi: `Yêu cầu PASS ca Campaign phải được phê duyệt trước giờ live tối thiểu 24 giờ (hiện tại còn ${leadMinutes} phút trước ca).`,
+          messageEn: `Campaign PASS must be approved at least 24 hours prior to live start (${leadMinutes} minutes remaining).`,
+        }
+      }
+    }
+  } else if (mode === 'exchange' && targetShift) {
+    const tgtTiming = resolveShiftDateTime(
+      targetShift.date,
+      targetShift.start_time,
+      targetShift.end_time,
+      targetShift.timezone,
+    )
+    if (tgtTiming?.valid) {
+      if (approvalTimeMs >= tgtTiming.endAt.getTime()) {
+        return {
+          allowed: false,
+          code: 'SHIFT_ALREADY_ENDED',
+          messageVi: 'Ca làm việc mục tiêu đã kết thúc, không thể phê duyệt đổi ca.',
+          messageEn: 'Target shift has already ended.',
+        }
+      }
+      if (approvalTimeMs >= tgtTiming.startAt.getTime()) {
+        return {
+          allowed: false,
+          code: 'EXCHANGE_DURING_LIVE_NOT_ALLOWED',
+          messageVi: 'Không cho phép phê duyệt đổi ca khi ca mục tiêu đang diễn ra trực tiếp.',
+          messageEn: 'Cannot approve exchange while target shift is live.',
+        }
       }
     }
   }
@@ -200,46 +345,39 @@ export function validateSubstituteStaff(params: {
     sourceShift.end_time,
     sourceShift.timezone,
   )
-  if (!sourceTiming || !sourceTiming.valid) {
-    return {
-      valid: false,
-      code: 'SUBSTITUTE_SCHEDULE_CONFLICT',
-      messageVi: 'Không thể xác thực lịch ca nguồn.',
-      messageEn: 'Could not resolve source shift time range.',
-    }
-  }
 
-  const substituteActiveRegs = existingRegistrations.filter(
-    r =>
-      r.user_id === substitute.id &&
-      r.shift_id !== sourceShift.id &&
-      ['approved', 'manually_assigned', 'pending'].includes(r.status),
-  )
-
-  const hasConflict = substituteActiveRegs.some(reg => {
-    const assignedShift = allShifts.find(s => s.id === reg.shift_id)
-    if (!assignedShift || assignedShift.status === 'cancelled' || assignedShift.deleted_at) return false
-    const assignedTiming = resolveShiftDateTime(
-      assignedShift.date,
-      assignedShift.start_time,
-      assignedShift.end_time,
-      assignedShift.timezone,
+  if (sourceTiming && sourceTiming.valid) {
+    const substituteAssignedRegistrations = existingRegistrations.filter(
+      r =>
+        r.user_id === substitute.id &&
+        r.shift_id !== sourceShift.id &&
+        ['approved', 'manually_assigned'].includes(r.status),
     )
-    if (!assignedTiming || !assignedTiming.valid) return false
 
-    // Overlap: start1 < end2 and end1 > start2
-    return (
-      sourceTiming.startAt.getTime() < assignedTiming.endAt.getTime() &&
-      sourceTiming.endAt.getTime() > assignedTiming.startAt.getTime()
-    )
-  })
+    const substituteAssignedShiftIds = new Set(substituteAssignedRegistrations.map(r => r.shift_id))
+    const substituteShifts = allShifts.filter(s => substituteAssignedShiftIds.has(s.id))
 
-  if (hasConflict) {
-    return {
-      valid: false,
-      code: 'SUBSTITUTE_SCHEDULE_CONFLICT',
-      messageVi: 'Nhân sự thay thế bị trùng lịch với một ca làm việc khác.',
-      messageEn: 'Substitute staff has a schedule conflict with another shift.',
+    for (const otherShift of substituteShifts) {
+      const otherTiming = resolveShiftDateTime(
+        otherShift.date,
+        otherShift.start_time,
+        otherShift.end_time,
+        otherShift.timezone,
+      )
+      if (otherTiming && otherTiming.valid) {
+        // Overlap: startA < endB && endA > startB
+        if (
+          sourceTiming.startAt < otherTiming.endAt &&
+          sourceTiming.endAt > otherTiming.startAt
+        ) {
+          return {
+            valid: false,
+            code: 'SUBSTITUTE_SCHEDULE_CONFLICT',
+            messageVi: `Nhân sự thay thế đã có lịch ca khác trùng giờ: ${otherShift.title || otherShift.date} (${otherShift.start_time} - ${otherShift.end_time}).`,
+            messageEn: `Substitute staff has an overlapping shift: ${otherShift.title || otherShift.date}.`,
+          }
+        }
+      }
     }
   }
 

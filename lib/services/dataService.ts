@@ -43,7 +43,7 @@ import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
 import { addDays, format, parseISO } from 'date-fns'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, hasShiftTimeConflict, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
-import { validateSwapTiming, validateSubstituteStaff } from '@/lib/utils/swapValidation'
+import { validateSwapTiming, validateSubstituteStaff, validateSwapApprovalTiming } from '@/lib/utils/swapValidation'
 import {
   normalizeStaffingDisplayNames,
   toCanonicalScheduleImportPreviewRow,
@@ -4117,7 +4117,7 @@ export const swapRequestService = {
     const sourceShift = shifts.find(shift => shift.id === source.shift_id && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
     if (!sourceShift) throw new Error('SWAP_SOURCE_NOT_ELIGIBLE')
     const requestTime = (input as { request_time?: Date | string }).request_time ? new Date((input as { request_time?: Date | string }).request_time!) : new Date()
-    const timing = validateSwapTiming(sourceShift, requestTime)
+    const timing = validateSwapTiming(sourceShift, requestTime, input.mode, campaigns)
     if (!timing.allowed) throw new Error(timing.messageVi || timing.code || 'SWAP_TIMING_INVALID')
     const conflictsFor = (userId: string, target: Shift, excludedRegistrationId?: string) => {
       const targetTime = resolveShiftDateTime(target.date, target.start_time, target.end_time, target.timezone)
@@ -4201,7 +4201,7 @@ export const swapRequestService = {
     if (!sourceShift) throw new Error('Source shift not found.')
     if (sourceShift.status !== 'scheduled') throw new Error('Source shift not scheduled.')
     const requestTime = (data as { request_time?: Date | string }).request_time ? new Date((data as { request_time?: Date | string }).request_time!) : new Date()
-    const sourceTiming = validateSwapTiming(sourceShift, requestTime)
+    const sourceTiming = validateSwapTiming(sourceShift, requestTime, effectiveMode, campaigns)
     if (!sourceTiming.allowed) throw new Error(sourceTiming.messageVi || sourceTiming.code || 'SWAP_TIMING_INVALID')
     // Check inactive
     const requester = users.find(u => u.id === requesterId)
@@ -4257,7 +4257,7 @@ export const swapRequestService = {
       const targetShift = shifts.find(s => s.id === targetShiftId)
       if (!targetShift) throw new Error('Target shift not found.')
       if (targetShift.status !== 'scheduled') throw new Error('Target shift not scheduled.')
-      const targetTiming = validateSwapTiming(targetShift, requestTime)
+      const targetTiming = validateSwapTiming(targetShift, requestTime, 'exchange', campaigns)
       if (!targetTiming.allowed) throw new Error(targetTiming.messageVi || targetTiming.code || 'TARGET_SWAP_TIMING_INVALID')
       if (targetShift.id === sourceShift.id) throw new Error('Source and target must be different for exchange.')
       const cpReg = shiftRegistrations.find(r => r.id === counterpartRegId)
@@ -4338,7 +4338,7 @@ export const swapRequestService = {
     audit('swaps', 'update', 'swap_request', id, `Swap · ${req.operational_role} · ${action}`, { actorId, before, after: { ...swapRequests[idx] } })
     return Promise.resolve(swapRequests[idx])
   },
-  async approve(id: string, approverId: string, expectedVersion?: number): Promise<SwapRequest | null> {
+  async approve(id: string, approverId: string, expectedVersion?: number, approvalTimeInput?: Date): Promise<SwapRequest | null> {
     if (getAuthMode() === 'supabase') return getSupabaseSwapRequestRepository().approve(id, undefined, expectedVersion)
     ensureLeaderOrAdmin(approverId)
     const idx = swapRequests.findIndex(sr => sr.id === id)
@@ -4359,6 +4359,17 @@ export const swapRequestService = {
       const tgtShift = req.target_shift_id ? shifts.find(s=> s.id===req.target_shift_id) : srcShift
       if (!srcShift || !tgtShift) throw new Error('Shift stale.')
       if (srcShift.status !== 'scheduled' || tgtShift.status !== 'scheduled') throw new Error('Shift not scheduled.')
+      const approvalTime = approvalTimeInput || ((req as { approval_time?: Date | string }).approval_time ? new Date((req as { approval_time?: Date | string }).approval_time!) : new Date())
+      const approvalTiming = validateSwapApprovalTiming({
+        sourceShift: srcShift,
+        mode: req.mode,
+        targetShift: req.target_shift_id ? tgtShift : null,
+        approvalTime,
+        campaigns,
+      })
+      if (!approvalTiming.allowed) {
+        throw new Error(approvalTiming.messageVi || approvalTiming.code || 'SWAP_APPROVAL_TIMING_INVALID')
+      }
       const requester = users.find(u=> u.id===req.requester_id)
       if (!requester || requester.status!=='active' || requester.archived_at) throw new Error('Requester inactive.')
       // Revalidate role eligibility

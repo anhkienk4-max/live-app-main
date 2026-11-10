@@ -18,6 +18,7 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('scheme.create'), campaign_id: id, sku_id: id.nullable().optional(), scheme_name: text(200), terms: text(5000), eligibility: z.string().trim().max(2000).nullable().optional(), exclusions: z.string().trim().max(2000).nullable().optional(), valid_from: z.string().datetime(), valid_to: z.string().datetime(), source_resource_id: id.nullable().optional(), source_url: z.string().url().max(1000).nullable().optional() }).strict(),
   z.object({ action: z.literal('knowledge.create'), product_id: id, sku_id: id.nullable().optional(), knowledge_type: z.enum(['description','ingredient','feature','claim','restriction','disclaimer','usage_note','faq','training']), content: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown()), z.string().max(8000)]), source_resource_id: id.nullable().optional(), source_url: z.string().url().max(1000).nullable().optional(), source_reference: z.string().trim().max(500).nullable().optional(), effective_from: z.string().date().nullable().optional(), effective_to: z.string().date().nullable().optional() }).strict(),
   z.object({ action: z.literal('knowledge.review'), knowledge_version_id: id, decision: z.enum(['approved','rejected','changes_requested']), reason: z.string().trim().max(1000).nullable().optional() }).strict(),
+  z.object({ action: z.literal('knowledge.confirm_resolution'), product_id: id, sku_id: id.nullable().optional(), knowledge_type: z.enum(['description','ingredient','feature','claim','restriction','disclaimer','usage_note','faq','training']), confirmed_content: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown()), z.string().max(8000)]), chosen_source: z.enum(['notion', 'google_drive', 'app_ops']), source_reference: z.string().trim().max(500).nullable().optional(), decision_reason: z.string().trim().max(1000).nullable().optional(), approve: z.boolean().default(false) }).strict(),
   z.object({ action: z.literal('resource.attach'), resource_id: id, target_type: z.enum(['product','sku','campaign']), target_id: id, relation_type: z.enum(['image','kv','guideline','script','training','faq','scheme','marketing_data','document','other']) }).strict(),
   z.object({ action: z.literal('scope.set'), user_id: id, brand_id: id, active: z.boolean(), expires_at: z.string().datetime().nullable().optional() }).strict(),
 ])
@@ -177,6 +178,34 @@ export function createBrandCatalogHandler(resolveUser?: ServerUserResolver) {
           const { data, error } = await supabase.from('brand01_knowledge_reviews').insert({ knowledge_version_id: input.knowledge_version_id, reviewer_id: actor.businessUserId, decision: input.decision, reason: input.reason ?? null }).select().single()
           if (error) throw error
           return Response.json({ ok: true, review: data }, { status: 201, headers: { 'Cache-Control': 'no-store' } })
+        }
+        if (input.action === 'knowledge.confirm_resolution') {
+          const nowIso = new Date().toISOString()
+          const { data: latest } = await supabase.from('brand01_product_knowledge_versions')
+            .select('version')
+            .eq('product_id', input.product_id)
+            .order('version', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          const nextVersion = (latest?.version ?? 0) + 1
+
+          const insertPayload = {
+            product_id: input.product_id,
+            sku_id: input.sku_id ?? null,
+            knowledge_type: input.knowledge_type,
+            content: input.confirmed_content,
+            version: nextVersion,
+            status: input.approve ? 'approved' : 'draft',
+            source_reference: input.source_reference ?? `Confirmed from ${input.chosen_source.toUpperCase()}: ${input.decision_reason ?? ''}`,
+            owner_id: actor.businessUserId,
+            created_by: actor.businessUserId,
+            reviewed_by: actor.businessUserId,
+            reviewed_at: nowIso,
+            effective_from: input.approve ? nowIso.split('T')[0] : null,
+          }
+          const { data, error } = await supabase.from('brand01_product_knowledge_versions').insert(insertPayload).select().single()
+          if (error) throw error
+          return Response.json({ ok: true, knowledge: data, confirmed_by: actor.businessUserId, confirmed_at: nowIso }, { status: 201, headers: { 'Cache-Control': 'no-store' } })
         }
         if (input.action === 'resource.attach') {
           const row = { resource_id: input.resource_id, relation_type: input.relation_type, owner_id: actor.businessUserId, created_by: actor.businessUserId, product_id: input.target_type === 'product' ? input.target_id : null, sku_id: input.target_type === 'sku' ? input.target_id : null, campaign_id: input.target_type === 'campaign' ? input.target_id : null }
