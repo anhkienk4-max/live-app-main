@@ -129,25 +129,37 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
           p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters,
         })
         if (result.error) throw result.error
-        const { rows, historicalShiftContexts, ...metadata } = result.data
-        if (!Array.isArray(rows) || !historicalShiftContexts ||
-          typeof historicalShiftContexts !== 'object' || Array.isArray(historicalShiftContexts)) {
-          throw new Error('REPORT_HISTORY_RESPONSE_INVALID')
-        }
+        const data = (result.data && typeof result.data === 'object' && !Array.isArray(result.data))
+          ? result.data as Record<string, unknown>
+          : {}
+        const rows = Array.isArray(data.rows) ? data.rows : []
+        const historicalShiftContexts = (data.historicalShiftContexts && typeof data.historicalShiftContexts === 'object' && !Array.isArray(data.historicalShiftContexts))
+          ? data.historicalShiftContexts as Record<string, unknown>
+          : {}
+        const total = typeof data.total === 'number' ? data.total : rows.length
+        const page = typeof data.page === 'number' ? data.page : query.page
+        const pageSize = typeof data.pageSize === 'number' ? data.pageSize : query.pageSize
+
         const reportIds = new Set(rows.map((row:{ id:string })=>row.id))
         if (Object.keys(historicalShiftContexts).some(id=>!reportIds.has(id))) {
           throw new Error('REPORT_HISTORY_RESPONSE_INVALID')
         }
-        return reply({ ...metadata, items: rows.map(reportFromRow), historicalShiftContexts })
+        return reply({ total, page, pageSize, items: rows.map(reportFromRow), historicalShiftContexts })
       }
       if (entity === 'analytics_reports') {
         const result = await client.rpc('get_report_list_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters, p_summary:true })
         if (result.error) throw result.error
-        const { rows, ...metadata } = result.data
+        const data = (result.data && typeof result.data === 'object' && !Array.isArray(result.data))
+          ? result.data as Record<string, unknown>
+          : {}
+        const rows = Array.isArray(data.rows) ? data.rows : []
+        const total = typeof data.total === 'number' ? data.total : rows.length
+        const page = typeof data.page === 'number' ? data.page : query.page
+        const pageSize = typeof data.pageSize === 'number' ? data.pageSize : query.pageSize
         const ids = [...new Set((rows as Array<{ shift_id: string }>).map(row => row.shift_id))]
         const shifts = ids.length ? await client.from('shifts').select('*').in('id', ids) : { data: [], error: null }
         if (shifts.error) throw shifts.error
-        return reply({ ...metadata, items: rows.map(reportFromRow), shifts: (shifts.data ?? []).map(row => shiftFromRow(row, 'database')) })
+        return reply({ total, page, pageSize, items: rows.map(reportFromRow), shifts: (shifts.data ?? []).map(row => shiftFromRow(row, 'database')) })
       }
       if (entity === 'report_queue') {
         const result = await client.rpc('get_report_obligation_page', { p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters })

@@ -241,7 +241,10 @@ export function DashboardOverview() {
         // Fetch independent sources, capturing partial errors cleanly
         const [rangeShifts,reportsResult,refs,future,latestReportsResult,swapPageResult,scopeSwapsResult]=await Promise.all([
           shiftService.getAllFiltered({from,to}),
-          reportService.getAllFiltered({from,to}).catch(err => {
+          (resolveSystemPermission(currentUser) === 'member'
+            ? Promise.resolve([] as Report[])
+            : reportService.getAllFiltered({ from, to })
+          ).catch(err => {
             console.warn('Dashboard reportService error', err)
             reportsError = true
             return null

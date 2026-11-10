@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { AuthLayout } from '@/components/layouts/AuthLayout'
 import { Separator } from '@/components/ui/separator'
 import { Eye, EyeOff, Globe, Loader2 } from 'lucide-react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { mockAuthService } from '@/lib/services/mockAuthService'
 import { getAuthMode, getSupabasePublicConfig, safeLocalRedirect } from '@/lib/auth/authMode'
@@ -37,8 +37,7 @@ function LoginPageContent() {
   const [notice, setNotice] = useState<string | null>(null)
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const router = useRouter()
-  const searchParams = useSearchParams()
+    const searchParams = useSearchParams()
   const { language, setLanguage, t } = useTranslation()
   const mockMode = getAuthMode() === 'mock'
   const [googleEnabled, setGoogleEnabled] = useState(false)
@@ -68,17 +67,19 @@ function LoginPageContent() {
   useEffect(() => {
     if (
       !mockMode
+      && !hasSubmitted
       && getSupabasePublicConfig()
       && shouldClearLocalSessionForLoginReason(recoveryReason)
     ) {
       try { void clearLocalSession(createClient()) } catch { /* Local session cleanup is best effort. */ }
     }
-  }, [mockMode, recoveryReason])
+  }, [mockMode, recoveryReason, hasSubmitted])
 
   const redirectAfterLogin = () => {
     const next = safeLocalRedirect(new URLSearchParams(window.location.search).get('next'))
-    router.replace(next)
-    router.refresh()
+    // Full document navigation guarantees all Supabase session cookies committed to
+    // document.cookie are synchronously included in the request headers and bypasses RSC prefetch race.
+    window.location.assign(next)
   }
 
   const authStatusMessage = (status?: string) => {

@@ -14,7 +14,6 @@ import type {
 const registrationColumns = [
   'id',
   'shift_id',
-  'staffing_segment_id',
   'user_id',
   'operational_role',
   'status',
