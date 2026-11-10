@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { useTranslation } from '@/lib/i18n'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { validateSwapTiming } from '@/lib/utils/swapValidation'
 
 const EMPTY_SHIFT_ROWS: Shift[] = []
 
@@ -46,6 +47,7 @@ export function SwapRequestDialog({
   const { t } = useTranslation()
   const { toast } = useToast()
   const isStaffed = isStaffedRegistration(sourceRegistration)
+  const timingValidation = React.useMemo(() => validateSwapTiming(sourceShift), [sourceShift])
   const [mode, setMode] = React.useState<CreatableSwapMode>('replacement')
   const [targetShiftId, setTargetShiftId] = React.useState('')
   const [counterpartId, setCounterpartId] = React.useState('')
@@ -426,6 +428,7 @@ export function SwapRequestDialog({
             disabled={
               busy ||
               !isStaffed ||
+              !timingValidation.allowed ||
               reason.trim().length < 10 ||
               (mode === 'replacement' && (
                 directoryLoading ||

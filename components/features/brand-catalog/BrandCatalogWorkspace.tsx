@@ -29,6 +29,13 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PageLoadError } from '@/components/ui/page-load-error'
+import { BrandKnowledgeProvenanceCard } from '@/components/features/brand-catalog/BrandKnowledgeProvenanceCard'
+import type {
+  BrandKnowledgeConflict,
+  BrandKnowledgeItem,
+  BrandKnowledgeSourceMetadata,
+  ConfirmationStatus,
+} from '@/lib/utils/brandKnowledgeProvenance'
 
 type BrandRow = {
   id: string
@@ -108,6 +115,10 @@ type KnowledgeRow = {
   status: string
   version: number
   created_by: string
+  source_type?: 'notion' | 'google_drive' | 'app_ops'
+  source_metadata?: BrandKnowledgeSourceMetadata
+  confirmation_status?: ConfirmationStatus
+  conflict_details?: BrandKnowledgeConflict | null
 }
 
 type ResourceLinkRow = {
@@ -1426,15 +1437,39 @@ export function BrandCatalogWorkspace() {
                         </p>
                       </div>
 
-                      {/* Knowledge items */}
+                      {/* Knowledge items with Provenance & Confirmation Status */}
                       <div className="space-y-2 pt-2 border-t border-border/50">
-                        <span className="font-bold text-slate-800">Kiến thức sản phẩm đã duyệt:</span>
-                        {catalog?.knowledge.filter(k => k.product_id === selectedProduct.id).map(k => (
-                          <div key={k.id} className="rounded border bg-muted/20 p-2 text-xs">
-                            <span className="font-semibold text-slate-800">{k.knowledge_type} (v{k.version}):</span>{' '}
-                            <span className="text-muted-foreground">{typeof k.content === 'string' ? k.content : JSON.stringify(k.content)}</span>
-                          </div>
-                        ))}
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-800">Kiến thức sản phẩm &amp; Nguồn gốc (Provenance):</span>
+                          <span className="text-[10px] text-slate-500">Ưu tiên #1: Notion | Bổ trợ: Drive, APP OPS</span>
+                        </div>
+                        {catalog?.knowledge.filter(k => k.product_id === selectedProduct.id).map(k => {
+                          const provenanceItem: BrandKnowledgeItem = {
+                            id: k.id,
+                            product_id: k.product_id,
+                            knowledge_type: k.knowledge_type,
+                            content: k.content,
+                            version: k.version,
+                            status: (k.status as any) || 'approved',
+                            confirmation_status: k.confirmation_status || 'confirmed',
+                            source_metadata: k.source_metadata || {
+                              source: k.source_type || 'notion',
+                              source_id: 'kb-default',
+                              source_title: k.source_type === 'google_drive' ? 'Google Drive Knowledge' : k.source_type === 'app_ops' ? 'APP OPS Internal' : 'Notion Primary Doc',
+                              retrieved_at: new Date().toISOString(),
+                            },
+                            conflict_details: k.conflict_details || null,
+                            is_approved: k.status === 'approved',
+                            created_at: new Date().toISOString(),
+                          }
+                          return (
+                            <BrandKnowledgeProvenanceCard
+                              key={k.id}
+                              item={provenanceItem}
+                              canResolveConflict={currentUser?.role === 'admin'}
+                            />
+                          )
+                        })}
                       </div>
                     </div>
                   )}
