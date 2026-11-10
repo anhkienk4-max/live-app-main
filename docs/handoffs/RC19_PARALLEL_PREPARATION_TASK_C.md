@@ -90,7 +90,9 @@ Assigned operational personnel (Host, Support, Technical) must submit photograph
    - Check-in: Open from 30 minutes prior to `start_time` until `end_time`.
    - Check-out: Only available AFTER successful Check-in has been persisted; remains open until 2 hours after `end_time`.
 3. **Photo Evidence Mandatory:** Attendance record must be bound to a verified photo capture.
-4. **Camera Hardware Requirement:** Uses `navigator.mediaDevices.getUserMedia` with rear/front camera toggle; file upload fallback permitted only if camera hardware is unavailable, subject to Leader review flag.
+4. **Acceptable Photo Evidence Capture Methods (Camera & Gallery):**
+   - Hỗ trợ cả hai phương thức: chụp trực tiếp qua thiết bị camera (`camera`) và chọn ảnh từ thư viện thiết bị (`file_picker` / `gallery`).
+   - Cả ảnh chụp camera và ảnh từ gallery đều được công nhận là minh chứng chấm công hợp lệ để tính công; ảnh từ gallery với timestamp đúng quy tắc không bị coi là lỗi và không kích hoạt Payroll Hold.
 5. **Private Drive ACL:** Photo stored in secure private Drive root with restricted permissions.
 6. **No Admin Impersonation:** Admin/Leader cannot record self-attendance on behalf of staff; Manager actions are limited to "Leader Override / Manual Rectification" with mandatory audit logging.
 
@@ -170,7 +172,10 @@ Per Owner explicit instruction:
 3. **Strict Policy on Payroll Hold (Aligned with #76 & #164):**
    - **Do NOT invent arbitrary HOLD criteria, and do NOT over-restrict HOLD to only Admin disputes.**
    - Payroll Hold is applied **strictly under four mandatory conditions**:
-     1. **Thiếu ảnh chấm công (Missing Attendance Photos):** Missing mandatory photo check-in/check-out identity proof (#74).
+     1. **Thiếu ảnh chấm công (Missing Attendance Photos - #74):**
+        * Ca hoàn toàn thiếu ảnh chấm công Check-in hoặc Check-out (không có cả camera lẫn gallery).
+        * **Quy tắc công nhận phương thức ảnh:** Payroll Hold **chấp nhận cả ảnh chụp trực tiếp từ camera và ảnh tải từ thư viện (gallery/file_picker)**.
+        * Miễn là **timestamp được ghi nhận đúng quy tắc** trong khung giờ hợp lệ của ca (Check-in từ -30 phút trước ca đến hết ca; Check-out từ sau Check-in đến +2 giờ sau ca kết thúc), ảnh gallery hoàn toàn hợp lệ và **KHÔNG kích hoạt Payroll Hold**.
      2. **Thiếu báo cáo cuối ca (Missing Final Shift Report):** Shift lacks the mandatory post-stream final report (#164).
      3. **Thiếu bằng chứng Visibility / Key Visual (KV) khi có quy định:** Shift for a brand/campaign requiring Key Visual lacks verified KV photo evidence in Group 2 (#164).
      4. **Cờ tranh chấp Admin (Admin Dispute Flag):** Explicit `admin_payroll_hold = true` flagged manually by Admin during an active operational or hours dispute (#76).
@@ -186,6 +191,7 @@ Per Owner explicit instruction:
 - `TEST-76-03`: Admin direct confirmation on a pending attendance record bypasses Leader step and enables payroll inclusion immediately.
 - `TEST-76-04`: Shifts with missing attendance photos, missing final report, missing required KV evidence, or explicit `admin_payroll_hold = true` generate a payslip line with status `HELD` and 0 net pay until cleared.
 - `TEST-76-05`: Shifts with missing 30-minute interval dashboard photos or normal shifts without incident photos do NOT enter Payroll Hold.
+- `TEST-76-06`: Ca chấm công bằng ảnh tải từ thư viện (gallery/file_picker) với timestamp đúng quy tắc trong khung giờ ca được công nhận hợp lệ để tính lương và KHÔNG bị kích hoạt Payroll Hold.
 
 ---
 

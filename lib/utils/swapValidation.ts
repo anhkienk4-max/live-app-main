@@ -46,6 +46,7 @@ export function isCampaignShift(
   shift: Shift,
   campaigns?: Array<{ id: string; status?: string; archived_at?: string | null; deleted_at?: string | null }>,
 ): boolean {
+  void campaigns
   if (!shift.campaign_id || typeof shift.campaign_id !== 'string') {
     return false
   }
@@ -53,11 +54,9 @@ export function isCampaignShift(
   if (normalized === '' || normalized.toLowerCase() === 'none') {
     return false
   }
-  if (campaigns && campaigns.length > 0) {
-    return campaigns.some(
-      c => c.id === normalized && c.status !== 'archived' && !c.archived_at && !c.deleted_at,
-    )
-  }
+  // Quy tắc Owner: Ca có campaign_id luôn là ca Campaign.
+  // Campaign archived hoặc kết thúc KHÔNG BAO GIỜ hạ cấp thành ca Daily!
+  // Vẫn áp dụng thời hạn 24 giờ cho ca Campaign.
   return true
 }
 

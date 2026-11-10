@@ -128,9 +128,28 @@ export function createBrandCatalogHandler(resolveUser?: ServerUserResolver) {
         if (!parsed.success) return Response.json({ ok: false, error: 'BRAND_INPUT_INVALID' }, { status: 400 })
         const input = parsed.data
         if (input.action === 'knowledge.confirm_resolution') {
-          // Check explicit Owner authority: differentiate Admin (data manager) vs Owner (content authority)
-          const isOwner = Boolean(actor.isOwner === true || actor.role === 'owner')
-          if (!isOwner) {
+          // Nguồn xác thực Owner đáng tin cậy từ server:
+          // 1. Thẩm quyền Owner toàn hệ thống từ phiên xác thực server (isOwner === true)
+          let isAuthorizedOwner = Boolean(actor.isOwner === true || actor.role === 'owner')
+
+          // 2. Kiểm tra nguồn server cơ sở dữ liệu: actor.businessUserId có phải owner_id của product
+          if (!isAuthorizedOwner && actor.businessUserId) {
+            try {
+              const supabase = await createClient()
+              const { data: product } = await supabase
+                .from('brand01_products')
+                .select('owner_id')
+                .eq('id', input.product_id)
+                .maybeSingle()
+              if (product && product.owner_id === actor.businessUserId) {
+                isAuthorizedOwner = true
+              }
+            } catch {
+              // Fail-closed nếu không thể kết nối server database; không tự ý cấp quyền Owner
+            }
+          }
+
+          if (!isAuthorizedOwner) {
             return Response.json(
               {
                 ok: false,
