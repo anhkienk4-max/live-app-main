@@ -27,7 +27,8 @@
       "fix/rc19-lane2-filter01a": false,
       "integration/rc19-lane2-swap-filter-convergence": false,
       "integration/rc19-c4-candidate": false,
-      "release/rc19-c5.4-candidate": false
+      "release/rc19-c5.4-candidate": false,
+      "release/rc19-unified-release-candidate": false
     }
   }
 }
