@@ -36,6 +36,39 @@ export function BrandKnowledgeProvenanceCard({
   const isApproved = item.status === 'approved' || item.is_approved === true
   const source = item.source_metadata.source
 
+  const handleResolveAction = async (decision: {
+    confirmed_content: unknown
+    chosen_source: BrandKnowledgeSource
+    reason?: string
+  }) => {
+    if (onResolve) {
+      onResolve(decision)
+      return
+    }
+    try {
+      const res = await fetch('/api/brand-catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'knowledge.confirm_resolution',
+          product_id: item.product_id,
+          sku_id: item.sku_id ?? null,
+          knowledge_type: item.knowledge_type,
+          confirmed_content: decision.confirmed_content,
+          chosen_source: decision.chosen_source,
+          decision_reason: decision.reason,
+          approve: true,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        console.warn('Confirmation persistence response:', data)
+      }
+    } catch (err) {
+      console.warn('Failed to call knowledge.confirm_resolution API:', err)
+    }
+  }
+
   return (
     <div
       data-testid="brand-knowledge-provenance-card"
@@ -135,7 +168,7 @@ export function BrandKnowledgeProvenanceCard({
           <p className="text-[11px] leading-relaxed text-amber-900">
             {item.conflict_details.reason} Hệ thống{' '}
             <strong>không tự ý chọn thông tin chính thức</strong> và không tự động ghi đè dữ liệu.
-            Yêu cầu Owner xác nhận phiên bản chính xác.
+            Yêu cầu Owner xác nhận phiên bản chính xác qua API có kiểm tra quyền.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
@@ -150,11 +183,11 @@ export function BrandKnowledgeProvenanceCard({
                   ? item.conflict_details.content_a
                   : JSON.stringify(item.conflict_details.content_a)}
               </div>
-              {canResolveConflict && onResolve && (
+              {canResolveConflict && (
                 <button
                   type="button"
                   onClick={() =>
-                    onResolve({
+                    handleResolveAction({
                       confirmed_content: item.conflict_details!.content_a,
                       chosen_source: item.conflict_details!.source_a.source,
                       reason: `Xác nhận giữ theo ${item.conflict_details!.source_a.source}`,
@@ -178,11 +211,11 @@ export function BrandKnowledgeProvenanceCard({
                   ? item.conflict_details.content_b
                   : JSON.stringify(item.conflict_details.content_b)}
               </div>
-              {canResolveConflict && onResolve && (
+              {canResolveConflict && (
                 <button
                   type="button"
                   onClick={() =>
-                    onResolve({
+                    handleResolveAction({
                       confirmed_content: item.conflict_details!.content_b,
                       chosen_source: item.conflict_details!.source_b.source,
                       reason: `Xác nhận theo ${item.conflict_details!.source_b.source}`,

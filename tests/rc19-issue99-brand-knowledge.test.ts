@@ -12,6 +12,7 @@ import {
   type BrandKnowledgeItem,
   type BrandKnowledgeSourceMetadata,
 } from '../lib/utils/brandKnowledgeProvenance.ts'
+import { createBrandCatalogHandler } from '../lib/server/brandCatalogHandler.ts'
 
 test('Issue #99: Source Priority hierarchy conforms to specification', () => {
   // Notion is Priority 1 (Primary)
@@ -25,6 +26,9 @@ test('Issue #99: Source Priority hierarchy conforms to specification', () => {
   // APP OPS is Priority 2 (Supplementary)
   assert.equal(getSourcePriority('app_ops'), 2)
   assert.equal(BRAND_SOURCE_PRIORITY.app_ops, 2)
+
+  // Neither Google Drive nor APP OPS has artificial superiority over the other
+  assert.equal(getSourcePriority('google_drive'), getSourcePriority('app_ops'))
 
   // Notion strictly has higher priority than supplementary sources
   assert.ok(getSourcePriority('notion') < getSourcePriority('google_drive'))
@@ -235,6 +239,59 @@ test('Issue #99: Owner explicit resolution clears NEEDS_OWNER_CONFIRMATION and u
   assert.equal(resolved.is_approved, true)
   assert.equal(resolved.source_metadata.source, 'notion')
   assert.equal(resolved.content, 'Content from Notion Official (Verified by Brand Manager)')
+})
+
+test('Issue #99: Server API knowledge.confirm_resolution denies non-Admin callers', async () => {
+  const payload = {
+    action: 'knowledge.confirm_resolution',
+    product_id: 'prod-test-01',
+    knowledge_type: 'claim',
+    confirmed_content: 'Verified Content',
+    chosen_source: 'notion',
+    decision_reason: 'Owner confirmed',
+    approve: true,
+  }
+
+  // 1. Unauthenticated request -> 401
+  const unauthHandler = createBrandCatalogHandler(async () => null)
+  const unauthRes = await unauthHandler.POST(
+    new Request('http://local.test/api/brand-catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  )
+  assert.equal(unauthRes.status, 401)
+
+  // 2. Member caller -> 403 Forbidden
+  const memberHandler = createBrandCatalogHandler(async () => ({
+    id: 'auth-member',
+    businessUserId: 'member-01',
+    systemPermission: 'member',
+  }))
+  const memberRes = await memberHandler.POST(
+    new Request('http://local.test/api/brand-catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  )
+  assert.equal(memberRes.status, 403)
+
+  // 3. Admin caller without businessUserId -> 403 BUSINESS_USER_REQUIRED
+  const unmappedAdmin = createBrandCatalogHandler(async () => ({
+    id: 'auth-admin',
+    systemPermission: 'admin',
+  }))
+  const unmappedRes = await unmappedAdmin.POST(
+    new Request('http://local.test/api/brand-catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  )
+  assert.equal(unmappedRes.status, 403)
+  assert.deepEqual(await unmappedRes.json(), { ok: false, error: 'BUSINESS_USER_REQUIRED' })
 })
 
 test('Issue #99: Architectural safeguard prevents direct mutation of external Notion', () => {
