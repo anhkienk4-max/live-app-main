@@ -44,7 +44,7 @@ export interface SubstituteValidationResult {
  */
 export function isCampaignShift(
   shift: Shift,
-  campaigns?: Array<{ id: string; status?: string }>,
+  campaigns?: Array<{ id: string; status?: string; archived_at?: string | null; deleted_at?: string | null }>,
 ): boolean {
   if (!shift.campaign_id || typeof shift.campaign_id !== 'string') {
     return false
@@ -54,7 +54,9 @@ export function isCampaignShift(
     return false
   }
   if (campaigns && campaigns.length > 0) {
-    return campaigns.some(c => c.id === normalized && c.status !== 'archived')
+    return campaigns.some(
+      c => c.id === normalized && c.status !== 'archived' && !c.archived_at && !c.deleted_at,
+    )
   }
   return true
 }
@@ -74,7 +76,7 @@ export function validateSwapTiming(
   shift: Shift,
   requestTime: Date = new Date(),
   mode: 'replacement' | 'exchange' = 'replacement',
-  campaigns?: Array<{ id: string; status?: string }>,
+  campaigns?: Array<{ id: string; status?: string; archived_at?: string | null; deleted_at?: string | null }>,
 ): SwapTimingValidationResult {
   if (shift.status !== 'scheduled') {
     return {
@@ -185,7 +187,7 @@ export function validateSwapApprovalTiming(params: {
   mode: 'replacement' | 'exchange'
   targetShift?: Shift | null
   approvalTime?: Date
-  campaigns?: Array<{ id: string; status?: string }>
+  campaigns?: Array<{ id: string; status?: string; archived_at?: string | null; deleted_at?: string | null }>
 }): SwapTimingValidationResult {
   const { sourceShift, mode, targetShift, approvalTime = new Date(), campaigns } = params
 

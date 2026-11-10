@@ -1450,7 +1450,7 @@ export function BrandCatalogWorkspace() {
                             knowledge_type: k.knowledge_type,
                             content: k.content,
                             version: k.version,
-                            status: (k.status as any) || 'approved',
+                            status: (k.status as 'draft' | 'pending_review' | 'approved' | 'rejected' | 'retired') || 'approved',
                             confirmation_status: k.confirmation_status || 'confirmed',
                             source_metadata: k.source_metadata || {
                               source: k.source_type || 'notion',
@@ -1466,7 +1466,8 @@ export function BrandCatalogWorkspace() {
                             <BrandKnowledgeProvenanceCard
                               key={k.id}
                               item={provenanceItem}
-                              canResolveConflict={currentUser?.role === 'admin'}
+                              canResolveConflict={Boolean((currentUser as { is_owner?: boolean; role?: string } | null)?.is_owner || (currentUser as { is_owner?: boolean; role?: string } | null)?.role === 'owner')}
+                              isOwner={Boolean((currentUser as { is_owner?: boolean; role?: string } | null)?.is_owner || (currentUser as { is_owner?: boolean; role?: string } | null)?.role === 'owner')}
                             />
                           )
                         })}

@@ -11,6 +11,8 @@ export interface AuthenticatedServerUser {
   email?: string
   systemPermission: SystemPermission
   businessUserId?: string
+  role?: string
+  isOwner?: boolean
 }
 
 export type ServerUserResolver = (
@@ -70,11 +72,15 @@ export async function resolveServerUser(
     ) return null
     if (diagnostics) diagnostics.businessUserMapped = true
 
+    const businessUserRecord = persistedBusinessUser as unknown as Record<string, unknown>
+    const appMetadata = user.app_metadata as Record<string, unknown> | undefined
     return {
       id: identity.auth_user_id,
       email: identity.email,
       systemPermission: identity.system_permission,
       businessUserId: identity.business_user_id,
+      role: typeof businessUserRecord.role === 'string' ? businessUserRecord.role : undefined,
+      isOwner: Boolean(businessUserRecord.role === 'owner' || appMetadata?.is_owner === true),
     }
   } catch {
     return null
