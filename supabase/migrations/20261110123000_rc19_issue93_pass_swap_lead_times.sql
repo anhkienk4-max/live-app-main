@@ -132,16 +132,12 @@ begin
       raise exception using errcode = 'P0001', message = 'PASS_DURING_LIVE_NOT_ALLOWED';
     end if;
 
-    -- Enforce lead times for PASS using verified campaign relational data
+    -- Enforce lead times for PASS: Campaign vs Daily
+    -- QUY TẮC: Ca có campaign_id luôn là ca Campaign, kể cả khi campaign đã archived.
+    -- Campaign archived KHÔNG BAO GIỜ hạ cấp thành ca Daily!
     if source_shift.campaign_id is not null
        and btrim(source_shift.campaign_id) <> ''
-       and lower(btrim(source_shift.campaign_id)) <> 'none'
-       and exists (
-         select 1 from public.campaigns c
-         where c.id = source_shift.campaign_id
-           and c.archived_at is null
-           and c.deleted_at is null
-       ) then
+       and lower(btrim(source_shift.campaign_id)) <> 'none' then
       -- Campaign PASS requires minimum 24 hours lead time
       if statement_timestamp() > (source_shift.start_at - interval '24 hours') then
         raise exception using errcode = 'P0001', message = 'CAMPAIGN_PASS_DEADLINE_EXCEEDED';
@@ -355,15 +351,11 @@ begin
     end if;
 
     -- Campaign PASS MUST be approved at least 24 hours (1440 minutes) before live start
+    -- QUY TẮC: Ca có campaign_id luôn là ca Campaign, kể cả khi campaign đã archived.
+    -- Campaign archived KHÔNG BAO GIỜ hạ cấp thành ca Daily!
     if source_shift.campaign_id is not null
        and btrim(source_shift.campaign_id) <> ''
-       and lower(btrim(source_shift.campaign_id)) <> 'none'
-       and exists (
-         select 1 from public.campaigns c
-         where c.id = source_shift.campaign_id
-           and c.archived_at is null
-           and c.deleted_at is null
-       ) then
+       and lower(btrim(source_shift.campaign_id)) <> 'none' then
       if now_at > (source_shift.start_at - interval '24 hours') then
         raise exception using errcode = 'P0001', message = 'CAMPAIGN_PASS_APPROVAL_DEADLINE_EXCEEDED';
       end if;

@@ -51,7 +51,26 @@ test('Issue #93: isCampaignShift correctly distinguishes daily from campaign shi
   // Validation with active campaigns list
   const knownCampaigns = [{ id: 'camp-123', status: 'active' }, { id: 'camp-archived', status: 'archived' }]
   assert.equal(isCampaignShift(campaignShift, knownCampaigns), true)
-  assert.equal(isCampaignShift(createSampleShift({ campaign_id: 'camp-archived' }), knownCampaigns), false)
+  assert.equal(isCampaignShift(createSampleShift({ campaign_id: 'camp-archived' }), knownCampaigns), true, 'Shift with archived campaign must NOT become daily')
+})
+
+test('Issue #93: Shift with archived campaign enforces Campaign 24h deadline and NEVER degrades to Daily 2h', () => {
+  const shiftWithArchivedCampaign = createSampleShift({
+    campaign_id: 'camp-archived',
+    date: '2026-11-20',
+    start_time: '14:00',
+    end_time: '18:00',
+  })
+  const knownCampaigns = [{ id: 'camp-archived', status: 'archived', archived_at: '2026-11-01T00:00:00Z' }]
+
+  // 180 minutes (3 hours) before live:
+  // For Daily: 180m >= 120m -> would be allowed.
+  // For Campaign: 180m < 1440m -> MUST BE REJECTED with CAMPAIGN_PASS_DEADLINE_EXCEEDED!
+  const requestTime = new Date('2026-11-20T11:00:00+07:00')
+  const result = validateSwapTiming(shiftWithArchivedCampaign, requestTime, 'replacement', knownCampaigns)
+
+  assert.equal(result.allowed, false)
+  assert.equal(result.code, 'CAMPAIGN_PASS_DEADLINE_EXCEEDED')
 })
 
 test('Issue #93: Daily PASS >= 120 minutes before live is ALLOWED', () => {
