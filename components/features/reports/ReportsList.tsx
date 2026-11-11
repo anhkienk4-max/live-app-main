@@ -249,7 +249,7 @@ export function ReportsList() {
         const [reportPageResult, loadedCandidates, refs, loadedReportShifts] = await Promise.all([
           pagePromise,
           getReportObligationPage({ page: queuePage, pageSize: queuePageSize, filters: JSON.parse(encodedQueueFilters) }),
-          getOperationalReferences(currentUser),
+          pagePromise.then(() => getOperationalReferences(currentUser)),
           pageShifts,
         ])
         const candidateIds = loadedCandidates.items.map(entry => entry.shift.id)
