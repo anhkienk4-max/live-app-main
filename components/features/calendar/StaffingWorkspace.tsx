@@ -192,7 +192,7 @@ export function StaffingWorkspace() {
   const visible=filtered
   const allVisibleSelected = visible.length > 0 && visible.every(s => selectedShiftIds.has(s.id))
   const selected=filtered.find(shift=>shift.id===selectedId)??visible[0]
-  if(error&&identity===loadedIdentity&&identity===referenceIdentity) return <PageLoadError error={error} onRetry={()=>{setError(null);setLoading(true);setLoadedIdentity('');setReferenceIdentity('');setReferenceReload(value=>value+1);void load()}} />
+  if(error&&identity===loadedIdentity&&identity===referenceIdentity) return <div data-route-readiness="error"><PageLoadError error={error} onRetry={()=>{setError(null);setLoading(true);setLoadedIdentity('');setReferenceIdentity('');setReferenceReload(value=>value+1);void load()}} /></div>
   if(loading||identity!==loadedIdentity||identity!==referenceIdentity) return <p className="p-8 text-center" data-route-readiness="pending">{t('loading')}</p>
   return <div className="min-w-0 space-y-4" data-testid="staffing-production-workspace" data-route-readiness="ready">
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3">

@@ -72,10 +72,10 @@ async function browserOwner():Promise<string|undefined> {
   if(!user)throw new OperationsListError('AUTHENTICATION_REQUIRED',401)
   return user.id+':'+(user.system_permission??user.role)
 }
-export async function getCollectionPage<T>(entity: OperationsList, query: ListQuery, signal?: AbortSignal): Promise<ListPage<T>> {
+let activeBrowserFetches = 0; const browserFetchQueue: Array<() => void> = []; async function runWithBrowserConcurrency<T>(fn: () => Promise<T>): Promise<T> { if (typeof window === 'undefined' || getAuthMode() !== 'supabase') return fn(); if (activeBrowserFetches >= 2) await new Promise<void>(resolve => browserFetchQueue.push(resolve)); activeBrowserFetches++; try { return await fn(); } finally { activeBrowserFetches--; const next = browserFetchQueue.shift(); if (next) next(); } } export async function getCollectionPage<T>(entity: OperationsList, query: ListQuery, signal?: AbortSignal): Promise<ListPage<T>> {
   const params = new URLSearchParams({ entity, page: String(query.page), pageSize: String(query.pageSize), filters: JSON.stringify(query.filters ?? {}), pendingPage: String(query.pendingPage ?? 1) })
   const owner=await browserOwner()
-  const response = await fetch('/api/operations/collection?' + params, { credentials: 'same-origin', cache: 'no-store', signal })
+  const response = await runWithBrowserConcurrency(() => fetch('/api/operations/collection?' + params, { credentials: 'same-origin', cache: 'no-store', signal }))
   const body = await response.json()
   const ownerAfterResponse = await browserOwner()
   if (owner !== ownerAfterResponse) {
@@ -130,7 +130,7 @@ export async function getCompleteCollection<T extends { id: string }>(entity: Op
     total ??= result.total
     if (result.total !== total || result.page !== page || result.items.some(item => rows.has(item.id))) throw new OperationsListError('EXPORT_COLLECTION_CHANGED', 409)
     for (const item of result.items) rows.set(item.id, item)
-    if (page * 50 >= total) break; const totalPages = Math.ceil(total / 50); for (let s = 2; s <= totalPages; s += 4) { const batch = Array.from({ length: Math.min(4, totalPages - s + 1) }, (_, i) => s + i); const batchRes = await Promise.all(batch.map(p => getCollectionPage<T>(entity, { page: p, pageSize: 50, filters }, signal))); for (let i = 0; i < batchRes.length; i++) { const r = batchRes[i], p = batch[i]; if (r.ownerKey !== ownerKey) throw new OperationsListError('EXPORT_IDENTITY_CHANGED', 409); if (r.total !== total || r.page !== p || r.items.some(item => rows.has(item.id))) throw new OperationsListError('EXPORT_COLLECTION_CHANGED', 409); for (const item of r.items) rows.set(item.id, item); } } break
+    if (page * 50 >= total) break; const totalPages = Math.ceil(total / 50); for (let s = 2; s <= totalPages; s += 2) { const batch = Array.from({ length: Math.min(2, totalPages - s + 1) }, (_, i) => s + i); const batchRes = await Promise.all(batch.map(p => getCollectionPage<T>(entity, { page: p, pageSize: 50, filters }, signal))); for (let i = 0; i < batchRes.length; i++) { const r = batchRes[i], p = batch[i]; if (r.ownerKey !== ownerKey) throw new OperationsListError('EXPORT_IDENTITY_CHANGED', 409); if (r.total !== total || r.page !== p || r.items.some(item => rows.has(item.id))) throw new OperationsListError('EXPORT_COLLECTION_CHANGED', 409); for (const item of r.items) rows.set(item.id, item); } } break
   }
   if (rows.size !== total) throw new OperationsListError('EXPORT_COLLECTION_CHANGED', 409)
   return [...rows.values()]

@@ -240,7 +240,7 @@ export function DashboardOverview() {
 
         // Fetch independent sources, capturing partial errors cleanly
         const [rangeShifts,reportsResult,refs,future,latestReportsResult,swapPageResult,scopeSwapsResult]=await Promise.all([
-          shiftService.getAllFiltered({from,to}),
+          resolveSystemPermission(currentUser) === 'member' ? shiftService.getRegistrationPage('mine', { page: 1, pageSize: 50, filters: { from, to } }).then(p => p.items) : shiftService.getAllFiltered({from,to}),
           (resolveSystemPermission(currentUser) === 'member'
             ? Promise.resolve([] as Report[])
             : reportService.getAllFiltered({ from, to })
@@ -358,7 +358,7 @@ export function DashboardOverview() {
   if (loadError && !data) return <div data-route-readiness="error"><PageLoadError error={loadError} onRetry={()=>void loadData()} /></div>
 
   if ((loading && !data) || !data || !currentUser) {
-    return <div className="space-y-3" data-testid="dashboard-progressive-shell" data-route-readiness="pending">
+    if (!currentUser) return <div className="space-y-3" data-testid="dashboard-progressive-shell" data-route-readiness="pending"><DashboardRoleSkeleton role="admin" /></div>; return <div className="space-y-3" data-testid="dashboard-progressive-shell" data-route-readiness={early?.key===viewKey ? 'ready' : 'pending'}>
       {early?.key===viewKey && <section className="rounded-lg border bg-card p-4" data-testid="dashboard-visible-first">
         <h2 className="text-sm font-semibold">Ca livestream sắp tới</h2>
         <p className="mt-1 text-xs text-muted-foreground">Đang tải số liệu tổng hợp. Danh sách ca được xác nhận từ server.</p>

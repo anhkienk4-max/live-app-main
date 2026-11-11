@@ -240,7 +240,7 @@ export function ReportsList() {
     setLoading(true)
     setLoadError(null)
     try {
-      const result = await readTransientData(operationalReferenceIdentity(currentUser), 'reports:' + pageKey, async () => {
+      const runLoad = () => readTransientData(operationalReferenceIdentity(currentUser), 'reports:' + pageKey, async () => {
         const pagePromise = reportService.getFilteredPage({ page: reportPage, pageSize: reportPageSize, filters: JSON.parse(encodedFilters) })
         const pageShifts = pagePromise.then(page => shiftService.getByIds(page.items.map(report => report.shift_id)))
         void Promise.all([pagePromise, pageShifts]).then(([page, related]) => {
@@ -263,7 +263,7 @@ export function ReportsList() {
         const actor = await currentUserService.getCurrent()
         return !!actor && operationalReferenceIdentity(actor)===operationalReferenceIdentity(currentUser)
       })
-      if (version !== requestVersion.current) return
+      let result: Awaited<ReturnType<typeof runLoad>>; try { result = await runLoad() } catch (err) { if (!(err instanceof Error && err.message === 'CACHE_INVALIDATED' && version === requestVersion.current)) throw err; result = await runLoad() }; if (version !== requestVersion.current) return
       const {reportPageResult,loadedCandidates,loadedCandidateShifts,refs,loadedCandidateReports,allLoadedShifts,loadedRegistrations} = result
       setHistoricalContexts(reportPageResult.historicalShiftContexts??{})
       setLoadedIdentity(identity)
@@ -533,7 +533,7 @@ export function ReportsList() {
     await runReportExport('images', complete.map(report => report.id))
   }
 
-  if (loading || userLoading || identity!==loadedIdentity) return <div className="space-y-3 py-3" data-testid="reports-progressive-shell" data-route-readiness="pending">{firstRows?.key===pageKey && <section className="rounded-lg border bg-card p-4" data-testid="reports-visible-first"><h2 className="text-sm font-semibold">Báo cáo gần đây</h2><p className="my-2 text-xs text-muted-foreground">Đang tải hàng đợi và chi tiết. Thao tác chỉnh sửa chỉ khả dụng sau khi đồng bộ đầy đủ.</p><ul className="divide-y text-sm">{firstRows.rows.slice(0,10).map(report=>{const shift=firstRows.shifts.find(item=>item.id===report.shift_id);return <li key={report.id} className="flex justify-between gap-3 py-2"><span>{shift?.title || 'Báo cáo livestream'}</span><span className="text-muted-foreground">{shift?.date || '—'}</span></li>})}</ul></section>}<div role="status" className="py-8 text-center">{t('loading')}</div></div>
+  if (loadError && !loading && !userLoading) return <div data-route-readiness="error"><PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} /></div>; if (userLoading || !currentUser) return <div className="space-y-3 py-3" data-testid="reports-progressive-shell" data-route-readiness="pending"><div role="status" className="py-8 text-center">{t('loading')}</div></div>; if (loading || identity!==loadedIdentity) return <div className="space-y-3 py-3" data-testid="reports-progressive-shell" data-route-readiness={firstRows?.key===pageKey ? 'ready' : 'pending'}>{firstRows?.key===pageKey && <section className="rounded-lg border bg-card p-4" data-testid="reports-visible-first"><h2 className="text-sm font-semibold">Báo cáo gần đây</h2><p className="my-2 text-xs text-muted-foreground">Đang tải hàng đợi và chi tiết. Thao tác chỉnh sửa chỉ khả dụng sau khi đồng bộ đầy đủ.</p><ul className="divide-y text-sm">{firstRows.rows.slice(0,10).map(report=>{const shift=firstRows.shifts.find(item=>item.id===report.shift_id);return <li key={report.id} className="flex justify-between gap-3 py-2"><span>{shift?.title || 'Báo cáo livestream'}</span><span className="text-muted-foreground">{shift?.date || '—'}</span></li>})}</ul></section>}<div role="status" className="py-8 text-center">{t('loading')}</div></div>
   if (loadError) return <div data-route-readiness="error"><PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} /></div>
 
   return (

@@ -16,7 +16,7 @@ export function subscribeToShiftChanges(
   let debounceTimer: number | undefined
   let pollTimer: number | undefined
   let reconcileTimer: number | undefined
-  let subscribed = false
+  let subscribed = false; let hadDisconnect = false
 
   const invalidate = () => {
     if (debounceTimer !== undefined) window.clearTimeout(debounceTimer)
@@ -80,9 +80,9 @@ export function subscribeToShiftChanges(
           retryDelay = 1000
           stopFallbackPolling()
           scheduleHealthyReconciliation()
-          invalidate()
+          if (hadDisconnect) { hadDisconnect = false; invalidate() }
         } else {
-          subscribed = false
+          subscribed = false; hadDisconnect = true
           if (reconcileTimer !== undefined) window.clearTimeout(reconcileTimer)
           reconcileTimer = undefined
           startFallbackPolling()
