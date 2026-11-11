@@ -523,7 +523,7 @@ export const userService = {
     }))) } as ListPage<User>
   },
   async getAllFiltered(filters: ListFilters = {}): Promise<User[]> {
-    if (getAuthMode() === 'supabase') return getCompleteCollection<User>('staff', filters)
+    if (getAuthMode() === 'supabase') return Object.keys(filters).length === 0 ? getSupabaseMasterDataRepository().businessUsers.getAll() : getCompleteCollection<User>('staff', filters)
     return filterMockList(users, filters)
   },
 
