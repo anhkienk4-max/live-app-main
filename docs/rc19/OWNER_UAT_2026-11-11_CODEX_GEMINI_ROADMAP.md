@@ -6,6 +6,14 @@
 >
 > **Policy:** Docs/issue creation is not permission to push application code, apply migrations, deploy, mutate Production, or mark any functionality FULL PASS.
 
+## GitHub tracking
+
+- **Owner master:** [#173](https://github.com/anhkienk4-max/live-app-main/issues/173)
+- **Codex lane C1–C12:** [#174](https://github.com/anhkienk4-max/live-app-main/issues/174)
+- **Gemini lane G1–G12:** [#175](https://github.com/anhkienk4-max/live-app-main/issues/175)
+- **Documentation-only Draft PR:** [#176](https://github.com/anhkienk4-max/live-app-main/pull/176)
+- **Prior release master:** [#80](https://github.com/anhkienk4-max/live-app-main/issues/80) (preserve historical requirements and evidence)
+
 ## Governance / shared delivery contract
 
 - **Codex lane C:** backend, data architecture, API, RPC, caching, runtime fault isolation, auth/RBAC, persistence, migration review, contract tests, CI, independent E2E evidence. Publish data/API contracts before Gemini integrates changed functionality.
