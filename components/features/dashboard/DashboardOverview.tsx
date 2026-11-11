@@ -20,7 +20,8 @@ import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { getSwapUiActions } from '@/lib/utils/swapUi'
 import { getMemberAssignedShifts, getLeaderPendingRegistrations, getLeaderPendingReports, getLeaderPendingSwaps } from '@/lib/ui/dashboard-role-data'
-import { Lock } from 'lucide-react'
+import { Lock, ChevronDown, ChevronUp } from 'lucide-react'
+import type { UpcomingShiftItem } from './presentation/admin/AdminDashboardView'
 import { deriveDataQualityAttention } from '@/lib/ui/operational-attention'
 import { selectLatestDashboardItems } from '@/lib/ui/dashboard-recent-items'
 import { getAllIssues } from '@/lib/utils/dataQuality'
@@ -238,8 +239,29 @@ export function DashboardOverview() {
         let scopeSwapsError = false
         const canViewLatestReports = hasPermission(currentUser, 'reports.review')
 
-        // Fetch independent sources, capturing partial errors cleanly
-        const [rangeShifts,reportsResult,refs,future,latestReportsResult,swapPageResult,scopeSwapsResult]=await Promise.all([
+        // 1. Critical Pass: Fast references and upcoming page (settles in < 300ms)
+        const [refs, future] = await Promise.all([
+          getOperationalReferences(currentUser),
+          upcoming,
+        ])
+
+        // Immediately populate critical data so Overview renders its header, shortcuts, and cards
+        if (request === sequence.current && !data) {
+          setData({
+            shifts: future.items,
+            reports: null,
+            latestReports: null,
+            ...refs,
+            latestBrands: hasPermission(currentUser, 'brands.manage') ? refs.brands.slice().sort((a, b) => b.updated_at.localeCompare(a.updated_at) || b.id.localeCompare(a.id)).slice(0, 5) : null,
+            registrations: null,
+            swapRequests: null,
+            widgetErrors: { reports: false, swaps: false, registrations: false },
+          })
+          setLoading(false)
+        }
+
+        // 2. Background Pass: 30-day reports, historical swaps, full range shifts, registrations
+        const [rangeShifts, reportsResult, latestReportsResult, swapPageResult, scopeSwapsResult] = await Promise.all([
           resolveSystemPermission(currentUser) === 'member' ? shiftService.getRegistrationPage('mine', { page: 1, pageSize: 50, filters: { from, to } }).then(p => p.items) : shiftService.getAllFiltered({from,to}),
           (resolveSystemPermission(currentUser) === 'member'
             ? Promise.resolve([] as Report[])
@@ -249,8 +271,6 @@ export function DashboardOverview() {
             reportsError = true
             return null
           }),
-          getOperationalReferences(currentUser),
-          upcoming,
           canViewLatestReports ? reportService.getFilteredPage({ page: 1, pageSize: 10, filters: {} }).catch(() => { latestReportsError = true; return null }) : Promise.resolve(null),
           swapRequestService.getPage({page:1,pageSize:10,filters:{statuses:['pending','accepted']}}).catch(err => {
             console.warn('Dashboard swapPage error', err)
@@ -433,7 +453,7 @@ export function DashboardWorkspace({
     ? filterNav(getNavigationForRole(role), currentUser, workforceCapabilities, effectivePermissions ?? null)
     : filterWorkforceNavigation(baseNav, workforceCapabilities)
   ).filter(item => item.href.split('?')[0] !== '/')
-  const dashboardFeatureLinks = <DashboardFeatureLinks items={visibleFeatures} t={(key, variables) => t(key as TranslationKey, variables)} />
+  const dashboardFeatureLinks = <DashboardFeatureLinks items={visibleFeatures} role={role} t={(key, variables) => t(key as TranslationKey, variables)} />
   const setPreset = (preset:Preset)=>setFilters(current=>current ? {...current,preset,...(preset==='custom'?{}:rangeFor(preset))} : current)
   const props: CommonProps = {
     ...data,
@@ -461,24 +481,64 @@ export function DashboardWorkspace({
   </div>
 }
 
-function DashboardFeatureLinks({ items, t }: { items: ReturnType<typeof filterNav>; t: (key: string, variables?: Record<string, string | number>) => string }) {
-  return <section aria-labelledby="dashboard-available-features" className="mx-4 mb-6 mt-6 space-y-3 sm:mx-8">
-    <h2 id="dashboard-available-features" className="text-base font-semibold text-slate-900">{t('dashboardAvailableFeatures')}</h2>
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-      {items.map(item => {
-        const Icon = item.icon
-        const label = t((item.labelKey ?? item.name.toLowerCase()) as TranslationKey)
-        const locked = item.accessStatus === 'restricted' || item.accessStatus === 'unavailable' || item.accessStatus === 'pending'
-        const accessLabel = item.accessStatus === 'read_only' ? t('readOnly') : locked ? t('accessRestricted') : label
-        return <Link key={`${item.href}:${item.name}`} href={item.href} title={`${label} (${accessLabel})`} data-access-status={item.accessStatus || 'available'} className="flex min-h-14 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-300 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
-          <Icon className="size-4 shrink-0 text-blue-600" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          {locked && <Lock className="size-3.5 shrink-0 text-slate-400" aria-label={accessLabel} />}
-          <span className="sr-only">{t('dashboardOpenFeature')}</span>
-        </Link>
-      })}
-    </div>
-  </section>
+const ROLE_FEATURE_PRIORITY: Record<string, string[]> = {
+  admin: ['/calendar', '/staffing', '/workforce', '/reports', '/payroll'],
+  leader: ['/calendar', '/staffing', '/swaps', '/reports', '/workforce'],
+  member: ['/calendar', '/registration', '/swaps', '/workforce', '/payroll'],
+}
+
+function DashboardFeatureLinks({ items, role, t }: { items: ReturnType<typeof filterNav>; role: string; t: (key: string, variables?: Record<string, string | number>) => string }) {
+  const [expanded, setExpanded] = React.useState(false)
+  const priorityList = ROLE_FEATURE_PRIORITY[role] || ROLE_FEATURE_PRIORITY.admin
+
+  const sortedItems = React.useMemo(() => {
+    return [...items].sort((a, b) => {
+      const aPath = a.href.split('?')[0]
+      const bPath = b.href.split('?')[0]
+      const aIndex = priorityList.indexOf(aPath)
+      const bIndex = priorityList.indexOf(bPath)
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+      if (aIndex !== -1) return -1
+      if (bIndex !== -1) return 1
+      return 0
+    })
+  }, [items, priorityList])
+
+  const displayedItems = expanded ? sortedItems : sortedItems.slice(0, 5)
+
+  return (
+    <section aria-labelledby="dashboard-available-features" className="mx-4 mb-6 mt-6 space-y-3 sm:mx-8">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="dashboard-available-features" className="text-base font-semibold text-slate-900">{t('dashboardAvailableFeatures')}</h2>
+        {sortedItems.length > 5 && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls="dashboard-feature-grid"
+            onClick={() => setExpanded(prev => !prev)}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm transition hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
+          >
+            <span>{expanded ? 'Thu gọn chức năng' : `Xem tất cả chức năng (${sortedItems.length})`}</span>
+            {expanded ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ChevronDown className="size-3.5" aria-hidden="true" />}
+          </button>
+        )}
+      </div>
+      <div id="dashboard-feature-grid" className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5 transition-all">
+        {displayedItems.map(item => {
+          const Icon = item.icon
+          const label = t((item.labelKey ?? item.name.toLowerCase()) as TranslationKey)
+          const locked = item.accessStatus === 'restricted' || item.accessStatus === 'unavailable' || item.accessStatus === 'pending'
+          const accessLabel = item.accessStatus === 'read_only' ? t('readOnly') : locked ? t('accessRestricted') : label
+          return <Link key={`${item.href}:${item.name}`} href={item.href} title={`${label} (${accessLabel})`} data-access-status={item.accessStatus || 'available'} className="flex min-h-14 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-300 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+            <Icon className="size-4 shrink-0 text-blue-600" aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">{label}</span>
+            {locked && <Lock className="size-3.5 shrink-0 text-slate-400" aria-label={accessLabel} />}
+            <span className="sr-only">{t('dashboardOpenFeature')}</span>
+          </Link>
+        })}
+      </div>
+    </section>
+  )
 }
 
 type CommonProps = {
@@ -568,11 +628,57 @@ function AdminDashboard(props: CommonProps) {
     ...(canManageStaff ? [{ key: 'staff', label: props.t('activeStaffAccounts'), value: users.filter(user => user.status === 'active').length, href: '/staff' }] : []),
   ]
 
-  const upcomingShifts = canViewShifts ? shifts
+  const upcomingShifts: UpcomingShiftItem[] = canViewShifts ? shifts
     .filter(shift => shift.date >= today && ['scheduled', 'preparing', 'live', 'paused'].includes(shift.status))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
     .slice(0, 5)
-    .map(shift => ({ id: shift.id, title: shift.title || `${nameFor(brands, shift.brand_id)} · ${nameFor(platforms, shift.platform_id)}`, description: `${shift.date} · ${shift.start_time}–${shift.end_time}`, href: '/calendar?calendar_view=list' })) : []
+    .map(shift => {
+      const brand = brands.find(b => b.id === shift.brand_id)
+      const brandName = brand?.name || nameFor(brands, shift.brand_id)
+      const platform = platforms.find(p => p.id === shift.platform_id)
+      const platformName = platform?.name || nameFor(platforms, shift.platform_id)
+      const host = users.find(u => u.id === shift.host_id)
+      const support = users.find(u => u.id === shift.support_id)
+      const isMissingHost = !shift.host_id
+      const isMissingSupport = !shift.support_id
+      const isMissingStaff = isMissingHost || isMissingSupport
+      const shortageLabel = isMissingHost && isMissingSupport
+        ? 'Thiếu Host & Trợ'
+        : isMissingHost
+        ? 'Thiếu Host'
+        : isMissingSupport
+        ? 'Thiếu Trợ'
+        : 'Đủ nhân sự'
+      const isToday = shift.date === today
+      const formattedDate = isToday ? 'Hôm nay' : shift.date
+
+      return {
+        id: shift.id,
+        shift,
+        brandId: shift.brand_id,
+        brandName,
+        brandLogoUrl: brand?.logo_url,
+        platformId: shift.platform_id,
+        platformName,
+        date: shift.date,
+        formattedDate,
+        timeWindow: `${shift.start_time} – ${shift.end_time}`,
+        isToday,
+        hostName: host ? (host.full_name || host.email) : undefined,
+        hostAvatarUrl: host?.avatar_url,
+        supportName: support ? (support.full_name || support.email) : undefined,
+        supportAvatarUrl: support?.avatar_url,
+        isMissingHost,
+        isMissingSupport,
+        isMissingStaff,
+        shortageLabel,
+        status: shift.status,
+        statusLabel: shiftStatusLabel(shift.status),
+        title: shift.title || `${brandName} · ${platformName}`,
+        description: `${shift.date} · ${shift.start_time}–${shift.end_time}`,
+        href: '/calendar?calendar_view=list',
+      }
+    }) : []
   const latestReportItems = canReviewReports ? (latestReports ?? []).slice(0, 5).map(report => {
     const shift = shifts.find(item => item.id === report.shift_id)
     const status = report.status ?? (report.metrics_confirmed ? 'confirmed' : 'draft')
@@ -690,6 +796,7 @@ function AdminDashboard(props: CommonProps) {
         t={props.t}
         dashboardFeatureLinks={props.dashboardFeatureLinks}
         applicationOverview={applicationOverview}
+        onSelectShift={props.setSelectedShift}
       />
     </div>
   )

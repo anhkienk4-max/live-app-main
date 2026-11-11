@@ -1,4 +1,4 @@
-﻿import React from 'react'
+import React from 'react'
 import { OpsMobileHome } from '../OpsMobileHome'
 import {
   Radio, Users, Calendar, FileText, ShieldAlert, AlertTriangle,
@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import type { DashboardRecentItem } from '@/lib/ui/dashboard-recent-items'
 import { BrandLogo } from '@/components/features/brands/BrandLogo'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import type { Shift } from '@/lib/types/database.types'
 
 // View-Model
 
@@ -51,7 +53,33 @@ export interface ApplicationOverviewMetric {
   href: string
 }
 
-export interface DashboardLinkedItem { id: string; title: string; description: string; href: string; brandId?: string; brandLogoUrl?: string }
+export interface DashboardLinkedItem {
+  id: string
+  title: string
+  description: string
+  href: string
+  brandId?: string
+  brandLogoUrl?: string
+}
+
+export interface UpcomingShiftItem extends DashboardLinkedItem {
+  shift?: Shift
+  brandName?: string
+  platformName?: string
+  timeWindow?: string
+  date?: string
+  formattedDate?: string
+  isToday?: boolean
+  hostName?: string
+  hostAvatarUrl?: string
+  supportName?: string
+  supportAvatarUrl?: string
+  isMissingHost?: boolean
+  isMissingSupport?: boolean
+  isMissingStaff?: boolean
+  shortageLabel?: string
+  statusLabel?: string
+}
 
 export interface PerformanceData {
   viewers: string
@@ -86,7 +114,7 @@ export interface AdminDashboardViewModel {
   t: (key: string) => string
   applicationOverview: ApplicationOverviewMetric[]
   recentItems: DashboardRecentItem[]
-  upcomingShifts: DashboardLinkedItem[]
+  upcomingShifts: (UpcomingShiftItem | DashboardLinkedItem)[]
   latestReports: DashboardLinkedItem[]
   latestBrands: DashboardLinkedItem[]
   showUpcomingShifts: boolean
@@ -96,6 +124,7 @@ export interface AdminDashboardViewModel {
   latestBrandsUnavailable: boolean
   dashboardFeatureLinks?: React.ReactNode
   userName?: string
+  onSelectShift?: (shift: Shift) => void
 }
 
 // Sub-components
@@ -252,13 +281,213 @@ function ActLogRow({ iconName, iconBg, title, user, time }: ActLogRowProps) {
   )
 }
 
+// Upcoming Shifts Rich Operational Cards (G1.4)
+function UpcomingShiftsSection({
+  title,
+  href,
+  items,
+  empty,
+  t,
+  onSelectShift,
+}: {
+  title: string
+  href: string
+  items: (UpcomingShiftItem | DashboardLinkedItem)[]
+  empty: string
+  t: (key: string) => string
+  onSelectShift?: (shift: Shift) => void
+}) {
+  return (
+    <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col" aria-label={title}>
+      <header className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 bg-slate-50/50">
+        <div className="flex items-center gap-2">
+          <Calendar className="size-4 text-blue-600" aria-hidden="true" />
+          <h2 className="truncate text-sm font-bold text-slate-900">{title}</h2>
+          {items.length > 0 && (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+              {items.length}
+            </span>
+          )}
+        </div>
+        <a
+          href={href}
+          className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+        >
+          {t('viewAll')} <ArrowUpRight className="size-3.5" aria-hidden="true" />
+        </a>
+      </header>
+
+      <div className="p-3 space-y-2.5 flex-1">
+        {items.length ? (
+          items.slice(0, 5).map(item => {
+            const shiftItem = item as UpcomingShiftItem
+            const shift = shiftItem.shift
+            const brandName = shiftItem.brandName || item.title.split('·')[0]?.trim() || 'Brand'
+            const brandId = item.brandId || shift?.brand_id || ''
+            const platformName = shiftItem.platformName || item.title.split('·')[1]?.trim() || 'Livestream'
+            const platformLower = platformName.toLowerCase()
+            const isTikTok = platformLower.includes('tiktok')
+            const isShopee = platformLower.includes('shopee')
+            const platformBadgeClass = isTikTok
+              ? 'bg-slate-900 text-cyan-300 border-slate-800'
+              : isShopee
+              ? 'bg-orange-50 text-orange-700 border-orange-200'
+              : 'bg-slate-100 text-slate-700 border-slate-200'
+
+            const isMissingStaff = shiftItem.isMissingStaff ?? (!shift?.host_id || !shift?.support_id)
+            const shortageLabel = shiftItem.shortageLabel || (
+              !shift?.host_id && !shift?.support_id
+                ? 'Thiếu Host & Trợ'
+                : !shift?.host_id
+                ? 'Thiếu Host'
+                : !shift?.support_id
+                ? 'Thiếu Trợ'
+                : 'Đủ nhân sự'
+            )
+
+            const formattedDate = shiftItem.formattedDate || (shiftItem.isToday ? 'Hôm nay' : shift?.date || '')
+            const timeWindow = shiftItem.timeWindow || (shift ? `${shift.start_time} – ${shift.end_time}` : item.description)
+
+            const handleClick = () => {
+              if (shift && onSelectShift) {
+                onSelectShift(shift)
+              } else if (item.href) {
+                window.location.href = item.href
+              }
+            }
+
+            return (
+              <div
+                key={item.id}
+                role="button"
+                tabIndex={0}
+                onClick={handleClick}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    handleClick()
+                  }
+                }}
+                className="group relative flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-all hover:border-blue-400 hover:shadow-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              >
+                {/* Header: Brand Logo + Brand Name + Platform Badge + Shortage Indicator */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <BrandLogo
+                      brandId={brandId}
+                      brandName={brandName}
+                      logoUrl={shiftItem.brandLogoUrl}
+                      size={32}
+                      className="rounded-md shadow-xs shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
+                        {brandName}
+                      </h3>
+                      <span className={`inline-block mt-0.5 rounded px-1.5 py-0.2 text-[10px] font-bold uppercase tracking-wider border ${platformBadgeClass}`}>
+                        {platformName}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="shrink-0">
+                    {isMissingStaff ? (
+                      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold border ${
+                        shiftItem.isMissingHost ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        <AlertTriangle className="size-3" aria-hidden="true" />
+                        {shortageLabel}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                        <CheckCircle className="size-3" aria-hidden="true" />
+                        Đủ nhân sự
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Date & Time Window */}
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-50 rounded-md px-2.5 py-1.5 border border-slate-100">
+                  <Clock className="size-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                  <span>
+                    <strong className={shiftItem.isToday ? 'text-blue-700' : 'text-slate-800'}>
+                      {formattedDate}
+                    </strong>
+                    {' · '}
+                    {timeWindow}
+                  </span>
+                </div>
+
+                {/* Staffing: Host & Support Avatars & Names */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 text-xs">
+                  {/* Host Slot */}
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                      Host:
+                    </span>
+                    {shiftItem.hostName ? (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Avatar size="sm" className="size-5 shrink-0 border border-slate-200">
+                          {shiftItem.hostAvatarUrl && <AvatarImage src={shiftItem.hostAvatarUrl} alt={shiftItem.hostName} />}
+                          <AvatarFallback className="text-[10px] bg-blue-100 text-blue-700 font-bold">
+                            {shiftItem.hostName.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate text-xs font-medium text-slate-800" title={shiftItem.hostName}>
+                          {shiftItem.hostName}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-0.5 rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-600 border border-red-100">
+                        Chưa phân công
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Support Slot */}
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                      Trợ:
+                    </span>
+                    {shiftItem.supportName ? (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Avatar size="sm" className="size-5 shrink-0 border border-slate-200">
+                          {shiftItem.supportAvatarUrl && <AvatarImage src={shiftItem.supportAvatarUrl} alt={shiftItem.supportName} />}
+                          <AvatarFallback className="text-[10px] bg-purple-100 text-purple-700 font-bold">
+                            {shiftItem.supportName.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate text-xs font-medium text-slate-800" title={shiftItem.supportName}>
+                          {shiftItem.supportName}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-100">
+                        Chưa phân công
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        ) : (
+          <div className="p-6 text-center text-sm text-slate-500">
+            <p>{empty}</p>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 // Main export
 
 export function AdminDashboardView({
   liveCount, todaysShiftsCount, missingStaffCount, pendingCount,
   dqAttention, liveShifts, todaysOperations, performance, activityLog, userName, t, applicationOverview, recentItems,
   upcomingShifts, latestReports, latestBrands, showUpcomingShifts, showLatestReports, showLatestBrands,
-  latestReportsUnavailable, latestBrandsUnavailable, dashboardFeatureLinks,
+  latestReportsUnavailable, latestBrandsUnavailable, dashboardFeatureLinks, onSelectShift,
 }: AdminDashboardViewModel) {
   const currentShift = todaysOperations[0]
   const mobileAttention = [
@@ -311,7 +540,16 @@ export function AdminDashboardView({
       </section>
 
       {(showUpcomingShifts || showLatestReports || showLatestBrands) && <section aria-label={t('dashboardOperationalSummaries')} className="grid min-w-0 gap-3 lg:grid-cols-3">
-        {showUpcomingShifts && <DashboardLinkedList title={t('upcomingShifts')} href="/calendar?calendar_view=list" items={upcomingShifts} empty={t('noUpcomingShifts')} unavailable={null} t={t} />}
+        {showUpcomingShifts && (
+          <UpcomingShiftsSection
+            title={t('upcomingShifts')}
+            href="/calendar?calendar_view=list"
+            items={upcomingShifts}
+            empty={t('noUpcomingShifts')}
+            t={t}
+            onSelectShift={onSelectShift}
+          />
+        )}
         {showLatestReports && <DashboardLinkedList title={t('latestReports')} href="/reports" items={latestReports} empty={t('noLatestReports')} unavailable={latestReportsUnavailable ? t('dashboardDataUnavailable') : null} t={t} />}
         {showLatestBrands && <DashboardLinkedList title={t('latestBrands')} href="/brands" items={latestBrands} empty={t('noLatestBrands')} unavailable={latestBrandsUnavailable ? t('dashboardDataUnavailable') : null} t={t} />}
       </section>}
