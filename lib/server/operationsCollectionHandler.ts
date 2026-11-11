@@ -125,8 +125,8 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
         // Historical report access is based on report RLS, not broader shift
         // visibility. The RPC returns only the separately authorized six-field
         // display context for an RLS-hidden linked shift.
-        const result = await client.rpc('get_report_list_with_history', {
-          p_page: query.page, p_page_size: query.pageSize, p_filters: query.filters,
+        let effectiveReportFilters = query.filters; if (typeof client.from === 'function' && !query.filters?.shiftIds?.length) { const repRes = await client.from('reports').select('shift_id').is('deleted_at', null).is('archived_at', null).limit(51); if (!repRes.error && Array.isArray(repRes.data)) { const repShiftIds = [...new Set((repRes.data as Array<{ shift_id: string }>).map(r => r.shift_id).filter(Boolean))]; if (repShiftIds.length === 0) return reply({ total: 0, page: 1, pageSize: query.pageSize, items: [], historicalShiftContexts: {} }); if (repShiftIds.length <= 50) { const visRes = await client.from('shifts').select('id').in('id', repShiftIds).is('deleted_at', null).is('archived_at', null); if (!visRes.error && Array.isArray(visRes.data) && visRes.data.length === repShiftIds.length) effectiveReportFilters = { ...query.filters, shiftIds: repShiftIds }; } } } const result = await client.rpc('get_report_list_with_history', {
+          p_page: query.page, p_page_size: query.pageSize, p_filters: effectiveReportFilters,
         })
         if (result.error) throw result.error
         const data = (result.data && typeof result.data === 'object' && !Array.isArray(result.data))
