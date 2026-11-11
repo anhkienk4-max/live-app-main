@@ -482,9 +482,9 @@ export function DashboardWorkspace({
 }
 
 const ROLE_FEATURE_PRIORITY: Record<string, string[]> = {
-  admin: ['/calendar', '/staffing', '/workforce', '/reports', '/payroll'],
-  leader: ['/calendar', '/staffing', '/swaps', '/reports', '/workforce'],
-  member: ['/calendar', '/registration', '/swaps', '/workforce', '/payroll'],
+  admin: ['/shifts', '/calendar', '/staffing', '/payroll', '/reports'],
+  leader: ['/shifts', '/calendar', '/staffing', '/registration', '/swaps'],
+  member: ['/calendar', '/swaps', '/payroll', '/shifts', '/profile'],
 }
 
 function DashboardFeatureLinks({ items, role, t }: { items: ReturnType<typeof filterNav>; role: string; t: (key: string, variables?: Record<string, string | number>) => string }) {
@@ -639,8 +639,16 @@ function AdminDashboard(props: CommonProps) {
       const platformName = platform?.name || nameFor(platforms, shift.platform_id)
       const host = users.find(u => u.id === shift.host_id)
       const support = users.find(u => u.id === shift.support_id)
-      const isMissingHost = !shift.host_id
-      const isMissingSupport = !shift.support_id
+      const allHostNames = shift.host_names?.length
+        ? shift.host_names
+        : (host ? [host.full_name || host.email] : [])
+      const allSupportNames = shift.assistant_names?.length
+        ? shift.assistant_names
+        : (support ? [support.full_name || support.email] : [])
+      const hostName = allHostNames.length ? allHostNames.join(', ') : undefined
+      const supportName = allSupportNames.length ? allSupportNames.join(', ') : undefined
+      const isMissingHost = allHostNames.length === 0
+      const isMissingSupport = allSupportNames.length === 0
       const isMissingStaff = isMissingHost || isMissingSupport
       const shortageLabel = isMissingHost && isMissingSupport
         ? 'Thiếu Host & Trợ'
@@ -664,9 +672,9 @@ function AdminDashboard(props: CommonProps) {
         formattedDate,
         timeWindow: `${shift.start_time} – ${shift.end_time}`,
         isToday,
-        hostName: host ? (host.full_name || host.email) : undefined,
+        hostName,
         hostAvatarUrl: host?.avatar_url,
-        supportName: support ? (support.full_name || support.email) : undefined,
+        supportName,
         supportAvatarUrl: support?.avatar_url,
         isMissingHost,
         isMissingSupport,

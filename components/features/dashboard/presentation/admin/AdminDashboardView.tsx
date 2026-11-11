@@ -428,9 +428,9 @@ function UpcomingShiftsSection({
                     {shiftItem.hostName ? (
                       <div className="flex items-center gap-1.5 min-w-0">
                         <Avatar size="sm" className="size-5 shrink-0 border border-slate-200">
-                          {shiftItem.hostAvatarUrl && <AvatarImage src={shiftItem.hostAvatarUrl} alt={shiftItem.hostName} />}
+                          {shiftItem.hostAvatarUrl && !shiftItem.hostName.includes(',') && <AvatarImage src={shiftItem.hostAvatarUrl} alt={shiftItem.hostName} />}
                           <AvatarFallback className="text-[10px] bg-blue-100 text-blue-700 font-bold">
-                            {shiftItem.hostName.charAt(0).toUpperCase()}
+                            {shiftItem.hostName.includes(',') ? `${shiftItem.hostName.split(',').length}H` : shiftItem.hostName.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <span className="truncate text-xs font-medium text-slate-800" title={shiftItem.hostName}>
@@ -452,9 +452,9 @@ function UpcomingShiftsSection({
                     {shiftItem.supportName ? (
                       <div className="flex items-center gap-1.5 min-w-0">
                         <Avatar size="sm" className="size-5 shrink-0 border border-slate-200">
-                          {shiftItem.supportAvatarUrl && <AvatarImage src={shiftItem.supportAvatarUrl} alt={shiftItem.supportName} />}
+                          {shiftItem.supportAvatarUrl && !shiftItem.supportName.includes(',') && <AvatarImage src={shiftItem.supportAvatarUrl} alt={shiftItem.supportName} />}
                           <AvatarFallback className="text-[10px] bg-purple-100 text-purple-700 font-bold">
-                            {shiftItem.supportName.charAt(0).toUpperCase()}
+                            {shiftItem.supportName.includes(',') ? `${shiftItem.supportName.split(',').length}T` : shiftItem.supportName.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <span className="truncate text-xs font-medium text-slate-800" title={shiftItem.supportName}>
