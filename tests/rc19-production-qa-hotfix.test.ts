@@ -27,7 +27,7 @@ test('C4 route-owned readiness is wired to the slow initial data routes', () => 
     ['components/features/calendar/CalendarView.tsx', /data-route-readiness=\{loadError/],
     ['components/features/registration/RegistrationReviewWorkspace.tsx', /data-route-readiness="pending"/, /data-route-readiness="ready"/],
     ['components/features/reports/ReportsList.tsx', /data-route-readiness="pending"/, /data-route-readiness="ready"/],
-    ['app/(dashboard)/workforce/page.tsx', /data-route-readiness="pending"/, /data-route-readiness=\{routeReadiness\}/],
+    ['app/(dashboard)/workforce/page.tsx', /data-route-readiness="pending"/, /data-route-readiness=\{routeReadiness\}/], ['components/features/calendar/ShiftRegistrationBoard.tsx', /data-route-readiness="pending"/, /data-route-readiness=\{loadError/], ['components/features/calendar/StaffingWorkspace.tsx', /data-route-readiness="pending"/, /data-route-readiness="ready"/], ['components/features/calendar/ScheduleImportPanel.tsx', /data-route-readiness="pending"/, /data-route-readiness="ready"/], ['components/features/workforce/AttendanceSourceManager.tsx', /data-route-readiness="ready"/],
   ] as const
   for (const [file, ...assertions] of routes) {
     const source = fromSource(file)

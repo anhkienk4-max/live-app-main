@@ -899,13 +899,13 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
     return visiblePreviews.slice(start, start + previewPageSize)
   }, [visiblePreviews, previewPage, previewPageSize])
 
-  if (userLoading || !currentUser) return <div className="py-12 text-center">{t('loading')}</div>
+  if (userLoading || !currentUser) return <div className="py-12 text-center" data-route-readiness="pending">{t('loading')}</div>
   if (!hasPermission(currentUser, 'shifts.import')) {
-    return <Card><CardContent className="py-12 text-center text-muted-foreground">{t('permissionDenied')}</CardContent></Card>
+    return <Card data-route-readiness="ready"><CardContent className="py-12 text-center text-muted-foreground">{t('permissionDenied')}</CardContent></Card>
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-route-readiness="ready">
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="border-2 border-dashed border-slate-200 hover:border-slate-300 transition-colors bg-slate-50/40 shadow-none">
           <CardHeader className="pb-3">
@@ -2136,13 +2136,13 @@ export function ImportHistoryPanel() {
     setFilters(current => ({ ...current, [key]: value }))
     setChangePage(1)
   }
-  if (loading) return <div className="py-12 text-center" role="status" aria-live="polite" data-testid="schedule-import-history-loading">{t('loading')}</div>
+  if (loading) return <div className="py-12 text-center" role="status" aria-live="polite" data-testid="schedule-import-history-loading" data-route-readiness="pending">{t('loading')}</div>
   if (loadError) return <PageLoadError error={new Error(t('importLoadError'))} onRetry={() => void loadHistory()} />
   const pagedImports = history
   const pagedChanges = changes
   const actions = [...new Set(changes.map(log => log.action))]
   return (
-    <Tabs defaultValue="imports">
+    <Tabs defaultValue="imports" data-route-readiness="ready">
       <TabsList>
         <TabsTrigger value="imports">{t('importHistory')}</TabsTrigger>
         <TabsTrigger value="changes">{t('scheduleChangeHistory')}</TabsTrigger>

@@ -70,7 +70,7 @@ export function StaffList() {
   }
 
   const [search, setSearch] = React.useState('')
-  const list = usePagedList(userService, 'staff', { search, archived: showArchived, systemPermissions: filters.permissionIds, roles: filters.roleIds, statuses: filters.statuses })
+  const staffPageService = React.useMemo(() => ({ getPage: async (query: Parameters<typeof userService.getPage>[0], signal?: AbortSignal) => { if (currentUser && resolveSystemPermission(currentUser) === 'member') { const q = query.filters?.search?.trim().toLowerCase() ?? ''; const keep = !query.filters?.archived && (!q || currentUser.full_name.toLowerCase().includes(q) || currentUser.email.toLowerCase().includes(q)) && (!query.filters?.statuses?.length || query.filters.statuses.includes(currentUser.status)) && (!query.filters?.systemPermissions?.length || query.filters.systemPermissions.includes(resolveSystemPermission(currentUser))) && (!query.filters?.roles?.length || (currentUser.operational_roles ?? []).some(role => query.filters?.roles?.includes(role))); const items = keep ? [currentUser] : []; return { items, total: items.length, page: 1, pageSize: query.pageSize }; } return userService.getPage(query, signal); } }), [currentUser]); const list = usePagedList(staffPageService, 'staff', { search, archived: showArchived, systemPermissions: filters.permissionIds, roles: filters.roleIds, statuses: filters.statuses })
   const { items: staff, loading, error: loadError } = list
   const workloadRows = (list.result as typeof list.result & { workload?: Array<{ staff_id: string; role: string; shift_count: number }> })?.workload ?? []
   const loadStaff = async (forceAll = false) => { void forceAll; await list.reload() }

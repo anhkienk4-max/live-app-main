@@ -14,12 +14,12 @@ async function completeRows(client: SupabaseClient, table: 'shifts' | 'reports' 
     :table==='shift_registrations'?'id,shift_id,user_id,operational_role,status,source,imported_name,requested_at,created_at,updated_at'
     :'id,date,start_time,end_time,brand_id,platform_id,status,host_names,assistant_names,technical_names,required_host_count,required_support_count,required_technical_count,created_at,updated_at'
   // shortcut: The cross-record diagnostic scan is capped at 10000 per source; move it to a job above this bound.
-  for (let offset=0; ; offset+=50) {
+  for (let offset=0; ; offset+=1000) {
     let query=client.from(table).select(columns,{count:'exact'})
     if(table!=='shift_registrations')query=query.is('deleted_at',null).is('archived_at',null)
-    const result=await query.order('id').range(offset,offset+49)
+    const result=await query.order('id').range(offset,offset+999)
     if(result.error || result.count===null || result.count>10000 || (total!==undefined && total!==result.count)
-      || result.data?.length!==Math.min(50,Math.max(0,result.count-offset))) throw new Error('QUALITY_READ_INCOMPLETE')
+      || result.data?.length!==Math.min(1000,Math.max(0,result.count-offset))) throw new Error('QUALITY_READ_INCOMPLETE')
     total ??= result.count
     for(const rawRow of result.data??[]) { const row=rawRow as unknown as Record<string,unknown>;if(seen.has(row.id))throw new Error('QUALITY_READ_INCOMPLETE');seen.add(row.id);rows.push(row) }
     if(rows.length>=total)return rows

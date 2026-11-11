@@ -65,7 +65,7 @@ export function AdaNavigationTransition({ children }: { children: ReactNode }): 
   const visibleRef = useRef(true)
   const exitStarted = useRef(false)
   const previousPath = useRef(pathname)
-  const pendingRouteKey = useRef<string | null>(null)
+  const pendingRouteKey = useRef<string | null>(null); const originRouteKey = useRef<string | null>(null)
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const timeoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
@@ -84,7 +84,7 @@ export function AdaNavigationTransition({ children }: { children: ReactNode }): 
       setVisible(false)
       setExiting(false)
       exitStarted.current = false
-      pendingRouteKey.current = null
+      pendingRouteKey.current = null; originRouteKey.current = null
       exitTimer.current = null
       if (previousFocus.current?.isConnected) previousFocus.current.focus({ preventScroll: true })
       previousFocus.current = null
@@ -92,7 +92,7 @@ export function AdaNavigationTransition({ children }: { children: ReactNode }): 
   }, [])
 
   const scheduleReadyCheck = useCallback(() => {
-    if (!visibleRef.current || pendingRouteKey.current !== currentRouteKey()) return
+    if (!visibleRef.current || !pendingRouteKey.current) return; if (pendingRouteKey.current !== currentRouteKey()) { if (currentRouteKey() === originRouteKey.current || (pendingRouteKey.current.split('?')[0] || '/') !== window.location.pathname) return; pendingRouteKey.current = currentRouteKey(); }
     if (!routeIsReady(window.location.pathname)) return
     requestAnimationFrame(() => requestAnimationFrame(finishTransition))
   }, [finishTransition])
@@ -106,7 +106,7 @@ export function AdaNavigationTransition({ children }: { children: ReactNode }): 
     setVisible(true)
     setExiting(false)
     setTimedOut(false)
-    pendingRouteKey.current = destinationKey
+    originRouteKey.current = destinationKey !== currentRouteKey() ? currentRouteKey() : null; pendingRouteKey.current = destinationKey
     timeoutTimer.current = setTimeout(() => setTimedOut(true), ROUTE_READINESS_TIMEOUT_MS)
   }, [])
 
@@ -161,8 +161,8 @@ export function AdaNavigationTransition({ children }: { children: ReactNode }): 
   }, [beginTransition, pathname, scheduleReadyCheck])
 
   useEffect(() => {
-    if (timedOut) retryButton.current?.focus()
-  }, [timedOut])
+    if (timedOut) retryButton.current?.focus(); if (!visible) return; const poll = setInterval(scheduleReadyCheck, 100); return () => clearInterval(poll)
+  }, [scheduleReadyCheck, timedOut, visible])
 
   useEffect(() => () => {
     if (exitTimer.current) clearTimeout(exitTimer.current)

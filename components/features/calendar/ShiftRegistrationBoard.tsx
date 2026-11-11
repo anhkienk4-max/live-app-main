@@ -420,10 +420,10 @@ export function ShiftRegistrationBoard({
     visibleShifts.some(shift => shift.id === registration.shift_id)
   )
 
-  if (userLoading || !currentUser) return <ContentSkeleton />
+  if (userLoading || !currentUser) return <div data-route-readiness="pending"><ContentSkeleton /></div>
 
   return (
-    <div ref={boardRoot} className="space-y-4">
+    <div ref={boardRoot} className="space-y-4" data-route-readiness={loadError ? 'error' : loadedKey !== requestKey ? 'pending' : 'ready'}>
       <CalendarExportDialog open={exportOpen} onOpenChange={setExportOpen} shiftId={exportShiftId ?? undefined} selectedIds={exportShiftId ? [exportShiftId] : []} filters={JSON.parse(queryFilters)} listScope={mode} />
       {!!loadError && <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />}
       <Card className="border-none bg-background p-2 shadow-sm sm:p-3">

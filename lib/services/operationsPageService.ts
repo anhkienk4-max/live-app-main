@@ -130,7 +130,7 @@ export async function getCompleteCollection<T extends { id: string }>(entity: Op
     total ??= result.total
     if (result.total !== total || result.page !== page || result.items.some(item => rows.has(item.id))) throw new OperationsListError('EXPORT_COLLECTION_CHANGED', 409)
     for (const item of result.items) rows.set(item.id, item)
-    if (page * 50 >= total) break
+    if (page * 50 >= total) break; const totalPages = Math.ceil(total / 50); for (let s = 2; s <= totalPages; s += 4) { const batch = Array.from({ length: Math.min(4, totalPages - s + 1) }, (_, i) => s + i); const batchRes = await Promise.all(batch.map(p => getCollectionPage<T>(entity, { page: p, pageSize: 50, filters }, signal))); for (let i = 0; i < batchRes.length; i++) { const r = batchRes[i], p = batch[i]; if (r.ownerKey !== ownerKey) throw new OperationsListError('EXPORT_IDENTITY_CHANGED', 409); if (r.total !== total || r.page !== p || r.items.some(item => rows.has(item.id))) throw new OperationsListError('EXPORT_COLLECTION_CHANGED', 409); for (const item of r.items) rows.set(item.id, item); } } break
   }
   if (rows.size !== total) throw new OperationsListError('EXPORT_COLLECTION_CHANGED', 409)
   return [...rows.values()]

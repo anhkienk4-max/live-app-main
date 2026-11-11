@@ -508,7 +508,7 @@ export function AttendanceSourceManager() {
   }
 
   return (
-    <div className="space-y-6" data-testid="attendance-source-manager">
+    <div className="space-y-6" data-testid="attendance-source-manager" data-route-readiness="ready">
       <nav aria-label={en ? 'Import steps' : 'Các bước nhập chấm công'} className="grid grid-cols-2 gap-2 md:grid-cols-5">
         {stepLabels.map((label, index) => (
           <button key={label} type="button" aria-current={step === index + 1 ? 'step' : undefined}
