@@ -541,3 +541,170 @@ test('G2-EDGE-04 — UI DOM geometry verification: no vertical overlap between c
     assert.ok(b.topPx >= 0 && b.topPx + b.heightPx <= 1056)
   }
 })
+
+test('G2-DENSITY-01 — Four consecutive 1-minute shifts: zero DOM collision, localized overflow in Lane 2, complete popup list', () => {
+  const shifts = [
+    mockShift({ id: 'A', start_time: '08:00', end_time: '08:01' }),
+    mockShift({ id: 'B', start_time: '08:01', end_time: '08:02' }),
+    mockShift({ id: 'C', start_time: '08:02', end_time: '08:03' }),
+    mockShift({ id: 'D', start_time: '08:03', end_time: '08:04' }),
+  ]
+
+  const layout = computeDayTimelineLayout(shifts, { hourHeight: 44, maxLanes: 3 })
+
+  // 1. Two visible streams in Lane 0 and Lane 1
+  assert.equal(layout.renderedShifts.length, 2)
+  const a = layout.renderedShifts.find(s => s.id === 'A')
+  const b = layout.renderedShifts.find(s => s.id === 'B')
+  assert.ok(a && b)
+  assert.equal(a.lane, 0)
+  assert.equal(b.lane, 1)
+
+  // 2. One overflow badge in Lane 2 for C and D
+  assert.equal(layout.overflowBadges.length, 1)
+  const badge = layout.overflowBadges[0]
+  assert.equal(badge.lane, 2)
+  assert.equal(badge.count, 2)
+  assert.deepEqual(badge.overflowShifts.map(s => s.id).sort(), ['C', 'D'])
+
+  // 3. Popup contains all 4 shifts in this visual burst
+  assert.equal(badge.allClusterShifts.length, 4)
+  assert.deepEqual(badge.allClusterShifts.map(s => s.id).sort(), ['A', 'B', 'C', 'D'])
+
+  // 4. Exact preservation: rendered + overflow = 4
+  const totalCount = layout.renderedShifts.length + layout.overflowBadges.reduce((sum, bg) => sum + bg.count, 0)
+  assert.equal(totalCount, 4)
+
+  // 5. Zero DOM collision in any lane
+  for (let l = 0; l < 3; l++) {
+    const laneShifts = layout.renderedShifts.filter(s => s.lane === l)
+    for (let i = 0; i < laneShifts.length; i++) {
+      for (let j = i + 1; j < laneShifts.length; j++) {
+        const s1 = laneShifts[i]
+        const s2 = laneShifts[j]
+        const overlaps = Math.max(s1.topPx, s2.topPx) < Math.min(s1.topPx + s1.heightPx, s2.topPx + s2.heightPx)
+        assert.equal(overlaps, false, `DOM collision in Lane ${l} between ${s1.id} and ${s2.id}`)
+      }
+    }
+  }
+  const lane2Shifts = layout.renderedShifts.filter(s => s.lane === 2)
+  for (const s of lane2Shifts) {
+    const overlaps = Math.max(s.topPx, badge.topPx) < Math.min(s.topPx + s.heightPx, badge.topPx + badge.heightPx)
+    assert.equal(overlaps, false, `DOM collision in Lane 2 between ${s.id} and badge`)
+  }
+})
+
+test('G2-DENSITY-02 — 5 and 10 consecutive short shifts: zero collision, all shifts preserved in popup', () => {
+  // Test 5 consecutive shifts
+  const fiveShifts = [
+    mockShift({ id: 's1', start_time: '09:00', end_time: '09:01' }),
+    mockShift({ id: 's2', start_time: '09:01', end_time: '09:02' }),
+    mockShift({ id: 's3', start_time: '09:02', end_time: '09:03' }),
+    mockShift({ id: 's4', start_time: '09:03', end_time: '09:04' }),
+    mockShift({ id: 's5', start_time: '09:04', end_time: '09:05' }),
+  ]
+  const layout5 = computeDayTimelineLayout(fiveShifts, { hourHeight: 44, maxLanes: 3 })
+  assert.equal(layout5.renderedShifts.length, 2)
+  assert.equal(layout5.overflowBadges.length, 1)
+  assert.equal(layout5.overflowBadges[0].count, 3)
+  assert.equal(layout5.overflowBadges[0].allClusterShifts.length, 5)
+  assert.equal(layout5.renderedShifts.length + layout5.overflowBadges[0].count, 5)
+
+  // Test 10 consecutive shifts
+  const tenShifts = Array.from({ length: 10 }, (_, i) => {
+    const mins = String(i).padStart(2, '0')
+    const nextMins = String(i + 1).padStart(2, '0')
+    return mockShift({ id: `ten-${i}`, start_time: `10:${mins}`, end_time: `10:${nextMins}` })
+  })
+  const layout10 = computeDayTimelineLayout(tenShifts, { hourHeight: 44, maxLanes: 3 })
+  assert.equal(layout10.renderedShifts.length, 2)
+  assert.equal(layout10.overflowBadges.length, 1)
+  assert.equal(layout10.overflowBadges[0].count, 8)
+  assert.equal(layout10.overflowBadges[0].allClusterShifts.length, 10)
+  assert.equal(layout10.renderedShifts.length + layout10.overflowBadges[0].count, 10)
+})
+
+test('G2-DENSITY-03 — Comprehensive Property-based Test: 50 randomized shift scenarios guarantee 0 DOM collisions and 100% preservation', () => {
+  // Simple deterministic PRNG for reproducible test
+  let seed = 42
+  function rnd(min: number, max: number): number {
+    seed = (seed * 9301 + 49297) % 233280
+    return min + Math.floor((seed / 233280) * (max - min + 1))
+  }
+
+  for (let trial = 0; trial < 50; trial++) {
+    const shiftCount = rnd(1, 25)
+    const testShifts: Shift[] = []
+
+    for (let i = 0; i < shiftCount; i++) {
+      const startH = rnd(6, 21)
+      const startM = rnd(0, 58)
+      const duration = rnd(1, 180)
+      const endTotal = startH * 60 + startM + duration
+      const boundedEnd = Math.min(endTotal, 1440)
+      const endH = Math.floor(boundedEnd / 60)
+      const endM = boundedEnd % 60
+
+      const start_time = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`
+      const end_time = boundedEnd === 1440 ? '24:00' : `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
+
+      testShifts.push(mockShift({ id: `rnd-${trial}-${i}`, start_time, end_time }))
+    }
+
+    const layout = computeDayTimelineLayout(testShifts, { hourHeight: 44, maxLanes: 3 })
+
+    // Invariant 1: Total represented shifts === input shifts (no loss, no duplication)
+    const totalRepresented = layout.renderedShifts.length + layout.overflowBadges.reduce((s, b) => s + b.count, 0)
+    assert.equal(totalRepresented, testShifts.length, `Trial ${trial}: Shift count mismatch: got ${totalRepresented}, expected ${testShifts.length}`)
+
+    // Invariant 2: Maximum 3 lanes at all times
+    for (const s of layout.renderedShifts) {
+      assert.ok(s.lane >= 0 && s.lane < 3, `Trial ${trial}: Invalid lane ${s.lane}`)
+      assert.ok(s.totalLanes >= 1 && s.totalLanes <= 3, `Trial ${trial}: Invalid totalLanes ${s.totalLanes}`)
+    }
+    for (const b of layout.overflowBadges) {
+      assert.equal(b.lane, 2, `Trial ${trial}: Overflow badge must be in Lane 2`)
+      assert.equal(b.totalLanes, 3, `Trial ${trial}: Badge totalLanes must be 3`)
+    }
+
+    // Invariant 3: Zero DOM collisions between rendered cards in ANY lane
+    for (let l = 0; l < 3; l++) {
+      const laneShifts = layout.renderedShifts.filter(s => s.lane === l)
+      for (let i = 0; i < laneShifts.length; i++) {
+        for (let j = i + 1; j < laneShifts.length; j++) {
+          const s1 = laneShifts[i]
+          const s2 = laneShifts[j]
+          const overlaps = Math.max(s1.topPx, s2.topPx) < Math.min(s1.topPx + s1.heightPx, s2.topPx + s2.heightPx)
+          assert.equal(overlaps, false, `Trial ${trial}: DOM collision in lane ${l} between ${s1.id} and ${s2.id}`)
+        }
+      }
+    }
+
+    // Invariant 4: Zero DOM collisions in Lane 2 between rendered shifts and badges
+    const lane2Shifts = layout.renderedShifts.filter(s => s.lane === 2)
+    for (const s of lane2Shifts) {
+      for (const b of layout.overflowBadges) {
+        const overlaps = Math.max(s.topPx, b.topPx) < Math.min(s.topPx + s.heightPx, b.topPx + b.heightPx)
+        assert.equal(overlaps, false, `Trial ${trial}: DOM collision in Lane 2 between shift ${s.id} and badge ${b.id}`)
+      }
+    }
+
+    // Invariant 5: Zero DOM collisions between badges themselves in Lane 2
+    for (let i = 0; i < layout.overflowBadges.length; i++) {
+      for (let j = i + 1; j < layout.overflowBadges.length; j++) {
+        const b1 = layout.overflowBadges[i]
+        const b2 = layout.overflowBadges[j]
+        const overlaps = Math.max(b1.topPx, b2.topPx) < Math.min(b1.topPx + b1.heightPx, b2.topPx + b2.heightPx)
+        assert.equal(overlaps, false, `Trial ${trial}: Badge collision in Lane 2 between ${b1.id} and ${b2.id}`)
+      }
+    }
+
+    // Invariant 6: All overflow shifts belonging to a badge are in the badge's popup list
+    for (const b of layout.overflowBadges) {
+      for (const ov of b.overflowShifts) {
+        const found = b.allClusterShifts.some(c => c.id === ov.id)
+        assert.ok(found, `Trial ${trial}: Overflow shift ${ov.id} missing from allClusterShifts in badge ${b.id}`)
+      }
+    }
+  }
+})

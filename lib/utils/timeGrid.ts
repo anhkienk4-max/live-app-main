@@ -210,11 +210,12 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
   }
 
   // 1. Prepare normalized items
+  const minCardMinutes = Math.ceil((26 / hourHeight) * 60)
   const normalized = items.map(raw => {
     const startMins = timeToMinutes(raw.start_time)
     let endMins = raw.end_time === '24:00' ? 1440 : timeToMinutes(raw.end_time)
     if (raw.crosses_midnight || endMins <= startMins) endMins = 1440
-    const duration = Math.max(endMins - startMins, minimumMinutes)
+    const duration = Math.max(endMins - startMins, minimumMinutes, minCardMinutes)
     const shift = (raw.shift || (raw as unknown as Shift))
     return {
       raw,
@@ -329,10 +330,19 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
     const activeVisual = new Set<typeof normalized[0]>()
     let maxVisualConcurrency = 0
     let lastVisualTime = visualEvents[0]?.time ?? 0
+    const visualOverloadedSlices: OverloadedSlice[] = []
+
     for (const ev of visualEvents) {
       if (ev.time > lastVisualTime && activeVisual.size > 0) {
         if (activeVisual.size > maxVisualConcurrency) {
           maxVisualConcurrency = activeVisual.size
+        }
+        if (activeVisual.size > maxLanes) {
+          visualOverloadedSlices.push({
+            start: lastVisualTime,
+            end: ev.time,
+            activeShifts: Array.from(activeVisual),
+          })
         }
       }
       if (ev.type === 'START') {
@@ -346,7 +356,7 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
       lastVisualTime = ev.time
     }
 
-    // 3c. Merge contiguous overloaded slices ONLY (do not merge across gaps with <= 3 shifts)
+    // 3c. Merge contiguous overloaded slices ONLY (from both scheduled and visual sweep-lines)
     interface OverloadedWindow {
       start: number
       end: number
@@ -354,7 +364,11 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
     }
     const overloadedWindows: OverloadedWindow[] = []
 
-    for (const slice of overloadedSlices) {
+    const allOverloadedSlices = [...overloadedSlices, ...visualOverloadedSlices].sort(
+      (a, b) => a.start - b.start || a.end - b.end,
+    )
+
+    for (const slice of allOverloadedSlices) {
       const last = overloadedWindows[overloadedWindows.length - 1]
       // Merge only strictly contiguous slices so distinct bursts remain independent
       if (last && slice.start <= last.end) {
@@ -392,7 +406,36 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
           }
         }
         if (placedLane === -1) {
-          placedLane = effectiveTotalLanes - 1
+          // Zero DOM collision guarantee: if no lane is available without collision,
+          // create a localized visual overflow badge instead of forcing into a colliding lane
+          const badgeStart = item.startMins
+          const badgeEnd = item.visualEnd
+          const overflowDuration = badgeEnd - badgeStart
+          const startHours = String(Math.floor(badgeStart / 60)).padStart(2, '0')
+          const startMinutesStr = String(badgeStart % 60).padStart(2, '0')
+          const endHours = String(Math.floor(badgeEnd / 60)).padStart(2, '0')
+          const endMinutesStr = String(badgeEnd % 60).padStart(2, '0')
+          const timeLabel = `${startHours}:${startMinutesStr} – ${endHours}:${endMinutesStr}`
+
+          const topPx = Math.min((badgeStart / 60) * hourHeight, maxGridHeight - 10)
+          const heightPx = Math.min(Math.max((overflowDuration / 60) * hourHeight, 18), maxGridHeight - topPx)
+
+          overflowBadges.push({
+            id: `overflow-${item.id}-${badgeStart}`,
+            lane: effectiveTotalLanes - 1,
+            totalLanes: effectiveTotalLanes,
+            leftPercent: ((effectiveTotalLanes - 1) / effectiveTotalLanes) * 100,
+            widthPercent: 100 / effectiveTotalLanes,
+            topPx,
+            heightPx,
+            count: 1,
+            timeLabel,
+            allClusterShifts: [item.raw],
+            overflowShifts: [item.raw],
+            startMins: badgeStart,
+            endMins: badgeEnd,
+          })
+          continue
         }
         laneIntervals[placedLane].push({ start: item.startMins, end: item.visualEnd })
         laneIntervals[placedLane].sort((a, b) => a.start - b.start)
@@ -474,21 +517,75 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
             continuation: item.continuation,
           })
         } else {
-          // Could not be placed in any lane (overloaded!)
-          const matchedWin = overloadedWindows.find(win => Math.max(win.start, item.startMins) < Math.min(win.end, item.endMins))
-            || overloadedWindows[0]
-          const badgeData = badgeForWindow.get(matchedWin)
-          if (badgeData) {
-            badgeData.overflowShifts.push(item)
+          // Could not be placed in any lane without visual collision!
+          // Match window based on visual intersection:
+          let matchedWin = overloadedWindows.find(win => Math.max(win.start, item.startMins) < Math.min(win.end, item.visualEnd))
+          if (!matchedWin) {
+            matchedWin = overloadedWindows.find(win => {
+              const bData = badgeForWindow.get(win)
+              if (!bData) return false
+              return Math.max(bData.badgeStart, item.startMins) < Math.min(bData.badgeEnd, item.visualEnd)
+            })
+          }
+
+          if (matchedWin) {
+            const badgeData = badgeForWindow.get(matchedWin)
+            if (badgeData) {
+              badgeData.overflowShifts.push(item)
+            }
+          } else {
+            // NEVER dump into unrelated window (NO fallback to overloadedWindows[0]).
+            // Instead, dynamically create a localized overflow badge right at [item.startMins, item.visualEnd)
+            const fallbackWin: OverloadedWindow = {
+              start: item.startMins,
+              end: item.visualEnd,
+              allShifts: new Set([item]),
+            }
+            overloadedWindows.push(fallbackWin)
+            const badgeStart = item.startMins
+            const badgeEnd = item.visualEnd
+            laneIntervals[maxLanes - 1].push({ start: badgeStart, end: badgeEnd })
+            badgeForWindow.set(fallbackWin, {
+              badgeStart,
+              badgeEnd,
+              overflowShifts: [item],
+            })
           }
         }
       }
 
+      const badgesToRender: {
+        id: string
+        win: OverloadedWindow
+        badgeStart: number
+        badgeEnd: number
+        overflowShifts: typeof normalized[0][]
+        topPx: number
+      }[] = []
+
       for (const win of overloadedWindows) {
         const badgeData = badgeForWindow.get(win)
         if (!badgeData || badgeData.overflowShifts.length === 0) continue
-
         const { badgeStart, badgeEnd, overflowShifts } = badgeData
+        const topPx = Math.min((badgeStart / 60) * hourHeight, maxGridHeight - 10)
+        badgesToRender.push({
+          id: `overflow-${overflowShifts[0].id}-${badgeStart}`,
+          win,
+          badgeStart,
+          badgeEnd,
+          overflowShifts,
+          topPx,
+        })
+      }
+
+      // Sort badges by topPx ASC so adjacent badges are strictly bounded against each other
+      badgesToRender.sort((a, b) => a.topPx - b.topPx)
+
+      for (let bIdx = 0; bIdx < badgesToRender.length; bIdx++) {
+        const current = badgesToRender[bIdx]
+        const next = badgesToRender[bIdx + 1]
+        const { id, badgeStart, badgeEnd, overflowShifts, topPx } = current
+
         const overflowDuration = badgeEnd - badgeStart
         const startHours = String(Math.floor(badgeStart / 60)).padStart(2, '0')
         const startMinutesStr = String(badgeStart % 60).padStart(2, '0')
@@ -496,15 +593,26 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
         const endMinutesStr = String(badgeEnd % 60).padStart(2, '0')
         const timeLabel = `${startHours}:${startMinutesStr} – ${endHours}:${endMinutesStr}`
 
-        const topPx = Math.min((badgeStart / 60) * hourHeight, maxGridHeight - 10)
-        const heightPx = Math.min(Math.max((overflowDuration / 60) * hourHeight, 18), maxGridHeight - topPx)
+        const maxAvailableHeight = next ? Math.max(next.topPx - topPx, 0) : maxGridHeight - topPx
+        const naturalHeight = (overflowDuration / 60) * hourHeight
+        const minHeight = Math.min(18, maxAvailableHeight)
+        const heightPx = Math.min(Math.max(naturalHeight, minHeight), maxAvailableHeight)
 
-        const clusterShiftsInWindow = cluster
-          .filter(c => Math.max(c.startMins, badgeStart) < Math.min(c.visualEnd, badgeEnd))
-          .map(c => c.raw)
+        // Find all cluster shifts that intersect this overflow window
+        const windowShiftsSet = new Set<T>()
+        for (const c of cluster) {
+          if (Math.max(c.startMins, badgeStart) < Math.min(c.visualEnd, badgeEnd)) {
+            windowShiftsSet.add(c.raw)
+          }
+        }
+        // Ensure all overflow shifts belonging to this badge are included in the popup
+        for (const o of overflowShifts) {
+          windowShiftsSet.add(o.raw)
+        }
+        const clusterShiftsInWindow = Array.from(windowShiftsSet)
 
         overflowBadges.push({
-          id: `overflow-${overflowShifts[0].id}-${badgeStart}`,
+          id,
           lane: maxLanes - 1,
           totalLanes: maxLanes,
           leftPercent: ((maxLanes - 1) / maxLanes) * 100,
