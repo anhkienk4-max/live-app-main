@@ -835,7 +835,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             <MonthView compact complete={windowComplete} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onDayClick={setSelectedDay} />
           </section>
         </>}
-        {view === 'week' && <div className="w-full"><WeekView fullOnMobile={mobileFullCalendar} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
+        {view === 'week' && <div className="w-full"><WeekView fullOnMobile={mobileFullCalendar} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setPreviewShift} onEditShift={setEditingShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
         {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} onRegister={registerForShift} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />}
         {view === 'list' && (
           <ListView

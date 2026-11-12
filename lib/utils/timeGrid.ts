@@ -1,3 +1,5 @@
+import type { Shift } from '@/lib/types/database.types'
+
 export const TIME_COLUMN_WIDTH = 50;
 export const MINUTE_HEIGHT = 1.2; // 1.2px per minute = 72px per hour = 1728px total height
 
@@ -130,4 +132,285 @@ function packGroup(columns: { id: string; start_time: string; end_time: string; 
       };
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// RC19 G2 Calendar Architecture: True 3-Lane Overlap Layout with Overflow Badges
+// ---------------------------------------------------------------------------
+
+export interface RenderedTimelineShift<T = unknown> {
+  item: T
+  shift: Shift
+  id: string
+  lane: number
+  totalLanes: number
+  leftPercent: number
+  widthPercent: number
+  topPx: number
+  heightPx: number
+  start_time: string
+  end_time: string
+  continuation: boolean
+}
+
+export interface TimelineOverflowBadge<T = unknown> {
+  id: string
+  lane: number
+  totalLanes: number
+  leftPercent: number
+  widthPercent: number
+  topPx: number
+  heightPx: number
+  count: number
+  timeLabel: string
+  allClusterShifts: T[]
+  overflowShifts: T[]
+  startMins: number
+  endMins: number
+}
+
+export interface DayTimelineLayoutResult<T = unknown> {
+  renderedShifts: RenderedTimelineShift<T>[]
+  overflowBadges: TimelineOverflowBadge<T>[]
+  clusterCount: number
+}
+
+export interface DayTimelineOptions {
+  minimumMinutes?: number
+  hourHeight?: number
+  maxLanes?: number
+}
+
+/**
+ * Computes calendar lane placement for shifts on a single day.
+ * Enforces:
+ * - Maximum 3 lanes (0, 1, 2) side by side at any time.
+ * - When > 3 concurrent shifts intersect, Lane 0 and Lane 1 display the first 2 streams,
+ *   and Lane 2 renders an interactive overflow badge (`+N ca khác`).
+ * - Shifts at non-overlapping hours are separated into distinct clusters.
+ * - Short shifts between long shifts are preserved in free lanes without being obscured.
+ * - All positions are strictly bounded within the 24-hour day grid.
+ */
+export function computeDayTimelineLayout<T extends { id: string; start_time: string; end_time: string; shift?: Shift; continuation?: boolean; crosses_midnight?: boolean }>(
+  items: T[],
+  options: DayTimelineOptions = {},
+): DayTimelineLayoutResult<T> {
+  const { minimumMinutes = 30, hourHeight = 44, maxLanes = 3 } = options
+  const maxGridHeight = 24 * hourHeight
+
+  if (!items || items.length === 0) {
+    return { renderedShifts: [], overflowBadges: [], clusterCount: 0 }
+  }
+
+  // 1. Prepare normalized items
+  const normalized = items.map(raw => {
+    const startMins = timeToMinutes(raw.start_time)
+    let endMins = raw.end_time === '24:00' ? 1440 : timeToMinutes(raw.end_time)
+    if (raw.crosses_midnight || endMins <= startMins) endMins = 1440
+    const duration = Math.max(endMins - startMins, minimumMinutes)
+    const shift = (raw.shift || (raw as unknown as Shift))
+    return {
+      raw,
+      shift,
+      id: raw.id,
+      startMins,
+      endMins,
+      visualEnd: startMins + duration,
+      duration,
+      continuation: Boolean(raw.continuation),
+      start_time: raw.start_time,
+      end_time: raw.end_time,
+    }
+  }).sort((a, b) => a.startMins - b.startMins || (b.visualEnd - b.startMins) - (a.visualEnd - a.startMins) || a.id.localeCompare(b.id))
+
+  // 2. Partition into true overlapping clusters (islands)
+  const clusters: typeof normalized[] = []
+  let currentCluster: typeof normalized = []
+  let clusterEnd = -1
+
+  for (const item of normalized) {
+    if (currentCluster.length === 0) {
+      currentCluster.push(item)
+      clusterEnd = item.visualEnd
+    } else if (item.startMins < clusterEnd) {
+      // Intersects with current cluster
+      currentCluster.push(item)
+      clusterEnd = Math.max(clusterEnd, item.visualEnd)
+    } else {
+      // Gap detected: independent time cluster
+      clusters.push(currentCluster)
+      currentCluster = [item]
+      clusterEnd = item.visualEnd
+    }
+  }
+  if (currentCluster.length > 0) {
+    clusters.push(currentCluster)
+  }
+
+  const renderedShifts: RenderedTimelineShift<T>[] = []
+  const overflowBadges: TimelineOverflowBadge<T>[] = []
+
+  // 3. Process each cluster
+  for (const cluster of clusters) {
+    // Check maximum concurrent overlapping shifts at any 5-minute slice
+    const sliceCounts = new Map<number, number>()
+    for (const item of cluster) {
+      for (let m = item.startMins; m < item.visualEnd; m += 5) {
+        sliceCounts.set(m, (sliceCounts.get(m) || 0) + 1)
+      }
+    }
+    const maxConcurrency = Math.max(...sliceCounts.values(), 1)
+    const effectiveLanes = Math.min(maxConcurrency, maxLanes)
+
+    if (maxConcurrency <= maxLanes) {
+      // Fits in 1, 2, or 3 lanes without overflow!
+      const lanes: typeof normalized[] = Array.from({ length: effectiveLanes }, () => [])
+      for (const item of cluster) {
+        let placed = false
+        for (let l = 0; l < effectiveLanes; l++) {
+          const lastInLane = lanes[l][lanes[l].length - 1]
+          if (!lastInLane || lastInLane.visualEnd <= item.startMins) {
+            lanes[l].push(item)
+            placed = true
+            const topPx = Math.min((item.startMins / 60) * hourHeight, maxGridHeight - 10)
+            const heightPx = Math.min(Math.max((item.duration / 60) * hourHeight, 26), maxGridHeight - topPx)
+            renderedShifts.push({
+              item: item.raw,
+              shift: item.shift,
+              id: item.id,
+              lane: l,
+              totalLanes: effectiveLanes,
+              leftPercent: (l / effectiveLanes) * 100,
+              widthPercent: 100 / effectiveLanes,
+              topPx,
+              heightPx,
+              start_time: item.start_time,
+              end_time: item.end_time,
+              continuation: item.continuation,
+            })
+            break
+          }
+        }
+        if (!placed) {
+          // If slight boundary collision, place in last lane
+          const l = effectiveLanes - 1
+          lanes[l].push(item)
+          const topPx = Math.min((item.startMins / 60) * hourHeight, maxGridHeight - 10)
+          const heightPx = Math.min(Math.max((item.duration / 60) * hourHeight, 26), maxGridHeight - topPx)
+          renderedShifts.push({
+            item: item.raw,
+            shift: item.shift,
+            id: item.id,
+            lane: l,
+            totalLanes: effectiveLanes,
+            leftPercent: (l / effectiveLanes) * 100,
+            widthPercent: 100 / effectiveLanes,
+            topPx,
+            heightPx,
+            start_time: item.start_time,
+            end_time: item.end_time,
+            continuation: item.continuation,
+          })
+        }
+      }
+    } else {
+      // Concurrency > maxLanes (more than 3 concurrent shifts)
+      // Display Lane 0 and Lane 1 for visible streams, and place overflow badges in Lane 2!
+      const visibleLaneCount = maxLanes - 1 // 2 visible lanes (Lane 0 and Lane 1)
+      const lanes: typeof normalized[] = Array.from({ length: visibleLaneCount }, () => [])
+      const overflowItems: typeof normalized = []
+
+      for (const item of cluster) {
+        let placed = false
+        for (let l = 0; l < visibleLaneCount; l++) {
+          const lastInLane = lanes[l][lanes[l].length - 1]
+          if (!lastInLane || lastInLane.visualEnd <= item.startMins) {
+            lanes[l].push(item)
+            placed = true
+            const topPx = Math.min((item.startMins / 60) * hourHeight, maxGridHeight - 10)
+            const heightPx = Math.min(Math.max((item.duration / 60) * hourHeight, 26), maxGridHeight - topPx)
+            renderedShifts.push({
+              item: item.raw,
+              shift: item.shift,
+              id: item.id,
+              lane: l,
+              totalLanes: maxLanes,
+              leftPercent: (l / maxLanes) * 100,
+              widthPercent: 100 / maxLanes,
+              topPx,
+              heightPx,
+              start_time: item.start_time,
+              end_time: item.end_time,
+              continuation: item.continuation,
+            })
+            break
+          }
+        }
+        if (!placed) {
+          overflowItems.push(item)
+        }
+      }
+
+      if (overflowItems.length > 0) {
+        // Group overflow items by overlapping intervals so separate time windows get distinct badges
+        const overflowSubGroups: typeof normalized[] = []
+        let currentSubGroup: typeof normalized = []
+        let subGroupEnd = -1
+
+        for (const item of overflowItems) {
+          if (currentSubGroup.length === 0) {
+            currentSubGroup.push(item)
+            subGroupEnd = item.visualEnd
+          } else if (item.startMins < subGroupEnd) {
+            currentSubGroup.push(item)
+            subGroupEnd = Math.max(subGroupEnd, item.visualEnd)
+          } else {
+            overflowSubGroups.push(currentSubGroup)
+            currentSubGroup = [item]
+            subGroupEnd = item.visualEnd
+          }
+        }
+        if (currentSubGroup.length > 0) {
+          overflowSubGroups.push(currentSubGroup)
+        }
+
+        for (const subGroup of overflowSubGroups) {
+          const overflowStart = Math.min(...subGroup.map(i => i.startMins))
+          const overflowEnd = Math.max(...subGroup.map(i => i.visualEnd))
+          const overflowDuration = Math.max(overflowEnd - overflowStart, minimumMinutes)
+          const startHours = String(Math.floor(overflowStart / 60)).padStart(2, '0')
+          const startMinutesStr = String(overflowStart % 60).padStart(2, '0')
+          const endHours = String(Math.floor(overflowEnd / 60)).padStart(2, '0')
+          const endMinutesStr = String(overflowEnd % 60).padStart(2, '0')
+          const timeLabel = `${startHours}:${startMinutesStr} – ${endHours}:${endMinutesStr}`
+
+          const topPx = Math.min((overflowStart / 60) * hourHeight, maxGridHeight - 10)
+          const heightPx = Math.min(Math.max((overflowDuration / 60) * hourHeight, 36), maxGridHeight - topPx)
+
+          // Find all cluster shifts that intersect this overflow window
+          const clusterShiftsInWindow = cluster
+            .filter(c => c.startMins < overflowEnd && c.visualEnd > overflowStart)
+            .map(c => c.raw)
+
+          overflowBadges.push({
+            id: `overflow-${subGroup[0].id}-${overflowStart}`,
+            lane: maxLanes - 1, // Lane 2
+            totalLanes: maxLanes,
+            leftPercent: ((maxLanes - 1) / maxLanes) * 100,
+            widthPercent: 100 / maxLanes,
+            topPx,
+            heightPx,
+            count: subGroup.length,
+            timeLabel,
+            allClusterShifts: clusterShiftsInWindow,
+            overflowShifts: subGroup.map(i => i.raw),
+            startMins: overflowStart,
+            endMins: overflowEnd,
+          })
+        }
+      }
+    }
+  }
+
+  return { renderedShifts, overflowBadges, clusterCount: clusters.length }
 }
