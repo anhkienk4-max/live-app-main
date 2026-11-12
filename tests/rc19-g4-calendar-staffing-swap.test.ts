@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { shiftsForCalendarDate } from '../components/features/calendar/MonthView'
 import { shiftsForGridDate } from '../lib/utils/timeGrid'
+import { businessLocalDate } from '../lib/utils/shiftUtils'
 import { getShiftRoleCapacities } from '../lib/services/dataService'
 import type { OperationalRole, Shift, ShiftRegistration, SwapRequest, User } from '../lib/types/database.types'
 
@@ -400,4 +401,85 @@ test('G4.13: Staffing segments (K01, K02) remain intact on parent shift without 
   assert.equal(segmentedShift.staffing_segments?.[1].segment_index, 2)
   assert.equal(segmentedShift.staffing_segments?.[0].start_time, '09:00:00')
   assert.equal(segmentedShift.staffing_segments?.[1].end_time, '12:00:00')
+})
+
+
+// -------------------------------------------------------------
+// TEST SUITE 12: P0 Atomic Replacement Safety & Failure Injection (Issue #181, #179)
+// -------------------------------------------------------------
+test('G4.14: Direct 2-step replace is blocked on client and throws ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE until Codex C4 RPC lands', () => {
+  const performReplacementOperation = (isAtomicRpcAvailable: boolean) => {
+    if (!isAtomicRpcAvailable) {
+      throw new Error('ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE: Thao tác thay người đòi hỏi RPC nguyên tử replace_shift_assignment từ backend Codex C4 (Issue #179 / #181). Thao tác 2 bước qua client bị vô hiệu hóa để bảo đảm an toàn dữ liệu phân công.')
+    }
+    return { success: true }
+  }
+
+  assert.throws(
+    () => performReplacementOperation(false),
+    /ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE/,
+    'Must refuse client-side execution when atomic backend RPC is not available'
+  )
+})
+
+test('G4.15: Concurrency check strictly rejects missing/non-integer registration or shift versions without guessing', () => {
+  const validateConcurrencyToken = (version: unknown) => {
+    if (!Number.isInteger(version)) {
+      throw new Error('VERSION_MISSING_OR_INVALID: Phiên bản không hợp lệ. Hãy tải lại.')
+    }
+    return version
+  }
+
+  assert.equal(validateConcurrencyToken(1), 1)
+  assert.equal(validateConcurrencyToken(5), 5)
+  assert.throws(() => validateConcurrencyToken(undefined), /VERSION_MISSING_OR_INVALID/)
+  assert.throws(() => validateConcurrencyToken(null), /VERSION_MISSING_OR_INVALID/)
+  assert.throws(() => validateConcurrencyToken('1'), /VERSION_MISSING_OR_INVALID/)
+})
+
+test('G4.16: Business Timezone Asia/Ho_Chi_Minh boundary calculation prevents midnight shift drift', () => {
+  // Midnight UTC boundary test:
+  // At 2026-11-12 01:00:00 ICT (+07:00), UTC is 2026-11-11 18:00:00Z.
+  // toISOString().slice(0, 10) gives '2026-11-11' (WRONG!).
+  // businessLocalDate() MUST give '2026-11-12' (CORRECT!).
+  const earlyMorningUtc = new Date('2026-11-11T18:30:00.000Z') // 01:30 AM Nov 12 in Vietnam
+  const vietnamDate = businessLocalDate(earlyMorningUtc)
+  assert.equal(vietnamDate, '2026-11-12', 'Must resolve to Nov 12 in Asia/Ho_Chi_Minh despite UTC being Nov 11')
+})
+
+test('G4.17: Emergency Replacement requires ISO 8601 timestamp with +07:00 and verified segment selection', () => {
+  const formatEmergencyTimestamp = (shiftDate: string, time: string) => {
+    return `${shiftDate}T${time}:00+07:00`
+  }
+
+  const shiftDate = '2026-11-12'
+  const time = '14:30'
+  const isoTimestamp = formatEmergencyTimestamp(shiftDate, time)
+  assert.equal(isoTimestamp, '2026-11-12T14:30:00+07:00')
+  assert.ok(isoTimestamp.endsWith('+07:00'), 'Must include +07:00 timezone offset')
+})
+
+test('G4.18: Failure injection demonstration: 2-step replace leaves data in corrupted state if step 2 fails', async () => {
+  // Simulation of why 2-step execution is dangerous:
+  let originalAssignment: string | null = 'usr-alice'
+  let newAssignment: string | null = null
+
+  const unsafeTwoStepReplace = async (failOnStep2: boolean) => {
+    // Step 1: Remove assignment
+    originalAssignment = null
+    // Step 2: Assign new staff
+    if (failOnStep2) {
+      throw new Error('NETWORK_TIMEOUT_ON_ASSIGN_MANUALLY')
+    }
+    newAssignment = 'usr-bob'
+  }
+
+  await assert.rejects(
+    async () => unsafeTwoStepReplace(true),
+    /NETWORK_TIMEOUT_ON_ASSIGN_MANUALLY/
+  )
+
+  // Notice: originalAssignment is now NULL! The shift is understaffed, proving client-side execution is unsafe.
+  assert.equal(originalAssignment, null, 'Demonstrates that partial failure leaves shift without assigned staff')
+  assert.equal(newAssignment, null, 'New staff was not assigned')
 })

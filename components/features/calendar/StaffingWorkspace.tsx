@@ -12,7 +12,7 @@ import { safeSpreadsheetValue } from '@/lib/utils/calendarExport'
 import { brandService, campaignService, platformService, shiftService, userService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import type { Brand, Campaign, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
-import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { formatShiftTimeRange, businessLocalDate } from '@/lib/utils/shiftUtils'
 import { resolveStaffingLabelsForRole } from '@/lib/utils/staffingResolver'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { StaffingActionPanel } from '@/components/features/calendar/StaffingActionPanel'
@@ -116,7 +116,7 @@ export function StaffingWorkspace() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `staffing_export_${new Date().toISOString().slice(0, 10)}.csv`
+    link.download = `staffing_export_${businessLocalDate()}.csv`
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -213,7 +213,7 @@ export function StaffingWorkspace() {
     setShowFilters(false)
   }
 
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const todayStr = useMemo(() => businessLocalDate(), [])
   const fromDate = date || (timelineScope === 'upcoming' ? todayStr : undefined)
   const toDate = date || (timelineScope === 'history' ? todayStr : undefined)
   const descending = timelineScope === 'history'

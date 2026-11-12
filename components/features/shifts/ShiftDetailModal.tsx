@@ -1247,7 +1247,7 @@ export function ShiftDetailModal({
                     {shiftSwaps.length > 0 && (
                       <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs space-y-1.5" data-testid="shift-swaps-summary">
                         <div className="font-semibold text-blue-900 flex items-center justify-between">
-                          <span>Yêu cầu đổi ca / PASS liên quan ({shiftSwaps.length})</span>
+                          <span>Yêu cầu đổi ca / PASS liên quan ({shiftSwaps.length}) · Đang chờ xử lý (Chưa hoàn tất)</span>
                           <Badge variant="outline" className="text-[10px] uppercase">{shiftSwaps[0].status}</Badge>
                         </div>
                         {shiftSwaps.map(swap => (
@@ -1526,34 +1526,26 @@ export function ShiftDetailModal({
                   </div>
                 </div>
               )}
+              {/* P0 Pending Backend Warning Banner */}
+              <div className="rounded border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900" role="alert" data-testid="replace-modal-pending-backend-alert">
+                <strong className="block font-semibold">Chờ RPC nguyên tử từ Backend Codex C4 (Issue #179 / #181):</strong>
+                <p className="mt-1 text-[11px] leading-relaxed">
+                  Thao tác thay người trực tiếp yêu cầu backend RPC nguyên tử (<code>replace_shift_assignment</code>) để bảo đảm toàn vẹn giao dịch. Thao tác 2 bước tách rời (gỡ rồi gán) đã bị vô hiệu hóa an toàn để chống mất mát dữ liệu phân công khi bước 2 gặp lỗi.
+                </p>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => setReplacingRegistration(null)}>
-                  Hủy
+                  Đóng
                 </Button>
                 <Button
                   size="sm"
-                  disabled={busy || !replacingUserId || !replacingReason.trim()}
-                  onClick={() => {
-                    void runStaffingAction(async () => {
-                      await shiftRegistrationService.removeAssignment(
-                        replacingRegistration.id,
-                        currentUser!.id,
-                        `Thay người: ${replacingReason.trim()}`,
-                        replacingRegistration.version,
-                      )
-                      const freshShift = await shiftService.getById(shift.id).catch(() => null)
-                      await shiftRegistrationService.assignManually(
-                        shift.id,
-                        replacingUserId,
-                        replacingRegistration.operational_role,
-                        currentUser!.id,
-                        freshShift?.version ?? (shift.version ? shift.version + 1 : undefined),
-                      )
-                      setReplacingRegistration(null)
-                    }, 'Đã thay thế nhân sự thành công')
-                  }}
+                  disabled={true}
+                  className="cursor-not-allowed opacity-60"
+                  title="Chờ backend Codex C4 cung cấp RPC replace_shift_assignment nguyên tử"
+                  data-testid="modal-confirm-replace-btn"
                 >
-                  {busy ? 'Đang xử lý…' : 'Xác nhận thay người'}
+                  Chờ Backend RPC Codex C4 (Khóa an toàn)
                 </Button>
               </div>
             </DialogBody>

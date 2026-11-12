@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
-import { currentUserService, getShiftRoleCapacities, shiftRegistrationService, shiftService } from '@/lib/services/dataService'
+import { currentUserService, getShiftRoleCapacities, shiftRegistrationService } from '@/lib/services/dataService'
 import { readStaffingCandidates, type StaffingCandidateRow } from '@/lib/services/supabaseStaffingCandidateService'
 import { SHIFT_DATA_CHANGED_EVENT } from '@/lib/services/shiftChangeSubscription'
 import { staffingCandidates } from '@/lib/utils/staffingCandidates'
+import { businessLocalDate } from '@/lib/utils/shiftUtils'
 import type { OperationalRole, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 
 type Decision =
@@ -188,59 +189,34 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
           activeDecision.role !== role || activeDecision.userId !== userId) {
           throw new Error('Danh sách ứng viên hoặc phiên bản ca đã thay đổi. Hãy tải lại.')
         }
+        if (!Number.isInteger(shift.version)) {
+          throw new Error('VERSION_MISSING_OR_INVALID: Ca trực thiếu phiên bản hợp lệ. Hãy tải lại.')
+        }
         mutation = await shiftRegistrationService.assignManually(
           shift.id, item.user_id, activeDecision.role, currentUser.id, shift.version,
         )
       } else if (activeDecision.kind === 'replace' || activeDecision.kind === 'emergency_replace') {
-        const registration = rows.find(row => row.id === activeDecision.registrationId && (row.status === 'approved' || row.status === 'manually_assigned'))
-        if (!canAssign || !registration || (registration.version !== undefined && !Number.isInteger(registration.version))) {
-          throw new Error('Phân công hoặc phiên bản không hợp lệ. Hãy tải lại.')
-        }
-        if (!activeDecision.reason.trim()) {
-          throw new Error('Lý do thay người là bắt buộc.')
-        }
-        const isEmergency = activeDecision.kind === 'emergency_replace'
-        const reasonText = isEmergency
-          ? `[Thay người khẩn cấp] ${activeDecision.effectiveTime ? `Hiệu lực: ${activeDecision.effectiveTime} · ` : ''}${activeDecision.segment ? `Phiên: ${activeDecision.segment} · ` : ''}${activeDecision.reason.trim()}`
-          : `[Thay người] ${activeDecision.segment ? `Phiên: ${activeDecision.segment} · ` : ''}${activeDecision.reason.trim()}`
-
-        // Step 1: Remove old assignment atomically
-        await shiftRegistrationService.removeAssignment(
-          registration.id,
-          currentUser.id,
-          reasonText,
-          registration.version ?? 1,
-        )
-
-        // Step 2: Fetch latest shift state or increment version to prevent concurrency abort
-        const freshShift = await shiftService.getById(shift.id).catch(() => null)
-        const targetShiftVersion = freshShift?.version ?? (shift.version ? shift.version + 1 : undefined)
-
-        // Step 3: Assign replacement staff member
-        mutation = await shiftRegistrationService.assignManually(
-          shift.id,
-          activeDecision.replacementUserId,
-          activeDecision.role,
-          currentUser.id,
-          targetShiftVersion,
-        )
+        // P0 Remediation: Codex C4 atomic replacement RPC contract is pending.
+        // Direct two-step mutation (removeAssignment followed by assignManually) is unsafe and non-atomic.
+        // Client-side execution is strictly disabled until the atomic backend RPC is provided.
+        throw new Error('ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE: Thao tác thay người đòi hỏi RPC nguyên tử replace_shift_assignment từ backend Codex C4 (Issue #179 / #181). Thao tác 2 bước qua client bị vô hiệu hóa để bảo đảm an toàn dữ liệu phân công.')
       } else if (activeDecision.kind === 'remove') {
         const registration = rows.find(row => row.id === activeDecision.registrationId && (row.status === 'approved' || row.status === 'manually_assigned'))
-        if (!canAssign || !registration || (registration.version !== undefined && !Number.isInteger(registration.version))) {
-          throw new Error('Phân công hoặc phiên bản không hợp lệ. Hãy tải lại.')
+        if (!canAssign || !registration || !Number.isInteger(registration.version)) {
+          throw new Error('VERSION_MISSING_OR_INVALID: Phân công thiếu phiên bản hợp lệ. Hãy tải lại.')
         }
         mutation = await shiftRegistrationService.removeAssignment(
-          registration.id, currentUser.id, reviewNotes.trim() || undefined, registration.version ?? 1,
+          registration.id, currentUser.id, reviewNotes.trim() || undefined, registration.version,
         )
       } else {
         const registration = rows.find(row => row.id === activeDecision.registrationId && row.status === 'pending')
-        if (!canReview || !registration || (registration.version !== undefined && !Number.isInteger(registration.version))) {
-          throw new Error('Đơn hoặc phiên bản không hợp lệ. Hãy tải lại.')
+        if (!canReview || !registration || !Number.isInteger(registration.version)) {
+          throw new Error('VERSION_MISSING_OR_INVALID: Đơn hoặc phiên bản không hợp lệ. Hãy tải lại.')
         }
         if (activeDecision.kind === 'approve') {
-          mutation = await shiftRegistrationService.approve(registration.id, currentUser.id, reviewNotes.trim() || undefined, registration.version ?? 1)
+          mutation = await shiftRegistrationService.approve(registration.id, currentUser.id, reviewNotes.trim() || undefined, registration.version)
         } else {
-          mutation = await shiftRegistrationService.reject(registration.id, currentUser.id, reviewNotes.trim() || undefined, registration.version ?? 1)
+          mutation = await shiftRegistrationService.reject(registration.id, currentUser.id, reviewNotes.trim() || undefined, registration.version)
         }
       }
       writeCommitted = true
@@ -268,11 +244,7 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
       setFeedback({
         scope,
         kind: 'success',
-        message: activeDecision.kind === 'emergency_replace'
-          ? 'Đã thực hiện thay người khẩn cấp. Lịch sử phân công và dữ liệu chấm công đã được cập nhật.'
-          : activeDecision.kind === 'replace'
-          ? 'Đã thay thế nhân sự thành công. Danh sách ca đang được đồng bộ.'
-          : 'Đã ghi nhận thay đổi. Danh sách ca đang được đồng bộ.',
+        message: 'Đã ghi nhận thay đổi. Danh sách ca đang được đồng bộ.',
       })
     } catch (failure) {
       // After a failed mutation or verification, require an authoritative re-read.
@@ -315,8 +287,8 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
           {pending.slice(0, 20).map(registration => (
             <div key={registration.id} className="flex flex-wrap items-center gap-2 rounded border p-2 text-xs">
               <span className="min-w-0 flex-1">{users.find(user => user.id === registration.user_id)?.full_name || registration.user_id} · {registration.operational_role} · v{registration.version ?? '?'}</span>
-              <Button type="button" size="sm" variant="outline" disabled={busy || (registration.version !== undefined && !Number.isInteger(registration.version))} onClick={() => { setReviewNotes(''); setDecision({ scope, value: { kind: 'reject', registrationId: registration.id } }) }}>Từ chối</Button>
-              <Button type="button" size="sm" disabled={busy || (registration.version !== undefined && !Number.isInteger(registration.version))} onClick={() => { setReviewNotes(''); setDecision({ scope, value: { kind: 'approve', registrationId: registration.id } }) }}>Duyệt</Button>
+              <Button type="button" size="sm" variant="outline" disabled={busy || !Number.isInteger(registration.version)} onClick={() => { setReviewNotes(''); setDecision({ scope, value: { kind: 'reject', registrationId: registration.id } }) }}>Từ chối</Button>
+              <Button type="button" size="sm" disabled={busy || !Number.isInteger(registration.version)} onClick={() => { setReviewNotes(''); setDecision({ scope, value: { kind: 'approve', registrationId: registration.id } }) }}>Duyệt</Button>
             </div>
           ))}
           {pending.length > 20 && <p className="text-xs text-slate-600">Còn {pending.length - 20} đơn. Mở tab Xét duyệt để xem toàn bộ.</p>}
@@ -357,7 +329,7 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
                   size="sm"
                   variant="outline"
                   className="h-7 text-[11px] text-amber-700 border-amber-200 hover:bg-amber-50 hover:text-amber-800"
-                  disabled={busy || (registration.version !== undefined && !Number.isInteger(registration.version))}
+                  disabled={busy}
                   data-testid={`replace-staff-${registration.id}`}
                   onClick={() => {
                     setReplaceTarget({ registration, isEmergency: false })
@@ -375,7 +347,7 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
                   size="sm"
                   variant="outline"
                   className="h-7 text-[11px] text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                  disabled={busy || (registration.version !== undefined && !Number.isInteger(registration.version))}
+                  disabled={busy || !Number.isInteger(registration.version)}
                   data-testid={`remove-staff-${registration.id}`}
                   onClick={() => {
                     setReviewNotes('')
@@ -450,24 +422,41 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
 
             {/* Emergency extra fields: Effective Time & Segment */}
             {replaceTarget.isEmergency && (
-              <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                 <label className="block font-medium text-slate-700">
-                  Thời điểm áp dụng
+                  Thời điểm áp dụng (Giờ:Phút, Múi giờ +07:00)
                   <Input
                     type="time"
                     className="mt-1 h-8 text-xs bg-white"
                     value={emergencyEffectiveTime}
                     onChange={e => setEmergencyEffectiveTime(e.target.value)}
                   />
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    Mốc ISO: {shift.date || businessLocalDate()}T{emergencyEffectiveTime || '00:00'}:00+07:00
+                  </span>
                 </label>
                 <label className="block font-medium text-slate-700">
-                  Phiên ca (Segment)
-                  <Input
-                    placeholder="VD: K01 hoặc Toàn bộ ca"
-                    className="mt-1 h-8 text-xs bg-white"
-                    value={emergencySegment}
-                    onChange={e => setEmergencySegment(e.target.value)}
-                  />
+                  Phiên ca (Segment đã xác thực)
+                  {shift.staffing_segments && shift.staffing_segments.length > 0 ? (
+                    <select
+                      className="mt-1 w-full rounded border bg-white p-1.5 text-xs h-8"
+                      value={emergencySegment}
+                      onChange={e => setEmergencySegment(e.target.value)}
+                    >
+                      <option value="">Toàn bộ ca (Không chọn ca con)</option>
+                      {shift.staffing_segments.map(seg => (
+                        <option key={seg.segment_index} value={`segment-${seg.segment_index}`}>
+                          Phiên K${String(seg.segment_index).padStart(2, '0')} (${seg.start_time} - ${seg.end_time})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      disabled
+                      value="Ca đơn (Không có segment con)"
+                      className="mt-1 h-8 text-xs bg-slate-100 text-slate-500"
+                    />
+                  )}
                 </label>
               </div>
             )}
@@ -504,47 +493,32 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
             )}
 
             {replaceTarget.isEmergency && (
-              <p className="text-[11px] text-red-700">
-                Lưu ý: Thay người khẩn cấp sẽ ghi nhận vào audit log và liên kết đồng bộ với chấm công thực tế.
+              <p className="text-[11px] text-slate-600 italic">
+                Lưu ý: Thao tác này KHÔNG tự động cập nhật bảng điểm danh hoặc bảng lương. Mọi điều chỉnh công thực tế cần thực hiện qua quy trình đối soát điểm danh độc lập.
               </p>
             )}
 
+            {/* P0 Pending Backend Warning Banner */}
+            <div className="rounded border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900" role="alert" data-testid="replace-pending-backend-alert">
+              <strong className="block font-semibold">Chờ RPC nguyên tử từ Backend Codex C4 (Issue #179 / #181):</strong>
+              <p className="mt-1 text-[11px] leading-relaxed">
+                Thao tác thay người trực tiếp yêu cầu backend RPC nguyên tử (<code>replace_shift_assignment</code>) để bảo đảm toàn vẹn giao dịch. Thao tác 2 bước tách rời (gỡ rồi gán) đã bị vô hiệu hóa an toàn để chống mất mát dữ liệu phân công khi bước 2 gặp lỗi.
+              </p>
+            </div>
+
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setReplaceTarget(null)}>
-                Hủy
+                Đóng
               </Button>
               <Button
                 type="button"
                 size="sm"
-                disabled={busy || !replaceUserId || !replaceReason.trim()}
-                className={replaceTarget.isEmergency ? 'bg-red-700 hover:bg-red-800 text-white' : ''}
-                onClick={() => {
-                  setDecision({
-                    scope,
-                    value: replaceTarget.isEmergency
-                      ? {
-                          kind: 'emergency_replace',
-                          registrationId: replaceTarget.registration.id,
-                          targetUserId: replaceTarget.registration.user_id,
-                          replacementUserId: replaceUserId,
-                          role: replaceTarget.registration.operational_role,
-                          effectiveTime: emergencyEffectiveTime,
-                          segment: emergencySegment,
-                          reason: replaceReason.trim(),
-                        }
-                      : {
-                          kind: 'replace',
-                          registrationId: replaceTarget.registration.id,
-                          targetUserId: replaceTarget.registration.user_id,
-                          replacementUserId: replaceUserId,
-                          role: replaceTarget.registration.operational_role,
-                          segment: emergencySegment,
-                          reason: replaceReason.trim(),
-                        },
-                  })
-                }}
+                disabled={true}
+                className="cursor-not-allowed opacity-60"
+                title="Chờ backend Codex C4 cung cấp RPC replace_shift_assignment nguyên tử"
+                data-testid="confirm-replace-btn"
               >
-                Xác nhận thay người
+                Chờ Backend RPC Codex C4 (Khóa an toàn)
               </Button>
             </div>
           </div>

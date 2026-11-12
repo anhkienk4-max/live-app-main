@@ -55,7 +55,7 @@ test.describe('RC19 G4: Staffing Workspace, Replacement, and PASS/Swap', () => {
     await expect(filterPanel).toHaveCount(0)
   })
 
-  test('Staffing Action Panel displays Replacement flow, Before/After diff, and Admin Emergency Replacement', async ({ page }) => {
+  test('Admin: Emergency replace panel displays pending-backend alert, timezone, verified segments and disabled button', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.addInitScript(() => {
       localStorage.setItem('livestream-ops-current-user', '1') // Admin user
@@ -69,49 +69,84 @@ test.describe('RC19 G4: Staffing Workspace, Replacement, and PASS/Swap', () => {
     const actionPanel = page.getByTestId('staffing-action-panel')
     await expect(actionPanel).toBeVisible({ timeout: 15_000 })
 
-    // Verify Admin-only emergency replace trigger
+    // Strictly assert Admin-only emergency replace trigger exists
     const emergencyBtn = page.getByTestId('admin-emergency-replace-btn')
-    if (await emergencyBtn.count() > 0) {
-      await expect(emergencyBtn).toBeVisible()
-      await emergencyBtn.click()
-      const replacePanel = page.getByTestId('staffing-replace-panel')
-      await expect(replacePanel).toBeVisible()
-      await expect(page.getByText(/Quy trình Thay người khẩn cấp/)).toBeVisible()
+    await expect(emergencyBtn).toBeVisible()
+    await emergencyBtn.click()
 
-      // Screenshot emergency replace panel
-      await page.screenshot({ path: path.join(evidenceDir, 'rc19-g4-admin-emergency-replace.png') })
+    const replacePanel = page.getByTestId('staffing-replace-panel')
+    await expect(replacePanel).toBeVisible()
+    await expect(page.getByText(/Quy trình Thay người khẩn cấp/)).toBeVisible()
 
-      // Cancel emergency replace
-      await page.getByRole('button', { name: 'Hủy' }).click()
-      await expect(replacePanel).toHaveCount(0)
-    }
+    // Strictly assert P0 pending-backend alert is rendered
+    const pendingAlert = page.getByTestId('replace-pending-backend-alert')
+    await expect(pendingAlert).toBeVisible()
+    await expect(pendingAlert).toContainText('Chờ RPC nguyên tử từ Backend Codex C4')
 
-    // Verify standard replacement button on assigned staff if present
-    const replaceStaffBtn = page.locator('[data-testid^="replace-staff-"]').first()
-    if (await replaceStaffBtn.count() > 0) {
-      await replaceStaffBtn.click()
-      const replacePanel = page.getByTestId('staffing-replace-panel')
-      await expect(replacePanel).toBeVisible()
-      await expect(page.getByText(/Thay thế nhân sự đã phân công/)).toBeVisible()
-      await page.screenshot({ path: path.join(evidenceDir, 'rc19-g4-staffing-replace-diff.png') })
-      await page.getByRole('button', { name: 'Hủy' }).click()
-    }
+    // Strictly assert confirm button is safely disabled
+    const confirmBtn = page.getByTestId('confirm-replace-btn')
+    await expect(confirmBtn).toBeVisible()
+    await expect(confirmBtn).toBeDisabled()
+
+    // Screenshot emergency replace panel with safety guard
+    await page.screenshot({ path: path.join(evidenceDir, 'rc19-g4-admin-emergency-replace.png') })
+
+    // Close emergency replace
+    await page.getByRole('button', { name: 'Đóng' }).click()
+    await expect(replacePanel).toHaveCount(0)
   })
 
-  test('Member role cannot see Admin Emergency Replacement or manual assignment panel', async ({ page }) => {
+  test('Leader role: Can access standard replacement with pending guard, but DENIED admin emergency replace', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.addInitScript(() => {
-      // User with member role
+      localStorage.setItem('livestream-ops-current-user', '2') // Leader user (id: 2)
+      localStorage.setItem('livestream-ops-language', 'vi')
+    })
+
+    await page.goto('/staffing')
+    const workspace = page.getByTestId('staffing-production-workspace')
+    await expect(workspace).toBeVisible({ timeout: 30_000 })
+
+    // Leader MUST NOT see Admin Emergency Replace button
+    await expect(page.getByTestId('admin-emergency-replace-btn')).toHaveCount(0)
+
+    // Leader CAN see standard replacement button if assigned staff exists
+    const replaceStaffBtn = page.locator('[data-testid^="replace-staff-"]').first()
+    await expect(replaceStaffBtn).toBeVisible()
+    await replaceStaffBtn.click()
+
+    const replacePanel = page.getByTestId('staffing-replace-panel')
+    await expect(replacePanel).toBeVisible()
+    await expect(page.getByText(/Thay thế nhân sự đã phân công/)).toBeVisible()
+
+    // Verify pending-backend alert and disabled execute button
+    await expect(page.getByTestId('replace-pending-backend-alert')).toBeVisible()
+    await expect(page.getByTestId('confirm-replace-btn')).toBeDisabled()
+
+    await page.screenshot({ path: path.join(evidenceDir, 'rc19-g4-staffing-replace-diff.png') })
+    await page.getByRole('button', { name: 'Đóng' }).click()
+    await expect(replacePanel).toHaveCount(0)
+  })
+
+  test('Member role: DENIED all assignment, replacement, and emergency replacement controls', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.addInitScript(() => {
       localStorage.setItem('livestream-ops-current-user', '4') // Member user
       localStorage.setItem('livestream-ops-language', 'vi')
     })
 
     await page.goto('/staffing')
+    // Member should be on open registration board, NOT staffing-production-workspace
+    await expect(page.getByTestId('staffing-production-workspace')).toHaveCount(0)
     // Member should not have access to admin-emergency-replace-btn
     await expect(page.getByTestId('admin-emergency-replace-btn')).toHaveCount(0)
+    // Member should not see replace staff buttons
+    await expect(page.locator('[data-testid^="replace-staff-"]')).toHaveCount(0)
+    // Member should not see manual assignment panel
+    await expect(page.getByRole('button', { name: 'Phân công' })).toHaveCount(0)
   })
 
-  test('ShiftDetailModal preserves Staffing tab with Replace and Swap request dialog', async ({ page }) => {
+  test('ShiftDetailModal: Staffing tab displays active swaps summary, replacement dialog with pending guard', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.addInitScript(() => {
       localStorage.setItem('livestream-ops-current-user', '1') // Admin
@@ -130,9 +165,18 @@ test.describe('RC19 G4: Staffing Workspace, Replacement, and PASS/Swap', () => {
     const staffingTab = dialog.getByRole('tab', { name: /Điều phối ca|Staffing/i })
     await staffingTab.click()
 
+    // Check inline Replace button in modal
+    const modalReplaceBtn = page.locator('[data-testid^="replace-staffing-"]').first()
+    if (await modalReplaceBtn.count() > 0) {
+      await modalReplaceBtn.click()
+      // Verify modal pending backend alert & disabled button
+      await expect(page.getByTestId('replace-modal-pending-backend-alert')).toBeVisible()
+      await expect(page.getByTestId('modal-confirm-replace-btn')).toBeDisabled()
+      await page.getByRole('button', { name: 'Đóng' }).click()
+    }
+
     // Take evidence screenshot of ShiftDetailModal Staffing tab
     await page.screenshot({ path: path.join(evidenceDir, 'rc19-g4-shift-detail-staffing-tab.png') })
-
     await page.keyboard.press('Escape')
   })
 })
