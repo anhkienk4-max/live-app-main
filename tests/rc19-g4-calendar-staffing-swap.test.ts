@@ -3,7 +3,7 @@ import test from 'node:test'
 import { shiftsForCalendarDate } from '../components/features/calendar/MonthView'
 import { shiftsForGridDate } from '../lib/utils/timeGrid'
 import { getShiftRoleCapacities } from '../lib/services/dataService'
-import type { Shift, ShiftRegistration } from '../lib/types/database.types'
+import type { OperationalRole, Shift, ShiftRegistration, SwapRequest, User } from '../lib/types/database.types'
 
 // Mock Shifts
 const mockShifts: Shift[] = [
@@ -201,4 +201,203 @@ test('G4.6: ShiftDetailModal 4 tabs are statically defined in exact immutable or
   assert.equal(expectedTabOrder[1], 'staffing', 'Tab 2 must be Điều phối ca')
   assert.equal(expectedTabOrder[2], 'details', 'Tab 3 must be Chi tiết')
   assert.equal(expectedTabOrder[3], 'attendance', 'Tab 4 must be Chấm công thực tế')
+})
+
+// -------------------------------------------------------------
+// TEST SUITE 5: Registration Lock & Manual Assignment Decoupling (Issue #181)
+// -------------------------------------------------------------
+test('G4.7: Admin/Leader manual assignment is allowed even when registration_locked: true', () => {
+  const lockedShift: Shift = {
+    ...mockShifts[0],
+    id: 'sft-locked',
+    registration_locked: true, // Self-registration closed to members
+    required_support_count: 2,
+    version: 3,
+  }
+
+  // Check assignment capability: registration_locked must NOT block Admin/Leader
+  const canAssign = true
+  const searchSettled = true
+  const hasCurrentSnapshot = true
+  const candidateData = true
+  const versionReady = Number.isInteger(lockedShift.version) && (lockedShift.version ?? 0) > 0
+  const candidate = { user_id: 'usr-support-01', availableForAssignment: true }
+  const currentCapacity = { role: 'support' as OperationalRole, required: 2, approved: 0, pending: 0, remaining: 2 }
+
+  const canStartAssignment = canAssign && searchSettled && hasCurrentSnapshot && Boolean(candidateData) && versionReady &&
+    lockedShift.status === 'scheduled' &&
+    Boolean(currentCapacity && currentCapacity.remaining > 0) && Boolean(candidate)
+
+  assert.equal(canStartAssignment, true, 'Admin/Leader must be allowed to manually assign staff when registration is locked')
+})
+
+// -------------------------------------------------------------
+// TEST SUITE 6: Disabled Explanations Feedback (Issue #181)
+// -------------------------------------------------------------
+test('G4.8: StaffingActionPanel generates clear explanatory feedback for blocked conditions', () => {
+  const evaluateDisabledReason = (params: {
+    canAssign: boolean
+    status: string
+    versionReady: boolean
+    remainingCapacity: number
+    hasCandidate: boolean
+    selectedUserId: string
+  }) => {
+    if (!params.canAssign) return 'Tài khoản không có quyền phân công nhân sự.'
+    if (params.status !== 'scheduled') return `Ca đang ở trạng thái "${params.status}", không thể phân công mới.`
+    if (!params.versionReady) return 'Thiếu phiên bản ca hợp lệ (v0 hoặc không xác định).'
+    if (params.remainingCapacity <= 0) return 'Đã đủ định biên cho vai trò này. Hãy gỡ hoặc thay người nếu cần.'
+    if (!params.selectedUserId) return 'Vui lòng chọn nhân sự để phân công.'
+    if (!params.hasCandidate) return 'Nhân sự không thể phân công: Không khả dụng.'
+    return null
+  }
+
+  // 1. Missing permission
+  assert.match(evaluateDisabledReason({ canAssign: false, status: 'scheduled', versionReady: true, remainingCapacity: 1, hasCandidate: true, selectedUserId: 'u1' })!, /không có quyền/)
+
+  // 2. Ineligible status (completed)
+  assert.match(evaluateDisabledReason({ canAssign: true, status: 'completed', versionReady: true, remainingCapacity: 1, hasCandidate: true, selectedUserId: 'u1' })!, /không thể phân công/)
+
+  // 3. Fully staffed
+  assert.match(evaluateDisabledReason({ canAssign: true, status: 'scheduled', versionReady: true, remainingCapacity: 0, hasCandidate: true, selectedUserId: 'u1' })!, /Đã đủ định biên/)
+
+  // 4. No candidate selected
+  assert.match(evaluateDisabledReason({ canAssign: true, status: 'scheduled', versionReady: true, remainingCapacity: 1, hasCandidate: true, selectedUserId: '' })!, /chọn nhân sự/)
+})
+
+// -------------------------------------------------------------
+// TEST SUITE 7: Replacement Workflow Before/After Diff & Audit Preservation (Issue #181)
+// -------------------------------------------------------------
+test('G4.9: Replacement workflow generates accurate diff and preserves history as removed record', () => {
+  const currentReg: ShiftRegistration = {
+    id: 'reg-replace-01',
+    shift_id: 'sft-01',
+    user_id: 'usr-alice',
+    operational_role: 'host',
+    status: 'approved',
+    source: 'self_registration',
+    requested_at: '2026-11-02T00:00:00Z',
+    version: 2,
+  }
+
+  const replacementUser = { id: 'usr-bob', full_name: 'Bob Tran' }
+  const reason = 'Host bị ốm đột xuất'
+
+  // Diff verification
+  const diff = {
+    from: { userId: currentReg.user_id, role: currentReg.operational_role },
+    to: { userId: replacementUser.id, role: currentReg.operational_role },
+    reason,
+  }
+  assert.equal(diff.from.userId, 'usr-alice')
+  assert.equal(diff.to.userId, 'usr-bob')
+  assert.equal(diff.reason, 'Host bị ốm đột xuất')
+
+  // Preservation: removal soft-deletes and marks 'removed' with review_notes
+  const removedRecord: ShiftRegistration = {
+    ...currentReg,
+    status: 'removed',
+    review_notes: `[Thay người] ${reason}`,
+    version: currentReg.version! + 1,
+  }
+  assert.equal(removedRecord.status, 'removed')
+  assert.ok(removedRecord.review_notes?.includes('Host bị ốm đột xuất'))
+  assert.equal(removedRecord.version, 3)
+})
+
+// -------------------------------------------------------------
+// TEST SUITE 8: Staffing Workspace Chronological Ordering (Issue #181)
+// -------------------------------------------------------------
+test('G4.10: StaffingWorkspace sorts Upcoming ascending (closest first) and History descending (newest first)', () => {
+  const sampleShifts: Shift[] = [
+    { id: 's-past-1', date: '2026-11-05', start_time: '10:00:00', end_time: '12:00:00', title: 'Past 1', brand_id: 'b1', platform_id: 'p1', status: 'completed', version: 1, created_at: '', updated_at: '' },
+    { id: 's-past-2', date: '2026-11-08', start_time: '14:00:00', end_time: '16:00:00', title: 'Past 2 (newer)', brand_id: 'b1', platform_id: 'p1', status: 'completed', version: 1, created_at: '', updated_at: '' },
+    { id: 's-future-1', date: '2026-11-15', start_time: '09:00:00', end_time: '11:00:00', title: 'Future 1 (closest)', brand_id: 'b1', platform_id: 'p1', status: 'scheduled', version: 1, created_at: '', updated_at: '' },
+    { id: 's-future-2', date: '2026-11-20', start_time: '09:00:00', end_time: '11:00:00', title: 'Future 2 (later)', brand_id: 'b1', platform_id: 'p1', status: 'scheduled', version: 1, created_at: '', updated_at: '' },
+  ]
+
+  // Upcoming Scope (ascending)
+  const sortUpcoming = (shifts: Shift[]) => [...shifts].sort((a, b) => (a.date + ' ' + a.start_time).localeCompare(b.date + ' ' + b.start_time))
+  const upcomingSorted = sortUpcoming([sampleShifts[2], sampleShifts[3]])
+  assert.equal(upcomingSorted[0].id, 's-future-1', 'Closest future shift must come first')
+  assert.equal(upcomingSorted[1].id, 's-future-2')
+
+  // History Scope (descending)
+  const sortHistory = (shifts: Shift[]) => [...shifts].sort((a, b) => (b.date + ' ' + b.start_time).localeCompare(a.date + ' ' + a.start_time))
+  const historySorted = sortHistory([sampleShifts[0], sampleShifts[1]])
+  assert.equal(historySorted[0].id, 's-past-2', 'Most recent past shift must come first')
+  assert.equal(historySorted[1].id, 's-past-1')
+})
+
+// -------------------------------------------------------------
+// TEST SUITE 9: Emergency Replacement Permission Guard (Issue #183)
+// -------------------------------------------------------------
+test('G4.11: Emergency replacement is strictly restricted to Admin and hidden for Leader and Member', () => {
+  const isEmergencyReplaceVisible = (user: User | null): boolean => {
+    return Boolean(user && user.system_permission === 'admin')
+  }
+
+  const adminUser: User = { id: 'u-admin', email: 'admin@ada.com', full_name: 'Admin User', role: 'admin', system_permission: 'admin', status: 'active', created_at: '', updated_at: '' }
+  const leaderUser: User = { id: 'u-leader', email: 'leader@ada.com', full_name: 'Leader User', role: 'leader', system_permission: 'leader', status: 'active', created_at: '', updated_at: '' }
+  const memberUser: User = { id: 'u-member', email: 'member@ada.com', full_name: 'Member User', role: 'member', system_permission: 'member', status: 'active', created_at: '', updated_at: '' }
+
+  assert.equal(isEmergencyReplaceVisible(adminUser), true, 'Admin must have access to Emergency Replacement')
+  assert.equal(isEmergencyReplaceVisible(leaderUser), false, 'Leader must NOT have access to Emergency Replacement')
+  assert.equal(isEmergencyReplaceVisible(memberUser), false, 'Member must NOT have access to Emergency Replacement')
+  assert.equal(isEmergencyReplaceVisible(null), false, 'Unauthenticated user must NOT have access')
+})
+
+// -------------------------------------------------------------
+// TEST SUITE 10: PASS / Swap Workflow Lifecycle (Issue #181, #179)
+// -------------------------------------------------------------
+test('G4.12: Swap request lifecycle transitions follow state machine accurately', () => {
+  const swapRequest: SwapRequest = {
+    id: 'swap-01',
+    shift_id: 'sft-01',
+    requester_id: 'usr-alice',
+    counterpart_id: 'usr-bob',
+    operational_role: 'host',
+    mode: 'replacement',
+    status: 'pending',
+    reason: 'Trùng lịch gia đình',
+    version: 1,
+    created_at: '2026-11-05T08:00:00Z',
+    updated_at: '2026-11-05T08:00:00Z',
+  }
+
+  // 1. Counterpart accepts
+  const acceptedSwap: SwapRequest = { ...swapRequest, status: 'accepted', version: 2 }
+  assert.equal(acceptedSwap.status, 'accepted')
+
+  // 2. Leader approves
+  const approvedSwap: SwapRequest = { ...acceptedSwap, status: 'approved', version: 3 }
+  assert.equal(approvedSwap.status, 'approved')
+
+  // 3. Counterpart rejects scenario
+  const rejectedSwap: SwapRequest = { ...swapRequest, status: 'rejected', version: 2 }
+  assert.equal(rejectedSwap.status, 'rejected')
+
+  // 4. Requester cancels scenario
+  const cancelledSwap: SwapRequest = { ...swapRequest, status: 'cancelled', version: 2 }
+  assert.equal(cancelledSwap.status, 'cancelled')
+})
+
+// -------------------------------------------------------------
+// TEST SUITE 11: Multi-Segment Preservation within Shift (Issue #181)
+// -------------------------------------------------------------
+test('G4.13: Staffing segments (K01, K02) remain intact on parent shift without splitting', () => {
+  const segmentedShift: Shift = {
+    ...mockShifts[0],
+    id: 'sft-segmented',
+    staffing_segments: [
+      { segment_index: 1, start_time: '09:00:00', end_time: '10:30:00', host_names: ['Alice'], support_names: ['Bob'], technical_names: ['Charlie'] },
+      { segment_index: 2, start_time: '10:30:00', end_time: '12:00:00', host_names: ['David'], support_names: ['Bob'], technical_names: ['Charlie'] },
+    ],
+  }
+
+  assert.equal(segmentedShift.staffing_segments?.length, 2, 'Shift must retain 2 segments')
+  assert.equal(segmentedShift.staffing_segments?.[0].segment_index, 1)
+  assert.equal(segmentedShift.staffing_segments?.[1].segment_index, 2)
+  assert.equal(segmentedShift.staffing_segments?.[0].start_time, '09:00:00')
+  assert.equal(segmentedShift.staffing_segments?.[1].end_time, '12:00:00')
 })

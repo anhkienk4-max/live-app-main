@@ -8,6 +8,7 @@ import {
   isStaffedRegistration,
   shiftRegistrationService,
   shiftService,
+  swapRequestService,
   type ShiftRoleCapacity,
 } from '@/lib/services/dataService'
 import type {
@@ -23,6 +24,7 @@ import type {
   ShiftStaffIdentityMatchMethod,
   ShiftStatus,
   User,
+  SwapRequest,
 } from '@/lib/types/database.types'
 import { formatRegistrationErrorMessage, canSelfCancelRegistration } from '@/lib/utils/shiftRegistration'
 import {
@@ -57,6 +59,8 @@ import {
   UserPlus,
   X,
   Info,
+  RefreshCw,
+  ArrowRight,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -532,6 +536,10 @@ export function ShiftDetailModal({
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
   const [showSwapDialog, setShowSwapDialog] = React.useState(false)
+  const [replacingRegistration, setReplacingRegistration] = React.useState<ShiftRegistration | null>(null)
+  const [replacingUserId, setReplacingUserId] = React.useState('')
+  const [replacingReason, setReplacingReason] = React.useState('')
+  const [shiftSwaps, setShiftSwaps] = React.useState<SwapRequest[]>([])
   const [supplementalDraft, setSupplementalDraft] = React.useState<Record<string, string>>({})
   const searchParams = useSearchParams()
   const initialParamTab = searchParams?.get('shift_tab')
@@ -580,10 +588,11 @@ export function ShiftDetailModal({
     setStaffingLoading(true)
     setStaffingError(false)
     try {
-      const [loadedRegistrations, loadedCapacities, updatedShift] = await Promise.all([
+      const [loadedRegistrations, loadedCapacities, updatedShift, loadedSwaps] = await Promise.all([
         shiftRegistrationService.getForShift(shift.id),
         shiftRegistrationService.getCapacity(shift.id),
         shiftService.getById(shift.id),
+        swapRequestService.getAllFiltered({ shiftIds: [shift.id] }).catch(() => []),
       ])
       if (sequence !== staffingRead.current) return
       setRegistrations(loadedRegistrations)
@@ -593,6 +602,7 @@ export function ShiftDetailModal({
       if (updatedShift) {
         setActiveShift(updatedShift)
       }
+      setShiftSwaps(loadedSwaps)
     } catch {
       if (sequence === staffingRead.current) setStaffingError(true)
     } finally {
@@ -1234,11 +1244,28 @@ export function ShiftDetailModal({
                       shift={activeShift}
                     />
 
+                    {shiftSwaps.length > 0 && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs space-y-1.5" data-testid="shift-swaps-summary">
+                        <div className="font-semibold text-blue-900 flex items-center justify-between">
+                          <span>Yêu cầu đổi ca / PASS liên quan ({shiftSwaps.length})</span>
+                          <Badge variant="outline" className="text-[10px] uppercase">{shiftSwaps[0].status}</Badge>
+                        </div>
+                        {shiftSwaps.map(swap => (
+                          <div key={swap.id} className="flex items-center justify-between gap-2 border-t border-blue-100 pt-1 text-[11px] text-blue-800">
+                            <span>
+                              <strong>{userName(swap.requester_id)}</strong> ({t(swap.operational_role || 'host')})
+                              {swap.counterpart_id ? ` ⇄ ${userName(swap.counterpart_id)}` : swap.replacement_staff_id ? ` → ${userName(swap.replacement_staff_id)}` : ''}
+                            </span>
+                            <span className="font-medium capitalize">{swap.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {canRequestSwap && myRegistration && (
                       <Card><CardContent className="pt-5 flex justify-end"><Button variant="outline" onClick={() => setShowSwapDialog(true)}>Đổi ca</Button></CardContent></Card>
                     )}
                     {canRequestSwap && myRegistration && (
-                      <SwapRequestDialog open={showSwapDialog} onOpenChange={setShowSwapDialog} sourceShift={shift} sourceRegistration={myRegistration} shifts={[]} users={users} currentUser={currentUser!} onSuccess={loadStaffing} />
+                      <SwapRequestDialog open={showSwapDialog} onOpenChange={setShowSwapDialog} sourceShift={shift} sourceRegistration={myRegistration} shifts={allShifts || []} users={users} currentUser={currentUser!} onSuccess={loadStaffing} />
                     )}
 
                     {canEditStaffingLabels ? (
@@ -1336,6 +1363,22 @@ export function ShiftDetailModal({
                                     </>
                                   ) : null}
                                   {(registration.status === 'approved' || registration.status === 'manually_assigned') && currentUser && hasPermission(currentUser, 'shifts.assign_staff') ? (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs border-amber-200 text-amber-700 hover:bg-amber-50"
+                                        disabled={busy}
+                                        data-testid={`replace-staffing-${registration.id}`}
+                                        onClick={() => {
+                                          setReplacingRegistration(registration)
+                                          setReplacingUserId('')
+                                          setReplacingReason('')
+                                        }}
+                                      >
+                                        <RefreshCw className="mr-1 h-3 w-3" />
+                                        Thay người
+                                      </Button>
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -1354,7 +1397,8 @@ export function ShiftDetailModal({
                                     >
                                       <Trash2 className="mr-1 h-3 w-3" />
                                       {t('removeAssignment')}
-                                    </Button>
+                                      </Button>
+                                    </>
                                   ) : null}
                                   {currentUser && currentUser.id === registration.user_id && (registration.status === 'pending' || registration.status === 'approved' || registration.status === 'manually_assigned') ? (
                                     canSelfCancelRegistration(registration, activeShift) ? (
@@ -1434,6 +1478,88 @@ export function ShiftDetailModal({
           </div>
         </DialogContent>
       </Dialog>
+
+      {replacingRegistration && (
+        <Dialog open onOpenChange={open => { if (!open) setReplacingRegistration(null) }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-sm font-semibold">
+                Thay thế nhân sự ({t(replacingRegistration.operational_role)})
+              </DialogTitle>
+            </DialogHeader>
+            <DialogBody className="space-y-3 text-xs">
+              <p className="text-muted-foreground">
+                Chọn nhân sự mới thay thế cho <strong>{userName(replacingRegistration.user_id)}</strong>. Thao tác sẽ gỡ phân công cũ và tạo phân công mới với đầy đủ audit trail.
+              </p>
+              <label className="block text-xs font-medium">
+                Nhân sự thay thế
+                <Select value={replacingUserId} onValueChange={setReplacingUserId}>
+                  <SelectTrigger className="mt-1 w-full"><SelectValue placeholder="Chọn nhân sự thay thế…" /></SelectTrigger>
+                  <SelectContent>
+                    {users
+                      .filter(u => u.status === 'active' && u.operational_roles?.includes(replacingRegistration.operational_role) && !registrations.some(r => r.user_id === u.id && ['approved', 'manually_assigned'].includes(r.status)))
+                      .map(u => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.full_name} ({u.email || u.id})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="block text-xs font-medium">
+                Lý do thay người (bắt buộc)
+                <Input
+                  className="mt-1 h-8 text-xs"
+                  placeholder="VD: Điều chỉnh phân công, vắng mặt đột xuất…"
+                  value={replacingReason}
+                  onChange={e => setReplacingReason(e.target.value)}
+                />
+              </label>
+              {replacingUserId && (
+                <div className="rounded border bg-muted/20 p-2 text-xs">
+                  <span className="font-semibold block mb-1">Đối chiếu thay đổi:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-red-700 line-through">{userName(replacingRegistration.user_id)}</span>
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-green-700 font-semibold">{userName(replacingUserId)}</span>
+                    <span className="text-muted-foreground">({t(replacingRegistration.operational_role)})</span>
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => setReplacingRegistration(null)}>
+                  Hủy
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={busy || !replacingUserId || !replacingReason.trim()}
+                  onClick={() => {
+                    void runStaffingAction(async () => {
+                      await shiftRegistrationService.removeAssignment(
+                        replacingRegistration.id,
+                        currentUser!.id,
+                        `Thay người: ${replacingReason.trim()}`,
+                        replacingRegistration.version,
+                      )
+                      const freshShift = await shiftService.getById(shift.id).catch(() => null)
+                      await shiftRegistrationService.assignManually(
+                        shift.id,
+                        replacingUserId,
+                        replacingRegistration.operational_role,
+                        currentUser!.id,
+                        freshShift?.version ?? (shift.version ? shift.version + 1 : undefined),
+                      )
+                      setReplacingRegistration(null)
+                    }, 'Đã thay thế nhân sự thành công')
+                  }}
+                >
+                  {busy ? 'Đang xử lý…' : 'Xác nhận thay người'}
+                </Button>
+              </div>
+            </DialogBody>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <LifecycleActionDialog
         open={Boolean(deleteImpact)}
