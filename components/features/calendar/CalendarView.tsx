@@ -65,7 +65,13 @@ import {
   UNASSIGNED_STUDIO_FILTER,
   type CalendarFilterState,
 } from '@/lib/utils/calendarFilters'
-import { calendarAuthorityScope, calendarDataScope, isViewWithinDateRange, resolveDateFilterSyncTarget } from '@/lib/utils/calendarRange'
+import {
+  calendarAuthorityScope,
+  calendarDataScope,
+  isViewWithinDateRange,
+  reconcileCalendarViewportDate,
+  resolveDateFilterSyncTarget,
+} from '@/lib/utils/calendarRange'
 
 const DEFAULT_CALENDAR_FILTERS: CalendarFilterState = {
   brandIds: [],
@@ -180,10 +186,38 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     : hasPermission(currentUser, 'shifts.approve_registration') ? 'week' : 'month'
   const [today] = React.useState(() => format(new Date(), 'yyyy-MM-dd'))
   const rawDate = params.get('calendar_date') ?? today
-  const currentDate = React.useMemo(() => {
+  const encodedFilters = params.get('calendar_filters') ?? ''
+  const filters = React.useMemo((): CalendarFilterState => {
+    try {
+      const parsed = JSON.parse(encodedFilters)
+      return { ...DEFAULT_CALENDAR_FILTERS, ...parsed,
+        ...Object.fromEntries(Object.keys(DEFAULT_CALENDAR_FILTERS).filter(key => Array.isArray(DEFAULT_CALENDAR_FILTERS[key as keyof CalendarFilterState])).map(key => [key, Array.isArray(parsed[key]) ? parsed[key].filter((value: unknown) => typeof value === 'string') : []])),
+        time: ['all', 'today', 'current_week', 'current_month', 'custom'].includes(parsed.time) ? parsed.time : 'all',
+        customFrom: typeof parsed.customFrom === 'string' ? parsed.customFrom : '',
+        customTo: typeof parsed.customTo === 'string' ? parsed.customTo : '',
+        hasImportedStaffing: parsed.hasImportedStaffing === true,
+      }
+    } catch { return DEFAULT_CALENDAR_FILTERS }
+  }, [encodedFilters])
+
+
+  const parsedCurrentDate = React.useMemo(() => {
     const parsed = new Date(rawDate + 'T12:00:00')
     return Number.isFinite(parsed.getTime()) && format(parsed, 'yyyy-MM-dd') === rawDate ? parsed : new Date(today + 'T12:00:00')
   }, [rawDate, today])
+
+  const dateReconciliation = React.useMemo(
+    () => reconcileCalendarViewportDate(view, parsedCurrentDate, filters, today),
+    [filters, parsedCurrentDate, today, view],
+  )
+  const currentDate = dateReconciliation.resolvedDate
+
+  React.useEffect(() => {
+    if (dateReconciliation.reconciled) {
+      listNavigate({ calendar_date: dateReconciliation.resolvedDateStr }, true)
+    }
+  }, [dateReconciliation.reconciled, dateReconciliation.resolvedDateStr, listNavigate])
+
   const setCurrentDate = (date: Date) => listNavigate({ calendar_date: format(date, 'yyyy-MM-dd'), calendar_list_page: null })
   const setView = React.useCallback((value: 'month' | 'week' | 'day' | 'list') => listNavigate({ calendar_view: value, calendar_list_page: null }), [listNavigate])
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -262,19 +296,6 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     return () => window.clearTimeout(timer)
   }, [listNavigate, searchInput, searchTerm])
   const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set())
-  const encodedFilters = params.get('calendar_filters') ?? ''
-  const filters = React.useMemo((): CalendarFilterState => {
-    try {
-      const parsed = JSON.parse(encodedFilters)
-      return { ...DEFAULT_CALENDAR_FILTERS, ...parsed,
-        ...Object.fromEntries(Object.keys(DEFAULT_CALENDAR_FILTERS).filter(key => Array.isArray(DEFAULT_CALENDAR_FILTERS[key as keyof CalendarFilterState])).map(key => [key, Array.isArray(parsed[key]) ? parsed[key].filter((value: unknown) => typeof value === 'string') : []])),
-        time: ['all', 'today', 'current_week', 'current_month', 'custom'].includes(parsed.time) ? parsed.time : 'all',
-        customFrom: typeof parsed.customFrom === 'string' ? parsed.customFrom : '',
-        customTo: typeof parsed.customTo === 'string' ? parsed.customTo : '',
-        hasImportedStaffing: parsed.hasImportedStaffing === true,
-      }
-    } catch { return DEFAULT_CALENDAR_FILTERS }
-  }, [encodedFilters])
   const setFilters = (value: CalendarFilterState) => listNavigate({ calendar_filters: JSON.stringify(value), calendar_list_page: null })
   const rawTime = params.get('calendar_time')
   const listTimeOverride = rawTime === 'all' || rawTime === 'today' || rawTime === 'current_week' || rawTime === 'current_month' || rawTime === 'custom' ? rawTime : null
@@ -550,6 +571,13 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         calendar_time: null,
         calendar_list_page: null,
       })
+      toast({
+        title: language === 'vi' ? 'Đã bỏ bộ lọc thời gian' : 'Time filter cleared',
+        description: language === 'vi'
+          ? 'Đã tự động chuyển về tất cả thời gian vì bạn chuyển ra ngoài khoảng lọc. Các bộ lọc khác vẫn được giữ nguyên.'
+          : 'Automatically reset time filter to all because you navigated outside the filtered period. Other filters were preserved.',
+        variant: 'info',
+      })
     } else {
       if (view === 'month' || view === 'list') {
         setCurrentDate(direction === 'prev' ? addMonths(currentDate, -1) : addMonths(currentDate, 1))
@@ -581,6 +609,13 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         calendar_filters: JSON.stringify(preservedFilters),
         calendar_time: null,
         calendar_list_page: null,
+      })
+      toast({
+        title: language === 'vi' ? 'Đã bỏ bộ lọc thời gian' : 'Time filter cleared',
+        description: language === 'vi'
+          ? 'Đã tự động chuyển về tất cả thời gian vì bạn chuyển về hôm nay. Các bộ lọc khác vẫn được giữ nguyên.'
+          : 'Automatically reset time filter to all because you jumped to today. Other filters were preserved.',
+        variant: 'info',
       })
     } else {
       setCurrentDate(todayDate)
@@ -740,19 +775,19 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           {/* Left: Date Navigation */}
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 sm:gap-2">
             <>
-                <Button variant="outline" size="icon" aria-label={t('previousNavigation')} onClick={() => navigate('prev')} className="h-9 w-9">
+                <Button variant="outline" size="icon" aria-label={t('previousNavigation')} onClick={() => navigate('prev')} className="h-9 w-9" data-testid="calendar-prev-btn">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" onClick={goToToday} className="h-9">
+                <Button variant="outline" onClick={goToToday} className="h-9" data-testid="calendar-today-btn">
                   {t('today')}
                 </Button>
-                <Button variant="outline" size="icon" aria-label={t('nextNavigation')} onClick={() => navigate('next')} className="h-9 w-9">
+                <Button variant="outline" size="icon" aria-label={t('nextNavigation')} onClick={() => navigate('next')} className="h-9 w-9" data-testid="calendar-next-btn">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
             </>
             <h2 className="flex min-w-0 basis-full items-center text-sm font-semibold sm:basis-auto sm:text-base sm:ml-2">
               <CalendarIcon className="h-5 w-5 shrink-0 mr-2 text-muted-foreground" />
-              <span className="min-w-0">{getViewTitle()}</span>
+              <span className="min-w-0" data-testid="calendar-view-title">{getViewTitle()}</span>
             </h2>
           </div>
 
@@ -905,15 +940,24 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         {hasActiveFilters && filteredShifts.length === 0 && !loading && !loadingMore && (
           <div
             data-testid="calendar-filtered-empty-notice"
+            data-empty-reason={shifts.length > 0 ? 'filtered-empty' : 'range-mismatch'}
             className="m-3 flex flex-col items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-4 text-center sm:flex-row sm:text-left"
             role="status"
           >
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Filter className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span>
-                {language === 'vi'
-                  ? 'Không tìm thấy ca nào phù hợp với bộ lọc hiện tại trong khoảng thời gian này.'
-                  : 'No shifts match the current filters in this period.'}
+                {shifts.length > 0
+                  ? (language === 'vi'
+                      ? `Có ${shifts.length} ca trong khoảng thời gian này nhưng không khớp với bộ lọc đang chọn.`
+                      : `There are ${shifts.length} shifts in this period, but none match your active filters.`)
+                  : (language === 'vi'
+                      ? (filters.time === 'custom' && filters.customFrom && filters.customTo
+                          ? `Không có ca nào trong khoảng ngày đã lọc (${filters.customFrom} - ${filters.customTo}).`
+                          : 'Không tìm thấy ca nào phù hợp với bộ lọc hiện tại trong khoảng thời gian này.')
+                      : (filters.time === 'custom' && filters.customFrom && filters.customTo
+                          ? `No shifts found in the filtered date range (${filters.customFrom} - ${filters.customTo}).`
+                          : 'No shifts match the current filters in this period.'))}
               </span>
             </div>
             <Button

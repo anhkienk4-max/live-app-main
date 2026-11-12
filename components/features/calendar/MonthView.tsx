@@ -125,7 +125,7 @@ export function MonthView({
           const currentDay = isToday(day)
           return (
             <div
-              className={`min-h-36 min-w-0 bg-background p-1.5 sm:min-h-40 sm:p-2 lg:min-h-44 ${
+              className={`scroll-mb-24 md:scroll-mb-0 min-h-36 min-w-0 bg-background p-1.5 sm:min-h-40 sm:p-2 lg:min-h-44 ${
                 currentMonth ? '' : 'bg-muted/40 text-muted-foreground'
               } ${currentDay ? 'ring-2 ring-inset ring-primary' : ''}`}
               data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}

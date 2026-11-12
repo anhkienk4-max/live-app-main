@@ -1,5 +1,5 @@
 import { addDays, endOfMonth, endOfWeek, format, parseISO, startOfMonth, startOfWeek } from 'date-fns'
-import { calendarTimeScope, type CalendarTimeFilter } from './calendarFilters'
+import { calendarTimeScope, type CalendarFilterState, type CalendarTimeFilter } from './calendarFilters'
 import { businessLocalDate } from './shiftUtils'
 
 export type CalendarViewMode = 'month' | 'week' | 'day' | 'list'
@@ -102,4 +102,36 @@ export function resolveDateFilterSyncTarget(
     return today
   }
   return null
+}
+
+/**
+ * Reconciles potential contradictions between `currentDate` and active `filters`.
+ * For instance, when a direct deep-link, reload, or history navigation has `calendar_date` in November 2026,
+ * but `calendar_filters` specifies a custom range in January 2026.
+ * In this case, `currentDate` is aligned to `filters.customFrom` so the viewport immediately
+ * displays the filtered range rather than rendering an empty out-of-range month.
+ */
+export function reconcileCalendarViewportDate(
+  view: CalendarViewMode,
+  currentDate: Date,
+  filters: CalendarFilterState,
+  today: string,
+): { resolvedDate: Date; resolvedDateStr: string; reconciled: boolean } {
+  const currentDateStr = format(currentDate, 'yyyy-MM-dd')
+  if (filters.time === 'custom' && filters.customFrom && filters.customTo) {
+    if (!isViewWithinDateRange(view, currentDate, filters.customFrom, filters.customTo)) {
+      const parsedTarget = new Date(filters.customFrom + 'T12:00:00')
+      if (Number.isFinite(parsedTarget.getTime())) {
+        return { resolvedDate: parsedTarget, resolvedDateStr: filters.customFrom, reconciled: true }
+      }
+    }
+  } else if (filters.time === 'today') {
+    if (currentDateStr !== today) {
+      const parsedToday = new Date(today + 'T12:00:00')
+      if (Number.isFinite(parsedToday.getTime())) {
+        return { resolvedDate: parsedToday, resolvedDateStr: today, reconciled: true }
+      }
+    }
+  }
+  return { resolvedDate: currentDate, resolvedDateStr: currentDateStr, reconciled: false }
 }

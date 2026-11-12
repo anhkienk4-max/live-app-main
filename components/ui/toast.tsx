@@ -29,6 +29,8 @@ export function Toast({ title, description, variant = 'default', duration, actio
 
   return (
     <div
+      role="status"
+      data-testid="toast"
       className={cn(
         'pointer-events-auto flex w-full max-w-md rounded-lg border shadow-lg',
         variant === 'destructive' && 'border-red-200 bg-red-50',

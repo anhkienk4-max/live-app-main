@@ -5,6 +5,7 @@ import {
   calendarAuthorityScope,
   calendarDataScope,
   isViewWithinDateRange,
+  reconcileCalendarViewportDate,
   resolveDateFilterSyncTarget,
 } from '../lib/utils/calendarRange.ts'
 import {
@@ -224,28 +225,34 @@ test('RC19-G2-SYNC-06: CalendarView implementation contract conforms to sync, em
   // 1. Imports sync helpers
   assert.match(source, /import \{[^}]*isViewWithinDateRange[^}]*\} from '@\/lib\/utils\/calendarRange'/)
   assert.match(source, /import \{[^}]*resolveDateFilterSyncTarget[^}]*\} from '@\/lib\/utils\/calendarRange'/)
+  assert.match(source, /import \{[^}]*reconcileCalendarViewportDate[^}]*\} from '@\/lib\/utils\/calendarRange'/)
 
-  // 2. applyFilters synchronizes calendar_date to targetDate
+  // 2. Initial reconciliation hook wires properly
+  assert.match(source, /reconcileCalendarViewportDate\(view, parsedCurrentDate, filters, today\)/)
+  assert.match(source, /listNavigate\(\{ calendar_date: dateReconciliation\.resolvedDateStr \}, true\)/)
+
+  // 3. applyFilters synchronizes calendar_date to targetDate
   assert.match(source, /const targetDate = resolveDateFilterSyncTarget\(draftTime, draftFilters\.customFrom, today\)/)
   assert.match(source, /\.\.\.\(targetDate \? \{ calendar_date: targetDate \} : \{\}\)/)
 
-  // 3. navigate checks isViewWithinDateRange and clears time filter gracefully
+  // 4. navigate checks isViewWithinDateRange, clears time filter gracefully, and triggers toast
   assert.match(source, /isViewWithinDateRange\(view, nextDate, filters\.customFrom, filters\.customTo\)/)
-  assert.match(source, /time: 'all',\s+customFrom: '',\s+customTo: ''/)
+  assert.match(source, /toast\(\{[\s\S]*?variant: 'info'[\s\S]*?\}\)/)
 
-  // 4. goToToday checks isViewWithinDateRange and jumps safely
+  // 5. goToToday checks isViewWithinDateRange and jumps safely with toast
   assert.match(source, /const goToToday = \(\) =>/)
   assert.match(source, /<Button variant="outline" onClick=\{goToToday\} className="h-9">/)
 
-  // 5. ActiveFilterChips setFilters properly synchronizes value.time
+  // 6. ActiveFilterChips setFilters properly synchronizes value.time
   assert.match(source, /calendar_filters: JSON\.stringify\(\{ \.\.\.value, time: value\.time \}\)/)
 
-  // 6. Filtered empty notice banner
+  // 7. Filtered empty notice banner with differentiated reasons
   assert.match(source, /data-testid="calendar-filtered-empty-notice"/)
+  assert.match(source, /data-empty-reason=\{shifts\.length > 0 \? 'filtered-empty' : 'range-mismatch'\}/)
   assert.match(source, /data-testid="calendar-clear-filters-notice-btn"/)
   assert.match(source, /onClick=\{clearFilters\}/)
 
-  // 7. Bounded window and abort contract preserved
+  // 8. Bounded window and abort contract preserved
   assert.match(source, /readCalendarWindow\(filters, controller\.signal, first =>/)
   assert.match(source, /if \(version !== requestVersion\.current \|\| controller\.signal\.aborted\) return/)
 })
@@ -283,4 +290,89 @@ test('RC19-G2-SYNC-07: filterCalendarShifts accurately displays shifts within sy
   // When filters mismatch (e.g. brand-none), result is empty
   const emptyFiltered = filterCalendarShifts(shifts, { ...syncFilters, brandIds: ['brand-none'] }, '', context)
   assert.equal(emptyFiltered.length, 0)
+})
+
+test('RC19-G2-SYNC-08: reconcileCalendarViewportDate resolves contradictions on deep-link, reload, and view changes', () => {
+  const today = '2026-11-12'
+
+  // Scenario A: Direct deep link has calendar_date=2026-11-12 but calendar_filters specifies custom range 2026-01-07..2026-01-15
+  const conflictingDate = new Date('2026-11-12T12:00:00.000Z')
+  const customFilters: CalendarFilterState = {
+    ...baseFilters,
+    time: 'custom',
+    customFrom: '2026-01-07',
+    customTo: '2026-01-15',
+  }
+  const resultA = reconcileCalendarViewportDate('month', conflictingDate, customFilters, today)
+  assert.equal(resultA.reconciled, true)
+  assert.equal(resultA.resolvedDateStr, '2026-01-07')
+
+  // Scenario B: URL date is already within the custom range (e.g. 2026-01-10) -> No reconciliation needed
+  const alignedDate = new Date('2026-01-10T12:00:00.000Z')
+  const resultB = reconcileCalendarViewportDate('month', alignedDate, customFilters, today)
+  assert.equal(resultB.reconciled, false)
+  assert.equal(resultB.resolvedDateStr, '2026-01-10')
+
+  // Scenario C: URL specifies time: 'today' but calendar_date is old/stale
+  const staleDate = new Date('2026-01-07T12:00:00.000Z')
+  const todayFilters: CalendarFilterState = {
+    ...baseFilters,
+    time: 'today',
+  }
+  const resultC = reconcileCalendarViewportDate('day', staleDate, todayFilters, today)
+  assert.equal(resultC.reconciled, true)
+  assert.equal(resultC.resolvedDateStr, '2026-11-12')
+
+  // Scenario D: All time filter -> whatever date was requested is kept
+  const allTimeFilters: CalendarFilterState = {
+    ...baseFilters,
+    time: 'all',
+  }
+  const resultD = reconcileCalendarViewportDate('month', staleDate, allTimeFilters, today)
+  assert.equal(resultD.reconciled, false)
+  assert.equal(resultD.resolvedDateStr, '2026-01-07')
+
+  // Scenario E: View switch to Day view with conflicting date
+  const resultE = reconcileCalendarViewportDate('day', conflictingDate, customFilters, today)
+  assert.equal(resultE.reconciled, true)
+  assert.equal(resultE.resolvedDateStr, '2026-01-07')
+})
+
+test('RC19-G2-SYNC-09: Empty state distinguishes causes: filtered-empty vs range-mismatch', () => {
+  const shifts: Shift[] = [
+    mockShift('nov-01', '2026-11-01'),
+    mockShift('nov-02', '2026-11-02'),
+  ]
+
+  const context = {
+    currentDate: new Date('2026-11-01T12:00:00.000Z'),
+    today: '2026-11-12',
+    brands: [{ id: 'brand-alpha', name: 'Brand Alpha' }] as never,
+    platforms: [{ id: 'platform-beta', name: 'Platform Beta' }] as never,
+    campaigns: [{ id: 'campaign-gamma', name: 'Campaign Gamma' }] as never,
+    registrations: [],
+  }
+
+  // Case 1: Filtered empty (shifts exist in period, but filtered out by brand/status)
+  const activeBrandMismatch: CalendarFilterState = {
+    ...baseFilters,
+    brandIds: ['non-existent-brand'],
+  }
+  const filtered = filterCalendarShifts(shifts, activeBrandMismatch, '', context)
+  assert.equal(filtered.length, 0)
+  assert.ok(shifts.length > 0)
+  // Reason is 'filtered-empty'
+
+  // Case 2: Range mismatch (custom range has zero shifts in DB)
+  const emptyShifts: Shift[] = []
+  const customRangeFilter: CalendarFilterState = {
+    ...baseFilters,
+    time: 'custom',
+    customFrom: '2026-01-07',
+    customTo: '2026-01-15',
+  }
+  const rangeFiltered = filterCalendarShifts(emptyShifts, customRangeFilter, '', { ...context, currentDate: new Date('2026-01-07T12:00:00.000Z') })
+  assert.equal(rangeFiltered.length, 0)
+  assert.equal(emptyShifts.length, 0)
+  // Reason is 'range-mismatch'
 })
