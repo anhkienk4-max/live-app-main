@@ -33,7 +33,7 @@ import {
   Trash2,
   UserPlus,
 } from 'lucide-react'
-import { format, addMonths, addDays, addWeeks, startOfWeek } from 'date-fns'
+import { format, addMonths, addDays, addWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
 import { DayView } from './DayView'
@@ -65,7 +65,7 @@ import {
   UNASSIGNED_STUDIO_FILTER,
   type CalendarFilterState,
 } from '@/lib/utils/calendarFilters'
-import { calendarAuthorityScope, calendarDataScope } from '@/lib/utils/calendarRange'
+import { calendarAuthorityScope, calendarDataScope, isViewWithinDateRange, resolveDateFilterSyncTarget } from '@/lib/utils/calendarRange'
 
 const DEFAULT_CALENDAR_FILTERS: CalendarFilterState = {
   brandIds: [],
@@ -511,12 +511,79 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }
 
   const navigate = (direction: 'prev' | 'next') => {
-    if (view === 'month' || view === 'list') {
-      setCurrentDate(direction === 'prev' ? addMonths(currentDate, -1) : addMonths(currentDate, 1))
-    } else if (view === 'week') {
-      setCurrentDate(direction === 'prev' ? addWeeks(currentDate, -1) : addWeeks(currentDate, 1))
-    } else if (view === 'day') {
-      setCurrentDate(direction === 'prev' ? addDays(currentDate, -1) : addDays(currentDate, 1))
+    const nextDate = view === 'month' || view === 'list'
+      ? addMonths(currentDate, direction === 'prev' ? -1 : 1)
+      : view === 'week'
+      ? addWeeks(currentDate, direction === 'prev' ? -1 : 1)
+      : addDays(currentDate, direction === 'prev' ? -1 : 1)
+
+    const nextDateStr = format(nextDate, 'yyyy-MM-dd')
+    const activeTimeFilter = view === 'list' ? listTimeFilter : filters.time
+
+    let shouldResetTime = false
+    if (activeTimeFilter === 'custom') {
+      shouldResetTime = !isViewWithinDateRange(view, nextDate, filters.customFrom, filters.customTo)
+    } else if (activeTimeFilter === 'today') {
+      shouldResetTime = nextDateStr !== today
+    } else if (activeTimeFilter === 'current_week') {
+      const todayDate = new Date(today + 'T12:00:00')
+      const currentWeekStart = format(startOfWeek(todayDate), 'yyyy-MM-dd')
+      const currentWeekEnd = format(endOfWeek(todayDate), 'yyyy-MM-dd')
+      shouldResetTime = !isViewWithinDateRange(view, nextDate, currentWeekStart, currentWeekEnd)
+    } else if (activeTimeFilter === 'current_month') {
+      const todayDate = new Date(today + 'T12:00:00')
+      const currentMonthStart = format(startOfMonth(todayDate), 'yyyy-MM-dd')
+      const currentMonthEnd = format(endOfMonth(todayDate), 'yyyy-MM-dd')
+      shouldResetTime = !isViewWithinDateRange(view, nextDate, currentMonthStart, currentMonthEnd)
+    }
+
+    if (shouldResetTime) {
+      const preservedFilters: CalendarFilterState = {
+        ...filters,
+        time: 'all',
+        customFrom: '',
+        customTo: '',
+      }
+      listNavigate({
+        calendar_date: nextDateStr,
+        calendar_filters: JSON.stringify(preservedFilters),
+        calendar_time: null,
+        calendar_list_page: null,
+      })
+    } else {
+      if (view === 'month' || view === 'list') {
+        setCurrentDate(direction === 'prev' ? addMonths(currentDate, -1) : addMonths(currentDate, 1))
+      } else if (view === 'week') {
+        setCurrentDate(direction === 'prev' ? addWeeks(currentDate, -1) : addWeeks(currentDate, 1))
+      } else if (view === 'day') {
+        setCurrentDate(direction === 'prev' ? addDays(currentDate, -1) : addDays(currentDate, 1))
+      }
+    }
+  }
+
+  const goToToday = () => {
+    const todayDate = new Date(today + 'T12:00:00')
+    const activeTimeFilter = view === 'list' ? listTimeFilter : filters.time
+    let shouldResetTime = false
+    if (activeTimeFilter === 'custom') {
+      shouldResetTime = !isViewWithinDateRange(view, todayDate, filters.customFrom, filters.customTo)
+    }
+
+    if (shouldResetTime) {
+      const preservedFilters: CalendarFilterState = {
+        ...filters,
+        time: 'all',
+        customFrom: '',
+        customTo: '',
+      }
+      listNavigate({
+        calendar_date: today,
+        calendar_filters: JSON.stringify(preservedFilters),
+        calendar_time: null,
+        calendar_list_page: null,
+      })
+    } else {
+      setCurrentDate(todayDate)
     }
   }
 
@@ -532,9 +599,15 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }
   const applyFilters = () => {
     if (!calendarTimeScope(draftTime, currentDate, draftFilters.customFrom, draftFilters.customTo).valid) return
+    const targetDate = resolveDateFilterSyncTarget(draftTime, draftFilters.customFrom, today)
+    const nextFilters: CalendarFilterState = {
+      ...draftFilters,
+      time: draftTime,
+    }
     listNavigate({
-      calendar_filters: JSON.stringify({ ...draftFilters, time: view === 'list' ? filters.time : draftTime }),
-      ...(view === 'list' ? { calendar_time: draftTime } : {}),
+      calendar_filters: JSON.stringify(nextFilters),
+      ...(view === 'list' ? { calendar_time: draftTime } : { calendar_time: null }),
+      ...(targetDate ? { calendar_date: targetDate } : {}),
       calendar_list_page: null,
     })
     setShowFilters(false)
@@ -660,7 +733,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       {/* Unified Command Toolbar */}
       <div className={view === 'month' && mobileFullCalendar ? "static flex flex-col bg-background pb-2 md:sticky md:top-0 md:z-30" : "sticky top-0 z-30 flex flex-col bg-background pb-2"}>
           <ActiveFilterChips filters={{ ...filters, time: view === 'list' ? listTimeFilter : filters.time }} setFilters={value => {
-            if (view === 'list') listNavigate({ calendar_filters: JSON.stringify({ ...value, time: filters.time }), calendar_time: value.time, calendar_list_page: null })
+            if (view === 'list') listNavigate({ calendar_filters: JSON.stringify({ ...value, time: value.time }), calendar_time: value.time === 'all' ? null : value.time, calendar_list_page: null })
             else setFilters(value)
           }} onClearAll={clearFilters} t={t} brands={brands} platforms={platforms} campaigns={campaigns} users={users} />
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between px-0 pb-2 border-b border-border">
@@ -670,7 +743,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                 <Button variant="outline" size="icon" aria-label={t('previousNavigation')} onClick={() => navigate('prev')} className="h-9 w-9">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" onClick={() => setCurrentDate(new Date())} className="h-9">
+                <Button variant="outline" onClick={goToToday} className="h-9">
                   {t('today')}
                 </Button>
                 <Button variant="outline" size="icon" aria-label={t('nextNavigation')} onClick={() => navigate('next')} className="h-9 w-9">
@@ -829,6 +902,31 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         {loading && loadedKey === requestKey && <div role="status" className="px-3 py-1 text-xs text-muted-foreground">{t('loading')}</div>}
          {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">{language === 'vi' ? `Đang tải ca trong kỳ: ${shifts.length}/${listTotal}. Dữ liệu chưa đầy đủ.` : `Loading shifts in range: ${shifts.length}/${listTotal}. Data is incomplete.`}</div>}
         {loadedKey === requestKey && <>
+        {hasActiveFilters && filteredShifts.length === 0 && !loading && !loadingMore && (
+          <div
+            data-testid="calendar-filtered-empty-notice"
+            className="m-3 flex flex-col items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-4 text-center sm:flex-row sm:text-left"
+            role="status"
+          >
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Filter className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span>
+                {language === 'vi'
+                  ? 'Không tìm thấy ca nào phù hợp với bộ lọc hiện tại trong khoảng thời gian này.'
+                  : 'No shifts match the current filters in this period.'}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearFilters}
+              data-testid="calendar-clear-filters-notice-btn"
+              className="shrink-0 h-8"
+            >
+              {language === 'vi' ? 'Xóa bộ lọc' : 'Clear filters'}
+            </Button>
+          </div>
+        )}
         {view === 'month' && <>
           <div className={mobileFullCalendar ? "max-w-full overflow-x-auto" : "hidden max-w-full overflow-x-auto lg:block"} role="region" aria-label={t('month')} tabIndex={0} data-testid="calendar-full-month-view"><div className="min-w-[1400px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
           <section className={mobileFullCalendar ? "hidden" : "min-w-0 lg:hidden"} data-testid="calendar-compact-month-view">

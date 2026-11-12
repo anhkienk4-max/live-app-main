@@ -55,3 +55,51 @@ export function calendarAuthorityScope(scope: CalendarDataScope): CalendarDataSc
     allTime: false,
   }
 }
+
+/**
+ * Determines whether a calendar view at `currentDate` overlaps with the date range [rangeFrom, rangeTo].
+ * Used to detect when navigation leaves a custom date filter range.
+ */
+export function isViewWithinDateRange(
+  view: CalendarViewMode,
+  currentDate: Date,
+  rangeFrom: string,
+  rangeTo: string,
+): boolean {
+  if (!rangeFrom || !rangeTo) return true
+  let viewStart: string
+  let viewEnd: string
+
+  if (view === 'month' || view === 'list') {
+    viewStart = dateString(startOfMonth(currentDate))
+    viewEnd = dateString(endOfMonth(currentDate))
+  } else if (view === 'week') {
+    viewStart = dateString(startOfWeek(currentDate))
+    viewEnd = dateString(endOfWeek(currentDate))
+  } else {
+    viewStart = dateString(currentDate)
+    viewEnd = viewStart
+  }
+
+  return viewStart <= rangeTo && viewEnd >= rangeFrom
+}
+
+/**
+ * Calculates the target date to synchronize the viewport when applying a date filter.
+ * When `time === 'custom'`, returns `customFrom` so the viewport synchronizes to the filtered range start.
+ * When `time === 'today'`, returns `today`.
+ * Otherwise returns null (viewport does not need to jump).
+ */
+export function resolveDateFilterSyncTarget(
+  time: CalendarTimeFilter,
+  customFrom: string,
+  today: string,
+): string | null {
+  if (time === 'custom' && customFrom && /^\d{4}-\d{2}-\d{2}$/.test(customFrom)) {
+    return customFrom
+  }
+  if (time === 'today' && today && /^\d{4}-\d{2}-\d{2}$/.test(today)) {
+    return today
+  }
+  return null
+}
