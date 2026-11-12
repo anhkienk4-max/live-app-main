@@ -121,21 +121,26 @@ export function calculateOverlaps(shifts: { id: string; start_time: string; end_
 
 function packGroup(columns: { id: string; start_time: string; end_time: string; crosses_midnight?: boolean }[][], layouts: Record<string, ShiftLayout>, minimumMinutes: number) {
   const numColumns = columns.length;
-  columns.forEach((col, colIndex) => {
+  const widthPerColumn = 100 / numColumns;
+
+  columns.forEach((col, colIdx) => {
     col.forEach((shift) => {
-      const pos = calculateShiftPosition(shift.start_time, shift.end_time, shift.crosses_midnight ?? false, minimumMinutes);
+      const startMins = timeToMinutes(shift.start_time);
+      const endMins = shift.crosses_midnight || timeToMinutes(shift.end_time) <= startMins ? 1440 : timeToMinutes(shift.end_time);
+      const visualDuration = Math.max(endMins - startMins, minimumMinutes);
+
       layouts[shift.id] = {
-        top: pos.top,
-        height: pos.height,
-        left: `${(colIndex / numColumns) * 100}%`,
-        width: `${100 / numColumns}%`
+        top: startMins * MINUTE_HEIGHT,
+        height: visualDuration * MINUTE_HEIGHT,
+        left: `${colIdx * widthPerColumn}%`,
+        width: `${widthPerColumn}%`,
       };
     });
   });
 }
 
 // ---------------------------------------------------------------------------
-// RC19 G2 Calendar Architecture: True 3-Lane Overlap Layout with Overflow Badges
+// RC19 G2 Calendar Architecture: True 3-Lane Overlap Layout with Sweep-Line Concurrency
 // ---------------------------------------------------------------------------
 
 export interface RenderedTimelineShift<T = unknown> {
@@ -184,11 +189,13 @@ export interface DayTimelineOptions {
 /**
  * Computes calendar lane placement for shifts on a single day.
  * Enforces:
- * - Maximum 3 lanes (0, 1, 2) side by side at any time.
- * - When > 3 concurrent shifts intersect, Lane 0 and Lane 1 display the first 2 streams,
- *   and Lane 2 renders an interactive overflow badge (`+N ca khác`).
- * - Shifts at non-overlapping hours are separated into distinct clusters.
- * - Short shifts between long shifts are preserved in free lanes without being obscured.
+ * - Exact concurrency detection via Sweep-Line algorithm on half-open [start, end) intervals.
+ * - When end = start of another shift, it is NOT counted as overlap.
+ * - Localized overflow: ONLY time windows with actual concurrency > 3 render overflow badges.
+ * - Outside overloaded windows, displays up to 3 individual shifts across lanes normally.
+ * - Never creates overlapping badges.
+ * - Popup displays all shifts intersecting the exact selected window.
+ * - Non-overlapping shifts remain in independent boxes.
  * - All positions are strictly bounded within the 24-hour day grid.
  */
 export function computeDayTimelineLayout<T extends { id: string; start_time: string; end_time: string; shift?: Shift; continuation?: boolean; crosses_midnight?: boolean }>(
@@ -215,32 +222,31 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
       id: raw.id,
       startMins,
       endMins,
-      visualEnd: startMins + duration,
+      visualEnd: Math.min(startMins + duration, 1440),
       duration,
       continuation: Boolean(raw.continuation),
       start_time: raw.start_time,
       end_time: raw.end_time,
     }
-  }).sort((a, b) => a.startMins - b.startMins || (b.visualEnd - b.startMins) - (a.visualEnd - a.startMins) || a.id.localeCompare(b.id))
+  }).sort((a, b) => a.startMins - b.startMins || (b.endMins - b.startMins) - (a.endMins - a.startMins) || a.id.localeCompare(b.id))
 
-  // 2. Partition into true overlapping clusters (islands)
+  // 2. Partition into contiguous visual clusters
+  // Two shifts belong to the same cluster if they visually overlap or touch:
   const clusters: typeof normalized[] = []
   let currentCluster: typeof normalized = []
-  let clusterEnd = -1
+  let clusterVisualEnd = -1
 
   for (const item of normalized) {
     if (currentCluster.length === 0) {
       currentCluster.push(item)
-      clusterEnd = item.visualEnd
-    } else if (item.startMins < clusterEnd) {
-      // Intersects with current cluster
+      clusterVisualEnd = item.visualEnd
+    } else if (item.startMins < clusterVisualEnd) {
       currentCluster.push(item)
-      clusterEnd = Math.max(clusterEnd, item.visualEnd)
+      clusterVisualEnd = Math.max(clusterVisualEnd, item.visualEnd)
     } else {
-      // Gap detected: independent time cluster
       clusters.push(currentCluster)
       currentCluster = [item]
-      clusterEnd = item.visualEnd
+      clusterVisualEnd = item.visualEnd
     }
   }
   if (currentCluster.length > 0) {
@@ -252,162 +258,223 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
 
   // 3. Process each cluster
   for (const cluster of clusters) {
-    // Check maximum concurrent overlapping shifts at any 5-minute slice
-    const sliceCounts = new Map<number, number>()
+    // 3a. Sweep-line algorithm based on exact scheduled half-open [startMins, endMins)
+    interface SweepEvent {
+      time: number
+      type: 'END' | 'START'
+      shift: typeof normalized[0]
+    }
+    const events: SweepEvent[] = []
     for (const item of cluster) {
-      for (let m = item.startMins; m < item.visualEnd; m += 5) {
-        sliceCounts.set(m, (sliceCounts.get(m) || 0) + 1)
+      events.push({ time: item.startMins, type: 'START', shift: item })
+      events.push({ time: item.endMins, type: 'END', shift: item })
+    }
+
+    // Sort: time ASC. For equal time, END comes before START (half-open [start, end))
+    events.sort((a, b) => {
+      if (a.time !== b.time) return a.time - b.time
+      if (a.type !== b.type) return a.type === 'END' ? -1 : 1
+      return a.shift.id.localeCompare(b.shift.id)
+    })
+
+    const active = new Set<typeof normalized[0]>()
+    let maxClusterConcurrency = 0
+    let lastTime = events[0]?.time ?? 0
+
+    interface OverloadedSlice {
+      start: number
+      end: number
+      activeShifts: typeof normalized[0][]
+    }
+    const overloadedSlices: OverloadedSlice[] = []
+
+    for (const ev of events) {
+      if (ev.time > lastTime && active.size > 0) {
+        if (active.size > maxClusterConcurrency) {
+          maxClusterConcurrency = active.size
+        }
+        if (active.size > maxLanes) {
+          overloadedSlices.push({
+            start: lastTime,
+            end: ev.time,
+            activeShifts: Array.from(active),
+          })
+        }
+      }
+
+      if (ev.type === 'START') {
+        active.add(ev.shift)
+        if (active.size > maxClusterConcurrency) {
+          maxClusterConcurrency = active.size
+        }
+      } else {
+        active.delete(ev.shift)
+      }
+      lastTime = ev.time
+    }
+
+    // 3b. Merge contiguous or near-contiguous overloaded slices into discrete windows
+    interface OverloadedWindow {
+      start: number
+      end: number
+      allShifts: Set<typeof normalized[0]>
+    }
+    const overloadedWindows: OverloadedWindow[] = []
+
+    for (const slice of overloadedSlices) {
+      const last = overloadedWindows[overloadedWindows.length - 1]
+      // Merge if contiguous or separated by less than minimumMinutes to avoid overlapping badges
+      if (last && (slice.start <= last.end || slice.start - last.end < minimumMinutes)) {
+        last.end = Math.max(last.end, slice.end)
+        for (const s of slice.activeShifts) {
+          last.allShifts.add(s)
+        }
+      } else {
+        overloadedWindows.push({
+          start: slice.start,
+          end: slice.end,
+          allShifts: new Set(slice.activeShifts),
+        })
       }
     }
-    const maxConcurrency = Math.max(...sliceCounts.values(), 1)
-    const effectiveLanes = Math.min(maxConcurrency, maxLanes)
 
-    if (maxConcurrency <= maxLanes) {
-      // Fits in 1, 2, or 3 lanes without overflow!
-      const lanes: typeof normalized[] = Array.from({ length: effectiveLanes }, () => [])
+    // 3c. Allocate lanes and overflow
+    const effectiveTotalLanes = Math.min(Math.max(maxClusterConcurrency, 1), maxLanes)
+
+    if (overloadedWindows.length === 0) {
+      // No overload: every time slice has <= maxLanes concurrent shifts
+      const laneIntervals: { start: number; end: number }[][] = Array.from({ length: effectiveTotalLanes }, () => [])
+
       for (const item of cluster) {
-        let placed = false
-        for (let l = 0; l < effectiveLanes; l++) {
-          const lastInLane = lanes[l][lanes[l].length - 1]
-          if (!lastInLane || lastInLane.visualEnd <= item.startMins) {
-            lanes[l].push(item)
-            placed = true
-            const topPx = Math.min((item.startMins / 60) * hourHeight, maxGridHeight - 10)
-            const heightPx = Math.min(Math.max((item.duration / 60) * hourHeight, 26), maxGridHeight - topPx)
-            renderedShifts.push({
-              item: item.raw,
-              shift: item.shift,
-              id: item.id,
-              lane: l,
-              totalLanes: effectiveLanes,
-              leftPercent: (l / effectiveLanes) * 100,
-              widthPercent: 100 / effectiveLanes,
-              topPx,
-              heightPx,
-              start_time: item.start_time,
-              end_time: item.end_time,
-              continuation: item.continuation,
-            })
+        let placedLane = -1
+        for (let l = 0; l < effectiveTotalLanes; l++) {
+          const intervals = laneIntervals[l]
+          const last = intervals[intervals.length - 1]
+          if (!last || last.end <= item.startMins) {
+            placedLane = l
             break
           }
         }
-        if (!placed) {
-          // If slight boundary collision, place in last lane
-          const l = effectiveLanes - 1
-          lanes[l].push(item)
+        if (placedLane === -1) {
+          placedLane = effectiveTotalLanes - 1
+        }
+        laneIntervals[placedLane].push({ start: item.startMins, end: item.visualEnd })
+
+        const topPx = Math.min((item.startMins / 60) * hourHeight, maxGridHeight - 10)
+        const heightPx = Math.min(Math.max((item.duration / 60) * hourHeight, 26), maxGridHeight - topPx)
+        renderedShifts.push({
+          item: item.raw,
+          shift: item.shift,
+          id: item.id,
+          lane: placedLane,
+          totalLanes: effectiveTotalLanes,
+          leftPercent: (placedLane / effectiveTotalLanes) * 100,
+          widthPercent: 100 / effectiveTotalLanes,
+          topPx,
+          heightPx,
+          start_time: item.start_time,
+          end_time: item.end_time,
+          continuation: item.continuation,
+        })
+      }
+    } else {
+      // Localized overflow exists!
+      // In Lane 2: pre-reserve intervals for overflow badges of each overloaded window.
+      // Outside these intervals, Lane 2 is free for regular shifts!
+      const laneIntervals: { start: number; end: number }[][] = Array.from({ length: maxLanes }, () => [])
+      const badgeForWindow = new Map<OverloadedWindow, {
+        badgeStart: number
+        badgeEnd: number
+        overflowShifts: typeof normalized[0][]
+      }>()
+
+      for (const win of overloadedWindows) {
+        const badgeStart = win.start
+        const badgeEnd = Math.max(win.end, win.start + minimumMinutes)
+        laneIntervals[maxLanes - 1].push({ start: badgeStart, end: badgeEnd })
+        badgeForWindow.set(win, {
+          badgeStart,
+          badgeEnd,
+          overflowShifts: [],
+        })
+      }
+
+      for (const item of cluster) {
+        let placedLane = -1
+        for (let l = 0; l < maxLanes; l++) {
+          const intervals = laneIntervals[l]
+          const hasCollision = intervals.some(inv => Math.max(inv.start, item.startMins) < Math.min(inv.end, item.visualEnd))
+          if (!hasCollision) {
+            placedLane = l
+            break
+          }
+        }
+
+        if (placedLane !== -1) {
+          laneIntervals[placedLane].push({ start: item.startMins, end: item.visualEnd })
+          laneIntervals[placedLane].sort((a, b) => a.start - b.start)
+
           const topPx = Math.min((item.startMins / 60) * hourHeight, maxGridHeight - 10)
           const heightPx = Math.min(Math.max((item.duration / 60) * hourHeight, 26), maxGridHeight - topPx)
           renderedShifts.push({
             item: item.raw,
             shift: item.shift,
             id: item.id,
-            lane: l,
-            totalLanes: effectiveLanes,
-            leftPercent: (l / effectiveLanes) * 100,
-            widthPercent: 100 / effectiveLanes,
+            lane: placedLane,
+            totalLanes: maxLanes,
+            leftPercent: (placedLane / maxLanes) * 100,
+            widthPercent: 100 / maxLanes,
             topPx,
             heightPx,
             start_time: item.start_time,
             end_time: item.end_time,
             continuation: item.continuation,
           })
-        }
-      }
-    } else {
-      // Concurrency > maxLanes (more than 3 concurrent shifts)
-      // Display Lane 0 and Lane 1 for visible streams, and place overflow badges in Lane 2!
-      const visibleLaneCount = maxLanes - 1 // 2 visible lanes (Lane 0 and Lane 1)
-      const lanes: typeof normalized[] = Array.from({ length: visibleLaneCount }, () => [])
-      const overflowItems: typeof normalized = []
-
-      for (const item of cluster) {
-        let placed = false
-        for (let l = 0; l < visibleLaneCount; l++) {
-          const lastInLane = lanes[l][lanes[l].length - 1]
-          if (!lastInLane || lastInLane.visualEnd <= item.startMins) {
-            lanes[l].push(item)
-            placed = true
-            const topPx = Math.min((item.startMins / 60) * hourHeight, maxGridHeight - 10)
-            const heightPx = Math.min(Math.max((item.duration / 60) * hourHeight, 26), maxGridHeight - topPx)
-            renderedShifts.push({
-              item: item.raw,
-              shift: item.shift,
-              id: item.id,
-              lane: l,
-              totalLanes: maxLanes,
-              leftPercent: (l / maxLanes) * 100,
-              widthPercent: 100 / maxLanes,
-              topPx,
-              heightPx,
-              start_time: item.start_time,
-              end_time: item.end_time,
-              continuation: item.continuation,
-            })
-            break
+        } else {
+          // Could not be placed in any lane (overloaded!)
+          const matchedWin = overloadedWindows.find(win => Math.max(win.start, item.startMins) < Math.min(win.end, item.endMins))
+            || overloadedWindows[0]
+          const badgeData = badgeForWindow.get(matchedWin)
+          if (badgeData) {
+            badgeData.overflowShifts.push(item)
           }
-        }
-        if (!placed) {
-          overflowItems.push(item)
         }
       }
 
-      if (overflowItems.length > 0) {
-        // Group overflow items by overlapping intervals so separate time windows get distinct badges
-        const overflowSubGroups: typeof normalized[] = []
-        let currentSubGroup: typeof normalized = []
-        let subGroupEnd = -1
+      for (const win of overloadedWindows) {
+        const badgeData = badgeForWindow.get(win)
+        if (!badgeData || badgeData.overflowShifts.length === 0) continue
 
-        for (const item of overflowItems) {
-          if (currentSubGroup.length === 0) {
-            currentSubGroup.push(item)
-            subGroupEnd = item.visualEnd
-          } else if (item.startMins < subGroupEnd) {
-            currentSubGroup.push(item)
-            subGroupEnd = Math.max(subGroupEnd, item.visualEnd)
-          } else {
-            overflowSubGroups.push(currentSubGroup)
-            currentSubGroup = [item]
-            subGroupEnd = item.visualEnd
-          }
-        }
-        if (currentSubGroup.length > 0) {
-          overflowSubGroups.push(currentSubGroup)
-        }
+        const { badgeStart, badgeEnd, overflowShifts } = badgeData
+        const overflowDuration = Math.max(badgeEnd - badgeStart, minimumMinutes)
+        const startHours = String(Math.floor(badgeStart / 60)).padStart(2, '0')
+        const startMinutesStr = String(badgeStart % 60).padStart(2, '0')
+        const endHours = String(Math.floor(badgeEnd / 60)).padStart(2, '0')
+        const endMinutesStr = String(badgeEnd % 60).padStart(2, '0')
+        const timeLabel = `${startHours}:${startMinutesStr} – ${endHours}:${endMinutesStr}`
 
-        for (const subGroup of overflowSubGroups) {
-          const overflowStart = Math.min(...subGroup.map(i => i.startMins))
-          const overflowEnd = Math.max(...subGroup.map(i => i.visualEnd))
-          const overflowDuration = Math.max(overflowEnd - overflowStart, minimumMinutes)
-          const startHours = String(Math.floor(overflowStart / 60)).padStart(2, '0')
-          const startMinutesStr = String(overflowStart % 60).padStart(2, '0')
-          const endHours = String(Math.floor(overflowEnd / 60)).padStart(2, '0')
-          const endMinutesStr = String(overflowEnd % 60).padStart(2, '0')
-          const timeLabel = `${startHours}:${startMinutesStr} – ${endHours}:${endMinutesStr}`
+        const topPx = Math.min((badgeStart / 60) * hourHeight, maxGridHeight - 10)
+        const heightPx = Math.min(Math.max((overflowDuration / 60) * hourHeight, 36), maxGridHeight - topPx)
 
-          const topPx = Math.min((overflowStart / 60) * hourHeight, maxGridHeight - 10)
-          const heightPx = Math.min(Math.max((overflowDuration / 60) * hourHeight, 36), maxGridHeight - topPx)
+        const clusterShiftsInWindow = cluster
+          .filter(c => Math.max(c.startMins, badgeStart) < Math.min(c.visualEnd, badgeEnd))
+          .map(c => c.raw)
 
-          // Find all cluster shifts that intersect this overflow window
-          const clusterShiftsInWindow = cluster
-            .filter(c => c.startMins < overflowEnd && c.visualEnd > overflowStart)
-            .map(c => c.raw)
-
-          overflowBadges.push({
-            id: `overflow-${subGroup[0].id}-${overflowStart}`,
-            lane: maxLanes - 1, // Lane 2
-            totalLanes: maxLanes,
-            leftPercent: ((maxLanes - 1) / maxLanes) * 100,
-            widthPercent: 100 / maxLanes,
-            topPx,
-            heightPx,
-            count: subGroup.length,
-            timeLabel,
-            allClusterShifts: clusterShiftsInWindow,
-            overflowShifts: subGroup.map(i => i.raw),
-            startMins: overflowStart,
-            endMins: overflowEnd,
-          })
-        }
+        overflowBadges.push({
+          id: `overflow-${overflowShifts[0].id}-${badgeStart}`,
+          lane: maxLanes - 1,
+          totalLanes: maxLanes,
+          leftPercent: ((maxLanes - 1) / maxLanes) * 100,
+          widthPercent: 100 / maxLanes,
+          topPx,
+          heightPx,
+          count: overflowShifts.length,
+          timeLabel,
+          allClusterShifts: clusterShiftsInWindow,
+          overflowShifts: overflowShifts.map(i => i.raw),
+          startMins: badgeStart,
+          endMins: badgeEnd,
+        })
       }
     }
   }
