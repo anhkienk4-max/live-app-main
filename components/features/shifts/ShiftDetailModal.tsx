@@ -61,6 +61,7 @@ import {
   Info,
   RefreshCw,
   ArrowRight,
+  Layers,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -567,7 +568,8 @@ export function ShiftDetailModal({
     }
   }
   const canDeleteShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
-  const canEditStaffingLabels = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
+  const canEdit = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
+  const canEditStaffingLabels = canEdit
   const canAssignStaff = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
   const registrationTotalPages = Math.max(1, Math.ceil(registrations.length / registrationPageSize))
   const safeRegistrationPage = Math.min(registrationPage, registrationTotalPages)
@@ -929,6 +931,89 @@ export function ShiftDetailModal({
                         <div><dt className="text-xs text-muted-foreground">{t('version')}</dt><dd className="mt-1 font-medium">{shift.version ?? fallback}</dd></div>
                       </dl>
                     </section>
+
+                    {/* Staffing Segments View (if present) */}
+                    {shift.staffing_segments && shift.staffing_segments.length > 0 ? (
+                      <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3" data-testid="shift-detail-segments-section">
+                        <div className="flex items-center justify-between border-b pb-2">
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                            <Layers className="h-3.5 w-3.5 text-indigo-600" />
+                            {language === 'vi' ? 'Khung giờ chi tiết (Staffing Segments)' : 'Staffing Segments'}
+                          </h3>
+                          <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold">
+                            {shift.staffing_segments.length} {language === 'vi' ? 'khung giờ' : 'segments'}
+                          </Badge>
+                        </div>
+                        <div className="divide-y divide-slate-100 space-y-3 pt-1">
+                          {shift.staffing_segments.map(seg => {
+                            const segDuration = resolveShiftDateTime('2000-01-01', seg.start_time, seg.end_time)?.durationMinutes ?? 0
+                            return (
+                              <div key={seg.segment_index} className="pt-2.5 first:pt-0" data-testid={`detail-segment-row-${seg.segment_index}`}>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex items-center rounded bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
+                                      K0{seg.segment_index}
+                                    </span>
+                                    <span className="font-semibold text-slate-800 text-xs">
+                                      {seg.start_time} – {seg.end_time}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500">
+                                      ({segDuration > 0 ? `${segDuration} min` : '—'})
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-[11px] font-medium text-slate-600">Định biên:</span>
+                                    <Badge variant="secondary" className="text-[10px] py-0 px-1.5">H: {seg.required_host_count}</Badge>
+                                    <Badge variant="secondary" className="text-[10px] py-0 px-1.5">S: {seg.required_support_count}</Badge>
+                                    <Badge variant="secondary" className="text-[10px] py-0 px-1.5">T: {seg.required_technical_count}</Badge>
+                                  </div>
+                                </div>
+
+                                {/* Planned Names (Display Only) */}
+                                {((seg.planned_host_names && seg.planned_host_names.length > 0) ||
+                                  (seg.planned_support_names && seg.planned_support_names.length > 0) ||
+                                  (seg.planned_technical_names && seg.planned_technical_names.length > 0)) && (
+                                  <div className="mt-2 rounded bg-amber-50/70 p-2 border border-amber-200/60 text-xs space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-semibold text-amber-900 uppercase tracking-wide">
+                                        Nhân sự dự kiến (Chưa duyệt / Display-only)
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {seg.planned_host_names?.map((name, i) => (
+                                        <Badge key={`host-${i}`} variant="outline" className="border-amber-300 bg-white text-amber-900 text-[10px]">
+                                          Host: {name}
+                                        </Badge>
+                                      ))}
+                                      {seg.planned_support_names?.map((name, i) => (
+                                        <Badge key={`sup-${i}`} variant="outline" className="border-amber-300 bg-white text-amber-900 text-[10px]">
+                                          Trợ: {name}
+                                        </Badge>
+                                      ))}
+                                      {seg.planned_technical_names?.map((name, i) => (
+                                        <Badge key={`tech-${i}`} variant="outline" className="border-amber-300 bg-white text-amber-900 text-[10px]">
+                                          Tech: {name}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </section>
+                    ) : (
+                      <section className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-3 text-xs text-slate-500">
+                        <div className="flex items-center justify-between">
+                          <span>Ca đơn (Toàn bộ khung giờ {shift.start_time} – {shift.end_time})</span>
+                          {canEdit && (
+                            <span className="text-indigo-600 font-medium">Bấm &quot;Sửa ca&quot; để thêm khung giờ (segments)</span>
+                          )}
+                        </div>
+                      </section>
+                    )}
+
                     <section className="rounded-lg border bg-white p-4 shadow-sm">
                       <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('productNotes')}</h3>
                       <p className="whitespace-pre-wrap break-words text-sm">{shift.product_notes?.trim() || fallback}</p>
