@@ -62,12 +62,14 @@ import {
   RefreshCw,
   ArrowRight,
   Layers,
+  ShieldAlert,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { CalendarExportDialog } from './CalendarExportDialog'
 import { SelfAttendancePanel } from '@/components/features/attendance/SelfAttendancePanel'
+import { AdminProxyAttendanceModal } from '@/components/features/attendance/AdminProxyAttendanceModal'
 import type { ListFilters } from '@/lib/services/operationsPageService'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
 import { getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
@@ -542,6 +544,7 @@ export function ShiftDetailModal({
   const [replacingReason, setReplacingReason] = React.useState('')
   const [shiftSwaps, setShiftSwaps] = React.useState<SwapRequest[]>([])
   const [supplementalDraft, setSupplementalDraft] = React.useState<Record<string, string>>({})
+  const [adminProxyOpen, setAdminProxyOpen] = React.useState(false)
   const searchParams = useSearchParams()
   const initialParamTab = searchParams?.get('shift_tab')
   const validTabs = React.useMemo(() => ['overview', 'staffing', 'details', 'attendance', 'notes'], [])
@@ -811,6 +814,13 @@ export function ShiftDetailModal({
   return (
     <>
       <CalendarExportDialog open={exportOpen} onOpenChange={setExportOpen} shiftId={shift.id} selectedIds={[shift.id]} filters={exportFilters} />
+      <AdminProxyAttendanceModal
+        open={adminProxyOpen}
+        onOpenChange={setAdminProxyOpen}
+        shift={shift}
+        registrations={registrations}
+        users={users}
+      />
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           size="xl"
@@ -1043,6 +1053,23 @@ export function ShiftDetailModal({
 
               {/* TAB 4: UNIFIED ATTENDANCE (Permanent 4-tab architecture, Issue #163) */}
               <TabsContent value="attendance" className="min-w-0 p-4 sm:p-6 space-y-6">
+                {/* 0. Admin Proxy Attendance Trigger */}
+                {currentUser && resolveSystemPermission(currentUser) === 'admin' && (
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="text-xs font-medium"
+                      onClick={() => setAdminProxyOpen(true)}
+                      data-testid="open-admin-proxy-attendance-btn"
+                    >
+                      <ShieldAlert className="mr-1.5 h-3.5 w-3.5 text-indigo-600" />
+                      {language === 'en' ? 'Admin Proxy Attendance' : 'Bổ sung chấm công (Admin)'}
+                    </Button>
+                  </div>
+                )}
+
                 {/* 1. Self Attendance for assigned personnel */}
                 {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && attendanceShiftEligible ? (
                   <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3">
@@ -1068,6 +1095,10 @@ export function ShiftDetailModal({
                         title: shift.title,
                         studio: shift.studio,
                         crossesMidnight: dateTime?.valid && dateTime.crossesMidnight,
+                        staffName: currentUser?.full_name || 'Nhân sự',
+                        segmentSummary: shift.staffing_segments && shift.staffing_segments.length > 0
+                          ? `${shift.staffing_segments.length} khung (${shift.staffing_segments.map(s => `K0${s.segment_index}: ${s.start_time}-${s.end_time}`).join(', ')}) · Gán cá nhân: Chờ C5 backend contract`
+                          : 'Ca đơn (Toàn ca)',
                       }}
                     />
                   </section>
@@ -1109,7 +1140,7 @@ export function ShiftDetailModal({
                         Photo Review
                       </Badge>
                     </div>
-                    <AttendancePhotoReviewPanel key={`${shift.id}:${currentUser?.id ?? ''}`} shiftId={shift.id} />
+                    <AttendancePhotoReviewPanel key={`${shift.id}:${currentUser?.id ?? ''}`} shiftId={shift.id} currentUser={currentUser} />
                   </section>
                 )}
 
@@ -1156,6 +1187,10 @@ export function ShiftDetailModal({
                         title: shift.title,
                         studio: shift.studio,
                         crossesMidnight: dateTime?.valid && dateTime.crossesMidnight,
+                        staffName: currentUser?.full_name || 'Nhân sự',
+                        segmentSummary: shift.staffing_segments && shift.staffing_segments.length > 0
+                          ? `${shift.staffing_segments.length} khung (${shift.staffing_segments.map(s => `K0${s.segment_index}: ${s.start_time}-${s.end_time}`).join(', ')}) · Gán cá nhân: Chờ C5 backend contract`
+                          : 'Ca đơn (Toàn ca)',
                       }}
                     />
                   ) : (

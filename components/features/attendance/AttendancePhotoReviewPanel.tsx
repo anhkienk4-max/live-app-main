@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useTranslation } from '@/lib/i18n'
-import { CheckCircle2, XCircle, AlertTriangle, Clock, ExternalLink } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, Clock, ExternalLink, ShieldAlert } from 'lucide-react'
+import type { User } from '@/lib/types/database.types'
 
 type ReviewDecision = 'approved' | 'rejected' | 'correction_requested'
 type ReviewEvent = {
@@ -29,7 +30,13 @@ type ReviewEvent = {
   }>
 }
 
-export function AttendancePhotoReviewPanel({ shiftId }: { shiftId: string }) {
+export function AttendancePhotoReviewPanel({
+  shiftId,
+  currentUser,
+}: {
+  shiftId: string
+  currentUser?: User | null
+}) {
   const { language } = useTranslation()
   const en = language === 'en'
   const [events, setEvents] = React.useState<ReviewEvent[]>([])
@@ -74,6 +81,12 @@ export function AttendancePhotoReviewPanel({ shiftId }: { shiftId: string }) {
   }, [load])
 
   const submit = async (item: ReviewEvent) => {
+    // Prevent self-review if reviewer is the author of evidence
+    if (currentUser?.id && currentUser.id === item.staff_id) {
+      setError(en ? 'You cannot review your own attendance photo evidence.' : 'Bạn không thể tự duyệt ảnh chấm công của chính mình.')
+      return
+    }
+
     const note = reason[item.id]?.trim() ?? ''
     if (note.length < 8 || busy) return
     setBusy(item.id)
@@ -160,6 +173,23 @@ export function AttendancePhotoReviewPanel({ shiftId }: { shiftId: string }) {
             : 'Quyết định minh chứng độc lập; không duyệt Actual Staffing hoặc Payroll.'}
         </p>
       </div>
+
+      {/* Policy differentiation notice */}
+      <div
+        className="rounded-md border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-900 space-y-1"
+        data-testid="photo-review-policy-notice"
+      >
+        <p className="font-semibold flex items-center gap-1.5">
+          <ShieldAlert className="h-3.5 w-3.5 text-blue-700" />
+          <span>{en ? 'Evidence Verification Policy' : 'Chính sách đối soát minh chứng ảnh'}</span>
+        </p>
+        <p className="text-[11px] text-blue-800 leading-relaxed">
+          {en
+            ? 'Photo approval verifies physical presence in the live studio. Final paid working hours are approved independently in "Approved Actual Hours & Attendance".'
+            : 'Duyệt ảnh là xác nhận bằng chứng có mặt tại phòng livestream. Giờ làm việc và công nhật tính lương cuối cùng được phê duyệt độc lập tại mục "Chấm công thực tế & Phê duyệt giờ".'}
+        </p>
+      </div>
+
       {loading && <p role="status" className="text-xs text-slate-600">{en ? 'Loading evidence…' : 'Đang tải minh chứng…'}</p>}
       {error && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-rose-700">
@@ -169,131 +199,148 @@ export function AttendancePhotoReviewPanel({ shiftId }: { shiftId: string }) {
           </Button>
         </div>
       )}
-      {events.map(item => (
-        <article
-          key={item.id}
-          className="space-y-3 rounded-md border border-slate-200 bg-white p-3 shadow-2xs"
-          data-testid="attendance-photo-review-event"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <strong className="text-slate-800">
-                {item.role.toUpperCase()} · {item.event === 'check_in' ? 'Check-in' : 'Check-out'} · {item.staff_id}
-              </strong>
-              <span className="text-slate-400">v{item.version}</span>
-            </div>
-            {renderStatusBadge(item.status)}
-          </div>
+      {events.map(item => {
+        const isSelfReview = Boolean(currentUser?.id && currentUser.id === item.staff_id)
 
-          <p className="text-xs text-slate-500">
-            {new Date(item.recorded_at).toLocaleString(en ? 'en-US' : 'vi-VN', {
-              timeZone: 'Asia/Ho_Chi_Minh',
-            })}
-          </p>
-
-          {/* Inline photo thumbnail when available */}
-          {item.photo_available && (
-            <div className="rounded-md border border-slate-100 bg-slate-50 p-2 max-w-xs">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(item.id) + '&revision=' + item.evidence_revision}
-                alt={en ? 'Attendance photo evidence' : 'Ảnh minh chứng điểm danh'}
-                className="max-h-40 w-full rounded object-contain bg-black/5"
-              />
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            {item.evidence_revisions.map(revision => (
-              <a
-                key={revision.revision}
-                className="inline-flex items-center gap-1 text-xs text-blue-700 hover:text-blue-800 underline"
-                href={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(item.id) + '&revision=' + revision.revision}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ExternalLink className="h-3 w-3" />
-                {en ? `Open evidence revision ${revision.revision}` : `Mở minh chứng phiên bản ${revision.revision}`}
-              </a>
-            ))}
-          </div>
-
-          {item.review_history.map(review => (
-            <div
-              key={review.version}
-              className="border-l-2 border-indigo-300 bg-slate-50/80 p-2 rounded-r text-xs text-slate-600 space-y-0.5"
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-800 uppercase text-[10px]">
-                  v{review.version} / rev {review.evidence_revision}: {review.decision}
-                </span>
-                <span className="text-[10px] text-slate-400">
-                  {new Date(review.created_at).toLocaleString(en ? 'en-US' : 'vi-VN', {
-                    timeZone: 'Asia/Ho_Chi_Minh',
-                  })}
-                </span>
+        return (
+          <article
+            key={item.id}
+            className="space-y-3 rounded-md border border-slate-200 bg-white p-3 shadow-2xs"
+            data-testid="attendance-photo-review-event"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <strong className="text-slate-800">
+                  {item.role.toUpperCase()} · {item.event === 'check_in' ? 'Check-in' : 'Check-out'} · {item.staff_id}
+                </strong>
+                <span className="text-slate-400">v{item.version}</span>
               </div>
-              <p className="text-slate-700 italic">&ldquo;{review.reason}&rdquo;</p>
-              <p className="text-[10px] text-slate-500">{en ? 'Reviewer: ' : 'Người duyệt: '}{review.reviewer_id}</p>
+              {renderStatusBadge(item.status)}
             </div>
-          ))}
 
-          {item.status === 'correction_requested' && (
-            <p role="status" className="text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
-              {en
-                ? 'Waiting for the employee to submit a replacement photo.'
-                : 'Đang chờ nhân sự gửi ảnh bổ sung.'}
+            <p className="text-xs text-slate-500">
+              {new Date(item.recorded_at).toLocaleString(en ? 'en-US' : 'vi-VN', {
+                timeZone: 'Asia/Ho_Chi_Minh',
+              })}
             </p>
-          )}
 
-          {item.photo_available && item.status === 'pending_verification' && (
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] pt-1 border-t border-slate-100">
-              <div>
-                <label className="text-xs font-medium text-slate-700 block mb-1" htmlFor={'decision-' + item.id}>
-                  {en ? 'Decision' : 'Quyết định'}
-                </label>
-                <select
-                  id={'decision-' + item.id}
-                  className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-medium"
-                  value={decision[item.id] ?? 'approved'}
-                  onChange={e => setDecision(v => ({ ...v, [item.id]: e.target.value as ReviewDecision }))}
-                >
-                  <option value="approved">{en ? 'Approve' : 'Phê duyệt'}</option>
-                  <option value="rejected">{en ? 'Reject' : 'Từ chối'}</option>
-                  <option value="correction_requested">{en ? 'Request correction' : 'Yêu cầu bổ sung'}</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-slate-700 block mb-1" htmlFor={'reason-' + item.id}>
-                  {en ? 'Review reason' : 'Lý do đối soát'}
-                </label>
-                <Textarea
-                  id={'reason-' + item.id}
-                  value={reason[item.id] ?? ''}
-                  minLength={8}
-                  maxLength={2000}
-                  onChange={e => setReason(v => ({ ...v, [item.id]: e.target.value }))}
-                  placeholder={en ? 'Reason (at least 8 characters)' : 'Lý do (ít nhất 8 ký tự)'}
-                  className="text-xs h-9 min-h-[36px] py-1.5"
+            {/* Inline photo thumbnail when available */}
+            {item.photo_available && (
+              <div className="rounded-md border border-slate-100 bg-slate-50 p-2 max-w-xs">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(item.id) + '&revision=' + item.evidence_revision}
+                  alt={en ? 'Attendance photo evidence' : 'Ảnh minh chứng điểm danh'}
+                  className="max-h-40 w-full rounded object-contain bg-black/5"
                 />
               </div>
+            )}
 
-              <div className="flex items-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={busy === item.id || Boolean(busy) || (reason[item.id]?.trim().length ?? 0) < 8}
-                  onClick={() => void submit(item)}
-                  className="w-full sm:w-auto text-xs h-9"
+            <div className="flex flex-wrap gap-2">
+              {item.evidence_revisions.map(revision => (
+                <a
+                  key={revision.revision}
+                  className="inline-flex items-center gap-1 text-xs text-blue-700 hover:text-blue-800 underline"
+                  href={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(item.id) + '&revision=' + revision.revision}
+                  target="_blank"
+                  rel="noreferrer"
                 >
-                  {busy === item.id ? (en ? 'Saving…' : 'Đang lưu…') : en ? 'Record decision' : 'Ghi nhận'}
-                </Button>
-              </div>
+                  <ExternalLink className="h-3 w-3" />
+                  {en ? `Open evidence revision ${revision.revision}` : `Mở minh chứng phiên bản ${revision.revision}`}
+                </a>
+              ))}
             </div>
-          )}
-        </article>
-      ))}
+
+            {item.review_history.map(review => (
+              <div
+                key={review.version}
+                className="border-l-2 border-indigo-300 bg-slate-50/80 p-2 rounded-r text-xs text-slate-600 space-y-0.5"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-800 uppercase text-[10px]">
+                    v{review.version} / rev {review.evidence_revision}: {review.decision}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {new Date(review.created_at).toLocaleString(en ? 'en-US' : 'vi-VN', {
+                      timeZone: 'Asia/Ho_Chi_Minh',
+                    })}
+                  </span>
+                </div>
+                <p className="text-slate-700 italic">&ldquo;{review.reason}&rdquo;</p>
+                <p className="text-[10px] text-slate-500">{en ? 'Reviewer: ' : 'Người duyệt: '}{review.reviewer_id}</p>
+              </div>
+            ))}
+
+            {item.status === 'correction_requested' && (
+              <p role="status" className="text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                {en
+                  ? 'Waiting for the employee to submit a replacement photo.'
+                  : 'Đang chờ nhân sự gửi ảnh bổ sung.'}
+              </p>
+            )}
+
+            {/* Self-review prevented alert */}
+            {isSelfReview && item.status === 'pending_verification' && (
+              <div
+                role="alert"
+                className="rounded border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900"
+                data-testid="self-review-prevented-alert"
+              >
+                {en
+                  ? 'Policy rule: You cannot review or approve your own attendance photo evidence.'
+                  : 'Quy định chính sách: Bạn không thể tự đối soát hoặc duyệt ảnh chấm công của chính mình.'}
+              </div>
+            )}
+
+            {item.photo_available && item.status === 'pending_verification' && !isSelfReview && (
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] pt-1 border-t border-slate-100">
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1" htmlFor={'decision-' + item.id}>
+                    {en ? 'Decision' : 'Quyết định'}
+                  </label>
+                  <select
+                    id={'decision-' + item.id}
+                    className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-medium"
+                    value={decision[item.id] ?? 'approved'}
+                    onChange={e => setDecision(v => ({ ...v, [item.id]: e.target.value as ReviewDecision }))}
+                  >
+                    <option value="approved">{en ? 'Approve' : 'Phê duyệt'}</option>
+                    <option value="rejected">{en ? 'Reject' : 'Từ chối'}</option>
+                    <option value="correction_requested">{en ? 'Request correction' : 'Yêu cầu bổ sung'}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1" htmlFor={'reason-' + item.id}>
+                    {en ? 'Review reason' : 'Lý do đối soát'}
+                  </label>
+                  <Textarea
+                    id={'reason-' + item.id}
+                    value={reason[item.id] ?? ''}
+                    minLength={8}
+                    maxLength={2000}
+                    onChange={e => setReason(v => ({ ...v, [item.id]: e.target.value }))}
+                    placeholder={en ? 'Reason (at least 8 characters)' : 'Lý do (ít nhất 8 ký tự)'}
+                    className="text-xs h-9 min-h-[36px] py-1.5"
+                  />
+                </div>
+
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busy === item.id || Boolean(busy) || (reason[item.id]?.trim().length ?? 0) < 8}
+                    onClick={() => void submit(item)}
+                    className="w-full sm:w-auto text-xs h-9"
+                  >
+                    {busy === item.id ? (en ? 'Saving…' : 'Đang lưu…') : en ? 'Record decision' : 'Ghi nhận'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </article>
+        )
+      })}
     </section>
   )
 }

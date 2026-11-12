@@ -1,8 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { useTranslation } from '@/lib/i18n'
 import {
   readMySelfAttendance,
@@ -10,12 +10,26 @@ import {
   writeSelfAttendancePhotoCheckOut,
   recoverSelfAttendancePhotoCheckIn,
   recoverSelfAttendancePhotoCheckOut,
-  readSelfAttendancePhotoReviewContext,
-  submitSelfAttendancePhotoCorrection,
 } from '@/lib/services/supabaseSelfAttendanceService'
-import type { AttendanceRole, AttendanceEventKind, SelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
+import {
+  calculateAttendanceTimePolicy,
+  type AttendanceRole,
+  type AttendanceEventKind,
+  type SelfAttendanceEvent,
+} from '@/lib/utils/selfAttendanceContract'
 import { AttendanceCorrectionPanel } from './AttendanceCorrectionPanel'
 import { AttendanceCameraCapture } from './AttendanceCameraCapture'
+import {
+  Camera,
+  Clock,
+  FileImage,
+  Lock,
+  LogIn,
+  LogOut,
+  RefreshCw,
+  RotateCcw,
+  User,
+} from 'lucide-react'
 
 export interface SelfAttendanceShiftContext {
   date: string
@@ -26,6 +40,10 @@ export interface SelfAttendanceShiftContext {
   title?: string | null
   studio?: string | null
   crossesMidnight?: boolean
+  staffName?: string | null
+  segmentIndex?: string | null
+  segmentTime?: string | null
+  segmentSummary?: string | null
 }
 
 const displayTime = (value: string, language: 'vi' | 'en') =>
@@ -55,30 +73,58 @@ export function SelfAttendancePanel({
     items: SelfAttendanceEvent[]
     error: string | null
   } | null>(null)
-  const [busy, setBusy] = React.useState(false)
-  const [writeError, setWriteError] = React.useState<string | null>(null)
-  const [photo, setPhoto] = React.useState<File | null>(null)
-  const [photoSource, setPhotoSource] = React.useState<'camera' | 'file_picker'>('camera')
-  const [photoPreview, setPhotoPreview] = React.useState<string | null>(null)
-  const [cameraCaptureOpen, setCameraCaptureOpen] = React.useState(false)
+
+  // Feature flags
   const [photoFeatureReady] = React.useState(() => {
-    return process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO==='true'
+    return process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO === 'true'
   })
-  const reviewFeatureReady = process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_REVIEW === 'true'
-  const cameraRef = React.useRef<HTMLInputElement>(null)
-  const pickerRef = React.useRef<HTMLInputElement>(null)
+
+  // Time Policy calculation in Asia/Ho_Chi_Minh
+  const timePolicy = React.useMemo(() => {
+    return calculateAttendanceTimePolicy(
+      shiftContext.start_time,
+      shiftContext.end_time,
+      role,
+      'Asia/Ho_Chi_Minh'
+    )
+  }, [shiftContext.start_time, shiftContext.end_time, role])
+
+  // --- CARD A: CHECK-IN STATE ---
+  const [photoCheckIn, setPhotoCheckIn] = React.useState<File | null>(null)
+  const [photoSourceCheckIn, setPhotoSourceCheckIn] = React.useState<'camera' | 'file_picker'>('camera')
+  const [previewCheckIn, setPreviewCheckIn] = React.useState<string | null>(null)
+  const [busyCheckIn, setBusyCheckIn] = React.useState(false)
+  const [errorCheckIn, setErrorCheckIn] = React.useState<string | null>(null)
+  const [cameraOpenCheckIn, setCameraOpenCheckIn] = React.useState(false)
+  const cameraInputCheckInRef = React.useRef<HTMLInputElement | null>(null)
+  const pickerInputCheckInRef = React.useRef<HTMLInputElement | null>(null)
+
+  // --- CARD B: CHECK-OUT STATE ---
+  const [photoCheckOut, setPhotoCheckOut] = React.useState<File | null>(null)
+  const [photoSourceCheckOut, setPhotoSourceCheckOut] = React.useState<'camera' | 'file_picker'>('camera')
+  const [previewCheckOut, setPreviewCheckOut] = React.useState<string | null>(null)
+  const [busyCheckOut, setBusyCheckOut] = React.useState(false)
+  const [errorCheckOut, setErrorCheckOut] = React.useState<string | null>(null)
+  const [cameraOpenCheckOut, setCameraOpenCheckOut] = React.useState(false)
+  const cameraInputCheckOutRef = React.useRef<HTMLInputElement | null>(null)
+  const pickerInputCheckOutRef = React.useRef<HTMLInputElement | null>(null)
+
+  // General lock & idempotent request tracking (preserves contract test invariant)
   const lock = React.useRef(false)
   const requestIds = React.useRef<Partial<Record<AttendanceEventKind, string>>>({})
   const [prevKey, setPrevKey] = React.useState(key)
 
   if (prevKey !== key) {
     setPrevKey(key)
-    setPhoto(null)
-    setPhotoPreview(null)
-    setWriteError(null)
-    setCameraCaptureOpen(false)
+    setPhotoCheckIn(null)
+    setPreviewCheckIn(null)
+    setErrorCheckIn(null)
+    setPhotoCheckOut(null)
+    setPreviewCheckOut(null)
+    setErrorCheckOut(null)
   }
 
+  // Load attendance events from server
   React.useEffect(() => {
     let active = true
     void readMySelfAttendance(shiftId, actorId)
@@ -98,127 +144,192 @@ export function SelfAttendancePanel({
     }
   }, [actorId, shiftId, key, nonce])
 
-  React.useEffect(() => {
-    if (!photo) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') setPhotoPreview(reader.result)
-    }
-    reader.readAsDataURL(photo)
-    return () => {
-      reader.onload = null
-      reader.abort()
-    }
-  }, [photo])
-
   const ready = snapshot?.key === key && !snapshot.error
   const rows = ready ? snapshot.items.filter(r => r.role === role) : []
   const checkedIn = rows.find(row => row.event === 'check_in')
   const checkedOut = rows.find(row => row.event === 'check_out')
-  const nextAction: AttendanceEventKind | null = !ready
-    ? null
-    : !checkedIn
-    ? 'check_in'
-    : !checkedOut
-    ? 'check_out'
-    : null
 
-  function selectPhoto(file: File | undefined, source: 'camera' | 'file_picker') {
-    setWriteError(null)
-    if (!file) return
-    if (
-      file.size < 1 ||
-      file.size > 4 * 1024 * 1024 ||
-      !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
-    ) {
-      setPhoto(null)
-      setPhotoPreview(null)
-      setWriteError(
+  function handleSelectPhoto(
+    file: File | undefined,
+    source: 'camera' | 'file_picker',
+    kind: AttendanceEventKind
+  ) {
+    if (kind === 'check_in') {
+      setErrorCheckIn(null)
+      if (!file) {
+        setPhotoCheckIn(null)
+        setPreviewCheckIn(null)
+        return
+      }
+      if (
+        file.size < 1 ||
+        file.size > 4 * 1024 * 1024 ||
+        !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+      ) {
+        setPhotoCheckIn(null)
+        setPreviewCheckIn(null)
+        setErrorCheckIn(
+          en
+            ? 'Choose a JPG, PNG or WebP image up to 4 MB.'
+            : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.'
+        )
+        return
+      }
+      setPhotoCheckIn(file)
+      setPhotoSourceCheckIn(source)
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === 'string') setPreviewCheckIn(reader.result)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      setErrorCheckOut(null)
+      if (!file) {
+        setPhotoCheckOut(null)
+        setPreviewCheckOut(null)
+        return
+      }
+      if (
+        file.size < 1 ||
+        file.size > 4 * 1024 * 1024 ||
+        !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+      ) {
+        setPhotoCheckOut(null)
+        setPreviewCheckOut(null)
+        setErrorCheckOut(
+          en
+            ? 'Choose a JPG, PNG or WebP image up to 4 MB.'
+            : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.'
+        )
+        return
+      }
+      setPhotoCheckOut(file)
+      setPhotoSourceCheckOut(source)
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === 'string') setPreviewCheckOut(reader.result)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  async function submitCheckIn() {
+    const kind: AttendanceEventKind = 'check_in'
+    if (lock.current || !ready || checkedIn) return
+    if (!photoFeatureReady) {
+      setErrorCheckIn(
         en
-          ? 'Choose a JPG, PNG or WebP image up to 4 MB.'
-          : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.'
+          ? 'Photo check-in is unavailable in this environment.'
+          : 'Lưu ảnh Drive chưa được kích hoạt cho môi trường này.'
       )
       return
     }
-    setPhotoPreview(null)
-    setPhoto(file)
-    setPhotoSource(source)
+    if (!photoCheckIn) {
+      setErrorCheckIn(
+        en
+          ? 'Take or choose a check-in photo first.'
+          : 'Cần chụp hoặc chọn ảnh check-in trước khi xác nhận.'
+      )
+      return
+    }
+
+    lock.current = true
+    setBusyCheckIn(true)
+    setErrorCheckIn(null)
+    requestIds.current[kind] ??= crypto.randomUUID()
+    try {
+      await writeSelfAttendancePhotoCheckIn(
+        shiftId,
+        role,
+        requestIds.current[kind]!,
+        photoCheckIn,
+        photoSourceCheckIn
+      )
+      requestIds.current[kind] = undefined
+      setPhotoCheckIn(null)
+      setPreviewCheckIn(null)
+      if (cameraInputCheckInRef.current) cameraInputCheckInRef.current.value = ''
+      if (pickerInputCheckInRef.current) pickerInputCheckInRef.current.value = ''
+      setSnapshot(null)
+      setNonce(v => v + 1)
+    } catch (err) {
+      setErrorCheckIn(
+        err instanceof Error
+          ? err.message
+          : en
+          ? 'Could not record check-in. Try again.'
+          : 'Không thể ghi nhận check-in, vui lòng thử lại.'
+      )
+    } finally {
+      lock.current = false
+      setBusyCheckIn(false)
+    }
   }
 
-  async function submit(kind: AttendanceEventKind) {
-    if (lock.current || !ready || kind !== nextAction) return
+  async function submitCheckOut() {
+    const kind: AttendanceEventKind = 'check_out'
+    if (lock.current || !ready || !checkedIn || checkedOut) return
     if (!photoFeatureReady) {
-      setWriteError(
-        kind === 'check_in'
-          ? en
-            ? 'Photo check-in is unavailable in this environment.'
-            : 'Lưu ảnh Drive chưa được kích hoạt cho môi trường này.'
-          : en
+      setErrorCheckOut(
+        en
           ? 'Photo check-out is unavailable in this environment.'
           : 'Lưu ảnh Drive chưa được kích hoạt cho môi trường này.'
       )
       return
     }
-    if (!photo) {
-      setWriteError(
-        kind === 'check_in'
-          ? en
-            ? 'Take or choose a check-in photo first.'
-            : 'Cần chụp hoặc chọn ảnh check-in trước khi xác nhận.'
-          : en
+    if (!photoCheckOut) {
+      setErrorCheckOut(
+        en
           ? 'Take or choose a check-out photo first.'
-            : 'Cần chụp hoặc chọn ảnh check-out trước khi xác nhận.'
+          : 'Cần chụp hoặc chọn ảnh check-out trước khi xác nhận.'
       )
       return
     }
+
     lock.current = true
-    setBusy(true)
-    setWriteError(null)
-    requestIds.current[kind]??=crypto.randomUUID()
+    setBusyCheckOut(true)
+    setErrorCheckOut(null)
+    requestIds.current[kind] ??= crypto.randomUUID()
     try {
-      if (kind === 'check_in') {
-        await writeSelfAttendancePhotoCheckIn(
-          shiftId,
-          role,
-          requestIds.current[kind]!,
-          photo,
-          photoSource
-        )
-      } else {
-        await writeSelfAttendancePhotoCheckOut(
-          shiftId,
-          role,
-          requestIds.current[kind]!,
-          photo,
-          photoSource
-        )
-      }
+      await writeSelfAttendancePhotoCheckOut(
+        shiftId,
+        role,
+        requestIds.current[kind]!,
+        photoCheckOut,
+        photoSourceCheckOut
+      )
       requestIds.current[kind] = undefined
-      setPhoto(null)
-      setPhotoPreview(null)
-      if (cameraRef.current) cameraRef.current.value = ''
-      if (pickerRef.current) pickerRef.current.value = ''
+      setPhotoCheckOut(null)
+      setPreviewCheckOut(null)
+      if (cameraInputCheckOutRef.current) cameraInputCheckOutRef.current.value = ''
+      if (pickerInputCheckOutRef.current) pickerInputCheckOutRef.current.value = ''
       setSnapshot(null)
       setNonce(v => v + 1)
-    } catch (error) {
-      setWriteError(
-        error instanceof Error
-          ? error.message
+    } catch (err) {
+      setErrorCheckOut(
+        err instanceof Error
+          ? err.message
           : en
-          ? 'Could not record attendance. Try again.'
-          : 'Không thể ghi nhận chấm công, vui lòng thử lại.'
+          ? 'Could not record check-out. Try again.'
+          : 'Không thể ghi nhận check-out, vui lòng thử lại.'
       )
     } finally {
       lock.current = false
-      setBusy(false)
+      setBusyCheckOut(false)
     }
   }
 
-  async function recoverPendingPhoto(kind: AttendanceEventKind) {
-    if (lock.current || !ready || kind !== nextAction || !photoFeatureReady) return
+  async function recoverPhoto(kind: AttendanceEventKind) {
+    if (lock.current || !ready || !photoFeatureReady) return
     lock.current = true
-    setBusy(true)
-    setWriteError(null)
+    if (kind === 'check_in') {
+      setBusyCheckIn(true)
+      setErrorCheckIn(null)
+    } else {
+      setBusyCheckOut(true)
+      setErrorCheckOut(null)
+    }
+
     const requestId = requestIds.current[kind] ?? crypto.randomUUID()
     requestIds.current[kind] = requestId
     try {
@@ -228,27 +339,26 @@ export function SelfAttendancePanel({
         await recoverSelfAttendancePhotoCheckOut(shiftId, role, requestId)
       }
       requestIds.current[kind] = undefined
-      setPhoto(null)
-      setPhotoPreview(null)
-      if (cameraRef.current) cameraRef.current.value = ''
-      if (pickerRef.current) pickerRef.current.value = ''
       setSnapshot(null)
       setNonce(v => v + 1)
-    } catch (error) {
-      setWriteError(
-        error instanceof Error && error.message === 'ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE'
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message === 'ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE'
           ? en
             ? 'No saved photo to recover. Take a photo to continue.'
             : 'Không có ảnh đã lưu cần khôi phục. Hãy chụp ảnh để tiếp tục.'
-          : error instanceof Error
-          ? error.message
+          : err instanceof Error
+          ? err.message
           : en
           ? 'Could not recover attendance. Try again.'
           : 'Không khôi phục được, vui lòng thử lại.'
-      )
+
+      if (kind === 'check_in') setErrorCheckIn(msg)
+      else setErrorCheckOut(msg)
     } finally {
       lock.current = false
-      setBusy(false)
+      setBusyCheckIn(false)
+      setBusyCheckOut(false)
     }
   }
 
@@ -261,518 +371,530 @@ export function SelfAttendancePanel({
   return (
     <section
       aria-label={en ? 'My check-in / check-out' : 'Chấm công cá nhân'}
-      className="space-y-3 rounded-md border p-3"
+      className="space-y-4 rounded-md border p-3 bg-slate-50/50"
       data-testid="self-attendance-panel"
     >
-      <div className="space-y-1">
-        <h3 className="text-sm font-semibold">
-          {en ? 'My shift attendance' : 'Chấm công ca của tôi'} · {roleNames[role]}
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {en
-            ? 'The server records event times. Attendance photos await review and do not count as approved work or pay.'
-            : 'Thời gian do server ghi nhận. Ảnh điểm danh chỉ là bằng chứng chờ đối chiếu, chưa phải giờ công được duyệt hoặc tiền lương.'}
-        </p>
+      {/* 1. HEADER & OVERVIEW */}
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between border-b pb-2">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
+            <User className="h-4 w-4 text-indigo-600" />
+            <span>{en ? 'Personal Attendance' : 'Chấm công cá nhân'} · {roleNames[role]}</span>
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {en
+              ? 'The server records event times in Asia/Ho_Chi_Minh. Photos serve as attendance evidence awaiting review.'
+              : 'Thời gian do server ghi nhận (Asia/Ho_Chi_Minh). Ảnh điểm danh là bằng chứng chờ đối soát, không mặc định cộng/trừ lương.'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 text-xs">
+            {timePolicy.timeZone}
+          </Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busyCheckIn || busyCheckOut}
+            onClick={() => {
+              setSnapshot(null)
+              setNonce(v => v + 1)
+            }}
+            className="text-xs h-7"
+          >
+            <RefreshCw className="mr-1 h-3 w-3" />
+            {en ? 'Refresh' : 'Tải lại'}
+          </Button>
+        </div>
       </div>
+
+      {/* 2. STAFF & SEGMENT CONTEXT (Phase 3) */}
       <dl
-        className="grid grid-cols-2 gap-2 rounded-md bg-muted/30 p-3 text-xs sm:grid-cols-3"
+        className="grid grid-cols-2 gap-2 rounded-md bg-white border p-3 text-xs sm:grid-cols-4 shadow-2xs"
         data-testid="attendance-live-shift-context"
       >
-        <div>
-          <dt className="text-muted-foreground">{en ? 'Shift date' : 'Ngày ca'}</dt>
-          <dd className="font-medium">{shiftContext.date}</dd>
+        <div data-testid="attendance-staff-context">
+          <dt className="text-muted-foreground">{en ? 'Personnel' : 'Nhân sự'}</dt>
+          <dd className="font-semibold text-slate-800">{shiftContext.staffName || 'Được duyệt phân công'}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">{en ? 'Live hours' : 'Khung giờ live'}</dt>
+          <dt className="text-muted-foreground">{en ? 'Role & Brand' : 'Vai trò & Thương hiệu'}</dt>
+          <dd className="font-medium">{roleNames[role]} · {shiftContext.brand}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">{en ? 'Live Hours' : 'Khung giờ ca'}</dt>
           <dd className="font-medium">
-            {shiftContext.start_time.slice(0, 5)}–{shiftContext.end_time.slice(0, 5)}
-            {shiftContext.crossesMidnight ? ` (${en ? 'next day' : 'qua ngày sau'})` : ''}
+            {shiftContext.start_time.slice(0, 5)} – {shiftContext.end_time.slice(0, 5)}
+            {shiftContext.crossesMidnight ? ` (${en ? 'next day' : 'qua đêm'})` : ''}
           </dd>
         </div>
-        <div>
-          <dt className="text-muted-foreground">{en ? 'Brand' : 'Thương hiệu'}</dt>
-          <dd className="font-medium">{shiftContext.brand}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">{en ? 'Platform' : 'Nền tảng'}</dt>
-          <dd className="font-medium">{shiftContext.platform}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">{en ? 'Studio' : 'Phòng live'}</dt>
-          <dd className="font-medium">{shiftContext.studio || (en ? 'Not provided' : 'Chưa có')}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">{en ? 'Shift title' : 'Nội dung ca'}</dt>
-          <dd className="font-medium">{shiftContext.title || 'Livestream'}</dd>
+        <div data-testid="attendance-segment-context">
+          <dt className="text-muted-foreground">{en ? 'Segment Assignment' : 'Khung nhân sự (Segment)'}</dt>
+          <dd className="font-medium">
+            {shiftContext.segmentIndex
+              ? `${shiftContext.segmentIndex} (${shiftContext.segmentTime || ''})`
+              : shiftContext.segmentSummary || (en ? 'Single shift' : 'Ca đơn (Toàn ca)')}
+          </dd>
         </div>
       </dl>
 
-      {!ready && !snapshot?.error ? (
-        <p role="status" className="text-xs">
-          {en ? 'Checking attendance history…' : 'Đang kiểm tra nhật ký...'}
+      {/* 3. TIME POLICY DISPLAY (Phase 4) */}
+      <div
+        className="rounded-md border border-slate-200 bg-white p-3 text-xs space-y-2 shadow-2xs"
+        data-testid="attendance-time-policy-section"
+      >
+        <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+          <Clock className="h-3.5 w-3.5 text-indigo-600" />
+          <span>{en ? 'Attendance Time Window & Expected Arrival Policy' : 'Chính sách thời gian gửi ảnh & Mốc có mặt'}</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-100 text-[11px]">
+          <div>
+            <span className="text-muted-foreground block">Cửa sổ Check-in:</span>
+            <span className="font-medium text-slate-700">{timePolicy.checkInWindowLabel}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground block">Mốc có mặt dự kiến ({roleNames[role]}):</span>
+            <span className="font-semibold text-indigo-700">{timePolicy.expectedArrivalLabel}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground block">Cửa sổ Check-out:</span>
+            <span className="font-medium text-slate-700">{timePolicy.checkOutWindowLabel}</span>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500 italic pt-1 border-t border-dashed border-slate-100" data-testid="attendance-time-policy-disclaimer">
+          * {timePolicy.compensationNotice}
         </p>
-      ) : null}
-      {snapshot?.key === key && snapshot.error ? (
+      </div>
+
+      {/* Loading & Read Error Notices */}
+      {!ready && !snapshot?.error && (
+        <p role="status" className="text-xs text-slate-500">
+          {en ? 'Checking attendance history…' : 'Đang kiểm tra nhật ký chấm công server…'}
+        </p>
+      )}
+      {snapshot?.key === key && snapshot.error && (
         <p role="alert" className="text-xs text-red-600">
           {en ? 'Could not load attendance: ' : 'Không thể tải chấm công: '}
           {snapshot.error}
         </p>
-      ) : null}
-      {ready ? (
-        <p
-          role="status"
-          data-testid="self-attendance-status"
-          className="text-sm font-medium"
-          aria-live="polite"
-        >
-          {checkedOut
-            ? en
-              ? 'Checked out'
-              : 'Đã check-out'
-            : checkedIn
-            ? en
-              ? 'Checked in · Check-out available'
-              : 'Đã check-in · Có thể check-out'
-            : en
-            ? 'Not checked in'
-            : 'Chưa check-in'}
-        </p>
-      ) : null}
+      )}
 
-      {/* Shift history timestamps and photo flags */}
-      {checkedIn ? (
-        <p className="text-xs">
-          Check-in: {displayTime(checkedIn.recorded_at, language)}
-          {checkedIn.photo_available
-            ? en
-              ? ' · Drive photo attached'
-              : ' · Đã gắn ảnh Drive'
-            : en
-            ? ' · No verified photo'
-            : ' · Chưa có ảnh được xác minh'}
-        </p>
-      ) : null}
-      {checkedOut ? (
-        <p className="text-xs">
-          Check-out: {displayTime(checkedOut.recorded_at, language)}
-          {checkedOut.photo_available
-            ? en
-              ? ' · Drive photo attached'
-              : ' · Đã gắn ảnh Drive'
-            : en
-            ? ' · No verified photo'
-            : ' · Chưa có ảnh được xác minh'}
-        </p>
-      ) : null}
-
-      {/* Render both photos separately in shift history */}
-      {checkedIn?.photo_available ? (
-        <div className="space-y-1" data-testid="attendance-checkin-evidence">
-          <p className="text-xs font-medium">
-            {en ? 'Check-in photo evidence' : 'Ảnh bằng chứng check-in'}
-          </p>
-          {/* Authenticated route enforces owner or scoped reviewer permission. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="max-h-52 max-w-full rounded-md border object-contain"
-            src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedIn.event_id)}
-            alt={en ? 'Check-in attendance evidence' : 'Ảnh bằng chứng check-in'}
-          />
+      {/* Overall Status Banner */}
+      {ready && (
+        <div className="flex items-center justify-between rounded-md bg-white border px-3 py-2 text-xs shadow-2xs">
+          <span className="text-slate-600">Trạng thái tổng thể:</span>
+          <span
+            role="status"
+            data-testid="self-attendance-status"
+            className="font-bold text-slate-800"
+            aria-live="polite"
+          >
+            {checkedOut
+              ? (en ? 'Completed (Checked out)' : 'Hoàn thành ca (Đã check-out)')
+              : checkedIn
+              ? (en ? 'In Progress (Checked in · Check-out available)' : 'Đang trong ca (Đã check-in · Có thể check-out)')
+              : (en ? 'Not checked in' : 'Chưa check-in')}
+          </span>
         </div>
-      ) : null}
+      )}
 
-      {checkedOut?.photo_available ? (
-        <div className="space-y-1" data-testid="attendance-checkout-evidence">
-          <p className="text-xs font-medium">
-            {en ? 'Check-out photo evidence' : 'Ảnh bằng chứng check-out'}
-          </p>
-          {/* Authenticated route enforces owner or scoped reviewer permission. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="max-h-52 max-w-full rounded-md border object-contain"
-            src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedOut.event_id)}
-            alt={en ? 'Check-out attendance evidence' : 'Ảnh bằng chứng check-out'}
-          />
-        </div>
-      ) : null}
-
-      {checkedIn ? (
-        <p className="text-xs text-amber-700">
-          {en
-            ? 'Awaiting manager review of worked time'
-            : 'Đang chờ quản lý đối chiếu và duyệt giờ công'}
-        </p>
-      ) : null}
-
-      {reviewFeatureReady && checkedIn ? (
-        <AttendanceCorrectionForm
-          eventId={checkedIn.event_id}
-          event="check_in"
-          enabled={photoFeatureReady}
-          shiftContext={shiftContext}
-          role={role}
-        />
-      ) : null}
-      {reviewFeatureReady && checkedOut ? (
-        <AttendanceCorrectionForm
-          eventId={checkedOut.event_id}
-          event="check_out"
-          enabled={photoFeatureReady}
-          shiftContext={shiftContext}
-          role={role}
-        />
-      ) : null}
-
-      {/* Gated message when photo feature is OFF */}
-      {nextAction && !photoFeatureReady ? (
+      {/* 4. TWO INDEPENDENT EVENT CARDS (Phase 2) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ========================================================= */}
+        {/* CARD A: CHECK-IN */}
+        {/* ========================================================= */}
         <div
-          role="status"
-          className="rounded-md border border-amber-200 bg-amber-50/50 p-3 space-y-1"
-          data-testid="self-attendance-photo-disabled"
+          className="rounded-lg border bg-white p-4 shadow-sm space-y-3 flex flex-col justify-between"
+          data-testid="attendance-card-checkin"
         >
-          <p className="text-xs font-medium text-amber-900">
-            {nextAction === 'check_in'
-              ? en
-                ? 'Photo check-in awaits verified Google Drive access. Check-in cannot be recorded yet.'
-                : 'Check-in ảnh đang chờ xác nhận quyền lưu trên Google Drive. Chưa thể ghi nhận check-in.'
-              : en
-              ? 'Photo check-out awaits verified Google Drive access. Check-out cannot be recorded yet.'
-              : 'Check-out ảnh đang chờ xác nhận quyền lưu trên Google Drive. Chưa thể ghi nhận check-out.'}
-          </p>
-          <p className="text-[11px] text-amber-800">
-            {en
-              ? 'Feature flag NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO is disabled or Google Drive persistence is unavailable.'
-              : 'Cấu hình NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO đang tắt hoặc đường dẫn lưu trữ Google Drive chưa được kích hoạt.'}
-          </p>
-        </div>
-      ) : null}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b pb-2">
+              <div className="flex items-center gap-2">
+                <LogIn className="h-4 w-4 text-emerald-600" />
+                <h4 className="text-sm font-semibold text-slate-900">
+                  {en ? '1. Check-in (Arrival)' : '1. Check-in (Có mặt)'}
+                </h4>
+              </div>
+              {checkedIn ? (
+                <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 text-[10px] font-bold">
+                  {en ? 'RECORDED' : 'ĐÃ GHI NHẬN'}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-600 text-[10px]">
+                  {en ? 'NOT RECORDED' : 'CHƯA CHECK-IN'}
+                </Badge>
+              )}
+            </div>
 
-      {/* Camera / Photo Capture UI for nextAction */}
-      {nextAction && photoFeatureReady ? (
-        <div
-          className="space-y-2 rounded-md border p-3"
-          data-testid={nextAction === 'check_in' ? 'attendance-checkin-camera' : 'attendance-checkout-camera'}
-        >
-          <p className="text-xs font-medium">
-            {nextAction === 'check_in'
-              ? en
-                ? 'Check-in photo required (JPG/PNG/WebP, up to 4 MB)'
-                : 'Ảnh check-in bắt buộc (JPG/PNG/WebP, tối đa 4 MB)'
-              : en
-              ? 'Check-out photo required (JPG/PNG/WebP, up to 4 MB)'
-              : 'Ảnh check-out bắt buộc (JPG/PNG/WebP, tối đa 4 MB)'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {nextAction === 'check_in'
-              ? en
-                ? 'Take a photo in the live room. It will be stored in the role and month folder in Drive CHECK IN/OUT.'
-                : 'Chụp ảnh tại phòng live để xác nhận có mặt. Ảnh sẽ được lưu tại Drive CHECK IN/OUT đúng tháng và vai trò.'
-              : en
-              ? 'Take a photo at shift completion. It will be stored in the role and month folder in Drive CHECK IN/OUT.'
-              : 'Chụp ảnh tại phòng live lúc kết thúc ca để xác nhận rời ca. Ảnh sẽ được lưu tại Drive CHECK IN/OUT đúng tháng và vai trò.'}
-          </p>
-          <input ref={cameraRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
-            className="sr-only"
-            aria-label={
-              nextAction === 'check_in'
-                ? en
-                  ? 'Take check-in photo with camera'
-                  : 'Chụp ảnh check-in bằng camera'
-                : en
-                ? 'Take check-out photo with camera'
-                : 'Chụp ảnh check-out bằng camera'
-            }
-            onChange={e => selectPhoto(e.target.files?.[0], 'camera')}
-          />
-          <input
-            ref={pickerRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="sr-only"
-            aria-label={
-              nextAction === 'check_in'
-                ? en
-                  ? 'Choose existing check-in photo'
-                  : 'Chọn ảnh check-in có sẵn'
-                : en
-                ? 'Choose existing check-out photo'
-                : 'Chọn ảnh check-out có sẵn'
-            }
-            onChange={e => selectPhoto(e.target.files?.[0], 'file_picker')}
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={busy}
-              data-testid="attendance-open-camera-btn"
-              onClick={() => {
-                if (typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
-                  setCameraCaptureOpen(true)
-                } else {
-                  cameraRef.current?.click()
-                }
-              }}
-            >
-              {en ? 'Take photo' : 'Chụp ảnh'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => pickerRef.current?.click()}
-            >
-              {en ? 'Choose photo' : 'Chọn ảnh'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => void recoverPendingPhoto(nextAction)}
-            >
-              {nextAction === 'check_in'
-                ? en
-                  ? 'Recover uploaded check-in'
-                  : 'Khôi phục check-in đã gửi ảnh'
-                : en
-                ? 'Recover uploaded check-out'
-                : 'Khôi phục check-out đã gửi ảnh'}
-            </Button>
+            {/* Check-in Recorded Receipt or Input */}
+            {checkedIn ? (
+              <div className="space-y-2 text-xs">
+                <div className="rounded bg-emerald-50/50 border border-emerald-200 p-2 text-emerald-950 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-emerald-800">Server Receipt:</span>
+                    <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                      {checkedIn.verification_status}
+                    </Badge>
+                  </div>
+                  <p className="font-mono text-[11px]">
+                    {displayTime(checkedIn.recorded_at, language)}
+                  </p>
+                  <p className="text-[10px] text-emerald-700">
+                    {checkedIn.photo_available
+                      ? (en ? '• Drive photo attached' : '• Đã gắn ảnh Drive')
+                      : (en ? '• No verified photo' : '• Chưa có ảnh xác thực')}
+                  </p>
+                </div>
+
+                {/* Authenticated Check-in Image Evidence */}
+                {checkedIn.photo_available && (
+                  <div className="space-y-1" data-testid="attendance-checkin-evidence">
+                    <span className="font-medium text-slate-700 text-[11px]">
+                      {en ? 'Check-in Photo Evidence:' : 'Ảnh bằng chứng Check-in:'}
+                    </span>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      className="max-h-44 w-full rounded border object-contain bg-black/5"
+                      src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedIn.event_id)}
+                      alt="Check-in attendance evidence"
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 text-xs">
+                <p className="text-slate-600">
+                  {en
+                    ? 'Take or select a photo in the live studio to record check-in.'
+                    : 'Chụp ảnh tại phòng live để xác nhận có mặt đúng khung giờ quy định.'}
+                </p>
+
+                {/* Photo Inputs */}
+                <input
+                  ref={cameraInputCheckInRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  className="hidden"
+                  onChange={e => handleSelectPhoto(e.target.files?.[0], 'camera', 'check_in')}
+                />
+                <input
+                  ref={pickerInputCheckInRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={e => handleSelectPhoto(e.target.files?.[0], 'file_picker', 'check_in')}
+                />
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busyCheckIn}
+                    data-testid="attendance-checkin-open-camera-btn"
+                    onClick={() => {
+                      if (typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
+                        setCameraOpenCheckIn(true)
+                      } else {
+                        cameraInputCheckInRef.current?.click()
+                      }
+                    }}
+                    className="text-xs"
+                  >
+                    <Camera className="mr-1.5 h-3.5 w-3.5" />
+                    {en ? 'Take photo' : 'Chụp ảnh'}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busyCheckIn}
+                    data-testid="attendance-checkin-file-picker-btn"
+                    onClick={() => pickerInputCheckInRef.current?.click()}
+                    className="text-xs"
+                  >
+                    <FileImage className="mr-1.5 h-3.5 w-3.5" />
+                    {en ? 'Choose photo' : 'Chọn ảnh'}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busyCheckIn}
+                    data-testid="attendance-checkin-recover-btn"
+                    onClick={() => void recoverPhoto('check_in')}
+                    className="text-xs text-slate-500"
+                  >
+                    <RotateCcw className="mr-1 h-3 w-3" />
+                    {en ? 'Recover' : 'Khôi phục'}
+                  </Button>
+                </div>
+
+                <AttendanceCameraCapture
+                  open={cameraOpenCheckIn}
+                  onOpenChange={setCameraOpenCheckIn}
+                  onCapture={(file, src) => handleSelectPhoto(file, src, 'check_in')}
+                  shiftContext={shiftContext}
+                  role={role}
+                  eventKind="check_in"
+                  onFallbackToPicker={() => cameraInputCheckInRef.current?.click()}
+                />
+
+                {/* Check-in Photo Preview */}
+                {previewCheckIn && (
+                  <div className="space-y-1 rounded border bg-slate-50 p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={previewCheckIn}
+                      className="max-h-36 w-full rounded border object-contain bg-white"
+                      alt="Check-in preview"
+                      data-testid="attendance-checkin-preview-img"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      {photoCheckIn?.name} ({photoCheckIn ? Math.ceil(photoCheckIn.size / 1024) : 0} KB)
+                    </p>
+                  </div>
+                )}
+
+                {errorCheckIn && (
+                  <p role="alert" className="text-xs text-rose-600" data-testid="attendance-checkin-error">
+                    {errorCheckIn}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
-          <AttendanceCameraCapture
-            open={cameraCaptureOpen}
-            onOpenChange={setCameraCaptureOpen}
-            onCapture={(capturedFile, src) => selectPhoto(capturedFile, src)}
-            shiftContext={shiftContext}
-            role={role}
-            eventKind={nextAction}
-            onFallbackToPicker={() => cameraRef.current?.click()}
-          />
-
-          {photoPreview ? (
-            <div className="space-y-1">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={photoPreview}
-                className="max-h-48 max-w-full rounded-md border object-contain"
-                alt={
-                  nextAction === 'check_in'
-                    ? en
-                      ? 'Photo to upload for check-in'
-                      : 'Ảnh sẽ gửi để check-in'
-                    : en
-                    ? 'Photo to upload for check-out'
-                    : 'Ảnh sẽ gửi để check-out'
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                {en ? 'Selected photo' : 'Ảnh đã chọn'}: {photo?.name},{' '}
-                {photo ? Math.ceil(photo.size / 1024) : 0} KB.{' '}
-                {en ? 'Upload starts on confirmation.' : 'Sẽ tải vào Drive khi xác nhận.'}
-              </p>
+          {/* Submit Action for Check-In */}
+          {!checkedIn && (
+            <div className="pt-2 border-t mt-3">
+              <Button
+                type="button"
+                size="sm"
+                className="w-full text-xs font-semibold"
+                disabled={busyCheckIn || !photoCheckIn}
+                onClick={() => void submitCheckIn()}
+                data-testid="attendance-checkin-submit-btn"
+              >
+                {busyCheckIn ? (en ? 'Recording…' : 'Đang ghi nhận…') : (en ? 'Upload photo and check-in' : 'Tải ảnh và Check-in')}
+              </Button>
             </div>
-          ) : null}
+          )}
         </div>
-      ) : null}
 
-      {writeError ? <p role="alert" className="text-xs text-red-600">{writeError}</p> : null}
-      {photoFeatureReady && <AttendanceCorrectionPanel key={`${actorId}:${shiftId}`} shiftId={shiftId} />}
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => {
-            setSnapshot(null)
-            setNonce(v => v + 1)
-          }}
+        {/* ========================================================= */}
+        {/* CARD B: CHECK-OUT */}
+        {/* ========================================================= */}
+        <div
+          className={`rounded-lg border p-4 shadow-sm space-y-3 flex flex-col justify-between ${
+            !checkedIn ? 'bg-slate-50/70 border-slate-200 opacity-90' : 'bg-white'
+          }`}
+          data-testid="attendance-card-checkout"
         >
-          {en ? 'Retry / Refresh' : 'Thử lại / Tải lại'}
-        </Button>
-        {nextAction && photoFeatureReady ? (
-          <Button
-            type="button"
-            size="sm"
-            disabled={busy || !photo}
-            onClick={() => void submit(nextAction)}
-          >
-            {busy
-              ? en
-                ? 'Recording…'
-                : 'Đang ghi nhận...'
-              : nextAction === 'check_in'
-              ? en
-                ? 'Upload photo and check in'
-                : 'Tải ảnh và check-in'
-              : en
-              ? 'Upload photo and check-out'
-              : 'Tải ảnh và check-out'}
-          </Button>
-        ) : null}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b pb-2">
+              <div className="flex items-center gap-2">
+                <LogOut className={`h-4 w-4 ${checkedIn ? 'text-amber-600' : 'text-slate-400'}`} />
+                <h4 className="text-sm font-semibold text-slate-900">
+                  {en ? '2. Check-out (Departure)' : '2. Check-out (Rời ca)'}
+                </h4>
+              </div>
+              {checkedOut ? (
+                <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 text-[10px] font-bold">
+                  {en ? 'RECORDED' : 'ĐÃ GHI NHẬN'}
+                </Badge>
+              ) : !checkedIn ? (
+                <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-[10px]">
+                  <Lock className="mr-1 h-3 w-3" />
+                  {en ? 'LOCKED' : 'ĐANG KHÓA'}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800 text-[10px]">
+                  {en ? 'AVAILABLE' : 'CÓ THỂ CHECK-OUT'}
+                </Badge>
+              )}
+            </div>
+
+            {/* Locked Reason if Not Checked In (Phase 2 requirement: Do not hide card!) */}
+            {!checkedIn ? (
+              <div
+                role="alert"
+                className="rounded-md border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900 space-y-1"
+                data-testid="attendance-checkout-locked-alert"
+              >
+                <div className="flex items-center gap-1.5 font-semibold text-amber-950">
+                  <Lock className="h-3.5 w-3.5 text-amber-700" />
+                  <span>Check-out đang khóa</span>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Cần hoàn tất Check-in thành công trước khi có thể chụp ảnh và ghi nhận Check-out rời ca.
+                </p>
+              </div>
+            ) : checkedOut ? (
+              <div className="space-y-2 text-xs">
+                <div className="rounded bg-emerald-50/50 border border-emerald-200 p-2 text-emerald-950 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-emerald-800">Server Receipt:</span>
+                    <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                      {checkedOut.verification_status}
+                    </Badge>
+                  </div>
+                  <p className="font-mono text-[11px]">
+                    {displayTime(checkedOut.recorded_at, language)}
+                  </p>
+                  <p className="text-[10px] text-emerald-700">
+                    {checkedOut.photo_available
+                      ? (en ? '• Drive photo attached' : '• Đã gắn ảnh Drive')
+                      : (en ? '• No verified photo' : '• Chưa có ảnh xác thực')}
+                  </p>
+                </div>
+
+                {/* Authenticated Check-out Image Evidence */}
+                {checkedOut.photo_available && (
+                  <div className="space-y-1" data-testid="attendance-checkout-evidence">
+                    <span className="font-medium text-slate-700 text-[11px]">
+                      {en ? 'Check-out Photo Evidence:' : 'Ảnh bằng chứng Check-out:'}
+                    </span>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      className="max-h-44 w-full rounded border object-contain bg-black/5"
+                      src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedOut.event_id)}
+                      alt="Check-out attendance evidence"
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 text-xs">
+                <p className="text-slate-600">
+                  {en
+                    ? 'Take or select a photo at shift completion to record departure.'
+                    : 'Chụp ảnh tại phòng live lúc hoàn tất ca trực để xác nhận rời ca.'}
+                </p>
+
+                {/* Photo Inputs */}
+                <input
+                  ref={cameraInputCheckOutRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  className="hidden"
+                  onChange={e => handleSelectPhoto(e.target.files?.[0], 'camera', 'check_out')}
+                />
+                <input
+                  ref={pickerInputCheckOutRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={e => handleSelectPhoto(e.target.files?.[0], 'file_picker', 'check_out')}
+                />
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busyCheckOut}
+                    data-testid="attendance-checkout-open-camera-btn"
+                    onClick={() => {
+                      if (typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
+                        setCameraOpenCheckOut(true)
+                      } else {
+                        cameraInputCheckOutRef.current?.click()
+                      }
+                    }}
+                    className="text-xs"
+                  >
+                    <Camera className="mr-1.5 h-3.5 w-3.5" />
+                    {en ? 'Take photo' : 'Chụp ảnh'}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busyCheckOut}
+                    data-testid="attendance-checkout-file-picker-btn"
+                    onClick={() => pickerInputCheckOutRef.current?.click()}
+                    className="text-xs"
+                  >
+                    <FileImage className="mr-1.5 h-3.5 w-3.5" />
+                    {en ? 'Choose photo' : 'Chọn ảnh'}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busyCheckOut}
+                    data-testid="attendance-checkout-recover-btn"
+                    onClick={() => void recoverPhoto('check_out')}
+                    className="text-xs text-slate-500"
+                  >
+                    <RotateCcw className="mr-1 h-3 w-3" />
+                    {en ? 'Recover' : 'Khôi phục'}
+                  </Button>
+                </div>
+
+                <AttendanceCameraCapture
+                  open={cameraOpenCheckOut}
+                  onOpenChange={setCameraOpenCheckOut}
+                  onCapture={(file, src) => handleSelectPhoto(file, src, 'check_out')}
+                  shiftContext={shiftContext}
+                  role={role}
+                  eventKind="check_out"
+                  onFallbackToPicker={() => cameraInputCheckOutRef.current?.click()}
+                />
+
+                {/* Check-out Photo Preview */}
+                {previewCheckOut && (
+                  <div className="space-y-1 rounded border bg-slate-50 p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={previewCheckOut}
+                      className="max-h-36 w-full rounded border object-contain bg-white"
+                      alt="Check-out preview"
+                      data-testid="attendance-checkout-preview-img"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      {photoCheckOut?.name} ({photoCheckOut ? Math.ceil(photoCheckOut.size / 1024) : 0} KB)
+                    </p>
+                  </div>
+                )}
+
+                {errorCheckOut && (
+                  <p role="alert" className="text-xs text-rose-600" data-testid="attendance-checkout-error">
+                    {errorCheckOut}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Submit Action for Check-Out */}
+          {checkedIn && !checkedOut && (
+            <div className="pt-2 border-t mt-3">
+              <Button
+                type="button"
+                size="sm"
+                className="w-full text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white"
+                disabled={busyCheckOut || !photoCheckOut}
+                onClick={() => void submitCheckOut()}
+                data-testid="attendance-checkout-submit-btn"
+              >
+                {busyCheckOut ? (en ? 'Recording…' : 'Đang ghi nhận…') : (en ? 'Upload photo and check-out' : 'Tải ảnh và Check-out')}
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
-    </section>
-  )
-}
 
-function AttendanceCorrectionForm({
-  eventId,
-  event,
-  enabled,
-  shiftContext,
-  role,
-}: {
-  eventId: string
-  event: AttendanceEventKind
-  enabled: boolean
-  shiftContext: SelfAttendanceShiftContext
-  role: AttendanceRole
-}) {
-  const { language } = useTranslation()
-  const en = language === 'en'
-  const [context, setContext] = React.useState<Awaited<ReturnType<typeof readSelfAttendancePhotoReviewContext>> | null>(null)
-  const [file, setFile] = React.useState<File | null>(null)
-  const [source, setSource] = React.useState<'camera' | 'file_picker'>('camera')
-  const [preview, setPreview] = React.useState<string | null>(null)
-  const [busy, setBusy] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [cameraOpen, setCameraOpen] = React.useState(false)
-  const cameraInputRef = React.useRef<HTMLInputElement>(null)
-  const pickerInputRef = React.useRef<HTMLInputElement>(null)
-
-  React.useEffect(() => {
-    let active = true
-    void readSelfAttendancePhotoReviewContext(eventId)
-      .then(value => {
-        if (active) setContext(value)
-      })
-      .catch(reason => {
-        if (active) setError(reason instanceof Error ? reason.message : 'ATTENDANCE_REVIEW_CONTEXT_UNAVAILABLE')
-      })
-    return () => {
-      active = false
-    }
-  }, [eventId])
-
-  if (!context?.can_submit_correction) return error ? <p role="alert" className="text-xs text-red-600">{error}</p> : null
-
-  const choose = (next: File | undefined, capture: 'camera' | 'file_picker') => {
-    if (!next) return
-    setError(null)
-    if (next.size < 1 || next.size > 4 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(next.type)) {
-      setError(en ? 'Choose a JPG, PNG or WebP image up to 4 MB.' : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB.')
-      return
-    }
-    setFile(next)
-    setSource(capture)
-    setPreview(URL.createObjectURL(next))
-  }
-
-  const handleCameraCapture = (capturedFile: File, src: 'camera') => {
-    choose(capturedFile, src)
-    setCameraOpen(false)
-  }
-
-  return (
-    <section className="space-y-2 rounded-md border border-amber-300 p-3" data-testid={`attendance-correction-${event}`}>
-      <p className="text-sm font-medium">
-        {en ? `Supplement ${event === 'check_in' ? 'check-in' : 'check-out'} evidence` : `Bổ sung minh chứng ${event === 'check_in' ? 'check-in' : 'check-out'}`}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        {en ? 'Requested correction: ' : 'Lý do yêu cầu sửa: '}{context.reason}
-      </p>
-      {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
-
-      <input
-        ref={cameraInputRef}
-        className="sr-only"
-        aria-label="Take a correction photo"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        capture="environment"
-        onChange={e => choose(e.target.files?.[0], 'camera')}
-      />
-      <input
-        ref={pickerInputRef}
-        className="sr-only"
-        aria-label="Choose a correction photo"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        onChange={e => choose(e.target.files?.[0], 'file_picker')}
-      />
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={busy}
-          onClick={() => {
-            if (typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
-              setCameraOpen(true)
-            } else {
-              cameraInputRef.current?.click()
-            }
-          }}
-        >
-          {en ? 'Take correction photo' : 'Chụp ảnh bổ sung'}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => pickerInputRef.current?.click()}
-        >
-          {en ? 'Choose correction photo' : 'Chọn ảnh bổ sung'}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          disabled={!enabled || busy || !file}
-          onClick={() => {
-            if (!file) return
-            setBusy(true)
-            const requestId = crypto.randomUUID()
-            void submitSelfAttendancePhotoCorrection(eventId, requestId, file, source)
-              .then(() => {
-                setFile(null)
-                setPreview(null)
-                return readSelfAttendancePhotoReviewContext(eventId)
-              })
-              .then(setContext)
-              .catch(reason => setError(reason instanceof Error ? reason.message : 'ATTENDANCE_PHOTO_CORRECTION_FAILED'))
-              .finally(() => setBusy(false))
-          }}
-        >
-          {busy ? (en ? 'Submitting…' : 'Đang gửi…') : (en ? 'Submit correction photo' : 'Gửi ảnh bổ sung')}
-        </Button>
-      </div>
-
-      <AttendanceCameraCapture
-        open={cameraOpen}
-        onOpenChange={setCameraOpen}
-        onCapture={handleCameraCapture}
-        shiftContext={shiftContext}
-        role={role}
-        eventKind={event}
-        onFallbackToPicker={() => cameraInputRef.current?.click()}
-      />
-
-      {preview && (
-        <Image
-          className="max-h-48 rounded-md border object-contain"
-          src={preview}
-          alt="Photo to upload for correction"
-          width={640}
-          height={480}
-          unoptimized
-        />
+      {/* 5. CORRECTIONS & DRIVE REVIEWS */}
+      {photoFeatureReady && (
+        <AttendanceCorrectionPanel key={`${actorId}:${shiftId}`} shiftId={shiftId} />
       )}
     </section>
   )
