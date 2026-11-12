@@ -12,6 +12,7 @@
 - **Codex lane C1–C12:** [#174](https://github.com/anhkienk4-max/live-app-main/issues/174)
 - **Gemini lane G1–G12:** [#175](https://github.com/anhkienk4-max/live-app-main/issues/175)
 - **Documentation-only Draft PR:** [#176](https://github.com/anhkienk4-max/live-app-main/pull/176)
+- **Confirmed P0 KAO import corruption (2026-11-12):** [#184](https://github.com/anhkienk4-max/live-app-main/issues/184) (C6/C3/C2 ↔ G3/G2, wrong date, 0 staffing segments despite Import success).
 - **Owner attendance/check-in-out/payroll addendum (2026-11-12):** [#183](https://github.com/anhkienk4-max/live-app-main/issues/183) (C5/G5 + C11/G11; 2-hour photo window, T−15/T−30, exact approved pay).
 - **Prior release master:** [#80](https://github.com/anhkienk4-max/live-app-main/issues/80) (preserve historical requirements and evidence)
 
@@ -47,10 +48,10 @@
 |---|---|---|---|---|
 | **C1** | W0 P0 | Runtime boot, auth/session, critical-first readiness, suspense/overlay, bounded prefetch, month-scoped queries, navigation cache and idle refresh investigation. Trace why splash returns “Trang đang tải lâu hơn dự kiến” or remounts. | G1, G6 | No inert splash/remount; visible modules hydrate then background widgets; route return preserves state, stale/race/retry/timeout verified |
 | **C2** | W0 P0 | Calendar contract: scoped fetch, event/segment range/timezone, overnight 12/11 rendering, concurrency and data reconciliation for 35/37 shifts; stable minute/date indexing and API pagination. | G2, C3 | Correct events before/after reload and idle, all overlaps accessible, no missing shift/duplicate on range change |
-| **C3** | W1 P1 | Canonical parent shift + multi-segment staffing model, host/support/technical assignments across different time windows, versions, remove assignment, all editable shift fields; preserve shift identity. See #168. | G3, C5, C6 | 3 segments, multiple hosts, midnight, reassignment, concurrency, import-export, payroll source consistency |
+| **C3** | W1 P1 | Canonical parent shift + multi-segment staffing model, host/support/technical assignments across different time windows, versions, remove assignment, all editable shift fields; preserve shift identity. **P0 import integration #184:** map one imported KAO parent to three actual `shift_staffing_segments` records, preserve K01–K03 times, H/T/KT capacity, planned display-only staff names and stable parent ID. See #168. | G3, C5, C6 | Import→DB 1 parent+3 child, multiple hosts, midnight, reassign/concurrency, edit/detail/readback; no phantom child or duplicated report/payroll |
 | **C4** | W0 P0 | Staffing assignment and PASS/Swap: fix disabled Assign despite selected shift, missing rows / ordering; review both broken SQL RPC overloads for missing \`private.log_shift_audit\`; audit trigger, approval, notifications, conflict guards. See #73. | G4, C3 | Member PASS and SWAP → recipient → Leader approve/reject → shift/staff/calendar/notification/audit readback; unauthorized and concurrent negative cases |
 | **C5** | W1 P1 | Attendance: distinctly persisted \`check_in\` / \`check_out\` events, each supporting camera AND gallery upload with trusted timestamps, immutable evidence, server event-kind validation, approved role/month Drive routing; enforce reviewed T−120m/End+120m submission windows and separate T−15 Host / T−30 Support presence checks. Evidence review, audit, correction, multi-segment role/roster and payroll handoff. **Owner addendum #183**, existing #74, #130, #163, #76. | G5, C11 | 12 source×event×role paths, correct folders/filenames/readback, ±2h boundaries, Admin/Leader reviews, no client-timestamp spoof or unapproved payroll/fines; cross-midnight + PG17 + actor E2E |
-| **C6** | W1 P1 | Canonical shift note field, import/export mapping and full CRUD; execution source legacy/agency contract (do not auto-tag unknown as internal); retain all shift fields in edit. | G3, G6 | Shift note survives import/edit/export/reload, no duplicate note-list workflow, unclassified source behaves explicitly |
+| **C6** | W1 **P0 for #184**, otherwise P1 | **Confirmed KAO import date corruption + child segment loss #184**: date parsing of sheet `11/1/2026` was converted to `2026-01-11` despite code `KAO-20261101-1000-1800`; source P `Khung nhân sự` LF K01/K02/K03 and Q=3 are in preview `custom_fields` but not persisted as child records. Fix Sheets typed-date/locale + code/weekday validation, multiline segment parser and transactional parent+segments commit, warnings and readback. Also canonical notes/legacy Agency/source mapping, import/export. See #161/#168. | C3, C2, G3, G2, G6 | Import confirmed 1/1 must imply correct date and 3 persisted segments (H1/H2/H1, T1, KT0), 0 false successes, previews show corrections, calendar reflects correct November date, idempotent reimport preserving history |
 | **C7** | W2 P1 | Reports + Live data contract: report state, KPI, artifact sections, dashboard/metrics upload, live viewer URL validation (TikTok Shop URL fallback to public viewer URL), report summaries/status for month-week-day/card/list. See #164, #165. | G7, C8 | Draft→submit→review + metrics/insights + Drive readback, report status persisted across view changes, live URL opens safely |
 | **C8** | W3 P1 | Real Google Drive/OneDrive resource-bound tree, choose existing folder/link with explicit confirmation, verify provider ID/parent/path/ACL, lazy creation, readback; no virtual folder impersonating real Drive. See #97, #98. | G8, C7, C9 | Physical folder navigation matches selected provider link, no phantom file paths, idempotent upload/download/retention |
 | **C9** | W3 P2 | Brand/Product/SKU/catalog domain and media relations, variant images, visual slot registry, storage association and rights; move brand-access/audit data to admin domain (not product page). See #166. | G9, C8 | Multi-SKU product and gallery persist, visual slots render mapped assets, correct authorized edits and fallback images |
@@ -64,7 +65,7 @@
 |---|---|---|---|---|
 | **G1** | W0 P0 | ADA boot splash remains only while essential Overview is not ready; no flash back to splash on tab route; per-region skeleton; Overview **5** important shortcuts and “Xem tất cả”; upcoming shifts show Host/Support name/avatar and vacancy. | C1, C5 | First stable Overview shows 5, expansion works, card identity matches real shift assignments |
 | **G2** | W0 P0 | Calendar responsive week/day/month/list modes **within Calendar**, <=3 overlapping columns, localized groups, distinct 12/11 event, popup for overflow/week details, keep scroll/filter after edit. | C2 | No massive single 35/37 tile, overnight correct, all shifts inspectable and click/drag/resize actions governed by rights |
-| **G3** | W1 P1 | Full Shift Detail/Edit modal for all fields: dynamic “Thêm khung giờ” by Host/Trợ/Technical and overlaps, remove assignment; notes included; Save/Cancel returns to same calendar/tab/scroll. | C3, C6 | Edit parent/segments, save version, read back, stay in same module, validated errors |
+| **G3** | W1 P1 | Full Shift Detail/Edit modal for all fields: dynamic “Thêm khung giờ” by Host/Trợ/Technical and overlaps, remove assignment; notes included; **KAO import #184 must show all three persisted K01–K03 segments within one parent**, capacity, planned names and return-to-calendar context. | C3, C6 | Show persisted segments without inventing missing rows; editing, save/version/readback and return; if DB segments absent, show actionable import-data error rather than phantom empty form |
 | **G4** | W0 P0 | Staffing list defaults upcoming/newest-first relative to now, controls for missing shifts, selected row enables valid Assign, cancel/unassign, full PASS/Swap status and actor flows. | C4 | Assign actually persists, revoke/replace and alerts/approval visible, no false enabled/disabled state |
 | **G5** | W1 P1 | In Shift Detail / My Shift, show two **independent Check-in and Check-out panels**; **each has distinct “Chụp ảnh” and “Tải/Chọn ảnh” actions**, own preview, submit, timestamp, file, upload result, status/retry; role-specific T−15/T−30 presence indicators and ±2h window/exception reason. Preserve separate Admin/Leader review and stable tabs. **Owner addendum #183**. | C5 | Never misfile Check-out as Check-in or vice versa; transparent before/after time limits and evidence status; action-click, role and responsive UAT for both photo sources |
 | **G6** | W1 P1 | Unified role-aware navigation: remove duplicate “Quản lý tài khoản” from sidebar, product does not contain brand permissions/audit; internal view switches never redirect to global Calendar; shift notes not a parallel list of shifts. | C1, C6, C9 | Correct deep links/back-button/tab scope and role-specific availability |
@@ -122,6 +123,31 @@
 - **Payroll:** compliant early arrival paid approved shift/work interval only; actual late/short work second-accurate, approved OT independent from +2h evidence window, no auto fine; reviewer and admin roles, exceptions and locked records.
 - **FULL PASS requires** C5+G5+C11+G11 integration, UI/API/PostgreSQL 17/Drive readback, authenticated Admin/Leader/Member negative + happy paths, exact deployed SHA and screenshot evidence. This issue is **requirements added**, not code implemented. Do not migrate/upload/change Drive ACL/deploy from roadmap update.
 
+## Confirmed Owner Production import defect (2026-11-12) — P0 [#184](https://github.com/anhkienk4-max/live-app-main/issues/184)
+
+The Owner screenshot showed Google Sheets tab with a **single KAO parent live shift**, `11/1/2026` (Sunday = November 1), external code `KAO-20261101-1000-1800`, parent 10:00–18:00, **three** LF-separated staffing frames `K01 10–11 H1 T1 KT0`, `K02 11–16 H2 T1 KT0`, `K03 16–18 H1 T1 KT0`. The app Import History shows 11:38, November 12, “Đã import”, but the shift is not visible on Calendar.
+
+**Independent read-only Production SQL verified actual persistence errors**, not only a suspected missing Shift Detail format:
+
+| Evidence | Actual Production observation |
+| --- | --- |
+| Import batch | `f66388d8-6473-434f-ac4b-da7bf2594b29`, `status=confirmed`, `1/1 valid/imported`, 0 warnings/errors, 11:38 on Nov 12 VN |
+| Shift | `6eee2fd7-83cf-4541-b1dc-3b575edd573e`, title `KAO-20261101-1000-1800`, 10:00–18:00 |
+| **Wrong day** | Imported `source_row.date` **already = `2026-01-11` at preview stage**, and `shifts.date` + `start_at` saved as January 11 instead of November 1 |
+| **Missing staffing slots** | `source_row.custom_fields['Khung nhân sự']` has all 3 lines with actual LF; `Số khung=3`; **0 rows** in `shift_staffing_segments` for that shift |
+| **Other mapping risks** | Parent `required_technical_count=1` contradicts every slot's `KT0`; K02 H2 not represented in default parent capacity; multi-person planned Host names lose slot attachment. Confirm sheet `Status Done` to shift `completed` behavior on Calendar filters |
+
+### Mandatory P0 fix and QA (C6 → C3 → C2; paired G3/G2)
+
+1. **C6 typed date/locale parser**: Do not trust implicit `new Date('11/1/2026')` semantics. Read Google Sheets serial/typed date and sheet locale; validate weekday `Chủ Nhật` and `KAO-20261101...` against computed date. If ambiguous, block preview/confirm with a row-specific validation message rather than silently storing another month. Date is wrong *before DB write*, so a Shift Detail UI patch alone will not fix the root cause.
+2. **C6 + C3 segments**: Parse `Khung nhân sự` LF multiline into three child `shift_staffing_segments` (K01–K03; starts/ends, H/T/KT required counts, planned names). Validate `Số khung=3`, segments contained in parent, no contradictory capacities or auto-assignment from planned names. Persist **one parent + three child records atomically**, with stable import lineage and no duplicated GMV/report/payroll.
+3. **Preview/confirmation truthfulness**: Confirming a one-row source with required three segments must **not** say full success when children were silently omitted. Return field-level error with row+column, counts for parents/segments and precise write readback; fail the whole row transaction when contractual child persistence is unavailable. Reimport idempotently with approved review, not a mass overwrite.
+4. **Calendar + Shift Detail**: Once DB corrected, Calendar on **November 1** (not current week 8–14 Nov) must show one parent shift 10:00–18:00, with child segments inside Detail/Staffing. Ensure `completed` status visibility according to authorized filters. Provide `Xem ca vừa import` deep link to imported date/shift with a visible `Ngày lưu: 01/11/2026` and no unexplained staying on the current week.
+5. **Regression:** Source fixture KAO + US/VN date strings and spreadsheet serial, weekday/code mismatch, different Brand/tab headers, M/N planned multiline names, Q count, H2 and KT0, cross-midnight, duplicate imports, API/DB parent+child readback, role permissions and Calendar/G3 UI. PG17 isolated, authenticated actor E2E, evidence and exact SHA are mandatory before FULL PASS.
+6. **Production reconciliation separately approved:** Preserve the original batch/shift, record before/after audit, and propose narrowly scoped repair for batch `f66388d8...` and shift `6eee2fd7...` only after validated code and user authorization. No blind edits/reimport/deploy from this document.
+
+**Status:** Confirmed Production data-integrity defect, implementation **NOT STARTED** under this issue; C6 P0, C3 P0 integration, C2/G2 and G3 UI readback pending. The current G2 Draft PR #180 cannot correct an event whose `start_at` was incorrectly stored as January.
+
 ## Full-pass and evidence format
 
 Every task **C# / G#** must produce:
@@ -144,12 +170,13 @@ Status is **NOT STARTED → IN PROGRESS → REVIEW → FULL PASS**; partial impl
 11. Duplicate sidebar Quản lý tài khoản; own payslip should be within Payroll and Member-accessible alongside violation cases/policy.
 12. Audit History screen displays \`canceling statement due to statement timeout\`.
 13. User requires **full module acceptance**, never "HTTP 200 = PASS", across all roles and expected workflows.
+15. **12/11 KAO live import confirmed corrupted:** imported parent code Nov 01 saved January 11; 3 K01/K02/K03 source frames persisted as 0 segments; see P0 #184. Missing Shift Detail format is not the sole root cause.
 14. **12/11 Owner attendance screenshot:** Check-in photo capture/upload is visible but Check-out separation is not obvious; requires explicit 4 photo paths, correct Drive event labeling, ±2h server-controlled submission policy, existing T−15/T−30 presence checks and approved exact-second actual payroll. See #183.
 
 ## Existing issue cross-links / non-duplication
 
 - RC19 main release tracking: #80 (older instruction of 1 Gemini-only lane is now superseded for this backlog).
-- Calendar/shift/segments: #168, #163. Staffing and shifts: #73, #74, #76, #128. Attendance/payroll addendum: #183, evidence review #130.
+- Calendar/shift/segments: #168, #163. **Confirmed import/Calendar missing-shift bug: #184, #161**. Staffing and shifts: #73, #74, #76, #128. Attendance/payroll addendum: #183, evidence review #130.
 - Reports/Drive: #164, #165, #97, #98.
 - Product catalog: #166.
 - Login/UX: #79, #92, #167.
