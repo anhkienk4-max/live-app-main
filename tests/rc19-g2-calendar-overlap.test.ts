@@ -379,3 +379,165 @@ test('Backward compatibility — shiftsForGridDate and groupTimeGridShifts still
   assert.equal(groups.length, 1)
   assert.equal(groups[0][0].id, 'a')
 })
+
+test('G2-EDGE-01 — Minimum visual duration: A (08:00–08:01) and B (08:01–08:02) never overlap in the same lane', () => {
+  const shifts = [
+    mockShift({ id: 'A', start_time: '08:00', end_time: '08:01' }),
+    mockShift({ id: 'B', start_time: '08:01', end_time: '08:02' }),
+  ]
+
+  const layout = computeDayTimelineLayout(shifts, { hourHeight: 44, maxLanes: 3 })
+
+  assert.equal(layout.renderedShifts.length, 2)
+  assert.equal(layout.overflowBadges.length, 0)
+
+  const a = layout.renderedShifts.find(s => s.id === 'A')
+  const b = layout.renderedShifts.find(s => s.id === 'B')
+  assert.ok(a && b)
+
+  // Must be in different lanes to avoid visual collision!
+  assert.notEqual(a.lane, b.lane)
+  assert.equal(layout.renderedShifts[0].totalLanes, 2)
+  assert.equal(layout.renderedShifts[1].totalLanes, 2)
+  assert.equal(layout.renderedShifts[0].widthPercent, 50)
+  assert.equal(layout.renderedShifts[1].widthPercent, 50)
+})
+
+test('G2-EDGE-02 — Overflow gap: two bursts separated by 10, 20, 29, 30 min render gap shifts individually and badges never collide', () => {
+  for (const gap of [10, 20, 29, 30]) {
+    const burst1End = 600 // 10:00
+    const burst2Start = burst1End + gap
+    const burst2End = burst2Start + 60
+
+    const b2StartStr = `${String(Math.floor(burst2Start / 60)).padStart(2, '0')}:${String(burst2Start % 60).padStart(2, '0')}`
+    const b2EndStr = `${String(Math.floor(burst2End / 60)).padStart(2, '0')}:${String(burst2End % 60).padStart(2, '0')}`
+
+    const shifts = [
+      // Burst 1: 4 shifts (09:00 - 10:00)
+      mockShift({ id: `b1-1-${gap}`, start_time: '09:00', end_time: '10:00' }),
+      mockShift({ id: `b1-2-${gap}`, start_time: '09:00', end_time: '10:00' }),
+      mockShift({ id: `b1-3-${gap}`, start_time: '09:00', end_time: '10:00' }),
+      mockShift({ id: `b1-4-${gap}`, start_time: '09:00', end_time: '10:00' }),
+
+      // Shift running in the gap between bursts
+      mockShift({ id: `gap-shift-${gap}`, start_time: '10:00', end_time: b2StartStr }),
+
+      // Burst 2: 4 shifts
+      mockShift({ id: `b2-1-${gap}`, start_time: b2StartStr, end_time: b2EndStr }),
+      mockShift({ id: `b2-2-${gap}`, start_time: b2StartStr, end_time: b2EndStr }),
+      mockShift({ id: `b2-3-${gap}`, start_time: b2StartStr, end_time: b2EndStr }),
+      mockShift({ id: `b2-4-${gap}`, start_time: b2StartStr, end_time: b2EndStr }),
+    ]
+
+    const layout = computeDayTimelineLayout(shifts, { hourHeight: 44, maxLanes: 3 })
+
+    // Must have 2 distinct badges, NOT 1 giant merged badge
+    assert.equal(layout.overflowBadges.length, 2, `Failed for gap ${gap}`)
+
+    // The gap shift must be rendered individually
+    const gapShiftRendered = layout.renderedShifts.find(s => s.id === `gap-shift-${gap}`)
+    assert.ok(gapShiftRendered, `Gap shift not rendered for gap ${gap}`)
+
+    // Badges must never visually collide in Lane 2
+    const [b1, b2] = layout.overflowBadges
+    assert.ok(b1.topPx + b1.heightPx <= b2.topPx, `Badge collision detected for gap ${gap}: b1 bottom=${b1.topPx + b1.heightPx}, b2 top=${b2.topPx}`)
+  }
+})
+
+test('G2-EDGE-03 — Long shift (08:00–18:00) across two independent overflow bursts: accurate counts, popups, and gap visibility', () => {
+  const shifts = [
+    // Long shift 08:00 - 18:00
+    mockShift({ id: 'L', start_time: '08:00', end_time: '18:00' }),
+
+    // Burst 1: 09:00 - 10:00 (4 short shifts)
+    mockShift({ id: 'a1', start_time: '09:00', end_time: '10:00' }),
+    mockShift({ id: 'a2', start_time: '09:00', end_time: '10:00' }),
+    mockShift({ id: 'a3', start_time: '09:00', end_time: '10:00' }),
+    mockShift({ id: 'a4', start_time: '09:00', end_time: '10:00' }),
+
+    // Gap 1: 11:00 - 12:00 (1 shift), 13:00 - 14:00 (2 shifts)
+    mockShift({ id: 'g1', start_time: '11:00', end_time: '12:00' }),
+    mockShift({ id: 'g2', start_time: '13:00', end_time: '14:00' }),
+    mockShift({ id: 'g3', start_time: '13:00', end_time: '14:00' }),
+
+    // Burst 2: 15:00 - 16:00 (4 short shifts)
+    mockShift({ id: 'b1', start_time: '15:00', end_time: '16:00' }),
+    mockShift({ id: 'b2', start_time: '15:00', end_time: '16:00' }),
+    mockShift({ id: 'b3', start_time: '15:00', end_time: '16:00' }),
+    mockShift({ id: 'b4', start_time: '15:00', end_time: '16:00' }),
+
+    // Gap 2: 16:30 - 17:30 (1 shift)
+    mockShift({ id: 'g4', start_time: '16:30', end_time: '17:30' }),
+  ]
+
+  const layout = computeDayTimelineLayout(shifts, { hourHeight: 44, maxLanes: 3 })
+
+  // 1. Two separate badges
+  assert.equal(layout.overflowBadges.length, 2)
+  const [b1, b2] = layout.overflowBadges
+
+  assert.equal(b1.timeLabel, '09:00 – 10:00')
+  assert.equal(b1.count, 3)
+  assert.deepEqual(b1.allClusterShifts.map(s => s.id).sort(), ['L', 'a1', 'a2', 'a3', 'a4'])
+
+  assert.equal(b2.timeLabel, '15:00 – 16:00')
+  assert.equal(b2.count, 3)
+  assert.deepEqual(b2.allClusterShifts.map(s => s.id).sort(), ['L', 'b1', 'b2', 'b3', 'b4'])
+
+  // 2. Exact preservation: total rendered + hidden equals 13
+  const totalCount = layout.renderedShifts.length + layout.overflowBadges.reduce((sum, b) => sum + b.count, 0)
+  assert.equal(totalCount, 13)
+
+  // 3. Gap shifts are all individually rendered
+  const g1 = layout.renderedShifts.find(s => s.id === 'g1')
+  const g2 = layout.renderedShifts.find(s => s.id === 'g2')
+  const g3 = layout.renderedShifts.find(s => s.id === 'g3')
+  const g4 = layout.renderedShifts.find(s => s.id === 'g4')
+  assert.ok(g1 && g2 && g3 && g4)
+  assert.equal(g3.lane, 2) // Lane 2 was available during Gap 1!
+})
+
+test('G2-EDGE-04 — UI DOM geometry verification: no vertical overlap between cards in the same lane or with badges in Lane 2', () => {
+  const shifts = [
+    mockShift({ id: 'L', start_time: '08:00', end_time: '18:00' }),
+    mockShift({ id: 'a1', start_time: '09:00', end_time: '10:00' }),
+    mockShift({ id: 'a2', start_time: '09:00', end_time: '10:00' }),
+    mockShift({ id: 'a3', start_time: '09:00', end_time: '10:00' }),
+    mockShift({ id: 'a4', start_time: '09:00', end_time: '10:00' }),
+    mockShift({ id: 'g1', start_time: '11:00', end_time: '12:00' }),
+    mockShift({ id: 'g2', start_time: '13:00', end_time: '14:00' }),
+    mockShift({ id: 'g3', start_time: '13:00', end_time: '14:00' }),
+  ]
+
+  const layout = computeDayTimelineLayout(shifts, { hourHeight: 44, maxLanes: 3 })
+
+  // Check 1: Cards in the same lane never overlap vertically in DOM pixels
+  for (let l = 0; l < 3; l++) {
+    const laneShifts = layout.renderedShifts.filter(s => s.lane === l)
+    for (let i = 0; i < laneShifts.length; i++) {
+      for (let j = i + 1; j < laneShifts.length; j++) {
+        const s1 = laneShifts[i]
+        const s2 = laneShifts[j]
+        const overlaps = Math.max(s1.topPx, s2.topPx) < Math.min(s1.topPx + s1.heightPx, s2.topPx + s2.heightPx)
+        assert.equal(overlaps, false, `DOM pixel collision in Lane ${l} between ${s1.id} and ${s2.id}`)
+      }
+    }
+  }
+
+  // Check 2: In Lane 2, no rendered shift collides with any overflow badge
+  const lane2Shifts = layout.renderedShifts.filter(s => s.lane === 2)
+  for (const shift of lane2Shifts) {
+    for (const badge of layout.overflowBadges) {
+      const overlaps = Math.max(shift.topPx, badge.topPx) < Math.min(shift.topPx + shift.heightPx, badge.topPx + badge.heightPx)
+      assert.equal(overlaps, false, `DOM pixel collision in Lane 2 between shift ${shift.id} and badge ${badge.id}`)
+    }
+  }
+
+  // Check 3: All cards and badges are strictly bounded within [0, 24 * 44 = 1056px]
+  for (const s of layout.renderedShifts) {
+    assert.ok(s.topPx >= 0 && s.topPx + s.heightPx <= 1056)
+  }
+  for (const b of layout.overflowBadges) {
+    assert.ok(b.topPx >= 0 && b.topPx + b.heightPx <= 1056)
+  }
+})

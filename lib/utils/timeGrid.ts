@@ -313,7 +313,40 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
       lastTime = ev.time
     }
 
-    // 3b. Merge contiguous or near-contiguous overloaded slices into discrete windows
+    // 3b. Sweep-line for VISUAL concurrency [startMins, visualEnd)
+    // Distinguishes logical scheduling overlap from visual card collision
+    const visualEvents: { time: number; type: 'END' | 'START'; shift: typeof normalized[0] }[] = []
+    for (const item of cluster) {
+      visualEvents.push({ time: item.startMins, type: 'START', shift: item })
+      visualEvents.push({ time: item.visualEnd, type: 'END', shift: item })
+    }
+    visualEvents.sort((a, b) => {
+      if (a.time !== b.time) return a.time - b.time
+      if (a.type !== b.type) return a.type === 'END' ? -1 : 1
+      return a.shift.id.localeCompare(b.shift.id)
+    })
+
+    const activeVisual = new Set<typeof normalized[0]>()
+    let maxVisualConcurrency = 0
+    let lastVisualTime = visualEvents[0]?.time ?? 0
+    for (const ev of visualEvents) {
+      if (ev.time > lastVisualTime && activeVisual.size > 0) {
+        if (activeVisual.size > maxVisualConcurrency) {
+          maxVisualConcurrency = activeVisual.size
+        }
+      }
+      if (ev.type === 'START') {
+        activeVisual.add(ev.shift)
+        if (activeVisual.size > maxVisualConcurrency) {
+          maxVisualConcurrency = activeVisual.size
+        }
+      } else {
+        activeVisual.delete(ev.shift)
+      }
+      lastVisualTime = ev.time
+    }
+
+    // 3c. Merge contiguous overloaded slices ONLY (do not merge across gaps with <= 3 shifts)
     interface OverloadedWindow {
       start: number
       end: number
@@ -323,8 +356,8 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
 
     for (const slice of overloadedSlices) {
       const last = overloadedWindows[overloadedWindows.length - 1]
-      // Merge if contiguous or separated by less than minimumMinutes to avoid overlapping badges
-      if (last && (slice.start <= last.end || slice.start - last.end < minimumMinutes)) {
+      // Merge only strictly contiguous slices so distinct bursts remain independent
+      if (last && slice.start <= last.end) {
         last.end = Math.max(last.end, slice.end)
         for (const s of slice.activeShifts) {
           last.allShifts.add(s)
@@ -338,19 +371,22 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
       }
     }
 
-    // 3c. Allocate lanes and overflow
-    const effectiveTotalLanes = Math.min(Math.max(maxClusterConcurrency, 1), maxLanes)
+    // Effective lanes: must satisfy visual concurrency so adjacent short shifts don't collide
+    const effectiveTotalLanes = Math.min(
+      Math.max(maxClusterConcurrency, maxVisualConcurrency, 1),
+      maxLanes,
+    )
 
     if (overloadedWindows.length === 0) {
-      // No overload: every time slice has <= maxLanes concurrent shifts
+      // No overload: standard lane packing preventing visual collision
       const laneIntervals: { start: number; end: number }[][] = Array.from({ length: effectiveTotalLanes }, () => [])
 
       for (const item of cluster) {
         let placedLane = -1
         for (let l = 0; l < effectiveTotalLanes; l++) {
           const intervals = laneIntervals[l]
-          const last = intervals[intervals.length - 1]
-          if (!last || last.end <= item.startMins) {
+          const hasCollision = intervals.some(inv => Math.max(inv.start, item.startMins) < Math.min(inv.end, item.visualEnd))
+          if (!hasCollision) {
             placedLane = l
             break
           }
@@ -359,6 +395,7 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
           placedLane = effectiveTotalLanes - 1
         }
         laneIntervals[placedLane].push({ start: item.startMins, end: item.visualEnd })
+        laneIntervals[placedLane].sort((a, b) => a.start - b.start)
 
         const topPx = Math.min((item.startMins / 60) * hourHeight, maxGridHeight - 10)
         const heightPx = Math.min(Math.max((item.duration / 60) * hourHeight, 26), maxGridHeight - topPx)
@@ -388,9 +425,15 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
         overflowShifts: typeof normalized[0][]
       }>()
 
-      for (const win of overloadedWindows) {
+      for (let wIdx = 0; wIdx < overloadedWindows.length; wIdx++) {
+        const win = overloadedWindows[wIdx]
+        const nextWin = overloadedWindows[wIdx + 1]
         const badgeStart = win.start
-        const badgeEnd = Math.max(win.end, win.start + minimumMinutes)
+        const maxBadgeEnd = nextWin ? nextWin.start : 1440
+        const minDuration = Math.min(25, Math.max(maxBadgeEnd - badgeStart, 0))
+        const durationMins = Math.min(Math.max(win.end - win.start, minDuration), Math.max(maxBadgeEnd - badgeStart, 0))
+        const badgeEnd = badgeStart + durationMins
+
         laneIntervals[maxLanes - 1].push({ start: badgeStart, end: badgeEnd })
         badgeForWindow.set(win, {
           badgeStart,
@@ -446,7 +489,7 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
         if (!badgeData || badgeData.overflowShifts.length === 0) continue
 
         const { badgeStart, badgeEnd, overflowShifts } = badgeData
-        const overflowDuration = Math.max(badgeEnd - badgeStart, minimumMinutes)
+        const overflowDuration = badgeEnd - badgeStart
         const startHours = String(Math.floor(badgeStart / 60)).padStart(2, '0')
         const startMinutesStr = String(badgeStart % 60).padStart(2, '0')
         const endHours = String(Math.floor(badgeEnd / 60)).padStart(2, '0')
@@ -454,7 +497,7 @@ export function computeDayTimelineLayout<T extends { id: string; start_time: str
         const timeLabel = `${startHours}:${startMinutesStr} – ${endHours}:${endMinutesStr}`
 
         const topPx = Math.min((badgeStart / 60) * hourHeight, maxGridHeight - 10)
-        const heightPx = Math.min(Math.max((overflowDuration / 60) * hourHeight, 36), maxGridHeight - topPx)
+        const heightPx = Math.min(Math.max((overflowDuration / 60) * hourHeight, 18), maxGridHeight - topPx)
 
         const clusterShiftsInWindow = cluster
           .filter(c => Math.max(c.startMins, badgeStart) < Math.min(c.visualEnd, badgeEnd))
