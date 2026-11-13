@@ -25,6 +25,18 @@ for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 768,
     const statusFilter = page.getByTestId('live-status-filter')
     await expect(statusFilter).toBeVisible()
 
+    if (width === 390) {
+      const liveSession = page.getByTestId('open-live-session-s2')
+      const scheduledSession = page.getByTestId('open-live-session-s1')
+      await expect(liveSession).toContainText('Đang live')
+      await expect(liveSession).toContainText('Đang chọn')
+      await expect(scheduledSession).toContainText('Đã lên lịch')
+      await scheduledSession.click()
+      await expect(scheduledSession).toContainText('Đang chọn')
+      await expect(page.getByRole('heading', { name: 'TechGear morning live' })).toBeVisible()
+      await expect(page).toHaveURL(/\/live(?:\?|$)/)
+    }
+
     // 5. Evidence screenshot
     await page.screenshot({ path: `docs/handoffs/evidence/rc19-live-monitoring-after-${width}-${language}.png`, caret: 'initial' })
   })
