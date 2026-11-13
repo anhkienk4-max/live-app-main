@@ -1738,7 +1738,7 @@ const vi: Record<keyof typeof en, string> = {
   shiftsToday: 'Ca hôm nay',
   liveNow: 'Đang live',
   pendingSwaps: 'Đổi ca chờ duyệt',
-  actionQueue: 'Hàng đợi Công việc',
+  actionQueue: 'Công việc cần xử lý',
   attentionRequired: 'Cần chú ý',
   reportsPending: 'Báo cáo chờ duyệt',
   welcome: 'Xin chào',

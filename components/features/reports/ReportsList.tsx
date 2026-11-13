@@ -519,7 +519,6 @@ export function ReportsList() {
   const queueDraftCount = React.useMemo(() => pagedQueue.filter(s => ['draft', 'reopened'].includes(reportQueueDisplayState(reportByShift.get(s.id)))).length, [pagedQueue, reportByShift])
   const queueNeedsReviewCount = React.useMemo(() => pagedQueue.filter(s => ['in_review', 'unconfirmed'].includes(reportQueueDisplayState(reportByShift.get(s.id)))).length, [pagedQueue, reportByShift])
   const queueConfirmedCount = React.useMemo(() => pagedQueue.filter(s => reportQueueDisplayState(reportByShift.get(s.id)) === 'confirmed').length, [pagedQueue, reportByShift])
-  const reportsConfirmedPageCount = React.useMemo(() => filteredReports.filter(isConfirmedReportForKpi).length, [filteredReports])
   const reportsUnconfirmedPageCount = React.useMemo(() => filteredReports.filter(report => !isConfirmedReportForKpi(report)).length, [filteredReports])
   const queueScope = [
     filters.start || filters.end ? `Ngày ca: ${filters.start || 'không giới hạn'} đến ${filters.end || 'không giới hạn'}` : 'Ngày ca: toàn bộ thời gian',
@@ -552,19 +551,22 @@ export function ReportsList() {
     <div className="space-y-6" data-route-readiness="ready">
       {currentUser && hasPermission(currentUser, 'reports.submit') && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
-          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? `${completedShifts.length} ca đang hiển thị trong trang hàng đợi, không phải tổng ca có thể tạo Draft` : t('noReportDraftReady')}</p></div>
-          <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
+          <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? `${completedShifts.length} ca trong trang hàng đợi` : t('noReportDraftReady')}</p>{completedShifts.length > 0 && <p className="text-xs text-muted-foreground">{t('reportDraftPolicy')}</p>}</div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => document.getElementById('reports-queue-breakdown')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} data-testid="reports-show-queue">Ca chờ báo cáo ({loading ? '—' : queueTotal})</Button>
+            <Button onClick={() => setShowForm(true)} disabled={!completedShifts.length} data-testid="open-final-report-modal"><Plus className="mr-2 h-4 w-4" />{t('createFinalReport')}</Button>
+          </div>
         </div>
       )}
-      <p className="text-xs text-muted-foreground">KPI tài chính và báo cáo chưa xác nhận: trang Báo cáo hiện tại ({filteredReports.length} báo cáo, {reportsConfirmedPageCount} đã xác nhận) · {queueScope}. Tổng báo cáo sau bộ lọc: {reportTotal} · Tổng ca chờ xử lý mọi trang: {queueTotal}.</p>
+      <p className="text-xs text-muted-foreground">{queueScope}. KPI doanh thu và giá trị đơn chỉ tính báo cáo đã xác nhận.</p>
       <div data-testid="reports-mobile-metrics" className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
-        <Metric title="Tổng báo cáo theo bộ lọc" value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
+        <Metric title="Số báo cáo theo bộ lọc" value={reportTotal.toLocaleString()} icon={<FileText className="h-5 w-5 text-blue-600" />} />
         <Metric title="Doanh thu đã xác nhận · trang này" value={confirmed.length ? formatCurrency(totalRevenue) : '—'} icon={<DollarSign className="h-5 w-5 text-green-600" />} />
         <Metric title="Giá trị đơn trung bình · trang này" value={averageOrderValue === null ? '—' : formatCurrency(averageOrderValue)} icon={<TrendingUp className="h-5 w-5 text-purple-600" />} />
         <Metric title="Báo cáo chưa xác nhận · trang này" value={reportsUnconfirmedPageCount.toLocaleString()} icon={<FileText className="h-5 w-5 text-amber-600" />} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 text-xs" data-testid="reports-queue-breakdown">
+      <div id="reports-queue-breakdown" className="scroll-mt-4 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 text-xs" data-testid="reports-queue-breakdown">
         <span className="font-semibold text-muted-foreground">Trạng thái hàng đợi ({pagedQueue.length} ca trên trang này):</span>
         <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-800 font-medium">
           Chưa có report: {loading ? '—' : queueNotStartedCount}
@@ -582,8 +584,6 @@ export function ReportsList() {
           Tổng ca chờ xử lý mọi trang: {loading ? '—' : queueTotal}
         </span>
       </div>
-
-      {completedShifts.length > 0 && <Card className="border-orange-200 bg-orange-50"><CardContent className="pt-5"><p className="font-semibold text-orange-900">Đang hiển thị {completedShifts.length} ca trong trang hàng đợi, không phải toàn bộ ca chưa có báo cáo</p><p className="text-sm text-orange-700">{t('reportDraftPolicy')}</p></CardContent></Card>}
 
       <CommandToolbar label={t('filters')} className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-none">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

@@ -2,12 +2,21 @@
 
 import * as React from 'react'
 import { useCurrentUser } from './useCurrentUser'
+import { getAuthMode } from '@/lib/auth/authMode'
 import { workforceService, workforceErrorMessage, type WorkforceCapabilities } from '@/lib/services/workforceService'
 import { readSharedWorkforceCapabilities, invalidateSharedWorkforceCapabilities } from '@/lib/services/sharedWorkforceCapabilities'
 import { ROLE_DEFAULTS_CATALOG } from '@/lib/rbac/roleDefaults'
 import { permissionMatrix, resolveSystemPermission, type Permission } from '@/lib/permissions'
 import { HARD_RESTRICTED_PERMISSIONS } from '@/lib/rbac/effectivePermission'
 import type { SystemPermission } from '@/lib/types/database.types'
+
+const MOCK_CAPABILITIES: WorkforceCapabilities = {
+  actual_staffing: false,
+  self_attendance_review: false,
+  team_performance: false,
+  own_performance: false,
+  payroll: false,
+}
 
 async function readEffectivePermissionDecisions(role: SystemPermission): Promise<Partial<Record<Permission, boolean>> | null> {
   try {
@@ -36,6 +45,7 @@ async function readEffectivePermissionDecisions(role: SystemPermission): Promise
 
 export function useWorkforceCapabilities() {
   const { currentUser, loading: userLoading, authIdentity } = useCurrentUser()
+  const mockMode = getAuthMode() === 'mock'
   const systemPermission = resolveSystemPermission(currentUser)
   const identityKey = currentUser
     ? `${authIdentity?.auth_user_id || ''}:${currentUser.id}:${systemPermission}:${currentUser.role}`
@@ -50,6 +60,7 @@ export function useWorkforceCapabilities() {
   const request = React.useRef<AbortController | null>(null)
 
   React.useEffect(() => {
+    if (mockMode) return
     const invalidate = (event: Event) => {
       request.current?.abort()
       invalidateSharedWorkforceCapabilities(identityKey)
@@ -74,10 +85,10 @@ export function useWorkforceCapabilities() {
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', visible)
     }
-  }, [identityKey])
+  }, [identityKey, mockMode])
 
   React.useEffect(() => {
-    if (userLoading || !identityKey) return
+    if (mockMode || userLoading || !identityKey) return
     const controller = new AbortController()
     request.current = controller
     // Sharing the underlying request prevents duplicate fetches from Sidebar,
@@ -99,9 +110,11 @@ export function useWorkforceCapabilities() {
       if (!controller.signal.aborted) setResult({ identityKey, error: workforceErrorMessage(error) })
     })
     return () => controller.abort()
-  }, [identityKey, systemPermission, userLoading, revision])
+  }, [identityKey, mockMode, systemPermission, userLoading, revision])
 
-  const current = result?.identityKey === identityKey ? result : null
+  const current = mockMode && identityKey
+    ? { identityKey, capabilities: MOCK_CAPABILITIES, effectivePermissions: null }
+    : result?.identityKey === identityKey ? result : null
   return {
     currentUser,
     capabilities: current?.capabilities,

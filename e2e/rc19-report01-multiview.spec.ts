@@ -10,6 +10,9 @@ for (const width of [390, 768, 1440]) {
     await page.goto('/reports')
     await expect(page.getByTestId('command-toolbar')).toBeVisible({timeout:30000})
     await expect(page.locator('#created-reports-heading')).toBeVisible()
+    await expect(page.getByTestId('reports-show-queue')).toBeVisible()
+    await page.getByTestId('reports-show-queue').click()
+    await expect(page.getByTestId('reports-queue-breakdown')).toBeInViewport()
     await page.screenshot({path:'test-results/report01-before-cards-' + width + '.png',fullPage:true})
     await page.getByRole('button',{name:'Chế độ bảng'}).click()
     await expect(page).toHaveURL(/reports_view=table/)
@@ -41,6 +44,21 @@ for (const width of [390, 768, 1440]) {
     await page.screenshot({path:'test-results/report01-after-list-' + width + '.png',fullPage:true})
     await page.getByRole('button',{name:'Chế độ thẻ'}).click()
     await expect(page).not.toHaveURL(/reports_view=calendar/)
+    const reportDetail = page.getByRole('button', { name: /Xem chi tiết|View details/i }).first()
+    if (await reportDetail.isVisible().catch(() => false)) {
+      await reportDetail.click()
+    } else {
+      const reportActions = page.getByRole('region', { name: 'Báo cáo đã tạo' }).getByRole('button', { name: 'Thao tác' }).last()
+      await expect(reportActions).toBeVisible()
+      await reportActions.click()
+      await page.getByRole('menuitem', { name: /Xem chi tiết|View details/i }).click()
+    }
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await expect(page).toHaveURL(/reports_report_id=/)
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(page).not.toHaveURL(/reports_report_id=/)
   })
 }
 

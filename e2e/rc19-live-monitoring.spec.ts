@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440, language: 'en' }]) {
+for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 768, language: 'vi' }, { width: 1440, language: 'en' }]) {
   test(`Live Monitoring page, metrics scope and filters at ${width}px (${language})`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.addInitScript(lang => {

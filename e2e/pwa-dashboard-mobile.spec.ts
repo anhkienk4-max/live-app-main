@@ -29,16 +29,18 @@ for (const viewport of [
   })
 }
 
-test('RC19 desktop dashboard remains active at 900px', async ({ page }) => {
-  await page.setViewportSize({ width: 900, height: 1100 })
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await expect(page.getByTestId('production-main-content')).toBeVisible()
-  await expect(page.getByTestId('ada-reference-mobile-home')).toBeHidden({ timeout: 60000 })
-  await expect(page.getByTestId('production-bottom-nav')).toBeHidden()
-  await expect(page.locator('main.hidden[class*="md:flex"]')).toBeVisible()
-  const width = await page.evaluate(() => document.documentElement.scrollWidth)
-  expect(width).toBeLessThanOrEqual(901)
-})
+for (const width of [768, 1440]) {
+  test('RC19 desktop dashboard remains active at ' + width + 'px', async ({ page }) => {
+    await page.setViewportSize({ width, height: 1100 })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByTestId('production-main-content')).toBeVisible()
+    await expect(page.getByTestId('ada-reference-mobile-home')).toBeHidden({ timeout: 60000 })
+    await expect(page.getByTestId('production-bottom-nav')).toBeHidden()
+    await expect(page.getByRole('heading', { name: 'Tổng quan vận hành livestream' })).toBeVisible()
+    const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth)
+    expect(documentWidth).toBeLessThanOrEqual(width + 1)
+  })
+}
 
 test('RC19 mobile More drawer retains Profile and Notifications in Overview', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })

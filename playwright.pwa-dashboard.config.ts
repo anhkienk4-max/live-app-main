@@ -9,7 +9,7 @@ export default defineConfig({
   workers: 1,
   use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3104', headless: true, trace: 'retain-on-failure' },
   webServer: {
-    command: 'pnpm dev -p 3104 -H 127.0.0.1',
+    command: 'node node_modules/next/dist/bin/next dev --webpack -p 3104 -H 127.0.0.1',
     url: 'http://127.0.0.1:3104/login',
     timeout: 180000,
     reuseExistingServer: false,
