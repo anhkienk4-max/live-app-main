@@ -293,9 +293,8 @@ export function ShiftFormDialog({
   const checkConflicts = React.useCallback(async () => {
     if (!formData.date || !formData.start_time || !formData.end_time) return
     const allShifts = await shiftService.getAll()
-    const { external_code, segments, ...rest } = formData
+    const { external_code, ...rest } = formData
     void external_code
-    void segments
     const detected = detectConflicts(
       {
         ...rest,
@@ -335,9 +334,8 @@ export function ShiftFormDialog({
 
   const generatePreview = React.useCallback(() => {
     if (recurrenceRule.frequency === 'none') return
-    const { external_code, segments, ...rest } = formData
+    const { external_code, ...rest } = formData
     void external_code
-    void segments
     const baseShift = {
       ...rest,
       execution_source: rest.execution_source || undefined,
