@@ -33,3 +33,21 @@ for (const width of [390, 1440]) {
     })
   }
 }
+
+test('Data Quality switches views and labels filtered totals at responsive widths', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('livestream-ops-current-user', '1')
+    localStorage.setItem('livestream-ops-language', 'en')
+  })
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/data-quality', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByText(/Filtered results:/)).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: 'Card', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Card', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: `output/playwright/g10-data-quality-${width}.png`, fullPage: true })
+    await page.getByRole('button', { name: 'List', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  }
+})

@@ -19,6 +19,7 @@ export function DataQualityPanel({ issues,remote,filters,onFiltersChange }: { is
   const source=filters?.source??localSource
   const [page,setPage]=React.useState(1)
   const [pageSize,setPageSize]=React.useState(10)
+  const [view,setView]=React.useState<'list'|'card'>('list')
   const filtered = issues.filter(i=> (!severity.length || severity.includes(i.severity)) && (!source.length || source.includes(i.source)))
   const counts = remote?.counts ?? {
     error: issues.filter(i=> i.severity==='error').length,
@@ -30,7 +31,7 @@ export function DataQualityPanel({ issues,remote,filters,onFiltersChange }: { is
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{remote?.totalIssues??issues.length}</p></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total in scope</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{remote?.totalIssues??issues.length}</p></CardContent></Card>
         <Card className="border-red-200"><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Error</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-red-600">{counts.error}</p></CardContent></Card>
         <Card className="border-amber-200"><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Warning</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-amber-600">{counts.warning}</p></CardContent></Card>
         <Card className="border-blue-200"><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Info</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-blue-600">{counts.info}</p></CardContent></Card>
@@ -41,9 +42,14 @@ export function DataQualityPanel({ issues,remote,filters,onFiltersChange }: { is
           <div className="flex min-w-0 flex-wrap gap-2">
             <MultiSelectFilter label="Severity" value={severity} onChange={value=> {const next=value.filter(item=>['error','warning','info'].includes(item)) as DataQualitySeverity[];setSeverity(next);setPage(1);onFiltersChange?.({severity:next,source})}} options={(['error','warning','info'] as DataQualitySeverity[]).map(value=>({value,label:value}))} placeholder={t('all')} testId="data-quality-severity-filter" />
             <MultiSelectFilter label="Source" value={source} onChange={value=> {const next=value.filter(item=>['schedule_import','report','staffing'].includes(item)) as DataQualitySource[];setSource(next);setPage(1);onFiltersChange?.({severity,source:next})}} options={(['schedule_import','report','staffing'] as DataQualitySource[]).map(value=>({value,label:value==='schedule_import'?'import':value}))} placeholder={t('all')} testId="data-quality-source-filter" />
+            <Button type="button" size="sm" variant={view==='list'?'secondary':'outline'} aria-pressed={view==='list'} onClick={()=>setView('list')}>List</Button>
+            <Button type="button" size="sm" variant={view==='card'?'secondary':'outline'} aria-pressed={view==='card'} onClick={()=>setView('card')}>Card</Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3 max-h-[60vh] overflow-y-auto">
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">Filtered results: {remote?.total??filtered.length}. Severity totals above cover the full authorized scope.</p>
+          <p className="text-xs text-muted-foreground">Search, export and 100-row pages are not available yet.</p>
+          <div className={view==='card'?'grid gap-3 md:grid-cols-2':'space-y-3'}>
           {filtered.length===0 ? <p className="py-8 text-center text-sm text-muted-foreground">No issues</p> : visible.map(issue=> {
             const action = recoveryActionFor(issue)
             return (
@@ -63,6 +69,7 @@ export function DataQualityPanel({ issues,remote,filters,onFiltersChange }: { is
               </div>
             )
           })}
+          </div>
         </CardContent>
         <HistoryPagination page={remote?.page??range.page} pageSize={remote?.pageSize??pageSize} total={remote?.total??filtered.length} onPageChange={remote?.setPage??setPage} onPageSizeChange={remote?.setPageSize??(size=>{setPageSize(size);setPage(1)})} />
       </Card>
