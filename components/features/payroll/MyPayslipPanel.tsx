@@ -16,10 +16,19 @@ type PayslipResponse={ok:true;scope:'own_locked_only';statements:Statement[];lim
 const money=(n:number)=>new Intl.NumberFormat('vi-VN').format(n)+' đ'
 const duration=(seconds:number|null,minutes:number)=>seconds===null?`${minutes} phút`:
   `${Math.floor(seconds/3600)} giờ ${Math.floor(seconds%3600/60)} phút ${seconds%60} giây`
-const actualTime=(value:string)=>{
-  const date=new Date(value)
-  return Number.isNaN(date.getTime())?'—':new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(date)
+const intervalPartFormatter=new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'})
+function actualInterval(start:string,end:string){
+  const parts=(value:string)=>{
+    const date=new Date(value)
+    if(Number.isNaN(date.getTime()))return null
+    const values=Object.fromEntries(intervalPartFormatter.formatToParts(date).map(part=>[part.type,part.value]))
+    return {date:`${values.day}/${values.month}/${values.year}`,time:`${values.hour}:${values.minute}:${values.second}`}
+  }
+  const from=parts(start),to=parts(end)
+  if(!from||!to)return '—'
+  return from.date===to.date?`${from.date} · ${from.time} – ${to.time}`:`${from.date} ${from.time} – ${to.date} ${to.time}`
 }
+const roleLabel=(role:string)=>({host:'Host',support:'Trợ',technical:'Kỹ thuật'}[role]??role)
 function decode(value:unknown):PayslipResponse {
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('PAYSLIP_RESPONSE_INVALID')
   const v=value as Record<string,unknown>
@@ -96,7 +105,7 @@ export function MyPayslipPanel() {
         <thead><tr className="border-b"><th className="p-2">Ngày / ca</th><th className="p-2">Vai trò</th><th className="p-2">Giờ thực tế / phút tính lương</th><th className="p-2">Đơn giá giờ</th><th className="p-2">Tăng ca</th><th className="p-2">Tiền ca</th><th className="p-2">Điều chỉnh</th><th className="p-2">Thành tiền</th></tr></thead>
         <tbody>{selected.lines.map(line=><tr key={line.line_id} className="border-b">
           <td className="p-2">{line.shift_date} · {line.shift_title||line.shift_id}</td>
-          <td className="p-2">{line.operational_role}</td><td className="p-2">{actualTime(line.actual_start_at)} — {actualTime(line.actual_end_at)}<br />{duration(line.actual_seconds,line.actual_minutes)} thực tế / {duration(line.payable_seconds,line.payable_minutes)} tính lương</td>
+          <td className="p-2">{roleLabel(line.operational_role)}</td><td className="p-2">{actualInterval(line.actual_start_at,line.actual_end_at)}<br />{duration(line.actual_seconds,line.actual_minutes)} thực tế / {duration(line.payable_seconds,line.payable_minutes)} tính lương</td>
           <td className="p-2">{money(line.rate_vnd_per_hour)}</td>
           <td className="p-2">{duration(line.overtime_seconds,line.overtime_minutes)}</td>
           <td className="p-2">{money(line.gross_vnd)}</td>
@@ -107,9 +116,9 @@ export function MyPayslipPanel() {
       <ul className="space-y-3 lg:hidden" aria-label="Các ca trong phiếu lương">
         {selected.lines.map(line=><li key={line.line_id} className="rounded-md border p-3 text-xs">
           <h3 className="font-semibold">{line.shift_date} · {line.shift_title||line.shift_id}</h3>
-          <p className="mt-1 text-muted-foreground">{line.operational_role}</p>
+          <p className="mt-1 text-muted-foreground">{roleLabel(line.operational_role)}</p>
           <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
-            <div><dt className="text-muted-foreground">Giờ thực tế</dt><dd>{actualTime(line.actual_start_at)} — {actualTime(line.actual_end_at)}</dd></div>
+            <div><dt className="text-muted-foreground">Giờ thực tế</dt><dd>{actualInterval(line.actual_start_at,line.actual_end_at)}</dd></div>
             <div><dt className="text-muted-foreground">Thời lượng</dt><dd>{duration(line.actual_seconds,line.actual_minutes)} thực tế</dd><dd>{duration(line.payable_seconds,line.payable_minutes)} tính lương</dd></div>
             <div><dt className="text-muted-foreground">Đơn giá</dt><dd>{money(line.rate_vnd_per_hour)}</dd></div>
             <div><dt className="text-muted-foreground">Tăng ca</dt><dd>{duration(line.overtime_seconds,line.overtime_minutes)}{line.overtime_request_id?` · ${line.overtime_day_class}/${line.overtime_time_class}`:''}</dd></div>

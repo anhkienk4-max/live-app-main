@@ -58,17 +58,19 @@ test('ShiftDetailModal Tab 4 and Strict Assignment Permission Enforcements', () 
   assert.match(modalSrc, /Bạn không được phân công trên ca trực này/)
 })
 
-test('SelfAttendancePanel Photo Gate Explanation and In-App Camera Flow', () => {
+test('SelfAttendancePanel photo submit gate and in-app camera flow', () => {
   const panelSrc = fromSource('components/features/attendance/SelfAttendancePanel.tsx')
 
-  // 1. Non-silent explanation card when NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO is off
-  assert.match(panelSrc, /data-testid="self-attendance-photo-disabled"/)
-  assert.match(panelSrc, /Photo check-in awaits verified Google Drive access\. Check-in cannot be recorded yet\./)
+  // Saved receipts remain readable while the photo feature flag controls new submissions.
   assert.match(panelSrc, /NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO/)
+  assert.match(panelSrc, /Photo check-in is unavailable in this environment\./)
+  assert.match(panelSrc, /data-testid="attendance-checkin-error"/)
+  assert.match(panelSrc, /data-testid="attendance-checkout-error"/)
 
   // 2. Existing in-app camera components and flow preserved
   assert.match(panelSrc, /<AttendanceCameraCapture/)
-  assert.match(panelSrc, /data-testid="attendance-open-camera-btn"/)
+  assert.match(panelSrc, /data-testid="attendance-checkin-open-camera-btn"/)
+  assert.match(panelSrc, /data-testid="attendance-checkout-open-camera-btn"/)
   assert.match(panelSrc, /data-testid="self-attendance-status"/)
   assert.match(panelSrc, /data-testid="attendance-checkin-evidence"/)
   assert.match(panelSrc, /data-testid="attendance-checkout-evidence"/)

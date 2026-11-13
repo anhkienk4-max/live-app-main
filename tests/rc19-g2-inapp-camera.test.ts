@@ -55,20 +55,20 @@ test('G2.3 & G2.4: SelfAttendancePanel integrates in-app camera, preserves indep
   // 2. Separate check-in and check-out event methods with distinct photo records
   assert.match(panelSrc, /writeSelfAttendancePhotoCheckIn/)
   assert.match(panelSrc, /writeSelfAttendancePhotoCheckOut/)
-  assert.match(panelSrc, /checkedIn\?\.photo_available/)
-  assert.match(panelSrc, /checkedOut\?\.photo_available/)
   assert.match(panelSrc, /data-testid="attendance-checkin-evidence"/)
   assert.match(panelSrc, /data-testid="attendance-checkout-evidence"/)
 
   // 3. Photo upload only triggers on explicit user submit action, not on camera open
-  assert.match(panelSrc, /disabled=\{busy\s*\|\|\s*!photo\}/)
-  assert.match(panelSrc, /Upload starts on confirmation/)
+  assert.match(panelSrc, /disabled=\{busyCheckIn\s*\|\|\s*!photoCheckIn\}/)
+  assert.match(panelSrc, /disabled=\{busyCheckOut\s*\|\|\s*!photoCheckOut\}/)
+  assert.match(panelSrc, /onClick=\{\(\) => void submitCheckIn\(\)\}/)
+  assert.match(panelSrc, /onClick=\{\(\) => void submitCheckOut\(\)\}/)
 
   // 4. File input fallbacks are retained in DOM for native fallback and automation
-  assert.match(panelSrc, /Take check-in photo with camera/)
-  assert.match(panelSrc, /Take check-out photo with camera/)
-  assert.match(panelSrc, /Choose existing check-in photo/)
-  assert.match(panelSrc, /Choose existing check-out photo/)
+  assert.match(panelSrc, /data-testid="attendance-checkin-open-camera-btn"/)
+  assert.match(panelSrc, /data-testid="attendance-checkout-open-camera-btn"/)
+  assert.match(panelSrc, /data-testid="attendance-checkin-file-picker-btn"/)
+  assert.match(panelSrc, /data-testid="attendance-checkout-file-picker-btn"/)
 
   // 5. Preserves role and shift context binding
   assert.match(panelSrc, /data-testid="attendance-live-shift-context"/)

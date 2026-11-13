@@ -30,23 +30,36 @@ const response = (period: string, role: string, rows = staff, page = 1, size = 2
   leaderboard_policy_configured: true, unmatched_approved_segments: 0,
   gmv_per_hour: null, orders_per_hour: null, warning: null,
 })
-async function fixture(page: Page, language: 'vi' | 'en') {
+async function fixture(page: Page, language: 'vi' | 'en', userId = '1') {
   await page.addInitScript(value => {
-    localStorage.setItem('livestream-ops-current-user', '1')
-    localStorage.setItem('livestream-ops-language', value)
-  }, language)
+    localStorage.setItem('livestream-ops-current-user', value.userId)
+    localStorage.setItem('livestream-ops-language', value.language)
+  }, { language, userId })
   await page.route('**/api/workforce/capabilities', route => route.fulfill({
     json: { ok: true, capabilities: {
       actual_staffing: true, team_performance: true, own_performance: true, payroll: false,
     } },
   }))
   await page.route('**/api/workforce/performance*', route => {
-    const id = new URL(route.request().url()).searchParams.get('staff_id') || 'staff-1'
+    const query = new URL(route.request().url()).searchParams
+    const id = query.get('staff_id') || 'staff-1'
+    const noAssignments = query.get('period') === '2026-09'
     return route.fulfill({ json: {
-      ok: true, performance: staff.find(row => row.staffId === id) || { ...staff[0], staffId: id, name: id },
+      ok: true, performance: noAssignments
+        ? { ...staff[0], staffId: id, name: id, assignedShifts: 0, verifiedShifts: 0,
+          unknownAttendanceShifts: 0, isComplete: true, warning: null }
+        : staff.find(row => row.staffId === id) || { ...staff[0], staffId: id, name: id },
     } })
   })
 }
+
+test('Leader mock actor can view team performance while member remains own-only', async ({ page }) => {
+  await fixture(page, 'en', '2')
+  await page.route('**/api/workforce/overview*', route => route.fulfill({ json: response('2026-10') }))
+  await page.goto('/workforce?workforce_period=2026-10')
+  await expect(page.getByRole('heading', { name: 'Workforce Performance' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Table' })).toBeVisible()
+})
 
 test('desktop VI: server page/filter, cards, individual and complete ranking', async ({ page }) => {
   await fixture(page, 'vi')
@@ -118,35 +131,42 @@ test('mobile EN: missing approved evidence and empty period', async ({ page }) =
   await expect(page.getByText('No staff match this period and filter.')).toBeVisible()
   await page.getByLabel('Performance period').fill('2026-09')
   await page.getByRole('tab', { name: 'Overview' }).click()
+  await page.getByRole('tab', { name: 'Individual' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'No assigned shifts or approved attendance' })).toBeVisible()
   expect(new URL(page.url()).searchParams.get('workforce_period')).toBe('2026-09')
   await page.getByRole('combobox', { name: 'Operational role' }).click()
   await page.getByRole('option', { name: 'Support' }).click()
   expect(new URL(page.url()).searchParams.get('workforce_role')).toBe('support')
   await page.getByRole('combobox', { name: 'Period mode' }).click()
-  await page.getByRole('option', { name: 'Yearly' }).click()
+  await page.getByRole('option', { name: 'Year' }).click()
   expect(new URL(page.url()).searchParams.get('workforce_period')).toBe('2026')
 })
 
 test('API retry and actor switch discard stale team response', async ({ page }) => {
   await fixture(page, 'en')
-  let reads = 0
+  let retryRequested = false
+  let refreshRequested = false
+  let refreshPending = false
   let release: (() => void) | undefined
   await page.route('**/api/workforce/overview*', async route => {
-    reads++
-    if (reads === 1) return route.fulfill({ status: 503, json: { ok: false, error: { code: 'WORKFORCE_TEAM_FAILED' } } })
-    if (reads === 3) await new Promise<void>(resolve => { release = resolve })
+    if (!retryRequested) return route.fulfill({ status: 503, json: { ok: false, error: { code: 'WORKFORCE_TEAM_FAILED' } } })
+    if (refreshRequested) {
+      refreshPending = true
+      await new Promise<void>(resolve => { release = resolve })
+    }
     return route.fulfill({ json: { ...response('2026-10', 'host', [staff[1]]),
       staff_pagination: pagination(1, 1, 20) } })
   })
   await page.goto('/workforce?workforce_period=2026-10')
   await expect(page.getByRole('heading', { name: 'Could not load team performance' })).toBeVisible()
+  retryRequested = true
   await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(page.getByText('15h 0p')).toBeVisible()
   await page.getByRole('tab', { name: 'Table' }).click()
   await expect(page.getByText('Staff 02')).toBeVisible()
+  refreshRequested = true
   await page.getByRole('button', { name: 'Refresh' }).click()
-  await expect.poll(() => reads).toBe(3)
+  await expect.poll(() => refreshPending).toBe(true)
   await page.evaluate(() => {
     localStorage.setItem('livestream-ops-current-user', '3')
     window.dispatchEvent(new Event('livestream-ops-current-user-change'))

@@ -48,6 +48,26 @@ async function setupAndOpenShift(page: Page, lang: 'vi' | 'en' = 'vi', mockAtten
 }
 
 test.describe('RC19 G2 In-App Camera and Attendance Lifecycle', () => {
+  test('renders persisted check-in and check-out receipts independently', async ({ page }) => {
+    await page.route('**/rest/v1/rpc/get_my_self_attendance', route => route.fulfill({ json: [
+      { event_id: 'persisted-check-in', shift_id: 's1', staff_id: user.userId, role: user.role,
+        event: 'check_in', recorded_at: '2026-10-30T02:00:00Z', verification_status: 'pending_verification', photo_available: true },
+      { event_id: 'persisted-check-out', shift_id: 's1', staff_id: user.userId, role: user.role,
+        event: 'check_out', recorded_at: '2026-10-30T06:00:00Z', verification_status: 'pending_verification', photo_available: true },
+    ] }))
+    await page.route('**/api/workforce/self-attendance-photo?**', route =>
+      route.fulfill({ status: 200, contentType: 'image/jpeg', body: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) }))
+
+    await setupAndOpenShift(page, 'en', false)
+    const checkIn = page.getByTestId('attendance-checkin-evidence')
+    const checkOut = page.getByTestId('attendance-checkout-evidence')
+    await expect(checkIn).toBeVisible()
+    await expect(checkOut).toBeVisible()
+    await expect(checkIn.getByRole('img')).toHaveAttribute('src', /event_id=persisted-check-in/)
+    await expect(checkOut.getByRole('img')).toHaveAttribute('src', /event_id=persisted-check-out/)
+    await expect(page.getByText('Drive photo attached')).toHaveCount(2)
+  })
+
   test('In-app camera opens, captures frame via canvas, confirms, and submits check-in and check-out', async ({ page }) => {
     const events: Array<Record<string, unknown>> = []
     const uploadedSources: string[] = []
@@ -81,7 +101,7 @@ test.describe('RC19 G2 In-App Camera and Attendance Lifecycle', () => {
     await expect(page.getByTestId('self-attendance-status')).toContainText('Chưa check-in')
 
     // 1. Click "Chụp ảnh" to open in-app camera viewfinder
-    await page.getByTestId('attendance-open-camera-btn').click()
+    await page.getByTestId('attendance-checkin-open-camera-btn').click()
     const cameraModal = page.getByTestId('attendance-camera-capture')
     await expect(cameraModal).toBeVisible()
 
@@ -118,7 +138,7 @@ test.describe('RC19 G2 In-App Camera and Attendance Lifecycle', () => {
     await expect(page.getByTestId('attendance-checkin-evidence')).toBeVisible()
 
     // 8. Now Check-out is available
-    await page.getByTestId('attendance-open-camera-btn').click()
+    await page.getByTestId('attendance-checkout-open-camera-btn').click()
     await expect(cameraModal).toBeVisible()
     await page.getByTestId('camera-capture-trigger').click()
     await expect(page.getByTestId('camera-confirm-trigger')).toBeVisible()
@@ -127,7 +147,7 @@ test.describe('RC19 G2 In-App Camera and Attendance Lifecycle', () => {
 
     // 9. Submit check-out photo
     await page.getByRole('button', { name: /Tải ảnh và check-out/i }).click()
-    await expect(page.getByTestId('self-attendance-status')).toHaveText('Đã check-out')
+    await expect(page.getByTestId('self-attendance-status')).toContainText('Đã check-out')
     await expect(page.getByTestId('attendance-checkout-evidence')).toBeVisible()
 
     expect(uploadedSources).toEqual(['check_in:camera', 'check_out:camera'])
@@ -135,7 +155,7 @@ test.describe('RC19 G2 In-App Camera and Attendance Lifecycle', () => {
 
   test('Camera dialog closes cleanly on cancel and unmount without background activity', async ({ page }) => {
     await setupAndOpenShift(page, 'en', true)
-    await page.getByTestId('attendance-open-camera-btn').click()
+    await page.getByTestId('attendance-checkin-open-camera-btn').click()
     const cameraModal = page.getByTestId('attendance-camera-capture')
     await expect(cameraModal).toBeVisible()
 
@@ -148,7 +168,7 @@ test.describe('RC19 G2 In-App Camera and Attendance Lifecycle', () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await setupAndOpenShift(page, 'vi', true)
 
-    await page.getByTestId('attendance-open-camera-btn').click()
+    await page.getByTestId('attendance-checkin-open-camera-btn').click()
     const cameraModal = page.getByTestId('attendance-camera-capture')
     await expect(cameraModal).toBeVisible()
 

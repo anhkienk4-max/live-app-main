@@ -1,0 +1,75 @@
+✔ Draft correction uses the same integer rounding and money bounds as preparation (7.0638ms)
+✔ payroll: 90 actual minutes; 30 overtime minutes; one final VND rounding (0.6793ms)
+✔ payroll: single-round VND exact 61-minute rate; no JS floating currency drift (0.5845ms)
+✔ payroll: actual time crossing midnight is computed from timezone offsets (0.5391ms)
+✔ RC19 seconds: owner example keeps exact seconds and rounds only final VND (1.1948ms)
+✔ RC19 seconds: one and fifty-nine seconds remain distinct, including overnight (0.7241ms)
+✔ RC19 auto payroll never grants post-cutover overtime from free-text notes (1.7133ms)
+✔ RC19 post-cutover OT is paid only from an approved structured interval and keeps its classification (1.0304ms)
+✔ RC19 post-cutover shifts without verified report completeness enter Payroll Hold (0.4317ms)
+✔ RC19 second payroll money uses one integer half-up VND rounding (0.8563ms)
+✔ RC19 rate recalculation preview uses stored seconds, not minute projections (1.0177ms)
+✔ payroll refuses draft, no-show, out-of-scope rates, fabricated time and OT (1.443ms)
+✔ payroll manual adjustment requires reason and cannot make payable negative (0.7018ms)
+✔ effective rate selects staff-specific approved scope; overlapping candidates fail closed (0.6006ms)
+✔ payroll approval flow follows review confirm ready lock with no skipping or reopen (0.4449ms)
+✔ workforce: verified late, explicit no-show and missing evidence are distinct (1.5215ms)
+✔ workforce: no evidence means unknown, never no-show and never a fabricated score (0.2627ms)
+✔ workforce: approved overlapping evidence and conflicting no-show fail closed (0.4504ms)
+✔ team overview weights denominators correctly and leaderboard excludes incomplete evidence (1.2536ms)
+✔ Leader cancellation panel lists scoped cases, filters and edits pending proposals only (2.0585ms)
+✔ cancellation proposal UI requires persisted evidence and reuses one locked idempotency intent on retry (0.6491ms)
+OPS_PERMISSION_DENIED {
+  route: '/api/workforce/actual',
+  requiredPermission: 'payroll.manage',
+  actorPermission: 'leader',
+  source: 'hard_restriction'
+}
+OPS_ROLE_DENIED {
+  route: '/api/workforce/actual',
+  requiredRoles: [ 'admin', 'leader' ],
+  actorPermission: 'member'
+}
+✔ Admin confirmation uses authenticated RPC and returns the persisted hold state (12.2988ms)
+✔ cancelled-shift Actual approval rejects without a matching cancellation audit (1.7441ms)
+✔ cancelled-shift Actual approval rejects work ending after the audited cancellation (1.6643ms)
+✔ Leader cannot invoke final Admin Payroll confirmation (2.4672ms)
+✔ Admin confirmation fails closed when the database authorization RPC is unavailable (1.5931ms)
+✔ Leader compensation proposal goes through authenticated RPC and waits for Admin (2.1222ms)
+✔ foreign Brand compensation proposal is denied by the authoritative authenticated RPC (1.1001ms)
+✔ Member compensation proposal is denied before authenticated RPC or database access (0.8209ms)
+✔ Admin compensation proposal uses the same RPC and may return an immediate confirmed adjustment (1.5346ms)
+✔ concurrent compensation proposals for the same actual assignment surface as a conflict (1.1126ms)
+✔ C5.15 seconds migration is additive, prospective, and does not rewrite financial history (1.9448ms)
+✔ C5.15 migration extension pins the SQL checksum and remains unexecuted (3.6244ms)
+✔ C5.15 permits authorized live cancellation with the versioned RPC and keeps the guarded RPC contract (1.0643ms)
+✔ C5.15 structured overtime and cancellation adjustments require authoritative Admin decisions (1.181ms)
+✔ C5.15 Payroll approval and completeness are enforced by database-owned actor checks and line guard (1.4099ms)
+✔ unauthenticated and unresolved business ID never open the privileged client (9.5854ms)
+✔ feature flag is OFF by default and rejects without a DB query (1.1321ms)
+✔ member receives only own locked, non-voided, approved actual payroll lines (4.6043ms)
+✔ member payslip verifies and returns persisted second precision without minute conversion (1.7658ms)
+✔ member payslip includes only Admin-confirmed cancellation adjustments for the same member and locked period (2.5627ms)
+✔ cross-user leakage and unapproved actual evidence fail closed even if DB filter is bypassed (2.6937ms)
+✔ unlocked periods are never shown; invalid query parameters are rejected (2.9517ms)
+✔ voided lines, other actors, and other years never become a statement (2.1589ms)
+✔ client cannot choose an actor, including under alternate parameter names (0.9865ms)
+✔ DB failure never returns partial income, cap overflow is rejected (0.9075ms)
+✔ Member payroll screen is segregated from Admin management and disabled by default (2.311ms)
+✔ RC16 capability observer persists through admin/member identity switch and denies Member while feature disabled (1.7729ms)
+▶ Owner ID 23: KAO November parser and in-memory semantics (persisted workflow pending)
+  ✔ 1. Physical Excel Row -> Parses into Exactly 1 Parent Shift spanning full duration (27.0426ms)
+  ✔ 2. Segment Extraction -> Distinct Segment IDs, time bounds, and capacity per slot (1.2112ms)
+  ✔ 3. Planned Names Invariant -> Do not create approved assignments in shift_registrations (1.9361ms)
+  ✔ 4. Registration & Leader Approval -> Capacity check and conflict enforcement per segment (0.2095ms)
+  ✔ 5. Attendance to Payroll -> Approved Actual Minutes feeds autoCalculatePayrollLines per segment (1.4211ms)
+  ✔ 6. Parent Shift Integrity -> GMV and KPI remain unified on Parent Shift (0.2154ms)
+✔ Owner ID 23: KAO November parser and in-memory semantics (persisted workflow pending) (34.1509ms)
+ℹ tests 55
+ℹ suites 0
+ℹ pass 55
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2718.2988

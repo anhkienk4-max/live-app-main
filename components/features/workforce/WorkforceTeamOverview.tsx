@@ -132,7 +132,7 @@ export function WorkforceTeamOverview({
             <div className="text-2xl font-bold tracking-tight text-slate-900">
               {overview?.attendanceCoveragePct !== null && overview
                 ? `${overview.attendanceCoveragePct}%`
-                : '—'}
+                : (en ? 'No data' : 'Chưa có dữ liệu')}
             </div>
             <p className="mt-1 text-xs text-slate-500">
               {overview ? (en ? `${data.verifiedShifts}/${data.assignedShifts} shifts verified` : `${data.verifiedShifts}/${data.assignedShifts} ca có minh chứng xác minh`) : (en ? 'No data for this period' : 'Chưa có dữ liệu trong kỳ')}
@@ -154,7 +154,7 @@ export function WorkforceTeamOverview({
             <div className="text-2xl font-bold tracking-tight text-emerald-700">
               {overview?.punctualityPct !== null && overview
                 ? `${overview.punctualityPct}%`
-                : '—'}
+                : (en ? 'No data' : 'Chưa có dữ liệu')}
             </div>
             <p className="mt-1 text-xs text-slate-500">
               {overview ? (en ? `${data.onTimeShifts} on time / ${data.lateShifts} late` : `${data.onTimeShifts} ca đúng giờ / ${data.lateShifts} ca đi muộn`) : (en ? 'No data for this period' : 'Chưa có dữ liệu trong kỳ')}
@@ -196,7 +196,7 @@ export function WorkforceTeamOverview({
             <div className="text-2xl font-bold tracking-tight text-purple-900">
               {overview?.knownReliabilityPct !== null && overview
                 ? `${overview.knownReliabilityPct}%`
-                : '—'}
+                : (en ? 'No data' : 'Chưa có dữ liệu')}
             </div>
             <p className="mt-1 text-xs text-slate-500">
               {overview ? (en ? `${data.approvedNoShows} approved no-shows` : `${data.approvedNoShows} ca vắng mặt có xác minh (No-show)`) : (en ? 'No data for this period' : 'Chưa có dữ liệu trong kỳ')}

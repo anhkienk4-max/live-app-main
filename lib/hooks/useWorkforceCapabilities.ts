@@ -10,7 +10,32 @@ import { permissionMatrix, resolveSystemPermission, type Permission } from '@/li
 import { HARD_RESTRICTED_PERMISSIONS } from '@/lib/rbac/effectivePermission'
 import type { SystemPermission } from '@/lib/types/database.types'
 
-const MOCK_CAPABILITIES: WorkforceCapabilities = {
+// Credential-free UI fixtures only; API handlers still enforce all real capabilities.
+const MOCK_CAPABILITIES: Record<SystemPermission, WorkforceCapabilities> = {
+  admin: {
+    actual_staffing: false,
+    self_attendance_review: false,
+    team_performance: true,
+    own_performance: true,
+    payroll: false,
+  },
+  leader: {
+    actual_staffing: false,
+    self_attendance_review: false,
+    team_performance: true,
+    own_performance: true,
+    payroll: false,
+  },
+  member: {
+    actual_staffing: false,
+    self_attendance_review: false,
+    team_performance: false,
+    own_performance: true,
+    payroll: false,
+  },
+}
+
+const DENIED_MOCK_CAPABILITIES: WorkforceCapabilities = {
   actual_staffing: false,
   self_attendance_review: false,
   team_performance: false,
@@ -113,7 +138,7 @@ export function useWorkforceCapabilities() {
   }, [identityKey, mockMode, systemPermission, userLoading, revision])
 
   const current = mockMode && identityKey
-    ? { identityKey, capabilities: MOCK_CAPABILITIES, effectivePermissions: null }
+    ? { identityKey, capabilities: MOCK_CAPABILITIES[systemPermission] ?? DENIED_MOCK_CAPABILITIES, effectivePermissions: null }
     : result?.identityKey === identityKey ? result : null
   return {
     currentUser,
