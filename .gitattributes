@@ -1,6 +1,10 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
+# Generated project-memory projections are compared byte-for-byte by validation.
+PROJECT_STATE.md text eol=lf
+project-memory/generated/project-memory.md text eol=lf
+
 # Pinned release SQL hashes must survive Windows checkout.
 supabase/migrations/*rc15*.sql text eol=lf
 supabase/migrations/*rc16*.sql text eol=lf
