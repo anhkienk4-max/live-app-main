@@ -1,8 +1,28 @@
 import { expect, test } from '@playwright/test'
 
-for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440, language: 'en' }]) {
-  test(`Storage workspace stays fail-closed without active routes at ${width}px (${language})`, async ({ page }) => {
+for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 768, language: 'en' }, { width: 1440, language: 'en' }]) {
+  test(`Storage does not invent provider folders at ${width}px (${language})`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
+    const apiRequests: string[] = []
+    page.on('request', request => apiRequests.push(request.url()))
+    await page.route('**/api/operational-files**', async route => {
+      const url = new URL(route.request().url())
+      if (url.searchParams.get('catalog') === '1') {
+        await route.fulfill({ json: {
+          ok: true,
+          brands: [{ id: 'brand-1', name: 'Mock Brand' }],
+          platforms: [{ id: 'platform-1', name: 'TikTok' }],
+          campaigns: [],
+          categories: [{ id: 'schedule_source', label: 'Schedule source' }],
+          max_single_upload_bytes: 4 * 1024 * 1024,
+          confidential_write_ready: false,
+          active_route_count: 3,
+          provider_availability: { google_drive: true, onedrive: true },
+        } })
+        return
+      }
+      await route.fulfill({ json: { ok: true, files: [], total: 0, page: 1, pageSize: 10 } })
+    })
     await page.addInitScript(lang => {
       localStorage.setItem('livestream-ops-current-user', '1')
       localStorage.setItem('livestream-ops-language', lang)
@@ -13,30 +33,25 @@ for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440
     const workspace = page.getByTestId('operational-file-workspace')
     await expect(workspace).toBeVisible({ timeout: 25_000 })
 
-    // No physical tree is shown until the backend confirms an active Storage route.
+    // A global route count is not a verified provider root or a provider folder listing.
     await expect(page.getByTestId('storage-physical-tree-unavailable')).toBeVisible()
     await expect(page.locator('[role="tree"]')).toHaveCount(0)
+    await expect(page.getByTestId('storage-physical-browser').getByRole('button', { name: /Browse folders|Duyệt thư mục/i })).toBeDisabled()
+    await expect(page.getByTestId('storage-physical-browser').getByRole('searchbox')).toBeDisabled()
+    await expect(page.getByText('ADA Client Group')).toHaveCount(0)
+    await expect(page.getByTestId('storage-provider-folder-entry')).toHaveCount(0)
 
-    const breadcrumb = page.locator('nav[aria-label="Breadcrumb"]')
+    const breadcrumb = page.getByRole('navigation', { name: /Logical route scope|Phạm vi route logic/i })
     await expect(breadcrumb).toBeVisible()
-    await expect(breadcrumb).toContainText('Client Group')
+    await expect(breadcrumb).toContainText(/Mock Brand|TikTok/u)
 
     // 3. Provider status pills reflect credential configuration, not physical verification.
     await expect(page.locator('[title^="Google Drive:"]').first()).toBeVisible()
     await expect(page.locator('[title^="OneDrive:"]').first()).toBeVisible()
 
-    // 4. Incomplete Scope Alert & Guidance
-    const scopeWarning = page.locator('text=Chưa đủ ngữ cảnh').first()
-    await expect(scopeWarning).toBeVisible()
-
-    // 5. Action controls (Upload & Attach buttons disabled on incomplete scope)
+    // Existing record browsing and upload controls remain separate from provider folder browsing.
     const uploadBtn = page.getByRole('button', { name: /Tải file lên/i })
     await expect(uploadBtn).toBeVisible()
-    await expect(uploadBtn).toBeDisabled()
-
-    const attachBtn = page.getByRole('button', { name: /Chuẩn bị \/ Gắn link/i })
-    await expect(attachBtn).toBeVisible()
-    await expect(attachBtn).toBeDisabled()
 
     // 6. Command Toolbar with search and filters
     const toolbar = page.getByTestId('command-toolbar')
@@ -53,8 +68,10 @@ for (const { width, language } of [{ width: 390, language: 'vi' }, { width: 1440
       await page.waitForTimeout(300)
     }
 
-    // 8. Capture After Screenshot
-    await page.screenshot({ path: `docs/handoffs/evidence/rc19-u08-storage-after-${width}-${language}.png`, caret: 'initial' })
+    // No provider folder-list endpoint is called by this presentational unavailable state.
+    expect(apiRequests.some(request => /folder-list|provider-folders/u.test(request))).toBe(false)
+    await page.getByTestId('storage-physical-browser').scrollIntoViewIfNeeded()
+    await page.screenshot({ path: `output/playwright/g8-storage-browser-${width}.png`, fullPage: true })
   })
 }
 

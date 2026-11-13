@@ -33,10 +33,13 @@ test('Catalog exposes only active Storage Route count, not provider parent-folde
  assert.match(view,/Không tự tạo folder thay thế/)
 })
 
-test('physical Storage tree is withheld when no verified active route exists',()=>{
- assert.match(view,/catalog\?\.active_route_count != null && catalog\.active_route_count > 0 \? \(/)
+test('physical provider browsing stays disabled without an authenticated root and child listing API',()=>{
+ assert.match(view,/data-testid="storage-physical-browser"/)
  assert.match(view,/data-testid="storage-physical-tree-unavailable"/)
- assert.match(view,/storagePhysicalTreePendingBody/)
+ assert.match(view,/disabled aria-describedby="storage-physical-browser-reason"/)
+ assert.match(view,/type="search" disabled/)
+ assert.doesNotMatch(view,/catalog\?\.active_route_count != null && catalog\.active_route_count > 0/)
+ assert.match(view,/storagePhysicalBrowserUnavailable/)
  assert.match(view,/storageLogicalTreeBody/)
 })
 

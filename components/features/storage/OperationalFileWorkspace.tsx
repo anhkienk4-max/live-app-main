@@ -13,11 +13,9 @@ import { useTranslation } from '@/lib/i18n'
 import { isTrustedAccessUrl } from '@/lib/files/trustedAccessUrl'
 import {
   FolderArchive,
-  Folder,
   FolderOpen,
   FolderTree,
   ChevronRight,
-  ChevronDown,
   Upload,
   Download,
   Trash2,
@@ -32,8 +30,6 @@ import {
   HardDrive,
   LayoutGrid,
   LayoutList,
-  Building,
-  Calendar,
   Layers,
   X,
   ShieldCheck,
@@ -188,7 +184,6 @@ export function OperationalFileWorkspace() {
   const [showAttachModal, setShowAttachModal] = React.useState(false)
   const [showExportModal, setShowExportModal] = React.useState(false)
   const [scopeTab, setScopeTab] = React.useState<'hierarchy' | 'campaign' | 'shift'>('hierarchy')
-  const [expandedBrands, setExpandedBrands] = React.useState<Record<string, boolean>>({})
 
   // Date parsing without hardcoding fake periods
   const dateParts = React.useMemo(() => {
@@ -630,10 +625,10 @@ export function OperationalFileWorkspace() {
       {notice && <p role="status" className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{translate(notice)}</p>}
 
       {/* 2. Breadcrumbs Bar */}
-      <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 overflow-x-auto text-xs py-2 px-3 rounded-lg border bg-muted/20 text-muted-foreground">
+      <nav aria-label={t('storageLogicalTreeTitle')} className="flex items-center gap-1.5 overflow-x-auto text-xs py-2 px-3 rounded-lg border bg-muted/20 text-muted-foreground">
         <span className="flex items-center gap-1 font-semibold text-foreground">
-          <Building className="h-3.5 w-3.5 text-primary" />
-          <span>Client Group</span>
+          <FolderTree className="h-3.5 w-3.5 text-primary" />
+          <span>{t('storageScopeBreadcrumb')}</span>
         </span>
         <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
         <span className={cn("font-medium truncate max-w-[130px]", selectedBrand ? "text-foreground" : "text-muted-foreground")}>
@@ -745,101 +740,25 @@ export function OperationalFileWorkspace() {
               </label>
             )}
 
-            {/* Only render a folder hierarchy after the backend reports an active route. */}
-            {catalog?.active_route_count != null && catalog.active_route_count > 0 ? (
-            <div className="space-y-1 rounded-lg border bg-muted/20 p-2.5 text-xs font-mono max-h-80 overflow-y-auto" role="tree" aria-label={t('storageLogicalTreeTitle')}>
-              {/* Root Node: Client Group */}
-              <div className="flex items-center justify-between font-semibold text-foreground py-1 px-1.5 rounded hover:bg-muted/50">
-                <div className="flex items-center gap-1.5 truncate">
-                  <Building className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span className="truncate">ADA Client Group</span>
-                </div>
-                <span className="text-[10px] text-muted-foreground font-sans">{t('logicalScope')}</span>
+            <section data-testid="storage-physical-browser" aria-label={t("storagePhysicalTreePendingTitle")} className="space-y-2 rounded-lg border border-dashed bg-muted/15 p-3 text-xs leading-relaxed">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-semibold text-foreground">{t("storagePhysicalTreePendingTitle")}</p>
+                <span className="inline-flex items-center gap-1 rounded-full border bg-background px-2 py-1 font-medium">
+                  {provider === "google_drive" ? <HardDrive className="h-3.5 w-3.5 text-blue-600" /> : <Cloud className="h-3.5 w-3.5 text-sky-600" />}
+                  {provider === "google_drive" ? "Google Drive" : "OneDrive"}
+                </span>
               </div>
-
-              {/* Brands Hierarchy */}
-              <div className="pl-3 space-y-0.5 border-l border-border/60 ml-2">
-                {(catalog?.brands || []).map(b => {
-                  const isBrandActive = brandId === b.id
-                  const isExpanded = isBrandActive || expandedBrands[b.id]
-                  return (
-                    <div key={b.id} className="space-y-0.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleBrandChange(b.id)
-                          setExpandedBrands(prev => ({ ...prev, [b.id]: !prev[b.id] }))
-                        }}
-                        className={cn(
-                          "w-full flex items-center justify-between text-left py-1 px-1.5 rounded transition-colors",
-                          isBrandActive ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                        )}
-                        role="treeitem"
-                        aria-selected={isBrandActive}
-                      >
-                        <span className="flex items-center gap-1.5 truncate">
-                          <Folder className={cn("h-3.5 w-3.5 shrink-0", isBrandActive ? "text-primary fill-primary/20" : "text-muted-foreground")} />
-                          <span className="truncate">{b.name}</span>
-                        </span>
-                        {isExpanded ? <ChevronDown className="h-3 w-3 shrink-0 opacity-70" /> : <ChevronRight className="h-3 w-3 shrink-0 opacity-70" />}
-                      </button>
-
-                      {/* Brand Children: Year → Month → Platforms */}
-                      {isExpanded && (
-                        <div className="pl-3 border-l border-border/40 ml-2 space-y-0.5 py-0.5">
-                          {dateParts?.year ? (
-                            <div className="flex items-center gap-1 text-muted-foreground py-0.5 px-1">
-                              <Calendar className="h-3 w-3 text-muted-foreground/70" />
-                              <span>{dateParts.year}</span>
-                            </div>
-                          ) : (
-                            <div className="text-[10px] text-muted-foreground italic py-0.5 px-1">
-                              (Chưa chọn ngày)
-                            </div>
-                          )}
-
-                          {dateParts?.month && (
-                            <div className="pl-2.5 border-l border-border/40 ml-1.5 space-y-0.5">
-                              <div className="text-[11px] font-medium text-foreground/80 py-0.5 px-1">
-                                📂 Tháng {Number(dateParts.month)}
-                              </div>
-
-                              {/* Platforms */}
-                              <div className="pl-2.5 border-l border-border/40 ml-1.5 space-y-0.5">
-                                {(catalog?.platforms || []).map(p => {
-                                  const isPlatformActive = platformId === p.id
-                                  return (
-                                    <button
-                                      key={p.id}
-                                      type="button"
-                                      onClick={() => handlePlatformChange(p.id)}
-                                      className={cn(
-                                        "w-full flex items-center gap-1.5 text-left py-0.5 px-1 rounded transition-colors text-[11px]",
-                                        isPlatformActive ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                      )}
-                                    >
-                                      <span className={cn("h-1.5 w-1.5 rounded-full", isPlatformActive ? "bg-primary" : "bg-muted-foreground/50")} />
-                                      <span className="truncate">{p.name}</span>
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+              <p className="text-muted-foreground">{t("storagePhysicalTreePendingBody")}</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input aria-label={t("storagePhysicalSearchLabel")} className={fieldClass} type="search" disabled placeholder={t("storagePhysicalSearchLabel")} />
+                <button type="button" className={buttonClass} disabled aria-describedby="storage-physical-browser-reason">
+                  <FolderOpen className="h-4 w-4" />{t("storagePhysicalBrowseAction")}
+                </button>
               </div>
-            </div>
-            ) : (
-              <div data-testid="storage-physical-tree-unavailable" role="status" className="rounded-lg border border-dashed bg-muted/15 p-3 text-xs leading-relaxed">
-                <p className="font-semibold text-foreground">{t('storagePhysicalTreePendingTitle')}</p>
-                <p className="mt-1 text-muted-foreground">{t('storagePhysicalTreePendingBody')}</p>
-              </div>
-            )}
-
+              <p id="storage-physical-browser-reason" data-testid="storage-physical-tree-unavailable" role="status" className="text-muted-foreground">
+                {t("storagePhysicalBrowserUnavailable")}
+              </p>
+            </section>
             {/* Scope Folder Verification Indicator */}
             <div className="rounded-lg border bg-muted/15 p-2.5 text-[11px] space-y-1">
               <span className="font-semibold block text-foreground">Trạng thái thư mục:</span>
