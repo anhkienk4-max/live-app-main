@@ -911,6 +911,31 @@ export function ReportFormModal({
             </div>
           </section>
 
+          <LiveReportImageEditor
+            signedUrls={signedUrls}
+            images={liveImages}
+            uploadedBy={currentUser?.id}
+            editable={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+            canDelete={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+            canReorderAndSetCover={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+            onAdd={incoming => setLiveImages(current => [...current, ...incoming])}
+            onUpdate={(image, patch) => {
+              const result = updateLiveReportImageMetadata(liveImages, image.id, patch)
+              if (result.error) {
+                toast({ title: t('validationError'), variant: 'destructive' })
+                return
+              }
+              setLiveImages(result.images)
+            }}
+            onDelete={image => {
+              const result = removeLiveReportImage(liveImages, image.id)
+              if (result.removed) revokeLiveReportImageObjectUrl(result.removed)
+              setLiveImages(result.images)
+            }}
+            onMove={(image, direction) => setLiveImages(current => moveLiveReportImage(current, image.id, direction))}
+            onSetCover={image => setLiveImages(current => setLiveReportCover(current, image.id))}
+          />
+
           <section className="space-y-4 rounded-lg border p-4" data-testid="report-data-artifacts">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1139,31 +1164,6 @@ export function ReportFormModal({
               </>}
             </>}
           </section>
-
-          <LiveReportImageEditor
-              signedUrls={signedUrls}
-              images={liveImages}
-            uploadedBy={currentUser?.id}
-            editable={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
-            canDelete={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
-            canReorderAndSetCover={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
-            onAdd={incoming => setLiveImages(current => [...current, ...incoming])}
-            onUpdate={(image, patch) => {
-              const result = updateLiveReportImageMetadata(liveImages, image.id, patch)
-              if (result.error) {
-                toast({ title: t('validationError'), variant: 'destructive' })
-                return
-              }
-              setLiveImages(result.images)
-            }}
-            onDelete={image => {
-              const result = removeLiveReportImage(liveImages, image.id)
-              if (result.removed) revokeLiveReportImageObjectUrl(result.removed)
-              setLiveImages(result.images)
-            }}
-            onMove={(image, direction) => setLiveImages(current => moveLiveReportImage(current, image.id, direction))}
-            onSetCover={image => setLiveImages(current => setLiveReportCover(current, image.id))}
-          />
 
           <section className="space-y-4 rounded-lg border p-4" data-testid="final-report-notes-section">
             <h3 className="font-semibold">{t('notes')}</h3>

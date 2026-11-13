@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { ExternalLink, PanelsTopLeft, Radio } from 'lucide-react'
 import type { Shift } from '@/lib/types/database.types'
-import { verifyLiveStreamLink } from '@/lib/utils/liveStreamLink'
+import { classifyLiveStreamLink } from '@/lib/utils/liveStreamLink'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -29,8 +29,8 @@ export function LiveStreamPanel({ shift, onSaved }: { shift: Shift; onSaved?: (s
     event.preventDefault()
     if (!canEdit || saving) return
     const value = draft.trim()
-    if (value && !verifyLiveStreamLink(value)) {
-      setSaveError('Chỉ chấp nhận link HTTPS của TikTok hoặc Shopee.')
+    if (value && classifyLiveStreamLink(value).kind !== 'viewer') {
+      setSaveError('Chỉ chấp nhận link xem HTTPS của TikTok hoặc Shopee; URL media trực tiếp chưa được hỗ trợ tại đây.')
       return
     }
     setSaving(true); setSaveError('')
@@ -46,7 +46,8 @@ export function LiveStreamPanel({ shift, onSaved }: { shift: Shift; onSaved?: (s
         : 'Không thể lưu link. Kiểm tra quyền chỉnh sửa và thử lại.')
     } finally { setSaving(false) }
   }
-  const link = verifyLiveStreamLink(shift.live_link)
+  const destination = classifyLiveStreamLink(shift.live_link)
+  const link = destination.kind === 'viewer' ? destination.link : null
   const configured = Boolean(shift.live_link?.trim())
   const displayLink = link ? new URL(link.href) : null
   const openAlongside = () => {
@@ -60,7 +61,10 @@ export function LiveStreamPanel({ shift, onSaved }: { shift: Shift; onSaved?: (s
         <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Radio className="h-4 w-4 text-red-500" />Xem phiên livestream</h3>
         <p className="mt-1 text-xs text-slate-500">
           {link ? `${link.platform} · ${shift.status === 'live' ? 'Ca đang được đánh dấu LIVE' : 'Trạng thái theo lịch ca'}` :
-            configured ? 'Link không hợp lệ. Chỉ hỗ trợ HTTPS TikTok hoặc Shopee.' : 'Chưa gắn link live. Người quản lý cập nhật trong Chỉnh sửa ca → Lịch phát sóng.'}
+            !configured ? 'Chưa gắn link live. Người quản lý cập nhật trong Chỉnh sửa ca → Lịch phát sóng.' :
+              destination.kind === 'direct-media'
+                ? 'Đây là URL media trực tiếp; Live link chỉ nhận link xem TikTok/Shopee. Không phát URL này trực tiếp.'
+                : 'URL không được hỗ trợ. Chỉ nhận link xem HTTPS TikTok hoặc Shopee.'}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -99,6 +103,12 @@ export function LiveStreamPanel({ shift, onSaved }: { shift: Shift; onSaved?: (s
       Bạn có thể chọn “Chia sẻ tab LIVE vào Monitor” để hiển thị hình ảnh tab TikTok/Shopee ngay tại đây,
       hoặc mở LIVE chính thức bằng cửa sổ riêng.
       Trạng thái LIVE trên ca không tự xác minh phiên phát đang hoạt động.
+    </p>}
+    {destination.kind === 'direct-media' && <p role="status" className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="live-direct-media-unsupported">
+      URL này có dạng media trực tiếp nhưng chưa được xác thực bởi backend. Chỉ luồng media được cấp quyền mới phát trong Monitor.
+    </p>}
+    {configured && destination.kind === 'unsupported' && <p role="status" className="mt-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700" data-testid="live-link-unsupported">
+      Không mở hoặc phát URL này. Hãy dùng link xem HTTPS TikTok/Shopee đã được hỗ trợ.
     </p>}
   </section>
 }

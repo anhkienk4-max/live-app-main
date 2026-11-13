@@ -76,6 +76,15 @@ test('TASK C (#100): URL filter synchronization is shared across all view modes'
   assert.match(source, /resetFilters = React\.useCallback\(\(\) => \{[\s\S]*?setReportPage\(1\)[\s\S]*?setQueuePage\(1\)/)
 })
 
+test('G7: report detail modal follows browser history without losing list context', () => {
+  const source = readFileSync(new URL('../components/features/reports/ReportsList.tsx', import.meta.url), 'utf8')
+
+  assert.match(source, /const reportDetailId = searchParams\.get\('reports_report_id'\)/)
+  assert.match(source, /navigate\(\{ reports_report_id: report\.id \}\)/)
+  assert.match(source, /selectedReportIdentity === identity && selectedReportState\?\.id === reportDetailId/)
+  assert.match(source, /navigate\(\{ reports_report_id: null, shiftId: null \}, true\)/)
+})
+
 test('TASK C (#100): Calendar view collects authorized entries without 20-shift page truncation', async () => {
   const shifts: Shift[] = Array.from({ length: 45 }, (_, i) =>
     makeShift(`shift-${i}`, `2026-10-${String((i % 28) + 1).padStart(2, '0')}`)

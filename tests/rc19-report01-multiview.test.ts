@@ -115,7 +115,7 @@ test('REPORT-01 URL views share applied filters; existing Table/Cards and REPORT
   assert.match(ui,/getAllFilteredWithHistoricalContext\(JSON\.parse\(encodedFilters\)\)/)
   assert.match(ui,/filteredReports\.filter\(isConfirmedReportForKpi\)/)
   assert.match(ui,/onHistorical=\{setSelectedHistoricalReport\}/)
-  assert.match(ui,/setSelectedReport\(report\)/)
+  assert.match(ui,/openReportDetail\(report\)/)
   assert.match(component,/items\.length > 3/)
   assert.match(component,/Số liệu chưa xác nhận/)
 })

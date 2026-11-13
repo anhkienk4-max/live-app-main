@@ -61,6 +61,17 @@ test('live image category filters use OR within the selected category dimension'
   ])
 })
 
+test('report group image editor follows dashboard evidence and precedes other report files', () => {
+  const source = readFileSync(
+    new URL('../components/features/reports/ReportFormModal.tsx', import.meta.url),
+    'utf8',
+  )
+  const dashboardEvidence = source.indexOf('data-testid="report-dashboard-image-upload"')
+  const groupEditor = source.indexOf('<LiveReportImageEditor')
+  const dataArtifacts = source.indexOf('data-testid="report-data-artifacts"')
+  assert.ok(dashboardEvidence >= 0 && dashboardEvidence < groupEditor && groupEditor < dataArtifacts)
+})
+
 test('multiple valid images become typed drafts in the selected category', () => {
   assert.deepEqual(liveReportImageCategories, ['key_visual', 'live_session', 'other'])
   let id = 0
@@ -190,17 +201,17 @@ test('report detail gallery renders the cover and category metadata', () => {
   assert.match(markup, /data-testid="gallery-image-session"/)
 })
 
-test('Final Report renders the image section after metrics and before notes', () => {
+test('Final Report places grouped session images after dashboard evidence and before report data files', () => {
   const source = readFileSync(
     new URL('../components/features/reports/ReportFormModal.tsx', import.meta.url),
     'utf8',
   )
-  const metricsPosition = source.indexOf('data-testid="ocr-main-metrics"')
+  const dashboardPosition = source.indexOf('data-testid="report-dashboard-image-upload"')
   const galleryPosition = source.indexOf('<LiveReportImageEditor')
-  const notesPosition = source.indexOf('data-testid="final-report-notes-section"')
-  assert.ok(metricsPosition >= 0)
-  assert.ok(galleryPosition > metricsPosition)
-  assert.ok(notesPosition > galleryPosition)
+  const dataFilesPosition = source.indexOf('data-testid="report-data-artifacts"')
+  assert.ok(dashboardPosition >= 0)
+  assert.ok(galleryPosition > dashboardPosition)
+  assert.ok(dataFilesPosition > galleryPosition)
   assert.match(source, /platformSpecificMetrics/)
 })
 

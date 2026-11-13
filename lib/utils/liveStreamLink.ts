@@ -4,6 +4,10 @@
  */
 export type LivePlatform = 'TikTok' | 'Shopee'
 export type VerifiedLiveLink = { href: string; platform: LivePlatform }
+export type LiveLinkClassification =
+  | { kind: 'viewer'; link: VerifiedLiveLink }
+  | { kind: 'direct-media' }
+  | { kind: 'unsupported' }
 
 const TIKTOK_HOSTS = new Set([
   'tiktok.com', 'www.tiktok.com', 'm.tiktok.com', 'vm.tiktok.com',
@@ -26,4 +30,22 @@ export function verifyLiveStreamLink(raw: string | null | undefined): VerifiedLi
   } catch {
     return null
   }
+}
+
+export function classifyLiveStreamLink(raw: string | null | undefined): LiveLinkClassification {
+  const link = verifyLiveStreamLink(raw)
+  if (link) return { kind: 'viewer', link }
+  if (!raw || raw.length > 2048 || raw.trim() !== raw || /[\u0000-\u001f\u007f]/.test(raw)) {
+    return { kind: 'unsupported' }
+  }
+  try {
+    const url = new URL(raw)
+    if (url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+      /\.(?:m3u8|mp4|m4v|webm|mov|mpd)$/i.test(url.pathname)) {
+      return { kind: 'direct-media' }
+    }
+  } catch {
+    return { kind: 'unsupported' }
+  }
+  return { kind: 'unsupported' }
 }

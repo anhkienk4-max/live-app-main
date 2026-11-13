@@ -89,6 +89,7 @@ export function ReportsList() {
   const searchParams = useSearchParams()
   const deepLinkShiftId = searchParams.get('shiftId')
   const { currentUser, loading: userLoading } = useCurrentUser()
+  const identity = currentUser ? currentUser.id + ':' + (currentUser.system_permission ?? currentUser.role) : ''
   const { t } = useTranslation()
   const { toast } = useToast()
   const [reports, setReports] = React.useState<Report[]>([])
@@ -140,7 +141,12 @@ export function ReportsList() {
   const [draftFilters, setDraftFilters] = React.useState<Filters>(filters)
   const lastUrlFilters = React.useRef(JSON.stringify(filters))
   const [showFilters, setShowFilters] = React.useState(false)
-  const [selectedReport, setSelectedReport] = React.useState<Report | null>(null)
+  const reportDetailId = searchParams.get('reports_report_id')
+  const [selectedReportState, setSelectedReportState] = React.useState<Report | null>(null)
+  const [selectedReportIdentity, setSelectedReportIdentity] = React.useState('')
+  const selectedReport = reportDetailId
+    ? reports.find(item => item.id === reportDetailId) ?? (selectedReportIdentity === identity && selectedReportState?.id === reportDetailId ? selectedReportState : null)
+    : null
   const [showForm, setShowForm] = React.useState(false)
   const [editingReport, setEditingReport] = React.useState<Report | undefined>(undefined)
   const [initialShiftId, setInitialShiftId] = React.useState<string | undefined>(undefined)
@@ -229,7 +235,6 @@ export function ReportsList() {
     setReportPage(1)
     setQueuePage(1)
   }
-  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const requestVersion = React.useRef(0)
   const pageKey = identity + ':' + reportPage + ':' + reportPageSize + ':' + queuePage + ':' + queuePageSize + ':' + encodedFilters + ':' + encodedQueueFilters
@@ -304,6 +309,12 @@ export function ReportsList() {
     }
   }, [pathname, router, searchParams])
 
+  const openReportDetail = React.useCallback((report: Report) => {
+    setSelectedReportState(report)
+    setSelectedReportIdentity(identity)
+    navigate({ reports_report_id: report.id })
+  }, [identity, navigate])
+
   React.useEffect(() => {
     if (deepLinkShiftId === null) {
       handledTarget.current = null
@@ -329,7 +340,7 @@ export function ReportsList() {
       handledTarget.current = deepLinkShiftId
       setTargetedShift(target.shift)
       if (target.mode === 'form') {
-        setSelectedReport(null)
+        setSelectedReportState(null)
         setEditingReport(target.report)
         setInitialShiftId(target.shift.id)
         setShowForm(true)
@@ -337,7 +348,7 @@ export function ReportsList() {
         setShowForm(false)
         setEditingReport(undefined)
         setInitialShiftId(undefined)
-        setSelectedReport(target.report)
+        openReportDetail(target.report)
       }
     }).catch(error => {
       if (!active || handledTarget.current === deepLinkShiftId) return
@@ -346,16 +357,17 @@ export function ReportsList() {
       clearTargetQuery()
     })
     return () => { active = false }
-  }, [clearTargetQuery, currentUser, deepLinkShiftId, loadError, loading, myShiftIds, t, toast, userLoading])
+  }, [clearTargetQuery, currentUser, deepLinkShiftId, loadError, loading, myShiftIds, openReportDetail, t, toast, userLoading])
 
   const closeReportModal = () => {
     handledTarget.current = deepLinkShiftId
     setShowForm(false)
-    setSelectedReport(null)
+    setSelectedReportState(null)
+    setSelectedReportIdentity('')
     setEditingReport(undefined)
     setInitialShiftId(undefined)
     setTargetedShift(null)
-    clearTargetQuery()
+    navigate({ reports_report_id: null, shiftId: null }, true)
   }
 
   const requestRemove = async (report: Report) => {
@@ -443,7 +455,7 @@ export function ReportsList() {
     if ((state === 'draft' || state === 'reopened') && currentUser && hasPermission(currentUser, 'reports.submit')) {
       setEditingReport(report); setInitialShiftId(entry.shift.id); setShowForm(true)
     } else {
-      setEditingReport(undefined); setShowForm(false); setSelectedReport(report)
+      setEditingReport(undefined); setShowForm(false); openReportDetail(report)
     }
   }
 
@@ -685,7 +697,7 @@ export function ReportsList() {
                   <Badge variant="outline" className="w-fit">{t(shift.status)}</Badge>
                   <div className="flex flex-col gap-1"><Badge variant="secondary" className="w-fit">{stateLabel}</Badge>{report && report.metrics_confirmed !== true && <span className="text-xs text-muted-foreground">Số liệu chưa xác nhận</span>}</div>
                   <Button type="button" size="sm" variant={state === 'not_started' ? 'default' : 'secondary'} onClick={() => {
-                    if (report && readOnlyQueueItem) { setSelectedReport(report); setShowForm(false) }
+                    if (report && readOnlyQueueItem) { openReportDetail(report); setShowForm(false) }
                     else if (report) { setEditingReport(report); setShowForm(true) }
                     else { setInitialShiftId(shift.id); setShowForm(true) }
                   }}>{readOnlyQueueItem ? t('viewDetails') : state === 'not_started' ? t('createFinalReport') : t('continueReport')}</Button>
@@ -776,7 +788,7 @@ export function ReportsList() {
             onHistorical={setSelectedHistoricalReport} onView={report => {
               const state = reportQueueDisplayState(report)
               if (state === 'draft' || state === 'reopened') { setEditingReport(report); setShowForm(true) }
-              else { setEditingReport(undefined); setSelectedReport(report); setShowForm(false) }
+              else { setEditingReport(undefined); openReportDetail(report); setShowForm(false) }
             }}/>
         ) : createdViewMode === 'table' ? (
           <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
@@ -856,7 +868,7 @@ export function ReportsList() {
                             className="h-7 px-2 text-xs"
                             onClick={() => {
                               if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
-                              else setSelectedReport(report)
+                              else openReportDetail(report)
                             }}
                           >
                             {isEditableDraft ? t('continueReport') : t('viewDetails')}
@@ -978,7 +990,7 @@ export function ReportsList() {
                       {
                         onView: () => {
                           if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
-                          else setSelectedReport(report)
+                          else openReportDetail(report)
                         },
                         onExport: () => void runReportExport('report', [report.id]),
                         onDelete: () => void requestRemove(report),
