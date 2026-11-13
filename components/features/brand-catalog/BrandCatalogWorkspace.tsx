@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { resolveSystemPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { BrandKnowledgeProvenanceCard } from '@/components/features/brand-catalog/BrandKnowledgeProvenanceCard'
+import { BrandLogo } from '@/components/features/brands/BrandLogo'
 import type {
   BrandKnowledgeConflict,
   BrandKnowledgeItem,
@@ -136,7 +138,9 @@ type ResourceRow = {
   canonical_url: string
   provider: string
   resource_type: string
+  visibility?: string
   verification_status: string
+  is_active?: boolean
 }
 
 type ScopeRow = {
@@ -200,7 +204,7 @@ type Catalog = {
 }
 
 type SortField = 'name_asc' | 'name_desc' | 'code_asc' | 'status' | 'version_desc'
-type InspectorTab = 'skus' | 'platforms' | 'claims' | 'audit'
+type InspectorTab = 'skus' | 'platforms' | 'claims' | 'gallery' | 'audit'
 
 type ResourceCatalog = Pick<Catalog, 'skus' | 'campaignSkus' | 'resourceLinks' | 'resources'>
 
@@ -249,7 +253,7 @@ export function BrandCatalogWorkspace() {
   const searchParams = useSearchParams()
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
-  const isAdmin = currentUser?.system_permission === 'admin' || currentUser?.role === 'admin'
+  const isAdmin = !!currentUser && resolveSystemPermission(currentUser) === 'admin'
 
   const [catalog, setCatalog] = React.useState<Catalog | null>(null)
   const [brandId, setBrandId] = React.useState(() => searchParams.get('brand_id') ?? '')
@@ -261,6 +265,8 @@ export function BrandCatalogWorkspace() {
   const [kind, setKind] = React.useState('all')
   const [sortBy, setSortBy] = React.useState<SortField>('name_asc')
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
+  const [workspaceView, setWorkspaceView] = React.useState<'catalog' | 'visuals'>('catalog')
+  const [productPage, setProductPage] = React.useState(1)
   const [activeInspectorTab, setActiveInspectorTab] = React.useState<InspectorTab>('skus')
 
   const [busy, setBusy] = React.useState(false)
@@ -303,8 +309,18 @@ export function BrandCatalogWorkspace() {
     if (nextSkuId && nextSkuId !== 'new') params.set('sku_id', nextSkuId)
     else params.delete('sku_id')
     const queryString = params.toString()
-    router.replace(queryString ? `/brand-catalog?${queryString}` : '/brand-catalog', { scroll: false })
+    router.push(queryString ? `/brand-catalog?${queryString}` : '/brand-catalog', { scroll: false })
   }, [router, searchParams])
+
+  React.useEffect(() => {
+    const syncHistory = () => {
+      const params = new URLSearchParams(window.location.search)
+      setProductId(params.get('product_id') ?? '')
+      setSkuId(params.get('sku_id') ?? '')
+    }
+    window.addEventListener('popstate', syncHistory)
+    return () => window.removeEventListener('popstate', syncHistory)
+  }, [])
 
   const load = React.useCallback(async () => {
     setError('')
@@ -428,22 +444,14 @@ export function BrandCatalogWorkspace() {
         return 0
     }
   })
+  const productPageSize = 20
+  const productPageCount = Math.max(1, Math.ceil(filteredProducts.length / productPageSize))
+  const pageProducts = filteredProducts.slice((productPage - 1) * productPageSize, productPage * productPageSize)
 
   const selectedProduct = products.find(product => product.id === productId)
   const selectedProductBrand = selectedProduct ? brands.find(b => (!brandId || b.id === brandId) && catalog?.productBrands.some(link => link.product_id === selectedProduct.id && link.brand_id === b.id)) : null
   const productSkus = catalog?.skus.filter(sku => sku.product_id === productId) ?? []
   const selectedSku = productSkus.find(sku => sku.id === skuId)
-
-  // Find thumbnail image for a given product
-  const getProductImage = (prodId: string) => {
-    if (!catalog) return null
-    const links = catalog.resourceLinks.filter(l => l.product_id === prodId && (l.relation_type === 'image' || l.relation_type === 'kv' || l.relation_type === 'marketing_asset'))
-    for (const link of links) {
-      const res = catalog.resources.find(r => r.id === link.resource_id)
-      if (res && res.canonical_url) return res.canonical_url
-    }
-    return null
-  }
 
   // Get external platforms for product
   const getProductPlatforms = (prodId: string) => {
@@ -454,6 +462,7 @@ export function BrandCatalogWorkspace() {
   }
 
   const clearAllFilters = () => {
+    setProductPage(1)
     setBrandId('')
     setCategoryFilter('')
     setStatusFilter('')
@@ -506,6 +515,7 @@ export function BrandCatalogWorkspace() {
             className="h-8 rounded-lg border border-blue-200 bg-blue-50/70 px-2.5 text-xs font-semibold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={brandId}
             onChange={e => {
+              setProductPage(1)
               setBrandId(e.target.value)
               setCampaignId('')
               setProductId('')
@@ -535,6 +545,10 @@ export function BrandCatalogWorkspace() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-border bg-muted/40 p-0.5" role="group" aria-label="Catalog workspace view">
+            <Button variant={workspaceView === 'catalog' ? 'secondary' : 'ghost'} size="sm" className="h-8 px-2.5 text-xs" onClick={() => setWorkspaceView('catalog')}>Danh mục</Button>
+            <Button variant={workspaceView === 'visuals' ? 'secondary' : 'ghost'} size="sm" className="h-8 px-2.5 text-xs" onClick={() => setWorkspaceView('visuals')}>Visual Manager</Button>
+          </div>
           <Button variant="outline" size="sm" onClick={exportFilteredCatalog} className="h-9 gap-1.5 text-xs font-semibold">
             <Download className="h-3.5 w-3.5" /> Xuất Danh Mục
           </Button>
@@ -629,7 +643,7 @@ export function BrandCatalogWorkspace() {
               aria-label="Search products and SKUs"
               placeholder="Tìm sản phẩm, SKU, ca live..."
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={e => { setProductPage(1); setQuery(e.target.value) }}
               className="h-9 pl-9 pr-8 text-xs sm:text-sm"
             />
             {query && (
@@ -649,7 +663,7 @@ export function BrandCatalogWorkspace() {
               aria-label="Filter category"
               className="h-9 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-slate-700"
               value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
+              onChange={e => { setProductPage(1); setCategoryFilter(e.target.value) }}
             >
               <option value="">Ngành hàng: Tất cả</option>
               {availableCategories.map(cat => (
@@ -661,7 +675,7 @@ export function BrandCatalogWorkspace() {
               aria-label="Filter platform"
               className="h-9 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-slate-700"
               value={platformId}
-              onChange={e => setPlatformId(e.target.value)}
+              onChange={e => { setProductPage(1); setPlatformId(e.target.value) }}
             >
               <option value="">Kênh bán: Tất cả sàn</option>
               {(catalog?.platforms ?? []).map(p => (
@@ -673,7 +687,7 @@ export function BrandCatalogWorkspace() {
               aria-label="Filter status"
               className="h-9 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-slate-700"
               value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
+              onChange={e => { setProductPage(1); setStatusFilter(e.target.value) }}
             >
               <option value="">Trạng thái: Tất cả</option>
               <option value="active">Đang hoạt động (Active)</option>
@@ -686,7 +700,7 @@ export function BrandCatalogWorkspace() {
               aria-label="Filter campaign"
               className="h-9 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-slate-700"
               value={campaignId}
-              onChange={e => setCampaignId(e.target.value)}
+              onChange={e => { setProductPage(1); setCampaignId(e.target.value) }}
             >
               <option value="">Chiến dịch: Tất cả</option>
               {campaigns
@@ -702,7 +716,7 @@ export function BrandCatalogWorkspace() {
                 aria-label="Sort products"
                 className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 value={sortBy}
-                onChange={e => setSortBy(e.target.value as SortField)}
+                onChange={e => { setProductPage(1); setSortBy(e.target.value as SortField) }}
               >
                 <option value="name_asc">Tên (A-Z)</option>
                 <option value="name_desc">Tên (Z-A)</option>
@@ -820,10 +834,24 @@ export function BrandCatalogWorkspace() {
             </p>
           </CardContent>
         </Card>
+      ) : workspaceView === 'visuals' ? (
+        <VisualAssetManager
+          brands={brands.filter(brand => !brandId || brand.id === brandId)}
+          products={filteredProducts}
+          campaigns={campaigns.filter(campaign => !brandId || campaign.brand_id === brandId)}
+          catalog={catalog}
+          isAdmin={isAdmin}
+          onOpenProduct={id => {
+            setWorkspaceView('catalog')
+            setProductId(id)
+            setActiveInspectorTab('gallery')
+            updateCatalogUrl(id)
+          }}
+        />
       ) : (
         <div className="grid gap-5 lg:grid-cols-[1fr_390px] items-start">
           {/* Left Column: Product Grid / List */}
-          <section aria-label="Product catalog" className="space-y-4">
+          <section aria-label="Product catalog" className="min-w-0 space-y-4">
             {filteredProducts.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-12 text-center">
                 <Package className="mx-auto h-10 w-10 text-muted-foreground/60" />
@@ -837,18 +865,27 @@ export function BrandCatalogWorkspace() {
               </div>
             ) : viewMode === 'grid' ? (
               /* MODERN GRID VIEW (Matches approved candidate) */
-              <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
-                {filteredProducts.map(product => {
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+                {pageProducts.map(product => {
                   const isSelected = productId === product.id
                   const productBrandLinks = catalog.productBrands.filter(l => l.product_id === product.id)
                   const productBrand = brands.find(b => productBrandLinks.some(l => l.brand_id === b.id))
                   const skus = catalog.skus.filter(s => s.product_id === product.id)
-                  const thumbnail = getProductImage(product.id)
                   const platforms = getProductPlatforms(product.id)
 
                   return (
                     <div
                       key={product.id}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={event => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return
+                        event.preventDefault()
+                        setProductId(product.id)
+                        setSkuId('')
+                        updateCatalogUrl(product.id)
+                        setEditingProduct(false)
+                      }}
                       onClick={() => {
                         setProductId(product.id)
                         setSkuId('')
@@ -893,30 +930,14 @@ export function BrandCatalogWorkspace() {
                           </div>
                         )}
 
-                        {/* Product Packshot Graphic */}
-                        {thumbnail ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={thumbnail}
-                            alt={product.name}
-                            className="h-full w-full object-contain"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="flex h-24 w-20 flex-col items-center justify-center rounded-lg bg-gradient-to-b from-[#1e3a8a] to-[#1e40af] p-1.5 text-center text-white shadow-md">
-                            <span className="text-[7.5px] font-bold uppercase tracking-wider opacity-80">
-                              {productBrand?.name || 'ADA'}
-                            </span>
-                            <span className="my-1 line-clamp-2 text-[9px] font-extrabold leading-tight">
-                              {product.product_code}
-                            </span>
-                            <span className="text-[7px] opacity-75">{skus.length} SKUs</span>
-                          </div>
-                        )}
+                        <div className="flex flex-col items-center gap-1 text-center text-xs text-muted-foreground">
+                          <ImageIcon className="h-8 w-8" />
+                          <span>Chưa có bản xem trước được cấp quyền</span>
+                        </div>
 
                         {/* Brand Tag on Bottom-Left of packshot */}
                         <div className="absolute bottom-2 left-2 rounded bg-slate-900/85 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                          {productBrand?.name || 'BRAND'}
+                          {productBrand?.name || '—'}
                         </div>
                       </div>
 
@@ -936,7 +957,7 @@ export function BrandCatalogWorkspace() {
 
                         <div className="flex items-center justify-between border-t border-border/40 pt-2 text-xs">
                           <span className="text-[11px] font-medium text-slate-500">
-                            {product.category || 'Chung'}
+                            {product.category || '—'}
                           </span>
                           <span className="rounded bg-blue-50 px-2 py-0.5 text-[10.5px] font-semibold text-blue-700">
                             {skus.length} Biến thể SKU
@@ -949,7 +970,7 @@ export function BrandCatalogWorkspace() {
               </div>
             ) : (
               /* LIST VIEW */
-              <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
+              <div className="overflow-x-auto rounded-xl border border-border/80 bg-card shadow-xs">
                 <table className="w-full text-left text-xs">
                   <thead className="border-b border-border/60 bg-muted/40 font-semibold text-muted-foreground">
                     <tr>
@@ -962,7 +983,7 @@ export function BrandCatalogWorkspace() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/40">
-                    {filteredProducts.map(product => {
+                {pageProducts.map(product => {
                       const isSelected = productId === product.id
                       const productBrandLinks = catalog.productBrands.filter(l => l.product_id === product.id)
                       const productBrandNames = productBrandLinks.map(l => brands.find(b => b.id === l.brand_id)?.name).filter(Boolean)
@@ -1008,10 +1029,18 @@ export function BrandCatalogWorkspace() {
                 </table>
               </div>
             )}
+            {filteredProducts.length > productPageSize && <nav aria-label="Product pagination" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-xs">
+              <p className="text-muted-foreground">{(productPage - 1) * productPageSize + 1}–{Math.min(productPage * productPageSize, filteredProducts.length)} / {filteredProducts.length} sản phẩm đã tải · trang {productPage}/{productPageCount}</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={productPage <= 1} onClick={() => setProductPage(page => Math.max(1, page - 1))}>Trước</Button>
+                <Button variant="outline" size="sm" disabled={productPage >= productPageCount} onClick={() => setProductPage(page => Math.min(productPageCount, page + 1))}>Tiếp</Button>
+              </div>
+            </nav>}
+            <p className="text-xs text-muted-foreground">Phân trang áp dụng cho tối đa 100 sản phẩm API hiện trả về; API chưa cung cấp tổng số hoặc cursor để tải các trang tiếp theo.</p>
           </section>
 
           {/* Right Column: Sticky Product Detail Inspector (Matches approved candidate) */}
-          <aside className="sticky top-20 space-y-4">
+          <aside className="sticky top-20 min-w-0 space-y-4">
             {productId === 'new' && isAdmin && (
               <Card className="border-primary/40 shadow-sm">
                 <CardHeader className="pb-3 bg-slate-900 text-white rounded-t-xl p-4">
@@ -1098,7 +1127,7 @@ export function BrandCatalogWorkspace() {
             )}
 
             {selectedProduct && (
-              <div className="rounded-xl border border-border/80 bg-card shadow-sm overflow-hidden flex flex-col max-h-[calc(100vh-140px)]">
+              <div className="rounded-xl border border-border/80 bg-card shadow-sm overflow-hidden flex flex-col max-h-[calc(100dvh-220px)] md:max-h-[calc(100vh-140px)]">
                 {/* Inspector Header (Dark Navy) */}
                 <div className="bg-[#0f172a] text-white p-3.5 flex items-center justify-between shrink-0">
                   <div>
@@ -1131,7 +1160,7 @@ export function BrandCatalogWorkspace() {
                 </div>
 
                 {/* Inspector Tabs */}
-                <div className="flex border-b border-border/60 bg-slate-50/80 px-2 shrink-0">
+                <div className="flex overflow-x-auto border-b border-border/60 bg-slate-50/80 px-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveInspectorTab('skus')}
@@ -1161,13 +1190,22 @@ export function BrandCatalogWorkspace() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setActiveInspectorTab('gallery')}
+                    className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors ${
+                      activeInspectorTab === 'gallery' ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Hình ảnh &amp; tài nguyên
+                  </button>
+                  {isAdmin && <button
+                    type="button"
                     onClick={() => setActiveInspectorTab('audit')}
                     className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors ${
                       activeInspectorTab === 'audit' ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     Audit Log
-                  </button>
+                  </button>}
                 </div>
 
                 {/* Inspector Scrollable Body */}
@@ -1175,12 +1213,12 @@ export function BrandCatalogWorkspace() {
                   {/* Key Visual / Packshot Banner */}
                   <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-2.5 flex items-center gap-3">
                     <div className="h-12 w-12 rounded bg-blue-600 flex items-center justify-center text-white text-[10px] font-black shrink-0">
-                      KV LIVE
+                      <ImageIcon className="h-6 w-6" aria-hidden="true" />
                     </div>
                     <div className="min-w-0 flex-1 text-xs text-blue-950">
                       <p className="font-bold truncate">{selectedProduct.name}</p>
                       <p className="text-[10px] text-blue-800">
-                        {selectedProductBrand?.name || 'Brand'} · Ngành: {selectedProduct.category || 'Chung'}
+                        {selectedProductBrand?.name || '—'} · Ngành: {selectedProduct.category || '—'}
                       </p>
                     </div>
                   </div>
@@ -1476,7 +1514,7 @@ export function BrandCatalogWorkspace() {
                   )}
 
                   {/* TAB 4: AUDIT LOG */}
-                  {activeInspectorTab === 'audit' && (
+                  {isAdmin && activeInspectorTab === 'audit' && (
                     <div className="space-y-2 text-xs">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
                         Lịch Sử Thay Đổi Sản Phẩm
@@ -1610,48 +1648,24 @@ export function BrandCatalogWorkspace() {
                     </Card>
                   )}
 
-                  {/* Resource Attachment (Admin) */}
-                  {isAdmin && (
-                    <div className="pt-2 border-t border-border/50 space-y-2 text-xs">
-                      <span className="font-bold text-slate-800">Đính kèm tài nguyên / Hình ảnh:</span>
-                      <div className="grid gap-2 sm:grid-cols-3">
-                        <Input
-                          aria-label="Product resource ID"
-                          placeholder="Mã STO-02"
-                          value={form.resource_id}
-                          onChange={e => setForm({ ...form, resource_id: e.target.value })}
-                          className="text-xs"
-                        />
-                        <select
-                          aria-label="Product resource relation type"
-                          className="rounded-md border border-input bg-background p-1.5 text-xs"
-                          value={form.relation_type}
-                          onChange={e => setForm({ ...form, relation_type: e.target.value })}
-                        >
-                          {['image', 'kv', 'marketing_data', 'guideline', 'training', 'faq', 'document', 'other'].map(v => (
-                            <option key={v} value={v}>{v}</option>
-                          ))}
-                        </select>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={!form.resource_id || busy}
-                          onClick={() => void mutate({
-                            action: 'resource.attach',
-                            resource_id: form.resource_id,
-                            target_type: 'product',
-                            target_id: selectedProduct.id,
-                            relation_type: form.relation_type,
-                          })}
-                        >
-                          Đính kèm
-                        </Button>
-                      </div>
-                      <ResourceList
-                        links={catalog?.resourceLinks.filter(l => l.product_id === selectedProduct.id) ?? []}
-                        resources={catalog?.resources ?? []}
-                      />
-                    </div>
+                  {activeInspectorTab === 'gallery' && (
+                    <ProductAssetGallery
+                      links={catalog?.resourceLinks.filter(link => link.product_id === selectedProduct.id) ?? []}
+                      resources={catalog?.resources ?? []}
+                      isAdmin={isAdmin}
+                      resourceId={form.resource_id}
+                      relationType={form.relation_type}
+                      busy={busy}
+                      onResourceIdChange={resource_id => setForm({ ...form, resource_id })}
+                      onRelationTypeChange={relation_type => setForm({ ...form, relation_type })}
+                      onAttach={() => void mutate({
+                        action: 'resource.attach',
+                        resource_id: form.resource_id,
+                        target_type: 'product',
+                        target_id: selectedProduct.id,
+                        relation_type: form.relation_type,
+                      })}
+                    />
                   )}
 
                   {/* Campaign Attachment (Admin) */}
@@ -1881,46 +1895,153 @@ export function BrandCatalogWorkspace() {
   )
 }
 
-function ResourceList({ links, resources }: { links: ResourceLinkRow[]; resources: ResourceRow[] }) {
-  if (!links.length) {
-    return <p className="text-xs text-muted-foreground italic">Chưa có tài nguyên nào được đính kèm.</p>
+function isSafeAssetUrl(value: string | null | undefined): value is string {
+  if (!value) return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' || url.protocol === 'http:'
+  } catch {
+    return false
   }
+}
+
+function ProductAssetGallery({ links, resources, isAdmin, resourceId, relationType, busy, onResourceIdChange, onRelationTypeChange, onAttach }: {
+  links: ResourceLinkRow[]
+  resources: ResourceRow[]
+  isAdmin: boolean
+  resourceId: string
+  relationType: string
+  busy: boolean
+  onResourceIdChange: (value: string) => void
+  onRelationTypeChange: (value: string) => void
+  onAttach: () => void
+}) {
+  const displayLinks = links.filter(link => {
+    const resource = resources.find(item => item.id === link.resource_id)
+    return Boolean(resource && resource.resource_type !== 'attendance_evidence')
+  })
+  const [selectedLinkId, setSelectedLinkId] = React.useState('')
+  const selectedLink = displayLinks.find(link => link.id === selectedLinkId) ?? displayLinks[0]
+  const selectedResource = selectedLink ? resources.find(item => item.id === selectedLink.resource_id) : undefined
+
+  if (!isAdmin) {
+    return <section aria-label="Product gallery" className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+      <h3 className="font-semibold text-foreground">Hình ảnh và tài nguyên sản phẩm</h3>
+      <p className="mt-1">Chi tiết tài nguyên và xem trước được ẩn cho đến khi có API đọc media áp dụng quyền của từng người dùng.</p>
+    </section>
+  }
+
   return (
-    <ul className="space-y-1.5 pt-1">
-      {links.map(link => {
-        const resource = resources.find(item => item.id === link.resource_id)
-        const isImage = resource?.resource_type === 'image' || resource?.resource_type === 'kv'
-        return (
-          <li key={link.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 p-2 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              {isImage ? (
-                <ImageIcon className="h-4 w-4 shrink-0 text-primary" />
-              ) : (
-                <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
-              )}
-              {resource ? (
-                <a
-                  href={resource.canonical_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium text-primary hover:underline truncate flex items-center gap-1"
-                >
-                  {resource.title}
-                  <ExternalLink className="h-3 w-3 shrink-0" />
-                </a>
-              ) : (
-                <span className="text-muted-foreground">Tài nguyên không khả dụng</span>
-              )}
+    <section aria-label="Product gallery" data-testid="product-asset-gallery" className="space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold">Thư viện tài nguyên sản phẩm</h3>
+        <p className="mt-1 text-xs text-muted-foreground">Danh sách chỉ gồm liên kết sản phẩm được API hiện tại trả về. Link nguồn không đồng nghĩa với ảnh có thể phát trực tiếp.</p>
+      </div>
+      {!displayLinks.length ? (
+        <div className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">Chưa có liên kết tài nguyên sản phẩm trong dữ liệu đã tải.</div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+          <div className="space-y-2" aria-label="Saved product assets">
+            {displayLinks.map(link => {
+              const resource = resources.find(item => item.id === link.resource_id)
+              return <button key={link.id} type="button" aria-pressed={selectedLink?.id === link.id} onClick={() => setSelectedLinkId(link.id)} className={`flex w-full min-w-0 items-start gap-3 rounded-lg border p-3 text-left ${selectedLink?.id === link.id ? 'border-blue-400 bg-blue-50/70' : 'border-border bg-card hover:bg-muted/40'}`}>
+                <ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{resource?.title ?? 'Tài nguyên không khả dụng'}</span>
+                  <span className="mt-1 flex flex-wrap gap-1.5 text-xs text-muted-foreground"><Badge variant="outline">{link.relation_type}</Badge>{resource && <Badge variant="outline">{resource.resource_type}</Badge>}</span>
+                </span>
+              </button>
+            })}
+          </div>
+          <div className="min-w-0 rounded-lg border bg-muted/20 p-4">
+            <div className="flex min-h-36 flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-background px-4 text-center text-xs text-muted-foreground">
+              <ImageIcon className="h-8 w-8" aria-hidden="true" />
+              <span>Xem trước ảnh chưa được hỗ trợ: API hiện tại chỉ cung cấp URL nguồn, chưa có luồng đọc media được cấp quyền.</span>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Badge variant="outline" className="text-[10px]">{link.relation_type}</Badge>
-              <span className="text-[11px] text-muted-foreground">
-                {resource?.provider ?? 'hidden'} · {resource?.verification_status ?? 'unverified'}
-              </span>
-            </div>
-          </li>
-        )
-      })}
-    </ul>
+            {selectedLink && <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
+              <dt className="text-muted-foreground">Tài nguyên</dt><dd className="min-w-0 truncate font-medium">{selectedResource?.title ?? 'Không khả dụng'}</dd>
+              <dt className="text-muted-foreground">Nhà cung cấp</dt><dd>{selectedResource?.provider ?? '—'}</dd>
+              <dt className="text-muted-foreground">Loại / quan hệ</dt><dd>{selectedResource?.resource_type ?? '—'} · {selectedLink.relation_type}</dd>
+              <dt className="text-muted-foreground">Xác minh</dt><dd>{selectedResource?.verification_status ?? 'Chưa xác minh'}</dd>
+              <dt className="text-muted-foreground">Phạm vi</dt><dd>{selectedResource?.visibility ?? 'Không có metadata'}</dd>
+              <dt className="text-muted-foreground">Trạng thái</dt><dd>{selectedResource?.is_active === false ? 'Không hoạt động' : selectedResource?.is_active === true ? 'Đang hoạt động' : 'Không có metadata'}</dd>
+              {isSafeAssetUrl(selectedResource?.canonical_url) && <><dt className="text-muted-foreground">Nguồn</dt><dd><a className="inline-flex max-w-full items-center gap-1 truncate text-primary underline" href={selectedResource.canonical_url} target="_blank" rel="noopener noreferrer">Mở trang nhà cung cấp <ExternalLink className="h-3 w-3 shrink-0" /></a></dd></>}
+            </dl>}
+          </div>
+        </div>
+      )}
+      <div className="border-t pt-3">
+        <p className="mb-2 text-xs font-semibold">Gắn tài nguyên hiện có vào sản phẩm</p>
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <Input aria-label="Product resource ID" placeholder="Mã tài nguyên từ Storage Registry" value={resourceId} onChange={event => onResourceIdChange(event.target.value)} className="min-w-0 text-xs" />
+          <select aria-label="Product resource relation type" className="h-9 rounded-md border border-input bg-background px-2 text-xs" value={relationType} onChange={event => onRelationTypeChange(event.target.value)}>
+            {['image', 'kv', 'marketing_data', 'guideline', 'training', 'faq', 'document', 'other'].map(value => <option key={value} value={value}>{value}</option>)}
+          </select>
+          <Button variant="outline" size="sm" disabled={!resourceId.trim() || busy} onClick={onAttach}>Gắn liên kết</Button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Thao tác chỉ lưu quan hệ metadata qua quyền Admin hiện có; không tải ảnh lên, không tạo quyền ở Drive/OneDrive và không xác nhận ảnh đã đọc được.</p>
+      </div>
+    </section>
   )
+}
+
+function VisualAssetManager({ brands, products, campaigns, catalog, isAdmin, onOpenProduct }: {
+  brands: BrandRow[]
+  products: ProductRow[]
+  campaigns: CampaignRow[]
+  catalog: Catalog
+  isAdmin: boolean
+  onOpenProduct: (productId: string) => void
+}) {
+  const productLinks = catalog.resourceLinks.filter(link => link.product_id && products.some(product => product.id === link.product_id))
+  const visibleAssetLinks = productLinks.filter(link => catalog.resources.some(resource => resource.id === link.resource_id && resource.resource_type !== 'attendance_evidence'))
+  const brandsWithLogo = brands.filter(brand => Boolean(brand.logo_url))
+
+  return <section aria-label="Visual asset manager" data-testid="visual-asset-manager" className="space-y-5">
+    <header className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 sm:p-5">
+      <div className="flex items-start gap-3"><ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" /><div><h2 className="font-semibold text-blue-950">App Visual Manager</h2><p className="mt-1 text-sm text-blue-900">Tổng quan tài sản đã lưu trong phạm vi dữ liệu hiện có. Tệp lưu trữ và cấu hình slot giao diện vẫn là hai phần riêng biệt.</p><p className="mt-2 text-xs text-blue-800">C9 chưa cung cấp API cấu hình slot, phiên bản slot hoặc đọc ảnh được cấp quyền. Các nút cấu hình vì vậy đang khóa.</p></div></div>
+    </header>
+
+    <div className="grid gap-4 xl:grid-cols-2">
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Logo thương hiệu</CardTitle><p className="text-xs text-muted-foreground">Logo URL lấy từ hồ sơ Brand; quyền sửa vẫn thuộc màn hình Brand hiện có.</p></CardHeader>
+        <CardContent className="space-y-3">
+          {brandsWithLogo.length ? brandsWithLogo.map(brand => <div key={brand.id} className="flex min-w-0 items-center gap-3 rounded-lg border p-3">
+            <BrandLogo brandId={brand.id} brandName={brand.name} logoUrl={brand.logo_url} size={48} />
+            <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{brand.name}</p><p className="truncate text-xs text-muted-foreground">{isSafeAssetUrl(brand.logo_url) ? brand.logo_url : 'URL logo không hợp lệ hoặc chưa có'}</p></div>
+            {isSafeAssetUrl(brand.logo_url) && <a className="shrink-0 text-xs text-primary underline" href={brand.logo_url} target="_blank" rel="noopener noreferrer">Mở nguồn</a>}
+          </div>) : <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Chưa có logo URL đã lưu cho Brand trong phạm vi này.</p>}
+          <p className="text-xs text-muted-foreground">Avatar riêng và lịch sử phiên bản logo không có trong hợp đồng hiện tại.</p>
+          <Button nativeButton={false} render={<Link href="/brands" />} variant="outline" size="sm">Mở quản lý Brand</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Product thumbnail &amp; gallery</CardTitle><p className="text-xs text-muted-foreground">Liên kết sản phẩm hiện có: {isAdmin ? visibleAssetLinks.length : 'chưa thể xác nhận quyền đọc media'}.</p></CardHeader>
+        <CardContent className="space-y-3">
+          {!isAdmin ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Metadata tài nguyên được ẩn cho đến khi API trả quyền đọc media theo từng người dùng.</p> : products.length ? products.map(product => {
+            const links = visibleAssetLinks.filter(link => link.product_id === product.id)
+            return <div key={product.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+              <div className="min-w-0"><p className="truncate text-sm font-medium">{product.name}</p><p className="text-xs text-muted-foreground">{links.length} liên kết được API trả về</p></div>
+              <Button variant="outline" size="sm" onClick={() => onOpenProduct(product.id)}>Mở thư viện</Button>
+            </div>
+          }) : <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Không có sản phẩm trong phạm vi lọc hiện tại.</p>}
+          <p className="text-xs text-muted-foreground">SKU-level links không được trả về trong response hiện tại. Không có ảnh preview nếu chưa có API media được cấp quyền.</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Campaign KV &amp; banner</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {campaigns.length ? campaigns.map(campaign => <div key={campaign.id} className="flex min-w-0 justify-between gap-3 rounded-lg border p-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{campaign.name}</p><p className="text-xs text-muted-foreground">{campaign.status} · {campaign.start_date} – {campaign.end_date}</p></div><Badge variant="outline">Liên kết KV chưa có trong response</Badge></div>) : <p className="text-sm text-muted-foreground">Không có chiến dịch trong phạm vi hiện tại.</p>}
+          <p className="text-xs text-muted-foreground">API đọc hiện tại không trả về resource links của campaign; không thể xác nhận campaign đã có hoặc chưa có KV.</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">App-wide banner &amp; slot history</CardTitle></CardHeader>
+        <CardContent className="space-y-3"><p className="text-sm text-muted-foreground">C9 chưa có hợp đồng cho banner toàn ứng dụng, quyền slot, cấu hình slot hoặc lịch sử phiên bản.</p><Button variant="outline" size="sm" disabled title="Cần C9 slot configuration API">Cấu hình slot (chưa khả dụng)</Button></CardContent>
+      </Card>
+    </div>
+  </section>
 }
