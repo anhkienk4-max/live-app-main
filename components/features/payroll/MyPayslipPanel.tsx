@@ -65,7 +65,7 @@ export function MyPayslipPanel() {
   const validYear=/^20[2-9][0-9]$/.test(year)
   const statements=current?.data?.statements ?? []
   const selected=statements.find(s=>selection?.year===year && s.period_id===selection.id) ?? statements[0]
-  return <section className="mx-auto max-w-5xl space-y-5 p-4 md:p-6" aria-label="Phiếu lương của tôi">
+  return <section className="mx-auto max-w-5xl space-y-5 p-4 pb-24 md:p-6" aria-label="Phiếu lương của tôi">
     <header className="space-y-1"><h1 className="text-xl font-semibold">Phiếu lương của tôi</h1>
       <p className="text-sm text-muted-foreground">Chỉ hiển thị kỳ đã khóa và số liệu của chính tài khoản đang đăng nhập. Chấm công chờ duyệt không được tính thành lương.</p>
     </header>
@@ -92,7 +92,7 @@ export function MyPayslipPanel() {
         <p className="font-semibold">{money(selected.total_net_vnd)}</p>
       </div>
       {!current?.data?.compensation_available?<p role="status" className="text-xs text-amber-700">Danh sách hỗ trợ hủy ca chưa sẵn sàng ở môi trường này; tổng phiếu lương chỉ gồm các dòng lương hiện có.</p>:null}
-      <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-xs">
+      <div className="hidden overflow-x-auto lg:block"><table className="w-full min-w-[720px] text-left text-xs">
         <thead><tr className="border-b"><th className="p-2">Ngày / ca</th><th className="p-2">Vai trò</th><th className="p-2">Giờ thực tế / phút tính lương</th><th className="p-2">Đơn giá giờ</th><th className="p-2">Tăng ca</th><th className="p-2">Tiền ca</th><th className="p-2">Điều chỉnh</th><th className="p-2">Thành tiền</th></tr></thead>
         <tbody>{selected.lines.map(line=><tr key={line.line_id} className="border-b">
           <td className="p-2">{line.shift_date} · {line.shift_title||line.shift_id}</td>
@@ -104,6 +104,21 @@ export function MyPayslipPanel() {
           <td className="p-2 font-medium">{money(line.net_vnd)}{line.overtime_request_id?<small className="block text-slate-500">OT {line.overtime_day_class}/{line.overtime_time_class}</small>:null}</td>
         </tr>)}</tbody>
       </table></div>
+      <ul className="space-y-3 lg:hidden" aria-label="Các ca trong phiếu lương">
+        {selected.lines.map(line=><li key={line.line_id} className="rounded-md border p-3 text-xs">
+          <h3 className="font-semibold">{line.shift_date} · {line.shift_title||line.shift_id}</h3>
+          <p className="mt-1 text-muted-foreground">{line.operational_role}</p>
+          <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
+            <div><dt className="text-muted-foreground">Giờ thực tế</dt><dd>{actualTime(line.actual_start_at)} — {actualTime(line.actual_end_at)}</dd></div>
+            <div><dt className="text-muted-foreground">Thời lượng</dt><dd>{duration(line.actual_seconds,line.actual_minutes)} thực tế</dd><dd>{duration(line.payable_seconds,line.payable_minutes)} tính lương</dd></div>
+            <div><dt className="text-muted-foreground">Đơn giá</dt><dd>{money(line.rate_vnd_per_hour)}</dd></div>
+            <div><dt className="text-muted-foreground">Tăng ca</dt><dd>{duration(line.overtime_seconds,line.overtime_minutes)}{line.overtime_request_id?` · ${line.overtime_day_class}/${line.overtime_time_class}`:''}</dd></div>
+            <div><dt className="text-muted-foreground">Tiền ca</dt><dd>{money(line.gross_vnd)}</dd></div>
+            <div><dt className="text-muted-foreground">Điều chỉnh</dt><dd>{money(line.adjustment_vnd)}{line.adjustment_reason?' · '+line.adjustment_reason:''}</dd></div>
+          </dl>
+          <p className="mt-3 border-t pt-2 font-semibold">Thành tiền <span className="float-right">{money(line.net_vnd)}</span></p>
+        </li>)}
+      </ul>
       {selected.compensation_adjustments.length>0?<section aria-label="Điều chỉnh hỗ trợ hủy ca" className="space-y-2">
         <h3 className="text-sm font-semibold">Hỗ trợ hủy ca đã Admin xác nhận</h3>
         <ul className="divide-y rounded-md border text-sm">{selected.compensation_adjustments.map(item=><li key={item.id} className="flex flex-wrap justify-between gap-2 p-3">

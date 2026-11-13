@@ -61,7 +61,7 @@ function PayrollContent() {
     return (
       <div className="space-y-4">
         {resolveSystemPermission(currentUser) === 'admin' && (
-          <div className="flex items-center justify-between border-b bg-slate-50 px-4 py-2 text-xs">
+          <div className="flex flex-col gap-2 border-b bg-slate-50 px-4 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
             <span className="text-muted-foreground">{translate('Bạn đang xem Phiếu lương cá nhân dưới tư cách Quản trị viên.')}</span>
             <Button size="sm" variant="outline" onClick={() => router.push('/payroll')}>
               {translate('Chuyển sang Quản lý bảng lương công ty')}

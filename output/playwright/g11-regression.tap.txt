@@ -1,0 +1,2168 @@
+TAP version 13
+# Subtest: Draft correction uses the same integer rounding and money bounds as preparation
+ok 1 - Draft correction uses the same integer rounding and money bounds as preparation
+  ---
+  duration_ms: 12.1505
+  type: 'test'
+  ...
+# Subtest: payroll: 90 actual minutes; 30 overtime minutes; one final VND rounding
+ok 2 - payroll: 90 actual minutes; 30 overtime minutes; one final VND rounding
+  ---
+  duration_ms: 0.7227
+  type: 'test'
+  ...
+# Subtest: payroll: single-round VND exact 61-minute rate; no JS floating currency drift
+ok 3 - payroll: single-round VND exact 61-minute rate; no JS floating currency drift
+  ---
+  duration_ms: 0.7172
+  type: 'test'
+  ...
+# Subtest: payroll: actual time crossing midnight is computed from timezone offsets
+ok 4 - payroll: actual time crossing midnight is computed from timezone offsets
+  ---
+  duration_ms: 0.5548
+  type: 'test'
+  ...
+# Subtest: RC19 seconds: owner example keeps exact seconds and rounds only final VND
+ok 5 - RC19 seconds: owner example keeps exact seconds and rounds only final VND
+  ---
+  duration_ms: 1.1897
+  type: 'test'
+  ...
+# Subtest: RC19 seconds: one and fifty-nine seconds remain distinct, including overnight
+ok 6 - RC19 seconds: one and fifty-nine seconds remain distinct, including overnight
+  ---
+  duration_ms: 0.8197
+  type: 'test'
+  ...
+# Subtest: RC19 auto payroll never grants post-cutover overtime from free-text notes
+ok 7 - RC19 auto payroll never grants post-cutover overtime from free-text notes
+  ---
+  duration_ms: 1.6983
+  type: 'test'
+  ...
+# Subtest: RC19 post-cutover OT is paid only from an approved structured interval and keeps its classification
+ok 8 - RC19 post-cutover OT is paid only from an approved structured interval and keeps its classification
+  ---
+  duration_ms: 1.136
+  type: 'test'
+  ...
+# Subtest: RC19 post-cutover shifts without verified report completeness enter Payroll Hold
+ok 9 - RC19 post-cutover shifts without verified report completeness enter Payroll Hold
+  ---
+  duration_ms: 1.0368
+  type: 'test'
+  ...
+# Subtest: RC19 second payroll money uses one integer half-up VND rounding
+ok 10 - RC19 second payroll money uses one integer half-up VND rounding
+  ---
+  duration_ms: 1.0913
+  type: 'test'
+  ...
+# Subtest: RC19 rate recalculation preview uses stored seconds, not minute projections
+ok 11 - RC19 rate recalculation preview uses stored seconds, not minute projections
+  ---
+  duration_ms: 2.6219
+  type: 'test'
+  ...
+# Subtest: payroll refuses draft, no-show, out-of-scope rates, fabricated time and OT
+ok 12 - payroll refuses draft, no-show, out-of-scope rates, fabricated time and OT
+  ---
+  duration_ms: 8.6014
+  type: 'test'
+  ...
+# Subtest: payroll manual adjustment requires reason and cannot make payable negative
+ok 13 - payroll manual adjustment requires reason and cannot make payable negative
+  ---
+  duration_ms: 1.0307
+  type: 'test'
+  ...
+# Subtest: effective rate selects staff-specific approved scope; overlapping candidates fail closed
+ok 14 - effective rate selects staff-specific approved scope; overlapping candidates fail closed
+  ---
+  duration_ms: 1.0308
+  type: 'test'
+  ...
+# Subtest: payroll approval flow follows review confirm ready lock with no skipping or reopen
+ok 15 - payroll approval flow follows review confirm ready lock with no skipping or reopen
+  ---
+  duration_ms: 1.202
+  type: 'test'
+  ...
+# Subtest: workforce: verified late, explicit no-show and missing evidence are distinct
+ok 16 - workforce: verified late, explicit no-show and missing evidence are distinct
+  ---
+  duration_ms: 2.6602
+  type: 'test'
+  ...
+# Subtest: workforce: no evidence means unknown, never no-show and never a fabricated score
+ok 17 - workforce: no evidence means unknown, never no-show and never a fabricated score
+  ---
+  duration_ms: 0.9265
+  type: 'test'
+  ...
+# Subtest: workforce: approved overlapping evidence and conflicting no-show fail closed
+ok 18 - workforce: approved overlapping evidence and conflicting no-show fail closed
+  ---
+  duration_ms: 2.7379
+  type: 'test'
+  ...
+# Subtest: team overview weights denominators correctly and leaderboard excludes incomplete evidence
+ok 19 - team overview weights denominators correctly and leaderboard excludes incomplete evidence
+  ---
+  duration_ms: 3.5612
+  type: 'test'
+  ...
+# Subtest: RC19-G2-SYNC-01: Applying custom date range synchronizes target date to customFrom
+ok 20 - RC19-G2-SYNC-01: Applying custom date range synchronizes target date to customFrom
+  ---
+  duration_ms: 2.497
+  type: 'test'
+  ...
+# Subtest: RC19-G2-SYNC-02: CalendarDataScope and AuthorityScope align with custom range in all views
+ok 21 - RC19-G2-SYNC-02: CalendarDataScope and AuthorityScope align with custom range in all views
+  ---
+  duration_ms: 8.2888
+  type: 'test'
+  ...
+# Subtest: RC19-G2-SYNC-03: isViewWithinDateRange detects viewport overlap accurately across all view modes
+ok 22 - RC19-G2-SYNC-03: isViewWithinDateRange detects viewport overlap accurately across all view modes
+  ---
+  duration_ms: 1.0961
+  type: 'test'
+  ...
+# Subtest: RC19-G2-SYNC-04: Navigating outside custom date range resets time to all and preserves all other filters
+ok 23 - RC19-G2-SYNC-04: Navigating outside custom date range resets time to all and preserves all other filters
+  ---
+  duration_ms: 0.6804
+  type: 'test'
+  ...
+# Subtest: RC19-G2-SYNC-05: Multi-month navigation retains custom filter while within range
+ok 24 - RC19-G2-SYNC-05: Multi-month navigation retains custom filter while within range
+  ---
+  duration_ms: 0.509
+  type: 'test'
+  ...
+# Subtest: RC19-G2-SYNC-06: CalendarView implementation contract conforms to sync, empty notice, and safety requirements
+ok 25 - RC19-G2-SYNC-06: CalendarView implementation contract conforms to sync, empty notice, and safety requirements
+  ---
+  duration_ms: 2.8961
+  type: 'test'
+  ...
+# Subtest: RC19-G2-SYNC-07: filterCalendarShifts accurately displays shifts within synchronized range
+ok 26 - RC19-G2-SYNC-07: filterCalendarShifts accurately displays shifts within synchronized range
+  ---
+  duration_ms: 1.7657
+  type: 'test'
+  ...
+# Subtest: RC19-G2-SYNC-08: reconcileCalendarViewportDate resolves contradictions on deep-link, reload, and view changes
+ok 27 - RC19-G2-SYNC-08: reconcileCalendarViewportDate resolves contradictions on deep-link, reload, and view changes
+  ---
+  duration_ms: 0.5437
+  type: 'test'
+  ...
+# Subtest: RC19-G2-SYNC-09: Empty state distinguishes causes: filtered-empty vs range-mismatch
+ok 28 - RC19-G2-SYNC-09: Empty state distinguishes causes: filtered-empty vs range-mismatch
+  ---
+  duration_ms: 0.7141
+  type: 'test'
+  ...
+# Subtest: G2.1 — Single shift occupies 1 lane with 100% width and lane 0
+ok 29 - G2.1 — Single shift occupies 1 lane with 100% width and lane 0
+  ---
+  duration_ms: 10.083
+  type: 'test'
+  ...
+# Subtest: G2.1 — Two overlapping shifts occupy 2 lanes with 50% width
+ok 30 - G2.1 — Two overlapping shifts occupy 2 lanes with 50% width
+  ---
+  duration_ms: 0.983
+  type: 'test'
+  ...
+# Subtest: G2.1 — Three overlapping shifts occupy exactly 3 lanes with 33.33% width
+ok 31 - G2.1 — Three overlapping shifts occupy exactly 3 lanes with 33.33% width
+  ---
+  duration_ms: 1.0378
+  type: 'test'
+  ...
+# Subtest: G2.1 — Concurrency > 3 displays visible streams and 1 overflow badge (+N ca khác) in Lane 2
+ok 32 - G2.1 — Concurrency > 3 displays visible streams and 1 overflow badge (+N ca khác) in Lane 2
+  ---
+  duration_ms: 1.6681
+  type: 'test'
+  ...
+# Subtest: G2-FIX-01 — 1-minute skewed intervals accurately detected via sweep-line
+ok 33 - G2-FIX-01 — 1-minute skewed intervals accurately detected via sweep-line
+  ---
+  duration_ms: 36.8606
+  type: 'test'
+  ...
+# Subtest: G2-FIX-01 — Three 1-minute skewed shifts fit cleanly into 3 lanes without overflow
+ok 34 - G2-FIX-01 — Three 1-minute skewed shifts fit cleanly into 3 lanes without overflow
+  ---
+  duration_ms: 1.6912
+  type: 'test'
+  ...
+# Subtest: G2-FIX-01 — Boundary condition (end == start) is NOT counted as overlap
+ok 35 - G2-FIX-01 — Boundary condition (end == start) is NOT counted as overlap
+  ---
+  duration_ms: 1.4797
+  type: 'test'
+  ...
+# Subtest: G2-FIX-02 — Local overflow only: long shift with localized burst renders non-overloaded times individually
+ok 36 - G2-FIX-02 — Local overflow only: long shift with localized burst renders non-overloaded times individually
+  ---
+  duration_ms: 1.8226
+  type: 'test'
+  ...
+# Subtest: G2-FIX-02 — Badges never overlap each other when multiple bursts occur
+ok 37 - G2-FIX-02 — Badges never overlap each other when multiple bursts occur
+  ---
+  duration_ms: 1.8065
+  type: 'test'
+  ...
+# Subtest: G2.1 & G2.2 — Distinct time slots form independent clusters and never merge into a single giant block
+ok 38 - G2.1 & G2.2 — Distinct time slots form independent clusters and never merge into a single giant block
+  ---
+  duration_ms: 6.0269
+  type: 'test'
+  ...
+# Subtest: G2.2 — Dense 37-shift day (Owner UAT scenario Nov 10-11) is partitioned into separate time clusters
+ok 39 - G2.2 — Dense 37-shift day (Owner UAT scenario Nov 10-11) is partitioned into separate time clusters
+  ---
+  duration_ms: 3.2484
+  type: 'test'
+  ...
+# Subtest: G2.1 — Short shifts nested alongside long shifts reuse available lanes cleanly
+ok 40 - G2.1 — Short shifts nested alongside long shifts reuse available lanes cleanly
+  ---
+  duration_ms: 0.6439
+  type: 'test'
+  ...
+# Subtest: G2.2 — Overnight continuation and midnight-boundary shifts bound properly without displacement
+ok 41 - G2.2 — Overnight continuation and midnight-boundary shifts bound properly without displacement
+  ---
+  duration_ms: 0.7136
+  type: 'test'
+  ...
+# Subtest: G2-FIX-03 — Overnight shift 23:45–01:45 crosses midnight correctly without boundary overflow
+ok 42 - G2-FIX-03 — Overnight shift 23:45–01:45 crosses midnight correctly without boundary overflow
+  ---
+  duration_ms: 7.1262
+  type: 'test'
+  ...
+# Subtest: Backward compatibility — shiftsForGridDate and groupTimeGridShifts still work as expected
+ok 43 - Backward compatibility — shiftsForGridDate and groupTimeGridShifts still work as expected
+  ---
+  duration_ms: 1.0429
+  type: 'test'
+  ...
+# Subtest: G2-EDGE-01 — Minimum visual duration: A (08:00–08:01) and B (08:01–08:02) never overlap in the same lane
+ok 44 - G2-EDGE-01 — Minimum visual duration: A (08:00–08:01) and B (08:01–08:02) never overlap in the same lane
+  ---
+  duration_ms: 1.3595
+  type: 'test'
+  ...
+# Subtest: G2-EDGE-02 — Overflow gap: two bursts separated by 10, 20, 29, 30 min render gap shifts individually and badges never collide
+ok 45 - G2-EDGE-02 — Overflow gap: two bursts separated by 10, 20, 29, 30 min render gap shifts individually and badges never collide
+  ---
+  duration_ms: 2.3181
+  type: 'test'
+  ...
+# Subtest: G2-EDGE-03 — Long shift (08:00–18:00) across two independent overflow bursts: accurate counts, popups, and gap visibility
+ok 46 - G2-EDGE-03 — Long shift (08:00–18:00) across two independent overflow bursts: accurate counts, popups, and gap visibility
+  ---
+  duration_ms: 2.17
+  type: 'test'
+  ...
+# Subtest: G2-EDGE-04 — UI DOM geometry verification: no vertical overlap between cards in the same lane or with badges in Lane 2
+ok 47 - G2-EDGE-04 — UI DOM geometry verification: no vertical overlap between cards in the same lane or with badges in Lane 2
+  ---
+  duration_ms: 1.0491
+  type: 'test'
+  ...
+# Subtest: G2-DENSITY-01 — Four consecutive 1-minute shifts: zero DOM collision, localized overflow in Lane 2, complete popup list
+ok 48 - G2-DENSITY-01 — Four consecutive 1-minute shifts: zero DOM collision, localized overflow in Lane 2, complete popup list
+  ---
+  duration_ms: 1.1132
+  type: 'test'
+  ...
+# Subtest: G2-DENSITY-02 — 5 and 10 consecutive short shifts: zero collision, all shifts preserved in popup
+ok 49 - G2-DENSITY-02 — 5 and 10 consecutive short shifts: zero collision, all shifts preserved in popup
+  ---
+  duration_ms: 0.7233
+  type: 'test'
+  ...
+# Subtest: G2-DENSITY-03 — Comprehensive Property-based Test: 50 randomized shift scenarios guarantee 0 DOM collisions and 100% preservation
+ok 50 - G2-DENSITY-03 — Comprehensive Property-based Test: 50 randomized shift scenarios guarantee 0 DOM collisions and 100% preservation
+  ---
+  duration_ms: 22.2941
+  type: 'test'
+  ...
+# Subtest: G2.1 & G2.2: AttendanceCameraCapture implements getUserMedia, Canvas API snapshot, track cleanup and error fallback
+ok 51 - G2.1 & G2.2: AttendanceCameraCapture implements getUserMedia, Canvas API snapshot, track cleanup and error fallback
+  ---
+  duration_ms: 8.6418
+  type: 'test'
+  ...
+# Subtest: G2.3 & G2.4: SelfAttendancePanel integrates in-app camera, preserves independent check-in / check-out, and never auto-uploads before confirm
+not ok 52 - G2.3 & G2.4: SelfAttendancePanel integrates in-app camera, preserves independent check-in / check-out, and never auto-uploads before confirm
+  ---
+  duration_ms: 26.5441
+  type: 'test'
+  location: 'C:\\Users\\KienNguyen\\Downloads\\KIEN ADA code\\OPS LIVESTREAM PLATFORM\\rc19-g11-workforce-payroll-ui\\tests\\rc19-g2-inapp-camera.test.ts:33:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /checkedIn\?\.photo_available/. Input:
+
+    "'use client'\r\n" +
+      '\r\n' +
+      "import * as React from 'react'\r\n" +
+      "import { Button } from '@/components/ui/button'\r\n" +
+      "import { Badge } from '@/components/ui/badge'\r\n" +
+      "import { useTranslation } from '@/lib/i18n'\r\n" +
+      'import {\r\n' +
+      '  readMySelfAttendance,\r\n' +
+      '  writeSelfAttendancePhotoCheckIn,\r\n' +
+      '  writeSelfAttendancePhotoCheckOut,\r\n' +
+      '  recoverSelfAttendancePhotoCheckIn,\r\n' +
+      '  recoverSelfAttendancePhotoCheckOut,\r\n' +
+      "} from '@/lib/services/supabaseSelfAttendanceService'\r\n" +
+      'import {\r\n' +
+      '  calculateAttendanceTimePolicy,\r\n' +
+      '  type AttendanceRole,\r\n' +
+      '  type AttendanceEventKind,\r\n' +
+      '  type SelfAttendanceEvent,\r\n' +
+      "} from '@/lib/utils/selfAttendanceContract'\r\n" +
+      "import { AttendanceCorrectionPanel } from './AttendanceCorrectionPanel'\r\n" +
+      "import { AttendanceCameraCapture } from './AttendanceCameraCapture'\r\n" +
+      'import {\r\n' +
+      '  Camera,\r\n' +
+      '  Clock,\r\n' +
+      '  FileImage,\r\n' +
+      '  Lock,\r\n' +
+      '  LogIn,\r\n' +
+      '  LogOut,\r\n' +
+      '  RefreshCw,\r\n' +
+      '  RotateCcw,\r\n' +
+      '  User,\r\n' +
+      "} from 'lucide-react'\r\n" +
+      '\r\n' +
+      'export interface SelfAttendanceShiftContext {\r\n' +
+      '  date: string\r\n' +
+      '  start_time: string\r\n' +
+      '  end_time: string\r\n' +
+      '  brand: string\r\n' +
+      '  platform: string\r\n' +
+      '  title?: string | null\r\n' +
+      '  studio?: string | null\r\n' +
+      '  crossesMidnight?: boolean\r\n' +
+      '  staffName?: string | null\r\n' +
+      '  segmentIndex?: string | null\r\n' +
+      '  segmentTime?: string | null\r\n' +
+      '  segmentSummary?: string | null\r\n' +
+      '}\r\n' +
+      '\r\n' +
+      "const displayTime = (value: string, language: 'vi' | 'en') =>\r\n" +
+      "  new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'vi-VN', {\r\n" +
+      "    timeZone: 'Asia/Ho_Chi_Minh',\r\n" +
+      "    dateStyle: 'short',\r\n" +
+      "    timeStyle: 'short',\r\n" +
+      '  }).format(new Date(value))\r\n' +
+      '\r\n' +
+      'export function SelfAttendancePanel({\r\n' +
+      '  actorId,\r\n' +
+      '  shiftId,\r\n' +
+      '  role,\r\n' +
+      '  shiftContext,\r\n' +
+      '}: {\r\n' +
+      '  actorId: string\r\n' +
+      '  shiftId: string\r\n' +
+      '  role: AttendanceRole\r\n' +
+      '  shiftContext: SelfAttendanceShiftContext\r\n' +
+      '}) {\r\n' +
+      '  const { language } = useTranslation()\r\n' +
+      "  const en = language === 'en'\r\n" +
+      "  const key = actorId + ':' + shiftId + ':' + role\r\n" +
+      '  const [nonce, setNonce] = React.useState(0)\r\n' +
+      '  const [snapshot, setSnapshot] = React.useState<{\r\n' +
+      '    key: string\r\n' +
+      '    items: SelfAttendanceEvent[]\r\n' +
+      '    error: string | null\r\n' +
+      '  } | null>(null)\r\n' +
+      '\r\n' +
+      '  // Feature flags\r\n' +
+      '  const [photoFeatureReady] = React.useState(() => {\r\n' +
+      "    return process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO === 'true'\r\n" +
+      '  })\r\n' +
+      '\r\n' +
+      '  // Time Policy calculation in Asia/Ho_Chi_Minh\r\n' +
+      '  const timePolicy = React.useMemo(() => {\r\n' +
+      '    return calculateAttendanceTimePolicy(\r\n' +
+      '      shiftContext.start_time,\r\n' +
+      '      shiftContext.end_time,\r\n' +
+      '      role,\r\n' +
+      "      'Asia/Ho_Chi_Minh'\r\n" +
+      '    )\r\n' +
+      '  }, [shiftContext.start_time, shiftContext.end_time, role])\r\n' +
+      '\r\n' +
+      '  // --- CARD A: CHECK-IN STATE ---\r\n' +
+      '  const [photoCheckIn, setPhotoCheckIn] = React.useState<File | null>(null)\r\n' +
+      "  const [photoSourceCheckIn, setPhotoSourceCheckIn] = React.useState<'camera' | 'file_picker'>('camera')\r\n" +
+      '  const [previewCheckIn, setPreviewCheckIn] = React.useState<string | null>(null)\r\n' +
+      '  const [busyCheckIn, setBusyCheckIn] = React.useState(false)\r\n' +
+      '  const [errorCheckIn, setErrorCheckIn] = React.useState<string | null>(null)\r\n' +
+      '  const [cameraOpenCheckIn, setCameraOpenCheckIn] = React.useState(false)\r\n' +
+      '  const cameraInputCheckInRef = React.useRef<HTMLInputElement | null>(null)\r\n' +
+      '  const pickerInputCheckInRef = React.useRef<HTMLInputElement | null>(null)\r\n' +
+      '\r\n' +
+      '  // --- CARD B: CHECK-OUT STATE ---\r\n' +
+      '  const [photoCheckOut, setPhotoCheckOut] = React.useState<File | null>(null)\r\n' +
+      "  const [photoSourceCheckOut, setPhotoSourceCheckOut] = React.useState<'camera' | 'file_picker'>('camera')\r\n" +
+      '  const [previewCheckOut, setPreviewCheckOut] = React.useState<string | null>(null)\r\n' +
+      '  const [busyCheckOut, setBusyCheckOut] = React.useState(false)\r\n' +
+      '  const [errorCheckOut, setErrorCheckOut] = React.useState<string | null>(null)\r\n' +
+      '  const [cameraOpenCheckOut, setCameraOpenCheckOut] = React.useState(false)\r\n' +
+      '  const cameraInputCheckOutRef = React.useRef<HTMLInputElement | null>(null)\r\n' +
+      '  const pickerInputCheckOutRef = React.useRef<HTMLInputElement | null>(null)\r\n' +
+      '\r\n' +
+      '  // General lock & idempotent request tracking (preserves contract test invariant)\r\n' +
+      '  const lock = React.useRef(false)\r\n' +
+      '  const requestIds = React.useRef<Partial<Record<AttendanceEventKind, string>>>({})\r\n' +
+      '  const [prevKey, setPrevKey] = React.useState(key)\r\n' +
+      '\r\n' +
+      '  if (prevKey !== key) {\r\n' +
+      '    setPrevKey(key)\r\n' +
+      '    setPhotoCheckIn(null)\r\n' +
+      '    setPreviewCheckIn(null)\r\n' +
+      '    setErrorCheckIn(null)\r\n' +
+      '    setPhotoCheckOut(null)\r\n' +
+      '    setPreviewCheckOut(null)\r\n' +
+      '    setErrorCheckOut(null)\r\n' +
+      '  }\r\n' +
+      '\r\n' +
+      '  // Load attendance events from server\r\n' +
+      '  React.useEffect(() => {\r\n' +
+      '    let active = true\r\n' +
+      '    void readMySelfAttendance(shiftId, actorId)\r\n' +
+      '      .then(items => {\r\n' +
+      '        if (active) setSnapshot({ key, items, error: null })\r\n' +
+      '      })\r\n' +
+      '      .catch(error => {\r\n' +
+      '        if (active)\r\n' +
+      '          setSnapshot({\r\n' +
+      '            key,\r\n' +
+      '            items: [],\r\n' +
+      "            error: error instanceof Error ? error.message : 'ATTENDANCE_READ_FAILED',\r\n" +
+      '          })\r\n' +
+      '      })\r\n' +
+      '    return () => {\r\n' +
+      '      active = false\r\n' +
+      '    }\r\n' +
+      '  }, [actorId, shiftId, key, nonce])\r\n' +
+      '\r\n' +
+      '  const ready = snapshot?.key === key && !snapshot.error\r\n' +
+      '  const rows = ready ? snapshot.items.filter(r => r.role === role) : []\r\n' +
+      "  const checkedIn = rows.find(row => row.event === 'check_in')\r\n" +
+      "  const checkedOut = rows.find(row => row.event === 'check_out')\r\n" +
+      '\r\n' +
+      '  function handleSelectPhoto(\r\n' +
+      '    file: File | undefined,\r\n' +
+      "    source: 'camera' | 'file_picker',\r\n" +
+      '    kind: AttendanceEventKind\r\n' +
+      '  ) {\r\n' +
+      "    if (kind === 'check_in') {\r\n" +
+      '      setErrorCheckIn(null)\r\n' +
+      '      if (!file) {\r\n' +
+      '        setPhotoCheckIn(null)\r\n' +
+      '        setPreviewCheckIn(null)\r\n' +
+      '        return\r\n' +
+      '      }\r\n' +
+      '      if (\r\n' +
+      '        file.size < 1 ||\r\n' +
+      '        file.size > 4 * 1024 * 1024 ||\r\n' +
+      "        !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)\r\n" +
+      '      ) {\r\n' +
+      '        setPhotoCheckIn(null)\r\n' +
+      '        setPreviewCheckIn(null)\r\n' +
+      '        setErrorCheckIn(\r\n' +
+      '          en\r\n' +
+      "            ? 'Choose a JPG, PNG or WebP image up to 4 MB.'\r\n" +
+      "            : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.'\r\n" +
+      '        )\r\n' +
+      '        return\r\n' +
+      '      }\r\n' +
+      '      setPhotoCheckIn(file)\r\n' +
+      '      setPhotoSourceCheckIn(source)\r\n' +
+      '      const reader = new FileReader()\r\n' +
+      '      reader.onload = () => {\r\n' +
+      "        if (typeof reader.result === 'string') setPreviewCheckIn(reader.result)\r\n" +
+      '      }\r\n' +
+      '      reader.readAsDataURL(file)\r\n' +
+      '    } else {\r\n' +
+      '      setErrorCheckOut(null)\r\n' +
+      '      if (!file) {\r\n' +
+      '        setPhotoCheckOut(null)\r\n' +
+      '        setPreviewCheckOut(null)\r\n' +
+      '        return\r\n' +
+      '      }\r\n' +
+      '      if (\r\n' +
+      '        file.size < 1 ||\r\n' +
+      '        file.size > 4 * 1024 * 1024 ||\r\n' +
+      "        !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)\r\n" +
+      '      ) {\r\n' +
+      '        setPhotoCheckOut(null)\r\n' +
+      '        setPreviewCheckOut(null)\r\n' +
+      '        setErrorCheckOut(\r\n' +
+      '          en\r\n' +
+      "            ? 'Choose a JPG, PNG or WebP image up to 4 MB.'\r\n" +
+      "            : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.'\r\n" +
+      '        )\r\n' +
+      '        return\r\n' +
+      '      }\r\n' +
+      '      setPhotoCheckOut(file)\r\n' +
+      '      setPhotoSourceCheckOut(source)\r\n' +
+      '      const reader = new FileReader()\r\n' +
+      '      reader.onload = () => {\r\n' +
+      "        if (typeof reader.result === 'string') setPreviewCheckOut(reader.result)\r\n" +
+      '      }\r\n' +
+      '      reader.readAsDataURL(file)\r\n' +
+      '    }\r\n' +
+      '  }\r\n' +
+      '\r\n' +
+      '  async function submitCheckIn() {\r\n' +
+      "    const kind: AttendanceEventKind = 'check_in'\r\n" +
+      '    if (lock.current || !ready || checkedIn) return\r\n' +
+      '    if (!photoFeatureReady) {\r\n' +
+      '      setErrorCheckIn(\r\n' +
+      '        en\r\n' +
+      "          ? 'Photo check-in is unavailable in this environment.'\r\n" +
+      "          : 'Lưu ảnh Drive chưa được kích hoạt cho môi trường này.'\r\n" +
+      '      )\r\n' +
+      '      return\r\n' +
+      '    }\r\n' +
+      '    if (!photoCheckIn) {\r\n' +
+      '      setErrorCheckIn(\r\n' +
+      '        en\r\n' +
+      "          ? 'Take or choose a check-in photo first.'\r\n" +
+      "          : 'Cần chụp hoặc chọn ảnh check-in trước khi xác nhận.'\r\n" +
+      '      )\r\n' +
+      '      return\r\n' +
+      '    }\r\n' +
+      '\r\n' +
+      '    lock.current = true\r\n' +
+      '    setBusyCheckIn(true)\r\n' +
+      '    setErrorCheckIn(null)\r\n' +
+      '    requestIds.current[kind] ??= crypto.randomUUID()\r\n' +
+      '    try {\r\n' +
+      '      await writeSelfAttendancePhotoCheckIn(\r\n' +
+      '        shiftId,\r\n' +
+      '        role,\r\n' +
+      '        requestIds.current[kind]!,\r\n' +
+      '        photoCheckIn,\r\n' +
+      '        photoSourceCheckIn\r\n' +
+      '      )\r\n' +
+      '      requestIds.current[kind] = undefined\r\n' +
+      '      setPhotoCheckIn(null)\r\n' +
+      '      setPreviewCheckIn(null)\r\n' +
+      "      if (cameraInputCheckInRef.current) cameraInputCheckInRef.current.value = ''\r\n" +
+      "      if (pickerInputCheckInRef.current) pickerInputCheckInRef.current.value = ''\r\n" +
+      '      setSnapshot(null)\r\n' +
+      '      setNonce(v => v + 1)\r\n' +
+      '    } catch (err) {\r\n' +
+      '      setErrorCheckIn(\r\n' +
+      '        err instanceof Error\r\n' +
+      '          ? err.message\r\n' +
+      '          : en\r\n' +
+      "          ? 'Could not record check-in. Try again.'\r\n" +
+      "          : 'Không thể ghi nhận check-in, vui lòng thử lại.'\r\n" +
+      '      )\r\n' +
+      '    } finally {\r\n' +
+      '      lock.current = false\r\n' +
+      '      setBusyCheckIn(false)\r\n' +
+      '    }\r\n' +
+      '  }\r\n' +
+      '\r\n' +
+      '  async function submitCheckOut() {\r\n' +
+      "    const kind: AttendanceEventKind = 'check_out'\r\n" +
+      '    if (lock.current || !ready || !checkedIn || checkedOut) return\r\n' +
+      '    if (!photoFeatureReady) {\r\n' +
+      '      setErrorCheckOut(\r\n' +
+      '        en\r\n' +
+      "          ? 'Photo check-out is unavailable in this environment.'\r\n" +
+      "          : 'Lưu ảnh Drive chưa được kích hoạt cho môi trường này.'\r\n" +
+      '      )\r\n' +
+      '      return\r\n' +
+      '    }\r\n' +
+      '    if (!photoCheckOut) {\r\n' +
+      '      setErrorCheckOut(\r\n' +
+      '        en\r\n' +
+      "          ? 'Take or choose a check-out photo first.'\r\n" +
+      "          : 'Cần chụp hoặc chọn ảnh check-out trước khi xác nhận.'\r\n" +
+      '      )\r\n' +
+      '      return\r\n' +
+      '    }\r\n' +
+      '\r\n' +
+      '    lock.current = true\r\n' +
+      '    setBusyCheckOut(true)\r\n' +
+      '    setErrorCheckOut(null)\r\n' +
+      '    requestIds.current[kind] ??= crypto.randomUUID()\r\n' +
+      '    try {\r\n' +
+      '      await writeSelfAttendancePhotoCheckOut(\r\n' +
+      '        shiftId,\r\n' +
+      '        role,\r\n' +
+      '        requestIds.current[kind]!,\r\n' +
+      '        photoCheckOut,\r\n' +
+      '        photoSourceCheckOut\r\n' +
+      '      )\r\n' +
+      '      requestIds.current[kind] = undefined\r\n' +
+      '      setPhotoCheckOut(null)\r\n' +
+      '      setPreviewCheckOut(null)\r\n' +
+      "      if (cameraInputCheckOutRef.current) cameraInputCheckOutRef.current.value = ''\r\n" +
+      "      if (pickerInputCheckOutRef.current) pickerInputCheckOutRef.current.value = ''\r\n" +
+      '      setSnapshot(null)\r\n' +
+      '      setNonce(v => v + 1)\r\n' +
+      '    } catch (err) {\r\n' +
+      '      setErrorCheckOut(\r\n' +
+      '        err instanceof Error\r\n' +
+      '          ? err.message\r\n' +
+      '          : en\r\n' +
+      "          ? 'Could not record check-out. Try "... 26409 more characters
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    'use client'
+
+    import * as React from 'react'
+    import { Button } from '@/components/ui/button'
+    import { Badge } from '@/components/ui/badge'
+    import { useTranslation } from '@/lib/i18n'
+    import {
+      readMySelfAttendance,
+      writeSelfAttendancePhotoCheckIn,
+      writeSelfAttendancePhotoCheckOut,
+      recoverSelfAttendancePhotoCheckIn,
+      recoverSelfAttendancePhotoCheckOut,
+    } from '@/lib/services/supabaseSelfAttendanceService'
+    import {
+      calculateAttendanceTimePolicy,
+      type AttendanceRole,
+      type AttendanceEventKind,
+      type SelfAttendanceEvent,
+    } from '@/lib/utils/selfAttendanceContract'
+    import { AttendanceCorrectionPanel } from './AttendanceCorrectionPanel'
+    import { AttendanceCameraCapture } from './AttendanceCameraCapture'
+    import {
+      Camera,
+      Clock,
+      FileImage,
+      Lock,
+      LogIn,
+      LogOut,
+      RefreshCw,
+      RotateCcw,
+      User,
+    } from 'lucide-react'
+
+    export interface SelfAttendanceShiftContext {
+      date: string
+      start_time: string
+      end_time: string
+      brand: string
+      platform: string
+      title?: string | null
+      studio?: string | null
+      crossesMidnight?: boolean
+      staffName?: string | null
+      segmentIndex?: string | null
+      segmentTime?: string | null
+      segmentSummary?: string | null
+    }
+
+    const displayTime = (value: string, language: 'vi' | 'en') =>
+      new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'vi-VN', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }).format(new Date(value))
+
+    export function SelfAttendancePanel({
+      actorId,
+      shiftId,
+      role,
+      shiftContext,
+    }: {
+      actorId: string
+      shiftId: string
+      role: AttendanceRole
+      shiftContext: SelfAttendanceShiftContext
+    }) {
+      const { language } = useTranslation()
+      const en = language === 'en'
+      const key = actorId + ':' + shiftId + ':' + role
+      const [nonce, setNonce] = React.useState(0)
+      const [snapshot, setSnapshot] = React.useState<{
+        key: string
+        items: SelfAttendanceEvent[]
+        error: string | null
+      } | null>(null)
+
+      // Feature flags
+      const [photoFeatureReady] = React.useState(() => {
+        return process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO === 'true'
+      })
+
+      // Time Policy calculation in Asia/Ho_Chi_Minh
+      const timePolicy = React.useMemo(() => {
+        return calculateAttendanceTimePolicy(
+          shiftContext.start_time,
+          shiftContext.end_time,
+          role,
+          'Asia/Ho_Chi_Minh'
+        )
+      }, [shiftContext.start_time, shiftContext.end_time, role])
+
+      // --- CARD A: CHECK-IN STATE ---
+      const [photoCheckIn, setPhotoCheckIn] = React.useState<File | null>(null)
+      const [photoSourceCheckIn, setPhotoSourceCheckIn] = React.useState<'camera' | 'file_picker'>('camera')
+      const [previewCheckIn, setPreviewCheckIn] = React.useState<string | null>(null)
+      const [busyCheckIn, setBusyCheckIn] = React.useState(false)
+      const [errorCheckIn, setErrorCheckIn] = React.useState<string | null>(null)
+      const [cameraOpenCheckIn, setCameraOpenCheckIn] = React.useState(false)
+      const cameraInputCheckInRef = React.useRef<HTMLInputElement | null>(null)
+      const pickerInputCheckInRef = React.useRef<HTMLInputElement | null>(null)
+
+      // --- CARD B: CHECK-OUT STATE ---
+      const [photoCheckOut, setPhotoCheckOut] = React.useState<File | null>(null)
+      const [photoSourceCheckOut, setPhotoSourceCheckOut] = React.useState<'camera' | 'file_picker'>('camera')
+      const [previewCheckOut, setPreviewCheckOut] = React.useState<string | null>(null)
+      const [busyCheckOut, setBusyCheckOut] = React.useState(false)
+      const [errorCheckOut, setErrorCheckOut] = React.useState<string | null>(null)
+      const [cameraOpenCheckOut, setCameraOpenCheckOut] = React.useState(false)
+      const cameraInputCheckOutRef = React.useRef<HTMLInputElement | null>(null)
+      const pickerInputCheckOutRef = React.useRef<HTMLInputElement | null>(null)
+
+      // General lock & idempotent request tracking (preserves contract test invariant)
+      const lock = React.useRef(false)
+      const requestIds = React.useRef<Partial<Record<AttendanceEventKind, string>>>({})
+      const [prevKey, setPrevKey] = React.useState(key)
+
+      if (prevKey !== key) {
+        setPrevKey(key)
+        setPhotoCheckIn(null)
+        setPreviewCheckIn(null)
+        setErrorCheckIn(null)
+        setPhotoCheckOut(null)
+        setPreviewCheckOut(null)
+        setErrorCheckOut(null)
+      }
+
+      // Load attendance events from server
+      React.useEffect(() => {
+        let active = true
+        void readMySelfAttendance(shiftId, actorId)
+          .then(items => {
+            if (active) setSnapshot({ key, items, error: null })
+          })
+          .catch(error => {
+            if (active)
+              setSnapshot({
+                key,
+                items: [],
+                error: error instanceof Error ? error.message : 'ATTENDANCE_READ_FAILED',
+              })
+          })
+        return () => {
+          active = false
+        }
+      }, [actorId, shiftId, key, nonce])
+
+      const ready = snapshot?.key === key && !snapshot.error
+      const rows = ready ? snapshot.items.filter(r => r.role === role) : []
+      const checkedIn = rows.find(row => row.event === 'check_in')
+      const checkedOut = rows.find(row => row.event === 'check_out')
+
+      function handleSelectPhoto(
+        file: File | undefined,
+        source: 'camera' | 'file_picker',
+        kind: AttendanceEventKind
+      ) {
+        if (kind === 'check_in') {
+          setErrorCheckIn(null)
+          if (!file) {
+            setPhotoCheckIn(null)
+            setPreviewCheckIn(null)
+            return
+          }
+          if (
+            file.size < 1 ||
+            file.size > 4 * 1024 * 1024 ||
+            !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+          ) {
+            setPhotoCheckIn(null)
+            setPreviewCheckIn(null)
+            setErrorCheckIn(
+              en
+                ? 'Choose a JPG, PNG or WebP image up to 4 MB.'
+                : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.'
+            )
+            return
+          }
+          setPhotoCheckIn(file)
+          setPhotoSourceCheckIn(source)
+          const reader = new FileReader()
+          reader.onload = () => {
+            if (typeof reader.result === 'string') setPreviewCheckIn(reader.result)
+          }
+          reader.readAsDataURL(file)
+        } else {
+          setErrorCheckOut(null)
+          if (!file) {
+            setPhotoCheckOut(null)
+            setPreviewCheckOut(null)
+            return
+          }
+          if (
+            file.size < 1 ||
+            file.size > 4 * 1024 * 1024 ||
+            !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+          ) {
+            setPhotoCheckOut(null)
+            setPreviewCheckOut(null)
+            setErrorCheckOut(
+              en
+                ? 'Choose a JPG, PNG or WebP image up to 4 MB.'
+                : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.'
+            )
+            return
+          }
+          setPhotoCheckOut(file)
+          setPhotoSourceCheckOut(source)
+          const reader = new FileReader()
+          reader.onload = () => {
+            if (typeof reader.result === 'string') setPreviewCheckOut(reader.result)
+          }
+          reader.readAsDataURL(file)
+        }
+      }
+
+      async function submitCheckIn() {
+        const kind: AttendanceEventKind = 'check_in'
+        if (lock.current || !ready || checkedIn) return
+        if (!photoFeatureReady) {
+          setErrorCheckIn(
+            en
+              ? 'Photo check-in is unavailable in this environment.'
+              : 'Lưu ảnh Drive chưa được kích hoạt cho môi trường này.'
+          )
+          return
+        }
+        if (!photoCheckIn) {
+          setErrorCheckIn(
+            en
+              ? 'Take or choose a check-in photo first.'
+              : 'Cần chụp hoặc chọn ảnh check-in trước khi xác nhận.'
+          )
+          return
+        }
+
+        lock.current = true
+        setBusyCheckIn(true)
+        setErrorCheckIn(null)
+        requestIds.current[kind] ??= crypto.randomUUID()
+        try {
+          await writeSelfAttendancePhotoCheckIn(
+            shiftId,
+            role,
+            requestIds.current[kind]!,
+            photoCheckIn,
+            photoSourceCheckIn
+          )
+          requestIds.current[kind] = undefined
+          setPhotoCheckIn(null)
+          setPreviewCheckIn(null)
+          if (cameraInputCheckInRef.current) cameraInputCheckInRef.current.value = ''
+          if (pickerInputCheckInRef.current) pickerInputCheckInRef.current.value = ''
+          setSnapshot(null)
+          setNonce(v => v + 1)
+        } catch (err) {
+          setErrorCheckIn(
+            err instanceof Error
+              ? err.message
+              : en
+              ? 'Could not record check-in. Try again.'
+              : 'Không thể ghi nhận check-in, vui lòng thử lại.'
+          )
+        } finally {
+          lock.current = false
+          setBusyCheckIn(false)
+        }
+      }
+
+      async function submitCheckOut() {
+        const kind: AttendanceEventKind = 'check_out'
+        if (lock.current || !ready || !checkedIn || checkedOut) return
+        if (!photoFeatureReady) {
+          setErrorCheckOut(
+            en
+              ? 'Photo check-out is unavailable in this environment.'
+              : 'Lưu ảnh Drive chưa được kích hoạt cho môi trường này.'
+          )
+          return
+        }
+        if (!photoCheckOut) {
+          setErrorCheckOut(
+            en
+              ? 'Take or choose a check-out photo first.'
+              : 'Cần chụp hoặc chọn ảnh check-out trước khi xác nhận.'
+          )
+          return
+        }
+
+        lock.current = true
+        setBusyCheckOut(true)
+        setErrorCheckOut(null)
+        requestIds.current[kind] ??= crypto.randomUUID()
+        try {
+          await writeSelfAttendancePhotoCheckOut(
+            shiftId,
+            role,
+            requestIds.current[kind]!,
+            photoCheckOut,
+            photoSourceCheckOut
+          )
+          requestIds.current[kind] = undefined
+          setPhotoCheckOut(null)
+          setPreviewCheckOut(null)
+          if (cameraInputCheckOutRef.current) cameraInputCheckOutRef.current.value = ''
+          if (pickerInputCheckOutRef.current) pickerInputCheckOutRef.current.value = ''
+          setSnapshot(null)
+          setNonce(v => v + 1)
+        } catch (err) {
+          setErrorCheckOut(
+            err instanceof Error
+              ? err.message
+              : en
+              ? 'Could not record check-out. Try again.'
+              : 'Không thể ghi nhận check-out, vui lòng thử lại.'
+          )
+        } finally {
+          lock.current = false
+          setBusyCheckOut(false)
+        }
+      }
+
+      async function recoverPhoto(kind: AttendanceEventKind) {
+        if (lock.current || !ready || !photoFeatureReady) return
+        lock.current = true
+        if (kind === 'check_in') {
+          setBusyCheckIn(true)
+          setErrorCheckIn(null)
+        } else {
+          setBusyCheckOut(true)
+          setErrorCheckOut(null)
+        }
+
+        const requestId = requestIds.current[kind] ?? crypto.randomUUID()
+        requestIds.current[kind] = requestId
+        try {
+          if (kind === 'check_in') {
+            await recoverSelfAttendancePhotoCheckIn(shiftId, role, requestId)
+          } else {
+            await recoverSelfAttendancePhotoCheckOut(shiftId, role, requestId)
+          }
+          requestIds.current[kind] = undefined
+          setSnapshot(null)
+          setNonce(v => v + 1)
+        } catch (err) {
+          const msg =
+            err instanceof Error && err.message === 'ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE'
+              ? en
+                ? 'No saved photo to recover. Take a photo to continue.'
+                : 'Không có ảnh đã lưu cần khôi phục. Hãy chụp ảnh để tiếp tục.'
+              : err instanceof Error
+              ? err.message
+              : en
+              ? 'Could not recover attendance. Try again.'
+              : 'Không khôi phục được, vui lòng thử lại.'
+
+          if (kind === 'check_in') setErrorCheckIn(msg)
+          else setErrorCheckOut(msg)
+        } finally {
+          lock.current = false
+          setBusyCheckIn(false)
+          setBusyCheckOut(false)
+        }
+      }
+
+      const roleNames: Record<AttendanceRole, string> = {
+        host: 'Host',
+        support: en ? 'Support' : 'Trợ live',
+        technical: en ? 'Technical' : 'Kỹ thuật',
+      }
+
+      return (
+        <section
+          aria-label={en ? 'My check-in / check-out' : 'Chấm công cá nhân'}
+          className="space-y-4 rounded-md border p-3 bg-slate-50/50"
+          data-testid="self-attendance-panel"
+        >
+          {/* 1. HEADER & OVERVIEW */}
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between border-b pb-2">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
+                <User className="h-4 w-4 text-indigo-600" />
+                <span>{en ? 'Personal Attendance' : 'Chấm công cá nhân'} · {roleNames[role]}</span>
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {en
+                  ? 'The server records event times in Asia/Ho_Chi_Minh. Photos serve as attendance evidence awaiting review.'
+                  : 'Thời gian do server ghi nhận (Asia/Ho_Chi_Minh). Ảnh điểm danh là bằng chứng chờ đối soát, không mặc định cộng/trừ lương.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 text-xs">
+                {timePolicy.timeZone}
+              </Badge>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busyCheckIn || busyCheckOut}
+                onClick={() => {
+                  setSnapshot(null)
+                  setNonce(v => v + 1)
+                }}
+                className="text-xs h-7"
+              >
+                <RefreshCw className="mr-1 h-3 w-3" />
+                {en ? 'Refresh' : 'Tải lại'}
+              </Button>
+            </div>
+          </div>
+
+          {/* 2. STAFF & SEGMENT CONTEXT (Phase 3) */}
+          <dl
+            className="grid grid-cols-2 gap-2 rounded-md bg-white border p-3 text-xs sm:grid-cols-4 shadow-2xs"
+            data-testid="attendance-live-shift-context"
+          >
+            <div data-testid="attendance-staff-context">
+              <dt className="text-muted-foreground">{en ? 'Personnel' : 'Nhân sự'}</dt>
+              <dd className="font-semibold text-slate-800">{shiftContext.staffName || 'Được duyệt phân công'}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">{en ? 'Role & Brand' : 'Vai trò & Thương hiệu'}</dt>
+              <dd className="font-medium">{roleNames[role]} · {shiftContext.brand}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">{en ? 'Live Hours' : 'Khung giờ ca'}</dt>
+              <dd className="font-medium">
+                {shiftContext.start_time.slice(0, 5)} – {shiftContext.end_time.slice(0, 5)}
+                {shiftContext.crossesMidnight ? ` (${en ? 'next day' : 'qua đêm'})` : ''}
+              </dd>
+            </div>
+            <div data-testid="attendance-segment-context">
+              <dt className="text-muted-foreground">{en ? 'Segment Assignment' : 'Khung nhân sự (Segment)'}</dt>
+              <dd className="font-medium">
+                {shiftContext.segmentIndex
+                  ? `${shiftContext.segmentIndex} (${shiftContext.segmentTime || ''})`
+                  : shiftContext.segmentSummary || (en ? 'Single shift' : 'Ca đơn (Toàn ca)')}
+              </dd>
+            </div>
+          </dl>
+
+          {/* 3. TIME POLICY DISPLAY (Phase 4) */}
+          <div
+            className="rounded-md border border-slate-200 bg-white p-3 text-xs space-y-2 shadow-2xs"
+            data-testid="attendance-time-policy-section"
+          >
+            <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+              <Clock className="h-3.5 w-3.5 text-indigo-600" />
+              <span>{en ? 'Attendance Time Window & Expected Arrival Policy' : 'Chính sách thời gian gửi ảnh & Mốc có mặt'}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-100 text-[11px]">
+              <div>
+                <span className="text-muted-foreground block">Cửa sổ Check-in:</span>
+                <span className="font-medium text-slate-700">{timePolicy.checkInWindowLabel}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block">Mốc có mặt dự kiến ({roleNames[role]}):</span>
+                <span className="font-semibold text-indigo-700">{timePolicy.expectedArrivalLabel}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block">Cửa sổ Check-out:</span>
+                <span className="font-medium text-slate-700">{timePolicy.checkOutWindowLabel}</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 italic pt-1 border-t border-dashed border-slate-100" data-testid="attendance-time-policy-disclaimer">
+              * {timePolicy.compensationNotice}
+            </p>
+          </div>
+
+          {/* Loading & Read Error Notices */}
+          {!ready && !snapshot?.error && (
+            <p role="status" className="text-xs text-slate-500">
+              {en ? 'Checking attendance history…' : 'Đang kiểm tra nhật ký chấm công server…'}
+            </p>
+          )}
+          {snapshot?.key === key && snapshot.error && (
+            <p role="alert" className="text-xs text-red-600">
+              {en ? 'Could not load attendance: ' : 'Không thể tải chấm công: '}
+              {snapshot.error}
+            </p>
+          )}
+
+          {/* Overall Status Banner */}
+          {ready && (
+            <div className="flex items-center justify-between rounded-md bg-white border px-3 py-2 text-xs shadow-2xs">
+              <span className="text-slate-600">Trạng thái tổng thể:</span>
+              <span
+                role="status"
+                data-testid="self-attendance-status"
+                className="font-bold text-slate-800"
+                aria-live="polite"
+              >
+                {checkedOut
+                  ? (en ? 'Completed (Checked out)' : 'Hoàn thành ca (Đã check-out)')
+                  : checkedIn
+                  ? (en ? 'In Progress (Checked in · Check-out available)' : 'Đang trong ca (Đã check-in · Có thể check-out)')
+                  : (en ? 'Not checked in' : 'Chưa check-in')}
+              </span>
+            </div>
+          )}
+
+          {/* 4. TWO INDEPENDENT EVENT CARDS (Phase 2) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* ========================================================= */}
+            {/* CARD A: CHECK-IN */}
+            {/* ========================================================= */}
+            <div
+              className="rounded-lg border bg-white p-4 shadow-sm space-y-3 flex flex-col justify-between"
+              data-testid="attendance-card-checkin"
+            >
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <div className="flex items-center gap-2">
+                    <LogIn className="h-4 w-4 text-emerald-600" />
+                    <h4 className="text-sm font-semibold text-slate-900">
+                      {en ? '1. Check-in (Arrival)' : '1. Check-in (Có mặt)'}
+                    </h4>
+                  </div>
+                  {checkedIn ? (
+                    <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 text-[10px] font-bold">
+                      {en ? 'RECORDED' : 'ĐÃ GHI NHẬN'}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-600 text-[10px]">
+                      {en ? 'NOT RECORDED' : 'CHƯA CHECK-IN'}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Check-in Recorded Receipt or Input */}
+                {checkedIn ? (
+                  <div className="space-y-2 text-xs">
+                    <div className="rounded bg-emerald-50/50 border border-emerald-200 p-2 text-emerald-950 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-emerald-800">Server Receipt:</span>
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                          {checkedIn.verification_status}
+                        </Badge>
+                      </div>
+                      <p className="font-mono text-[11px]">
+                        {displayTime(checkedIn.recorded_at, language)}
+                      </p>
+                      <p className="text-[10px] text-emerald-700">
+                        {checkedIn.photo_available
+                          ? (en ? '• Drive photo attached' : '• Đã gắn ảnh Drive')
+                          : (en ? '• No verified photo' : '• Chưa có ảnh xác thực')}
+                      </p>
+                    </div>
+
+                    {/* Authenticated Check-in Image Evidence */}
+                    {checkedIn.photo_available && (
+                      <div className="space-y-1" data-testid="attendance-checkin-evidence">
+                        <span className="font-medium text-slate-700 text-[11px]">
+                          {en ? 'Check-in Photo Evidence:' : 'Ảnh bằng chứng Check-in:'}
+                        </span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          className="max-h-44 w-full rounded border object-contain bg-black/5"
+                          src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedIn.event_id)}
+                          alt="Check-in attendance evidence"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-xs">
+                    <p className="text-slate-600">
+                      {en
+                        ? 'Take or select a photo in the live studio to record check-in.'
+                        : 'Chụp ảnh tại phòng live để xác nhận có mặt đúng khung giờ quy định.'}
+                    </p>
+
+                    {/* Photo Inputs */}
+                    <input
+                      ref={cameraInputCheckInRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      capture="environment"
+                      className="hidden"
+                      onChange={e => handleSelectPhoto(e.target.files?.[0], 'camera', 'check_in')}
+                    />
+                    <input
+                      ref={pickerInputCheckInRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={e => handleSelectPhoto(e.target.files?.[0], 'file_picker', 'check_in')}
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={busyCheckIn}
+                        data-testid="attendance-checkin-open-camera-btn"
+                        onClick={() => {
+                          if (typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
+                            setCameraOpenCheckIn(true)
+                          } else {
+                            cameraInputCheckInRef.current?.click()
+                          }
+                        }}
+                        className="text-xs"
+                      >
+                        <Camera className="mr-1.5 h-3.5 w-3.5" />
+                        {en ? 'Take photo' : 'Chụp ảnh'}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busyCheckIn}
+                        data-testid="attendance-checkin-file-picker-btn"
+                        onClick={() => pickerInputCheckInRef.current?.click()}
+                        className="text-xs"
+                      >
+                        <FileImage className="mr-1.5 h-3.5 w-3.5" />
+                        {en ? 'Choose photo' : 'Chọn ảnh'}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={busyCheckIn}
+                        data-testid="attendance-checkin-recover-btn"
+                        onClick={() => void recoverPhoto('check_in')}
+                        className="text-xs text-slate-500"
+                      >
+                        <RotateCcw className="mr-1 h-3 w-3" />
+                        {en ? 'Recover' : 'Khôi phục'}
+                      </Button>
+                    </div>
+
+                    <AttendanceCameraCapture
+                      open={cameraOpenCheckIn}
+                      onOpenChange={setCameraOpenCheckIn}
+                      onCapture={(file, src) => handleSelectPhoto(file, src, 'check_in')}
+                      shiftContext={shiftContext}
+                      role={role}
+                      eventKind="check_in"
+                      onFallbackToPicker={() => cameraInputCheckInRef.current?.click()}
+                    />
+
+                    {/* Check-in Photo Preview */}
+                    {previewCheckIn && (
+                      <div className="space-y-1 rounded border bg-slate-50 p-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={previewCheckIn}
+                          className="max-h-36 w-full rounded border object-contain bg-white"
+                          alt="Check-in preview"
+                          data-testid="attendance-checkin-preview-img"
+                        />
+                        <p className="text-[10px] text-slate-500">
+                          {photoCheckIn?.name} ({photoCheckIn ? Math.ceil(photoCheckIn.size / 1024) : 0} KB)
+                        </p>
+                      </div>
+                    )}
+
+                    {errorCheckIn && (
+                      <p role="alert" className="text-xs text-rose-600" data-testid="attendance-checkin-error">
+                        {errorCheckIn}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Action for Check-In */}
+              {!checkedIn && (
+                <div className="pt-2 border-t mt-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-full text-xs font-semibold"
+                    disabled={busyCheckIn || !photoCheckIn}
+                    onClick={() => void submitCheckIn()}
+                    data-testid="attendance-checkin-submit-btn"
+                  >
+                    {busyCheckIn ? (en ? 'Recording…' : 'Đang ghi nhận…') : (en ? 'Upload photo and check-in' : 'Tải ảnh và Check-in')}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* ========================================================= */}
+            {/* CARD B: CHECK-OUT */}
+            {/* ========================================================= */}
+            <div
+              className={`rounded-lg border p-4 shadow-sm space-y-3 flex flex-col justify-between ${
+                !checkedIn ? 'bg-slate-50/70 border-slate-200 opacity-90' : 'bg-white'
+              }`}
+              data-testid="attendance-card-checkout"
+            >
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <div className="flex items-center gap-2">
+                    <LogOut className={`h-4 w-4 ${checkedIn ? 'text-amber-600' : 'text-slate-400'}`} />
+                    <h4 className="text-sm font-semibold text-slate-900">
+                      {en ? '2. Check-out (Departure)' : '2. Check-out (Rời ca)'}
+                    </h4>
+                  </div>
+                  {checkedOut ? (
+                    <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 text-[10px] font-bold">
+                      {en ? 'RECORDED' : 'ĐÃ GHI NHẬN'}
+                    </Badge>
+                  ) : !checkedIn ? (
+                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-[10px]">
+                      <Lock className="mr-1 h-3 w-3" />
+                      {en ? 'LOCKED' : 'ĐANG KHÓA'}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800 text-[10px]">
+                      {en ? 'AVAILABLE' : 'CÓ THỂ CHECK-OUT'}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Locked Reason if Not Checked In (Phase 2 requirement: Do not hide card!) */}
+                {!checkedIn ? (
+                  <div
+                    role="alert"
+                    className="rounded-md border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900 space-y-1"
+                    data-testid="attendance-checkout-locked-alert"
+                  >
+                    <div className="flex items-center gap-1.5 font-semibold text-amber-950">
+                      <Lock className="h-3.5 w-3.5 text-amber-700" />
+                      <span>Check-out đang khóa</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Cần hoàn tất Check-in thành công trước khi có thể chụp ảnh và ghi nhận Check-out rời ca.
+                    </p>
+                  </div>
+                ) : checkedOut ? (
+                  <div className="space-y-2 text-xs">
+                    <div className="rounded bg-emerald-50/50 border border-emerald-200 p-2 text-emerald-950 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-emerald-800">Server Receipt:</span>
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                          {checkedOut.verification_status}
+                        </Badge>
+                      </div>
+                      <p className="font-mono text-[11px]">
+                        {displayTime(checkedOut.recorded_at, language)}
+                      </p>
+                      <p className="text-[10px] text-emerald-700">
+                        {checkedOut.photo_available
+                          ? (en ? '• Drive photo attached' : '• Đã gắn ảnh Drive')
+                          : (en ? '• No verified photo' : '• Chưa có ảnh xác thực')}
+                      </p>
+                    </div>
+
+                    {/* Authenticated Check-out Image Evidence */}
+                    {checkedOut.photo_available && (
+                      <div className="space-y-1" data-testid="attendance-checkout-evidence">
+                        <span className="font-medium text-slate-700 text-[11px]">
+                          {en ? 'Check-out Photo Evidence:' : 'Ảnh bằng chứng Check-out:'}
+                        </span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          className="max-h-44 w-full rounded border object-contain bg-black/5"
+                          src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedOut.event_id)}
+                          alt="Check-out attendance evidence"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-xs">
+                    <p className="text-slate-600">
+                      {en
+                        ? 'Take or select a photo at shift completion to record departure.'
+                        : 'Chụp ảnh tại phòng live lúc hoàn tất ca trực để xác nhận rời ca.'}
+                    </p>
+
+                    {/* Photo Inputs */}
+                    <input
+                      ref={cameraInputCheckOutRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      capture="environment"
+                      className="hidden"
+                      onChange={e => handleSelectPhoto(e.target.files?.[0], 'camera', 'check_out')}
+                    />
+                    <input
+                      ref={pickerInputCheckOutRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={e => handleSelectPhoto(e.target.files?.[0], 'file_picker', 'check_out')}
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={busyCheckOut}
+                        data-testid="attendance-checkout-open-camera-btn"
+                        onClick={() => {
+                          if (typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
+                            setCameraOpenCheckOut(true)
+                          } else {
+                            cameraInputCheckOutRef.current?.click()
+                          }
+                        }}
+                        className="text-xs"
+                      >
+                        <Camera className="mr-1.5 h-3.5 w-3.5" />
+                        {en ? 'Take photo' : 'Chụp ảnh'}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busyCheckOut}
+                        data-testid="attendance-checkout-file-picker-btn"
+                        onClick={() => pickerInputCheckOutRef.current?.click()}
+                        className="text-xs"
+                      >
+                        <FileImage className="mr-1.5 h-3.5 w-3.5" />
+                        {en ? 'Choose photo' : 'Chọn ảnh'}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={busyCheckOut}
+                        data-testid="attendance-checkout-recover-btn"
+                        onClick={() => void recoverPhoto('check_out')}
+                        className="text-xs text-slate-500"
+                      >
+                        <RotateCcw className="mr-1 h-3 w-3" />
+                        {en ? 'Recover' : 'Khôi phục'}
+                      </Button>
+                    </div>
+
+                    <AttendanceCameraCapture
+                      open={cameraOpenCheckOut}
+                      onOpenChange={setCameraOpenCheckOut}
+                      onCapture={(file, src) => handleSelectPhoto(file, src, 'check_out')}
+                      shiftContext={shiftContext}
+                      role={role}
+                      eventKind="check_out"
+                      onFallbackToPicker={() => cameraInputCheckOutRef.current?.click()}
+                    />
+
+                    {/* Check-out Photo Preview */}
+                    {previewCheckOut && (
+                      <div className="space-y-1 rounded border bg-slate-50 p-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={previewCheckOut}
+                          className="max-h-36 w-full rounded border object-contain bg-white"
+                          alt="Check-out preview"
+                          data-testid="attendance-checkout-preview-img"
+                        />
+                        <p className="text-[10px] text-slate-500">
+                          {photoCheckOut?.name} ({photoCheckOut ? Math.ceil(photoCheckOut.size / 1024) : 0} KB)
+                        </p>
+                      </div>
+                    )}
+
+                    {errorCheckOut && (
+                      <p role="alert" className="text-xs text-rose-600" data-testid="attendance-checkout-error">
+                        {errorCheckOut}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Action for Check-Out */}
+              {checkedIn && !checkedOut && (
+                <div className="pt-2 border-t mt-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-full text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white"
+                    disabled={busyCheckOut || !photoCheckOut}
+                    onClick={() => void submitCheckOut()}
+                    data-testid="attendance-checkout-submit-btn"
+                  >
+                    {busyCheckOut ? (en ? 'Recording…' : 'Đang ghi nhận…') : (en ? 'Upload photo and check-out' : 'Tải ảnh và Check-out')}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 5. CORRECTIONS & DRIVE REVIEWS */}
+          {photoFeatureReady && (
+            <AttendanceCorrectionPanel key={`${actorId}:${shiftId}`} shiftId={shiftId} />
+          )}
+        </section>
+      )
+    }
+
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/KienNguyen/Downloads/KIEN%20ADA%20code/OPS%20LIVESTREAM%20PLATFORM/rc19-g11-workforce-payroll-ui/tests/rc19-g2-inapp-camera.test.ts:41:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1325:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+    Test.postRun (node:internal/test_runner/test:1465:19)
+    Test.run (node:internal/test_runner/test:1390:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+  ...
+# Subtest: G2.5: Review and Correction UX supports in-app camera resubmission and clear status badges
+ok 53 - G2.5: Review and Correction UX supports in-app camera resubmission and clear status badges
+  ---
+  duration_ms: 22.1719
+  type: 'test'
+  ...
+# Subtest: G3-01: KAO Acceptance Case — 1 Parent Shift with 3 Segments (K01, K02, K03)
+ok 54 - G3-01: KAO Acceptance Case — 1 Parent Shift with 3 Segments (K01, K02, K03)
+  ---
+  duration_ms: 6.8626
+  type: 'test'
+  ...
+# Subtest: G3-02: Segment K02 supports 2 simultaneous hosts with planned names
+ok 55 - G3-02: Segment K02 supports 2 simultaneous hosts with planned names
+  ---
+  duration_ms: 1.9024
+  type: 'test'
+  ...
+# Subtest: G3-03: Add and Delete Segment maintains consistency
+ok 56 - G3-03: Add and Delete Segment maintains consistency
+  ---
+  duration_ms: 1.5867
+  type: 'test'
+  ...
+# Subtest: G3-04: Planned names are display-only and not auto-approved registrations
+ok 57 - G3-04: Planned names are display-only and not auto-approved registrations
+  ---
+  duration_ms: 2.5762
+  type: 'test'
+  ...
+# Subtest: G3-05: Overnight shift with crossing midnight segments
+ok 58 - G3-05: Overnight shift with crossing midnight segments
+  ---
+  duration_ms: 1.8486
+  type: 'test'
+  ...
+# Subtest: G3-06: Segment Validation catches out-of-bounds, invalid times, capacities, and overlaps
+ok 59 - G3-06: Segment Validation catches out-of-bounds, invalid times, capacities, and overlaps
+  ---
+  duration_ms: 2.3413
+  type: 'test'
+  ...
+# Subtest: G3-07: Optimistic Concurrency / Version conflict on update
+ok 60 - G3-07: Optimistic Concurrency / Version conflict on update
+  ---
+  duration_ms: 3.3053
+  type: 'test'
+  ...
+# Subtest: G3-08: Calendar Return Context URL params preservation contract
+ok 61 - G3-08: Calendar Return Context URL params preservation contract
+  ---
+  duration_ms: 0.4295
+  type: 'test'
+  ...
+# Subtest: G3-09: Role-based permissions — shifts.edit contract
+ok 62 - G3-09: Role-based permissions — shifts.edit contract
+  ---
+  duration_ms: 0.2868
+  type: 'test'
+  ...
+# Subtest: G3-10: Compatibility with G4 Safety Lock — Atomic replace guard remains active
+ok 63 - G3-10: Compatibility with G4 Safety Lock — Atomic replace guard remains active
+  ---
+  duration_ms: 4.7924
+  type: 'test'
+  ...
+# Subtest: OWNER ID 01: Import 670+ and 1000+ rows executes stably with measured latency
+ok 64 - OWNER ID 01: Import 670+ and 1000+ rows executes stably with measured latency
+  ---
+  duration_ms: 2057.6395
+  type: 'test'
+  ...
+# Subtest: OWNER ID 02: Agency Partner is cleanly decoupled from Execution Source
+ok 65 - OWNER ID 02: Agency Partner is cleanly decoupled from Execution Source
+  ---
+  duration_ms: 17.821
+  type: 'test'
+  ...
+# Subtest: G3 Live AI agency filter matches display labels and canonical codes
+ok 66 - G3 Live AI agency filter matches display labels and canonical codes
+  ---
+  duration_ms: 0.5489
+  type: 'test'
+  ...
+# Subtest: G3 selection scope compares row identities instead of selection counts
+ok 67 - G3 selection scope compares row identities instead of selection counts
+  ---
+  duration_ms: 0.5313
+  type: 'test'
+  ...
+# Subtest: OWNER ID 03: Draft editor handles row addition, cell editing, custom columns and undo
+ok 68 - OWNER ID 03: Draft editor handles row addition, cell editing, custom columns and undo
+  ---
+  duration_ms: 6.3936
+  type: 'test'
+  ...
+# Subtest: OWNER ID 04: Bulk Edit applies updates to selected rows and prevents conflicting actions
+ok 69 - OWNER ID 04: Bulk Edit applies updates to selected rows and prevents conflicting actions
+  ---
+  duration_ms: 43.9411
+  type: 'test'
+  ...
+# Subtest: OWNER ID 05: Column-level filters can be combined and reset without altering raw data
+ok 70 - OWNER ID 05: Column-level filters can be combined and reset without altering raw data
+  ---
+  duration_ms: 144.469
+  type: 'test'
+  ...
+# Subtest: OWNER ID 06: Excel export sanitizes formula injection and preserves operational fields
+ok 71 - OWNER ID 06: Excel export sanitizes formula injection and preserves operational fields
+  ---
+  duration_ms: 1.7053
+  type: 'test'
+  ...
+# Subtest: OWNER ID 07: Registration displays readable Brand name, never raw UUID
+ok 72 - OWNER ID 07: Registration displays readable Brand name, never raw UUID
+  ---
+  duration_ms: 0.5318
+  type: 'test'
+  ...
+# Subtest: G4.1: Month View filters and orders shifts correctly for date cell
+ok 73 - G4.1: Month View filters and orders shifts correctly for date cell
+  ---
+  duration_ms: 1.7961
+  type: 'test'
+  ...
+# Subtest: G4.1: Day View correctly maps overnight shift to main day and continuation day
+ok 74 - G4.1: Day View correctly maps overnight shift to main day and continuation day
+  ---
+  duration_ms: 0.5236
+  type: 'test'
+  ...
+# Subtest: G4.2: getShiftRoleCapacities calculates required, approved, and remaining deficits
+ok 75 - G4.2: getShiftRoleCapacities calculates required, approved, and remaining deficits
+  ---
+  duration_ms: 0.3222
+  type: 'test'
+  ...
+# Subtest: G4.2: sft-02-night tracks approved vs pending host capacity
+ok 76 - G4.2: sft-02-night tracks approved vs pending host capacity
+  ---
+  duration_ms: 0.1525
+  type: 'test'
+  ...
+# Subtest: G4.4: Interval overlap math flags partial and nested overlap, but allows adjacent intervals
+ok 77 - G4.4: Interval overlap math flags partial and nested overlap, but allows adjacent intervals
+  ---
+  duration_ms: 0.2017
+  type: 'test'
+  ...
+# Subtest: G4.6: ShiftDetailModal 4 tabs are statically defined in exact immutable order
+ok 78 - G4.6: ShiftDetailModal 4 tabs are statically defined in exact immutable order
+  ---
+  duration_ms: 0.1143
+  type: 'test'
+  ...
+# Subtest: G4.7: Admin/Leader manual assignment is allowed even when registration_locked: true
+ok 79 - G4.7: Admin/Leader manual assignment is allowed even when registration_locked: true
+  ---
+  duration_ms: 0.2142
+  type: 'test'
+  ...
+# Subtest: G4.8: StaffingActionPanel generates clear explanatory feedback for blocked conditions
+ok 80 - G4.8: StaffingActionPanel generates clear explanatory feedback for blocked conditions
+  ---
+  duration_ms: 0.3105
+  type: 'test'
+  ...
+# Subtest: G4.9: Replacement workflow generates accurate diff and preserves history as removed record
+ok 81 - G4.9: Replacement workflow generates accurate diff and preserves history as removed record
+  ---
+  duration_ms: 0.2119
+  type: 'test'
+  ...
+# Subtest: G4.10: StaffingWorkspace sorts Upcoming ascending (closest first) and History descending (newest first)
+ok 82 - G4.10: StaffingWorkspace sorts Upcoming ascending (closest first) and History descending (newest first)
+  ---
+  duration_ms: 0.3706
+  type: 'test'
+  ...
+# Subtest: G4.11: Emergency replacement is strictly restricted to Admin and hidden for Leader and Member
+ok 83 - G4.11: Emergency replacement is strictly restricted to Admin and hidden for Leader and Member
+  ---
+  duration_ms: 0.2115
+  type: 'test'
+  ...
+# Subtest: G4.12: Swap request lifecycle transitions follow state machine accurately
+ok 84 - G4.12: Swap request lifecycle transitions follow state machine accurately
+  ---
+  duration_ms: 0.1694
+  type: 'test'
+  ...
+# Subtest: G4.13: Staffing segments (K01, K02) remain intact on parent shift without splitting
+ok 85 - G4.13: Staffing segments (K01, K02) remain intact on parent shift without splitting
+  ---
+  duration_ms: 0.1364
+  type: 'test'
+  ...
+# Subtest: G4.14: Direct 2-step replace is blocked on client and throws ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE until Codex C4 RPC lands
+ok 86 - G4.14: Direct 2-step replace is blocked on client and throws ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE until Codex C4 RPC lands
+  ---
+  duration_ms: 0.4737
+  type: 'test'
+  ...
+# Subtest: G4.15: Concurrency check strictly rejects missing/non-integer registration or shift versions without guessing
+ok 87 - G4.15: Concurrency check strictly rejects missing/non-integer registration or shift versions without guessing
+  ---
+  duration_ms: 0.2123
+  type: 'test'
+  ...
+# Subtest: G4.16: Business Timezone Asia/Ho_Chi_Minh boundary calculation prevents midnight shift drift
+ok 88 - G4.16: Business Timezone Asia/Ho_Chi_Minh boundary calculation prevents midnight shift drift
+  ---
+  duration_ms: 1.0228
+  type: 'test'
+  ...
+# Subtest: G4.17: Emergency Replacement requires ISO 8601 timestamp with +07:00 and verified segment selection
+ok 89 - G4.17: Emergency Replacement requires ISO 8601 timestamp with +07:00 and verified segment selection
+  ---
+  duration_ms: 0.1538
+  type: 'test'
+  ...
+# Subtest: G4.18: Failure injection demonstration: 2-step replace leaves data in corrupted state if step 2 fails
+ok 90 - G4.18: Failure injection demonstration: 2-step replace leaves data in corrupted state if step 2 fails
+  ---
+  duration_ms: 0.3814
+  type: 'test'
+  ...
+# Subtest: G5-01: Time Policy — Host arrival deadline (T-15m), Check-in window open (T-120m), Check-out close (T+120m) in Asia/Ho_Chi_Minh
+ok 91 - G5-01: Time Policy — Host arrival deadline (T-15m), Check-in window open (T-120m), Check-out close (T+120m) in Asia/Ho_Chi_Minh
+  ---
+  duration_ms: 3.1372
+  type: 'test'
+  ...
+# Subtest: G5-02: Time Policy — Support arrival deadline (T-30m), Check-in window open (T-120m), Check-out close (T+120m)
+ok 92 - G5-02: Time Policy — Support arrival deadline (T-30m), Check-in window open (T-120m), Check-out close (T+120m)
+  ---
+  duration_ms: 0.6188
+  type: 'test'
+  ...
+# Subtest: G5-03: Time Policy — Technical flexible schedule without fixed arrival deadline
+ok 93 - G5-03: Time Policy — Technical flexible schedule without fixed arrival deadline
+  ---
+  duration_ms: 0.5141
+  type: 'test'
+  ...
+# Subtest: G5-04: Time Policy — Cross-midnight / overnight shifts and boundary wrapping
+ok 94 - G5-04: Time Policy — Cross-midnight / overnight shifts and boundary wrapping
+  ---
+  duration_ms: 0.5445
+  type: 'test'
+  ...
+# Subtest: G5-05: SelfAttendancePanel — Independent event cards (Card A & Card B), state isolation, and idempotency contract
+ok 95 - G5-05: SelfAttendancePanel — Independent event cards (Card A & Card B), state isolation, and idempotency contract
+  ---
+  duration_ms: 9.4049
+  type: 'test'
+  ...
+# Subtest: G5-06: Check-out Locked State — Card B is visible and explains locked requirement when not checked in
+ok 96 - G5-06: Check-out Locked State — Card B is visible and explains locked requirement when not checked in
+  ---
+  duration_ms: 7.2257
+  type: 'test'
+  ...
+# Subtest: G5-07: Staff, Segment & Time Policy Context — Displays live hours, segment code, and wage disclaimer
+ok 97 - G5-07: Staff, Segment & Time Policy Context — Displays live hours, segment code, and wage disclaimer
+  ---
+  duration_ms: 10.3039
+  type: 'test'
+  ...
+# Subtest: G5-08: AttendancePhotoReviewPanel — Self-review prevention and evidence policy notice
+ok 98 - G5-08: AttendancePhotoReviewPanel — Self-review prevention and evidence policy notice
+  ---
+  duration_ms: 6.7749
+  type: 'test'
+  ...
+# Subtest: G5-09: AdminProxyAttendanceModal — Safety lock banner and immutable timestamp protection
+ok 99 - G5-09: AdminProxyAttendanceModal — Safety lock banner and immutable timestamp protection
+  ---
+  duration_ms: 5.3872
+  type: 'test'
+  ...
+# Subtest: G5-10: ShiftDetailModal & Cross-Lane Safety Regressions — G3 segments, G4 atomic replace locks
+ok 100 - G5-10: ShiftDetailModal & Cross-Lane Safety Regressions — G3 segments, G4 atomic replace locks
+  ---
+  duration_ms: 30.8755
+  type: 'test'
+  ...
+# Subtest: G5.0 A: safeSpreadsheetValue sanitizes formula characters and preserves safe content
+ok 101 - G5.0 A: safeSpreadsheetValue sanitizes formula characters and preserves safe content
+  ---
+  duration_ms: 3.8914
+  type: 'test'
+  ...
+# Subtest: G5.0 B: Selection set membership determines allVisibleSelected without numeric count flaws
+ok 102 - G5.0 B: Selection set membership determines allVisibleSelected without numeric count flaws
+  ---
+  duration_ms: 1.3765
+  type: 'test'
+  ...
+# Subtest: G5.0 C: Agency normalization handles live_ai, Live AI, and agency aliases
+ok 103 - G5.0 C: Agency normalization handles live_ai, Live AI, and agency aliases
+  ---
+  duration_ms: 1.4712
+  type: 'test'
+  ...
+# Subtest: G5.0 D: ShiftDetailModal 4 tabs maintain immutable order and reset state on shift ID change
+ok 104 - G5.0 D: ShiftDetailModal 4 tabs maintain immutable order and reset state on shift ID change
+  ---
+  duration_ms: 2.4539
+  type: 'test'
+  ...
+# Subtest: G5.1: Live Report 6 Photo Groups adhere to approved sequence and metadata
+ok 105 - G5.1: Live Report 6 Photo Groups adhere to approved sequence and metadata
+  ---
+  duration_ms: 0.7581
+  type: 'test'
+  ...
+# Subtest: G5.2: BI Chart Catalog defines 14 chart types with verified compatibility rules
+ok 106 - G5.2: BI Chart Catalog defines 14 chart types with verified compatibility rules
+  ---
+  duration_ms: 1.2124
+  type: 'test'
+  ...
+# Subtest: G5.3: Catalog SKU Mapping prevents double-counting and enforces bounded percentages
+ok 107 - G5.3: Catalog SKU Mapping prevents double-counting and enforces bounded percentages
+  ---
+  duration_ms: 0.6032
+  type: 'test'
+  ...
+# Subtest: G5.4: Admin Workspace routes access-overrides to settings accountPermissions without local mocks
+ok 108 - G5.4: Admin Workspace routes access-overrides to settings accountPermissions without local mocks
+  ---
+  duration_ms: 0.6827
+  type: 'test'
+  ...
+# Subtest: unauthenticated and unresolved business ID never open the privileged client
+ok 109 - unauthenticated and unresolved business ID never open the privileged client
+  ---
+  duration_ms: 14.8178
+  type: 'test'
+  ...
+# Subtest: feature flag is OFF by default and rejects without a DB query
+ok 110 - feature flag is OFF by default and rejects without a DB query
+  ---
+  duration_ms: 1.9515
+  type: 'test'
+  ...
+# Subtest: member receives only own locked, non-voided, approved actual payroll lines
+ok 111 - member receives only own locked, non-voided, approved actual payroll lines
+  ---
+  duration_ms: 9.9969
+  type: 'test'
+  ...
+# Subtest: member payslip verifies and returns persisted second precision without minute conversion
+ok 112 - member payslip verifies and returns persisted second precision without minute conversion
+  ---
+  duration_ms: 3.8538
+  type: 'test'
+  ...
+# Subtest: member payslip includes only Admin-confirmed cancellation adjustments for the same member and locked period
+ok 113 - member payslip includes only Admin-confirmed cancellation adjustments for the same member and locked period
+  ---
+  duration_ms: 5.4543
+  type: 'test'
+  ...
+# Subtest: cross-user leakage and unapproved actual evidence fail closed even if DB filter is bypassed
+ok 114 - cross-user leakage and unapproved actual evidence fail closed even if DB filter is bypassed
+  ---
+  duration_ms: 7.5559
+  type: 'test'
+  ...
+# Subtest: unlocked periods are never shown; invalid query parameters are rejected
+ok 115 - unlocked periods are never shown; invalid query parameters are rejected
+  ---
+  duration_ms: 6.4283
+  type: 'test'
+  ...
+# Subtest: voided lines, other actors, and other years never become a statement
+ok 116 - voided lines, other actors, and other years never become a statement
+  ---
+  duration_ms: 4.0693
+  type: 'test'
+  ...
+# Subtest: client cannot choose an actor, including under alternate parameter names
+ok 117 - client cannot choose an actor, including under alternate parameter names
+  ---
+  duration_ms: 2.7812
+  type: 'test'
+  ...
+# Subtest: DB failure never returns partial income, cap overflow is rejected
+ok 118 - DB failure never returns partial income, cap overflow is rejected
+  ---
+  duration_ms: 2.387
+  type: 'test'
+  ...
+# Subtest: Member payroll screen is segregated from Admin management and disabled by default
+ok 119 - Member payroll screen is segregated from Admin management and disabled by default
+  ---
+  duration_ms: 7.4367
+  type: 'test'
+  ...
+# Subtest: RC16 capability observer persists through admin/member identity switch and denies Member while feature disabled
+ok 120 - RC16 capability observer persists through admin/member identity switch and denies Member while feature disabled
+  ---
+  duration_ms: 4.4244
+  type: 'test'
+  ...
+# Subtest: REPORT-01 Month/Week/Day windows are stable and clipped to applied dates
+ok 121 - REPORT-01 Month/Week/Day windows are stable and clipped to applied dates
+  ---
+  duration_ms: 12.3688
+  type: 'test'
+  ...
+# Subtest: REPORT-01 0/1/20/120/210 shifts: no page-20 truncation; multi-shift day retained
+ok 122 - REPORT-01 0/1/20/120/210 shifts: no page-20 truncation; multi-shift day retained
+  ---
+  duration_ms: 31.5481
+  type: 'test'
+  ...
+# Subtest: REPORT-01 report merge keeps distinct workflow and metrics state, no duplicate shift
+ok 123 - REPORT-01 report merge keeps distinct workflow and metrics state, no duplicate shift
+  ---
+  duration_ms: 1.5062
+  type: 'test'
+  ...
+# Subtest: REPORT-01 no cross-role bypass: collection returns only server-authorized report and shifts
+ok 124 - REPORT-01 no cross-role bypass: collection returns only server-authorized report and shifts
+  ---
+  duration_ms: 1.1247
+  type: 'test'
+  ...
+# Subtest: REPORT-01 guard fails closed on paginated total drift, owner change, or cap
+ok 125 - REPORT-01 guard fails closed on paginated total drift, owner change, or cap
+  ---
+  duration_ms: 3.4805
+  type: 'test'
+  ...
+# Subtest: REPORT-01 URL views share applied filters; existing Table/Cards and REPORT-02 remain
+ok 126 - REPORT-01 URL views share applied filters; existing Table/Cards and REPORT-02 remain
+  ---
+  duration_ms: 5.9356
+  type: 'test'
+  ...
+# Subtest: production /reports uses scoped, server-paginated ReportsList rather than unbounded ReportsContainer
+ok 127 - production /reports uses scoped, server-paginated ReportsList rather than unbounded ReportsContainer
+  ---
+  duration_ms: 2.3886
+  type: 'test'
+  ...
+# OPS_PERMISSION_DENIED {
+#   route: '/api/reports/export',
+#   requiredPermission: 'reports.export',
+#   actorPermission: 'member',
+#   source: 'legacy_default'
+# }
+# OPS_PERMISSION_DENIED {
+#   route: '/api/reports/export',
+#   requiredPermission: 'reports.export',
+#   actorPermission: 'admin',
+#   source: 'expired'
+# }
+# OPS_PERMISSION_DENIED {
+#   route: '/api/reports/export',
+#   requiredPermission: 'reports.export',
+#   actorPermission: 'admin',
+#   source: 'revoked'
+# }
+# Subtest: Member cannot export, even their own submitted report
+ok 128 - Member cannot export, even their own submitted report
+  ---
+  duration_ms: 14.4421
+  type: 'test'
+  ...
+# Subtest: Leaders from separate identities fail closed before report or Brand reads
+ok 129 - Leaders from separate identities fail closed before report or Brand reads
+  ---
+  duration_ms: 9.3607
+  type: 'test'
+  ...
+# Subtest: Leader export-only RPC workbook contains only active-Brand reports and image metadata
+ok 130 - Leader export-only RPC workbook contains only active-Brand reports and image metadata
+  ---
+  duration_ms: 120.4128
+  type: 'test'
+  ...
+# Subtest: Expired or revoked reports.export decisions deny before reading report data
+ok 131 - Expired or revoked reports.export decisions deny before reading report data
+  ---
+  duration_ms: 5.669
+  type: 'test'
+  ...
+# Subtest: Forged report IDs and client-supplied scope fields cannot become export authority
+ok 132 - Forged report IDs and client-supplied scope fields cannot become export authority
+  ---
+  duration_ms: 4.9877
+  type: 'test'
+  ...
+# Subtest: Admin exports list, detail and image workbooks from authorized database rows
+ok 133 - Admin exports list, detail and image workbooks from authorized database rows
+  ---
+  duration_ms: 34.1571
+  type: 'test'
+  ...
+# Subtest: C3 Leader scope migration is additive, DB-owned, versioned and applied to report read paths
+ok 134 - C3 Leader scope migration is additive, DB-owned, versioned and applied to report read paths
+  ---
+  duration_ms: 5.0276
+  type: 'test'
+  ...
+# Subtest: Export bundle RPC is actor-bound, Brand-scoped and cannot grant direct Data API reads
+ok 135 - Export bundle RPC is actor-bound, Brand-scoped and cannot grant direct Data API reads
+  ---
+  duration_ms: 3.0979
+  type: 'test'
+  ...
+# An empty string ("") was passed to the src attribute. This may cause the browser to download the whole page again over the network. To fix this, either do not render the element at all or pass null to src instead of an empty string.
+# Subtest: TASK B (\#164): 6 photo groups strictly preserve OWNER checklist order
+ok 136 - TASK B (\#164): 6 photo groups strictly preserve OWNER checklist order
+  ---
+  duration_ms: 4.7213
+  type: 'test'
+  ...
+# Subtest: TASK B (\#164): KV trước and KV sau never mix
+ok 137 - TASK B (\#164): KV trước and KV sau never mix
+  ---
+  duration_ms: 1.4479
+  type: 'test'
+  ...
+# Subtest: TASK B (\#164): Dashboard tổng hợp and Dashboard 30 phút never mix and timestamp is preserved
+ok 138 - TASK B (\#164): Dashboard tổng hợp and Dashboard 30 phút never mix and timestamp is preserved
+  ---
+  duration_ms: 0.7009
+  type: 'test'
+  ...
+# Subtest: TASK B (\#164): Upload → save → reload → reopen preserves 6 groups
+ok 139 - TASK B (\#164): Upload → save → reload → reopen preserves 6 groups
+  ---
+  duration_ms: 5.8264
+  type: 'test'
+  ...
+# Subtest: TASK B (\#164): Receipt status renders Draft vs Persisted badges distinctly
+ok 140 - TASK B (\#164): Receipt status renders Draft vs Persisted badges distinctly
+  ---
+  duration_ms: 53.3413
+  type: 'test'
+  ...
+# Subtest: TASK B (\#164): Google Drive readback is NOT faked or claimed as Production PASS
+ok 141 - TASK B (\#164): Google Drive readback is NOT faked or claimed as Production PASS
+  ---
+  duration_ms: 0.6396
+  type: 'test'
+  ...
+# OPS_ROLE_DENIED {
+#   route: '/api/workforce/overview',
+#   requiredRoles: [ 'admin', 'leader' ],
+#   actorPermission: 'member'
+# }
+# Subtest: Leader A and B reads are bounded by their independent database Brand grants
+ok 142 - Leader A and B reads are bounded by their independent database Brand grants
+  ---
+  duration_ms: 27.0034
+  type: 'test'
+  ...
+# Subtest: Forged staff_id cannot return a person outside the Leader Brand scope
+ok 143 - Forged staff_id cannot return a person outside the Leader Brand scope
+  ---
+  duration_ms: 4.0474
+  type: 'test'
+  ...
+# Subtest: Missing Leader scope denies before any service-role read
+ok 144 - Missing Leader scope denies before any service-role read
+  ---
+  duration_ms: 2.9285
+  type: 'test'
+  ...
+# Subtest: Malformed or unavailable Leader scope fails closed before privileged reads
+ok 145 - Malformed or unavailable Leader scope fails closed before privileged reads
+  ---
+  duration_ms: 5.3795
+  type: 'test'
+  ...
+# Subtest: Workforce Admin retains the global view and Member is denied before data reads
+ok 146 - Workforce Admin retains the global view and Member is denied before data reads
+  ---
+  duration_ms: 30.8758
+  type: 'test'
+  ...
+# Subtest: Workforce feature gate runs before scope and database reads
+ok 147 - Workforce feature gate runs before scope and database reads
+  ---
+  duration_ms: 1.5425
+  type: 'test'
+  ...
+# Subtest: Leader Workforce actual APIs check authoritative Brand scope before reading or writing evidence
+ok 148 - Leader Workforce actual APIs check authoritative Brand scope before reading or writing evidence
+  ---
+  duration_ms: 11.0754
+  type: 'test'
+  ...
+# Subtest: Workforce capabilities expose Leader team view only with an active authoritative Brand grant
+ok 149 - Workforce capabilities expose Leader team view only with an active authoritative Brand grant
+  ---
+  duration_ms: 3.0628
+  type: 'test'
+  ...
+# Subtest: Workforce Admin remains global and Member never receives team capability
+ok 150 - Workforce Admin remains global and Member never receives team capability
+  ---
+  duration_ms: 1.5332
+  type: 'test'
+  ...
+1..150
+# tests 150
+# suites 0
+# pass 149
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8263.185
