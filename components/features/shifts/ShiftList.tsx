@@ -11,6 +11,7 @@ import { templateService } from '@/lib/services/templateService'
 import { Shift, Brand, Platform, Campaign, User, DeletionImpact, ShiftRegistration } from '@/lib/types/database.types'
 import { businessLocalDate, formatShiftTimeRange, ShiftTemplate } from '@/lib/utils/shiftUtils'
 import { shiftDateWindowFilters } from '@/lib/utils/shiftDateWindow'
+import { sanitizeReturnPath, RETURN_TO_PARAM } from '@/lib/utils/returnContext'
 import { ActionBar } from '@/components/ui/action-bar'
 import { MobileActionMenu } from '@/components/ui/mobile-action-menu'
 import { buildShiftActions } from '@/lib/ui/action-priority'
@@ -114,6 +115,8 @@ export function ShiftList() {
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
   const [reopenDetailAfterEdit, setReopenDetailAfterEdit] = React.useState(false)
+  // G6: where to go after an edit that was started from another module (validated same-origin path).
+  const [editReturnTo, setEditReturnTo] = React.useState<string | null>(null)
   const [duplicateShift, setDuplicateShift] = React.useState<Shift | null>(null)
   const [deleteId, setDeleteId] = React.useState<string | null>(null)
   const [deleteIds, setDeleteIds] = React.useState<string[]>([])
@@ -297,9 +300,11 @@ export function ShiftList() {
   React.useEffect(() => {
     if (!requestedEditShiftId || processedEditRequest.current === editRequestKey) return
     processedEditRequest.current = editRequestKey
+    const returnPath = sanitizeReturnPath(searchParams.get(RETURN_TO_PARAM))
     const clearEditRequest = () => {
       const nextParams = new URLSearchParams(searchParams.toString())
       nextParams.delete('edit_shift_id')
+      nextParams.delete(RETURN_TO_PARAM)
       const query = nextParams.toString()
       processedEditRequest.current = ''
       router.replace(query ? `/shifts?${query}` : '/shifts', { scroll: false })
@@ -312,7 +317,10 @@ export function ShiftList() {
     let active = true
     void shiftService.getById(requestedEditShiftId).then(shift => {
       if (!active) return
-      if (shift) handleEdit(shift)
+      if (shift) {
+        if (returnPath) setEditReturnTo(returnPath)
+        handleEdit(shift)
+      }
       else toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
       clearEditRequest()
     }).catch(error => {
@@ -790,6 +798,11 @@ export function ShiftList() {
           if (!open) {
             setEditingShift(null)
             setReopenDetailAfterEdit(false)
+            if (editReturnTo) {
+              const destination = editReturnTo
+              setEditReturnTo(null)
+              router.push(destination)
+            }
           }
         }}
         shift={editingShift}
@@ -806,6 +819,11 @@ export function ShiftList() {
           setEditingShift(null)
           if (reopenDetailAfterEdit && updatedShift) setDetailShift({ ...updatedShift })
           setReopenDetailAfterEdit(false)
+          if (editReturnTo) {
+            const destination = editReturnTo
+            setEditReturnTo(null)
+            router.push(destination)
+          }
         }}
       />
 

@@ -313,7 +313,7 @@ export function DaySessionsDialog({
                       {t('viewShiftDetail')}
                     </Button>
                     {['preparing', 'live', 'paused'].includes(shift.status) && (
-                      <Button onClick={() => window.location.assign('/live')} size="sm" variant="outline">
+                      <Button onClick={() => router.push('/live')} size="sm" variant="outline">
                         <Radio className="mr-1 h-4 w-4" />{t('openLiveMonitor')}
                       </Button>
                     )}
@@ -407,7 +407,7 @@ export function DaySessionsDialog({
                     <MobileActionMenu
                       breakpoint="sm"
                       actions={[
-                        ...( ['preparing', 'live', 'paused'].includes(shift.status) ? [{ key: 'live', label: t('openLiveMonitor'), icon: <Radio className="h-4 w-4" />, onClick: () => window.location.assign('/live') }] : [] ),
+                        ...( ['preparing', 'live', 'paused'].includes(shift.status) ? [{ key: 'live', label: t('openLiveMonitor'), icon: <Radio className="h-4 w-4" />, onClick: () => router.push('/live') }] : [] ),
                         ...( shift.status === 'completed' ? [{ key: 'report', label: t('openFinalReport'), icon: <FileText className="h-4 w-4" />, onClick: () => router.push(reportShiftHref(shift.id)) }] : [] ),
                         ...( currentUser && hasPermission(currentUser, 'shifts.edit') ? [
                           { key: 'edit', label: t('editShift'), icon: <Pencil className="h-4 w-4" />, onClick: () => onEditShift(shift) },

@@ -47,7 +47,7 @@ const memberUser: User = {
   updated_at: '2026-01-01',
 }
 
-test('RBAC Invariant 1: All roles see the exact same 29 navigation entries', () => {
+test('RBAC Invariant 1: All roles see the same unified navigation entries', () => {
   const roles = [adminUser, leaderUser, memberUser]
   for (const user of roles) {
     const nav = filterNav(getNavigationForRole(user.system_permission), user)
@@ -70,10 +70,9 @@ test('RBAC Invariant 2 & 3: Restricted data is guarded; view-only does not expos
   assert.ok(auditItem)
   assert.equal(auditItem.accessStatus, 'restricted')
 
-  // Account Management requires staff.manage -> member is restricted
-  const accountItem = memberNav.find(i => i.href === '/staff?tab=accounts')
-  assert.ok(accountItem)
-  assert.equal(accountItem.accessStatus, 'restricted')
+  // Account Management stays inside Staff and is available only to staff managers.
+  assert.equal(memberNav.find(i => i.href === '/staff?tab=accounts'), undefined)
+  assert.equal(memberNav.find(i => i.href === '/staff')?.accessStatus, 'read_only')
 
   // Campaigns requires campaigns.manage -> member gets read_only
   const campaignsItem = memberNav.find(i => i.href === '/campaigns')

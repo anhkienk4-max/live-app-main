@@ -241,7 +241,7 @@ test('RC19-G2-SYNC-06: CalendarView implementation contract conforms to sync, em
 
   // 5. goToToday checks isViewWithinDateRange and jumps safely with toast
   assert.match(source, /const goToToday = \(\) =>/)
-  assert.match(source, /<Button variant="outline" onClick=\{goToToday\} className="h-9">/)
+  assert.match(source, /<Button variant="outline" onClick=\{goToToday\} className="h-9"[^>]*data-testid="calendar-today-btn">/)
 
   // 6. ActiveFilterChips setFilters properly synchronizes value.time
   assert.match(source, /calendar_filters: JSON\.stringify\(\{ \.\.\.value, time: value\.time \}\)/)

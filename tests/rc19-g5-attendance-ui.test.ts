@@ -2,13 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   calculateAttendanceTimePolicy,
   parseMinutesFromTimeString,
   formatMinutesToTimeString,
 } from '../lib/utils/selfAttendanceContract'
 
-const repoRoot = path.resolve(__dirname, '..')
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 test('G5-01: Time Policy — Host arrival deadline (T-15m), Check-in window open (T-120m), Check-out close (T+120m) in Asia/Ho_Chi_Minh', () => {
   const policy = calculateAttendanceTimePolicy('10:00', '18:00', 'host', 'Asia/Ho_Chi_Minh')

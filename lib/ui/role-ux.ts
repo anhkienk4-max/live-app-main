@@ -61,7 +61,6 @@ export const UNIFIED_NAVIGATION_CATALOG: NavItem[] = [
   { name: 'Swaps', href: '/swaps', icon: RefreshCw, labelKey: 'swaps', group: 'operations' },
   { name: 'Live', href: '/live', icon: Radio, labelKey: 'live', shortLabelKey: 'live', group: 'operations' },
   { name: 'Attendance', href: '/calendar?tab=attendance', icon: UserCheck, labelKey: 'attendance', group: 'operations' },
-  { name: 'Shift Notes', href: '/calendar?tab=notes', icon: FileText, labelKey: 'shiftNotes', group: 'operations' },
 
   // Data & Reports
   { name: 'Reports', href: '/reports', icon: FileText, labelKey: 'reports', group: 'data' },
@@ -73,7 +72,6 @@ export const UNIFIED_NAVIGATION_CATALOG: NavItem[] = [
 
   // People & Finance
   { name: 'Staff Directory', href: '/staff', icon: Users, labelKey: 'staffDirectory', group: 'people', actionPermissions: ['staff.manage'] },
-  { name: 'Account Management', href: '/staff?tab=accounts', icon: Users, labelKey: 'accountManagement', group: 'people', requiredPermissions: ['staff.manage'] },
   { name: 'Payroll', href: '/payroll', icon: Banknote, labelKey: 'payroll', group: 'people', requiredPermissions: ['payroll.manage'], requiredCapability: 'payroll' },
   { name: 'Personal Payslip', href: '/payroll?tab=personal', icon: Banknote, labelKey: 'personalPayslip', group: 'people' },
 
@@ -85,6 +83,16 @@ export const UNIFIED_NAVIGATION_CATALOG: NavItem[] = [
   { name: 'Audit', href: '/audit', icon: History, labelKey: 'auditHistory', group: 'system', requiredPermissions: ['audit.view', 'audit.view_team'] },
   { name: 'Settings', href: '/settings', icon: Settings, labelKey: 'settings', group: 'system' },
 ]
+
+/**
+ * Routes that are intentionally NOT top-level sidebar entries (RC19 G6) but must stay reachable.
+ * They are internal tabs of an owning module and remain valid deep links / bookmarks.
+ * Permission enforcement stays in the owning page and in API/RLS, never in this list.
+ */
+export const PRESERVED_INTERNAL_ROUTES = [
+  { href: '/calendar?tab=notes', owner: '/calendar', note: 'Operational notes live in Shift Detail; legacy tab kept as compatibility landing.' },
+  { href: '/staff?tab=accounts', owner: '/staff', note: 'Account Management is an authorized tab of the Staff module.' },
+] as const
 
 export function resolveNavAccessStatus(
   item: NavItem,

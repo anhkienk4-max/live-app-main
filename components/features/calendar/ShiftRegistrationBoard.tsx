@@ -50,6 +50,7 @@ import { PageLoadError } from '@/components/ui/page-load-error'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
 import { formatRegistrationErrorMessage } from '@/lib/utils/shiftRegistration'
+import { withReturnTo } from '@/lib/utils/returnContext'
 import { deriveStaffingAttention } from '@/lib/ui/operational-attention'
 import { AttentionBanner } from '@/components/ui/operational-status'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
@@ -733,7 +734,7 @@ export function ShiftRegistrationBoard({
           onEdit={() => {
             const shiftId = detailShift.id
             setDetailShift(null)
-            router.push(`/shifts?edit_shift_id=${encodeURIComponent(shiftId)}`)
+            router.push(withReturnTo(`/shifts?edit_shift_id=${encodeURIComponent(shiftId)}`, window.location.pathname + window.location.search))
           }}
           onDelete={() => {
             setDetailShift(null)

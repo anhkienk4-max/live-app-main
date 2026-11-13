@@ -15,7 +15,6 @@ test('RC19 C4.4: Navigation Parity — all modules are visible across all authen
 
   for (const role of roles) {
     const rawNav = getNavigationForRole(role)
-    assert.equal(rawNav.length, 29, `${role} navigation must include all application modules`)
     assert.equal(rawNav.length, UNIFIED_NAVIGATION_CATALOG.length)
 
     const user: Pick<User, 'role' | 'system_permission'> = {
@@ -25,7 +24,7 @@ test('RC19 C4.4: Navigation Parity — all modules are visible across all authen
 
     const filtered = filterNav(rawNav, user)
     // No module may be removed for authenticated users
-    assert.equal(filtered.length, 29, `${role} filtered navigation must keep all modules`)
+    assert.equal(filtered.length, UNIFIED_NAVIGATION_CATALOG.length, `${role} navigation must preserve catalog parity`)
 
     // Verify all 5 groups exist and are populated
     const grouped = groupNavigation(filtered)
@@ -42,7 +41,7 @@ test('RC19 C4.4: Navigation Parity — all modules are visible across all authen
       system_permission: 'member',
     }
     const filtered = filterNav(getNavigationForRole('member'), user)
-    assert.equal(filtered.length, 29, `Operational role ${opRole} must see all modules`)
+    assert.equal(filtered.length, UNIFIED_NAVIGATION_CATALOG.length, `Operational role ${opRole} must see all modules`)
   }
 })
 
@@ -122,7 +121,7 @@ test('RC19 C4.4: Workforce Navigation Filter — does not strip items, preserves
     own_performance: false,
     payroll: false,
   })
-  assert.equal(noCaps.length, 29, 'filterWorkforceNavigation must never remove routes')
+  assert.equal(noCaps.length, UNIFIED_NAVIGATION_CATALOG.length, 'filterWorkforceNavigation must never remove routes')
   assert.equal(noCaps.find(i => i.href === '/payroll')?.accessStatus, 'restricted')
   assert.equal(noCaps.find(i => i.href === '/workforce')?.accessStatus, 'restricted')
 
@@ -133,7 +132,7 @@ test('RC19 C4.4: Workforce Navigation Filter — does not strip items, preserves
     own_performance: true,
     payroll: false,
   })
-  assert.equal(ownCaps.length, 29)
+  assert.equal(ownCaps.length, UNIFIED_NAVIGATION_CATALOG.length, 'read-only capability discovery must preserve catalog parity')
   assert.equal(ownCaps.find(i => i.href === '/workforce')?.accessStatus, 'read_only')
 
   // With full capabilities:
@@ -143,7 +142,7 @@ test('RC19 C4.4: Workforce Navigation Filter — does not strip items, preserves
     own_performance: true,
     payroll: true,
   })
-  assert.equal(fullCaps.length, 29)
+  assert.equal(fullCaps.length, UNIFIED_NAVIGATION_CATALOG.length)
   assert.equal(fullCaps.find(i => i.href === '/payroll')?.accessStatus, 'available')
   assert.equal(fullCaps.find(i => i.href === '/workforce')?.accessStatus, 'available')
 })

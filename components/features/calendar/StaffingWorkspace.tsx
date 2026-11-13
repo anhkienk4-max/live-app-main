@@ -9,6 +9,7 @@ import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { Download, Eye, Filter, LayoutGrid, RefreshCw, Search, Table as TableIcon, Users, UserCheck, X } from 'lucide-react'
 import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
 import { safeSpreadsheetValue } from '@/lib/utils/calendarExport'
+import { withReturnTo } from '@/lib/utils/returnContext'
 import { brandService, campaignService, platformService, shiftService, userService, getShiftRoleCapacities } from '@/lib/services/dataService'
 import type { Brand, Campaign, Platform, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import { useTranslation } from '@/lib/i18n'
@@ -957,7 +958,7 @@ export function StaffingWorkspace() {
           onUpdate={() => void load()}
           onEdit={() => {
             setDetailOpen(false)
-            router.push(`/shifts?edit_shift_id=${encodeURIComponent(selected.id)}`)
+            router.push(withReturnTo(`/shifts?edit_shift_id=${encodeURIComponent(selected.id)}`, window.location.pathname + window.location.search))
           }}
           onDelete={() => {
             setDetailOpen(false)

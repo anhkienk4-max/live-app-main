@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { shiftRegistrationService, shiftService, reportService } from '@/lib/services/dataService'
@@ -170,6 +171,7 @@ function ActiveFilterChips({ filters, setFilters, onClearAll, t, brands, platfor
 }
 
 export function CalendarView({ createRequest = 0 }: { createRequest?: number }) {
+  const router = useRouter()
   const { currentUser } = useCurrentUser()
   const { language, t } = useTranslation()
   const { toast } = useToast()
@@ -896,7 +898,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
                 <Button type="button" variant="outline" size="sm" className="h-9"
                   data-testid="calendar-open-staffing-gaps"
-                  onClick={() => window.location.assign('/staffing?gap=missing')}>
+                  onClick={() => router.push('/staffing?gap=missing')}>
                   <UserCheck className="mr-2 h-4 w-4" />
                   Ca cần bổ sung nhân sự
                 </Button>

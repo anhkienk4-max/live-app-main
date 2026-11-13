@@ -1,10 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
-import { UNIFIED_NAVIGATION_CATALOG } from '../lib/ui/role-ux.ts'
+import { PRESERVED_INTERNAL_ROUTES, UNIFIED_NAVIGATION_CATALOG } from '../lib/ui/role-ux.ts'
 
-test('RC19 C4.4: 28-item destination matrix — all route files exist and are verified', () => {
-  assert.ok(UNIFIED_NAVIGATION_CATALOG.length >= 28, 'Catalog must contain at least 28 canonical items')
+test('RC19 G6: top-level destinations resolve and internal routes stay out of navigation', () => {
 
   const verifiedDestinations: Record<string, string> = {}
   for (const item of UNIFIED_NAVIGATION_CATALOG) {
@@ -18,8 +17,9 @@ test('RC19 C4.4: 28-item destination matrix — all route files exist and are ve
   // Ensure key functional areas are present in catalog
   const paths = UNIFIED_NAVIGATION_CATALOG.map(item => item.href)
   assert.ok(paths.includes('/calendar?tab=attendance'), 'Attendance must be in catalog')
-  assert.ok(paths.includes('/calendar?tab=notes'), 'Shift Notes must be in catalog')
-  assert.ok(paths.includes('/staff?tab=accounts'), 'Account Management must be in catalog')
+  assert.ok(!paths.includes('/calendar?tab=notes'), 'Shift Notes are owned by Shift Detail')
+  assert.ok(!paths.includes('/staff?tab=accounts'), 'Account Management is owned by Staff')
+  assert.deepEqual(PRESERVED_INTERNAL_ROUTES.map(route => route.href), ['/calendar?tab=notes', '/staff?tab=accounts'])
   assert.ok(paths.includes('/payroll?tab=personal'), 'Personal Payslip must be in catalog')
   assert.ok(paths.includes('/staffing?tab=registration'), 'Registration must be in catalog')
 })
@@ -34,6 +34,7 @@ test('RC19 C4.4: CalendarWorkspace recognizes attendance and notes tabs with rea
   assert.match(workspace, /"notes"/)
   assert.match(workspace, /data-testid="calendar-tab-attendance"/)
   assert.match(workspace, /data-testid="calendar-tab-notes"/)
+  assert.match(workspace, /currentTab && VALID_CALENDAR_TABS\.includes\(currentTab\) \? currentTab : defaultTab/)
 
   // Mounting targets
   assert.match(workspace, /<TabsContent[^>]*value="attendance"[^>]*>[\s\S]*?<ShiftRegistrationBoard[^>]*defaultDetailTab="attendance"/)
