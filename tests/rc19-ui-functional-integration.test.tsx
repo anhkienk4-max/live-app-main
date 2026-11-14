@@ -413,9 +413,9 @@ test('CATALOG RBAC: Non-admin negative permission testing (zero mutation actions
   // "Thêm biến thể SKU mới" form only renders when isAdmin === true
   assert.match(catalogSrc, /\{skuId === 'new' && isAdmin && \(\s*<Card className="border-blue-300 bg-blue-50\/20">\s*<CardHeader className="pb-2">\s*<CardTitle className="text-xs font-bold">Thêm biến thể SKU mới<\/CardTitle>/)
 
-  // "Hình ảnh & tài nguyên" / ProductAssetGallery gates resource metadata and attach form behind isAdmin
+  // Product gallery remains scoped to Admin resource-management actions.
   assert.match(catalogSrc, /<ProductAssetGallery[\s\S]*?isAdmin=\{isAdmin\}[\s\S]*?onAttach=/)
-  assert.match(catalogSrc, /function ProductAssetGallery\([\s\S]*?if \(!isAdmin\) \{\s*return <section aria-label="Product gallery"[\s\S]*?Chi tiết tài nguyên và xem trước được ẩn[\s\S]*?Gắn tài nguyên hiện có vào sản phẩm/)
+  assert.match(catalogSrc, /function ProductAssetGallery[\s\S]*?if \(!isAdmin\) \{\s*return <section aria-label="Product gallery"[\s\S]*?Chi tiết tài nguyên và xem trước được ẩn[\s\S]*?Gắn tài nguyên hiện có vào sản phẩm/)
 
   // "Tham gia chiến dịch" only renders when isAdmin === true
   assert.match(catalogSrc, /\{isAdmin && \(\s*<div className="pt-2 border-t border-border\/50 space-y-2 text-xs">\s*<span className="font-bold text-slate-800">Tham gia chiến dịch:<\/span>/)
