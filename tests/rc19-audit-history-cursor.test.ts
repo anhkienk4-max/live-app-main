@@ -82,3 +82,11 @@ test('C12 retains the database error code for permission and retry handling', as
   }) } as never)
   await assert.rejects(() => repository.getAuditHistoryPage({}), (error: Error & { code?: string }) => error.code === '57014')
 })
+
+test('C12 AuditHistory preserves page-1 null cursor in cursorHistory for Next -> Previous navigation', () => {
+  const auditHistorySource = readFileSync('components/features/audit/AuditHistory.tsx', 'utf8')
+  assert.match(auditHistorySource, /useState<Array<AuditHistoryCursor \| null>>\(\[\]\)/)
+  assert.match(auditHistorySource, /item === null \|\| isAuditCursor\(item\)/)
+  assert.match(auditHistorySource, /const history = \[\.\.\.cursorHistory, cursor\]/)
+  assert.match(auditHistorySource, /const previous = cursorHistory\.at\(-1\) \?\? null/)
+})
