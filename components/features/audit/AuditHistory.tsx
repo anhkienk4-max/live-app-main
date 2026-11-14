@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Eye, Filter, History, RotateCcw, ShieldAlert } from 'lucide-react'
 import { AuditAction, AuditLog, AuditModule, DeletionImpact } from '@/lib/types/database.types'
-import { auditService } from '@/lib/services/auditService'
+import { auditService, type AuditLogFilters } from '@/lib/services/auditService'
 import { ArchivedEntitySummary, brandService, lifecycleService } from '@/lib/services/dataService'
 import type { AuditHistoryCursor } from '@/lib/services/supabaseAuditService'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
+import { PageLoadError } from '@/components/ui/page-load-error'
 import { useToast } from '@/components/ui/toast'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { useTranslation } from '@/lib/i18n'
@@ -208,8 +209,20 @@ export function AuditHistory() {
       }
       if (!isCurrent(request)) return
       setTeamCapabilityDenied(false)
+      const rpcFilters: AuditLogFilters = {
+        ...(filters.query.trim() ? { query: filters.query.trim() } : {}),
+        ...(filters.from.trim() ? { from: filters.from.trim() } : {}),
+        ...(filters.to.trim() ? { to: filters.to.trim() } : {}),
+        ...(filters.actorIds.length ? { actor: filters.actorIds } : {}),
+        ...(filters.brandIds.length ? { brand_id: filters.brandIds } : {}),
+        ...(filters.roles.length ? { role: filters.roles } : {}),
+        ...(filters.modules.length ? { module: filters.modules } : {}),
+        ...(filters.actions.length ? { action: filters.actions } : {}),
+        ...(filters.statuses.length ? { status: filters.statuses } : {}),
+        ...(filters.sources.length ? { source: filters.sources } : {}),
+      }
       const [visible, deleted] = await Promise.all([
-        auditService.getAuditHistoryPage({ user: currentUser, cursor, pageSize, filters: { ...filters, actor: filters.actorIds, brand_id: filters.brandIds, role: filters.roles, module: filters.modules, action: filters.actions, status: filters.statuses, source: filters.sources }, sort, signal: controller.signal }),
+        auditService.getAuditHistoryPage({ user: currentUser, cursor, pageSize, filters: rpcFilters, sort, signal: controller.signal }),
         isAdmin ? lifecycleService.getArchivedPage(currentUser.id,{page:archivedPage,pageSize:archivedPageSize as 10|20|50}) : Promise.resolve({items:[],total:0,page:1}),
       ])
       if(!isCurrent(request))return
@@ -228,8 +241,8 @@ export function AuditHistory() {
         setLoadError(error)
       }
     } finally {
+      if (isCurrent(request)) setLoading(false)
       if (controllerRef.current === controller) controllerRef.current = null
-      if(isCurrent(request))setLoading(false)
     }
   }, [canView, currentUser, filters, isAdmin, cursor, pageSize, sort, archivedPage, archivedPageSize, identity, userLoading, next, isCurrent, clearAuditSurface])
 
@@ -285,7 +298,7 @@ export function AuditHistory() {
         : loadErrorCode === '22023'
           ? 'The server rejected an Audit History filter or cursor. Check the filters and retry.'
           : 'Audit History could not be loaded. Your access and saved audit records were not changed.'
-    return <Card role="alert"><CardContent className="flex min-h-64 flex-col items-center justify-center gap-3 text-center"><h2 className="font-semibold">Audit History unavailable</h2><p className="max-w-xl text-sm text-muted-foreground">{message}</p><Button variant="outline" onClick={() => void load()}>Try again</Button></CardContent></Card>
+    return <PageLoadError error={new Error(message)} onRetry={() => void load()} />
   }
 
   const archivedTotalPages = Math.max(1, Math.ceil(archivedTotal / archivedPageSize))

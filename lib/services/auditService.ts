@@ -269,8 +269,25 @@ export const auditService = {
     hydrate()
     const safePageSize = [10, 20, 50].includes(pageSize) ? pageSize : 20
     const snapshotAt = cursor?.snapshot_at ?? new Date().toISOString()
-    const from = filters.from ?? new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const to = filters.to ?? new Date().toISOString().slice(0, 10)
+    const hoChiMinhDate = (date = new Date()) =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+    const parseIsoDateUtcMs = (value: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw Object.assign(new Error('AUDIT_FILTER_INVALID'), { code: '22023' })
+      const ms = Date.parse(`${value}T00:00:00Z`)
+      if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== value) {
+        throw Object.assign(new Error('AUDIT_FILTER_INVALID'), { code: '22023' })
+      }
+      return ms
+    }
+    const rawTo = typeof filters.to === 'string' ? filters.to.trim() : ''
+    const rawFrom = typeof filters.from === 'string' ? filters.from.trim() : ''
+    const to = rawTo || hoChiMinhDate()
+    const toMs = parseIsoDateUtcMs(to)
+    const from = rawFrom || new Date(toMs - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const fromMs = parseIsoDateUtcMs(from)
+    if (toMs < fromMs || (toMs - fromMs) / (24 * 60 * 60 * 1000) > 365) {
+      throw Object.assign(new Error('AUDIT_DATE_RANGE_INVALID'), { code: '22023' })
+    }
     const statusValues = Array.isArray(filters.status) ? filters.status : filters.status ? [filters.status] : []
     const query = filters.query?.trim().toLowerCase() ?? ''
     const scoped = filterAuditLogs(visibleLogsFor(user), { ...filters, from, to, query: undefined, status: undefined })

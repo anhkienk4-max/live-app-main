@@ -36,7 +36,7 @@ type AuditReviewRow = {
   handling_reason: string | null
 }
 
-type AuditRepositoryFilters = Record<string, string | readonly string[]>
+type AuditRepositoryFilters = Record<string, string | readonly string[] | undefined>
 
 export type AuditHistoryCursor = { created_at: string; id: string; snapshot_at: string }
 export type AuditHistoryPage = {
@@ -216,12 +216,24 @@ export function createSupabaseAuditRepository(client: SupabaseClient): SupabaseA
     },
     async getAuditHistoryPage({ cursor, pageSize = 20, filters = {}, sort = 'newest', signal }) {
       const safePageSize = [10, 20, 50].includes(pageSize) ? pageSize : 20
-      const normalizedFilters = Object.fromEntries(Object.entries(filters).map(([key, value]) => [
-        key,
-        Array.isArray(value)
-          ? value.filter(item => item !== 'all').map(item => key === 'status' ? ['failed', 'retryable'].includes(item) ? 'failed' : 'success' : item)
-          : value === 'all' ? undefined : key === 'brand_id' && value ? [value] : value,
-      ]))
+      const scalarKeys = ['from', 'to', 'entity_type', 'entity_id', 'query'] as const
+      const arrayKeys = ['actor', 'brand_id', 'role', 'module', 'action', 'status', 'source'] as const
+      const normalizedFilters: Record<string, string | string[]> = {}
+      for (const key of scalarKeys) {
+        const raw = filters[key]
+        const text = typeof raw === 'string' ? raw.trim() : ''
+        if (text && text !== 'all') normalizedFilters[key] = text
+      }
+      for (const key of arrayKeys) {
+        const raw = filters[key]
+        const items = (Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : [])
+          .filter((item): item is string => typeof item === 'string')
+          .map(item => item.trim())
+          .filter(item => item.length > 0 && item !== 'all')
+          .map(item => key === 'status' ? (['failed', 'retryable'].includes(item) ? 'failed' : 'success') : item)
+        const deduped = [...new Set(items)]
+        if (deduped.length) normalizedFilters[key] = deduped
+      }
       let request = client.rpc('get_audit_history_page', {
         p_filters: normalizedFilters,
         p_cursor_created_at: cursor?.created_at ?? null,
