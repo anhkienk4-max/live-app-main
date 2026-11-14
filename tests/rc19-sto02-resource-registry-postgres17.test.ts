@@ -6,7 +6,10 @@ import { Client } from 'pg'
 
 const databaseUrl = process.env.DATABASE_URL
 const proposalRoot = path.resolve('supabase/proposals/rc19-sto02-resource-registry')
+const sto02Baseline = fs.readFileSync(path.join(proposalRoot, '20261027150000_rc19_sto02_resource_registry.sql'), 'utf8')
 const migration = fs.readFileSync(path.resolve('supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql'), 'utf8')
+  .replace(/^\s*BEGIN;\s*/m, '')
+  .replace(/\s*COMMIT;\s*$/m, '')
 const preflight = fs.readFileSync(path.join(proposalRoot, 'preflight.sql'), 'utf8')
 const disposableName = 'rc19_sto02_disposable'
 
@@ -44,6 +47,9 @@ test('STO-02 registry migration enforces PostgreSQL 17 visibility, privacy, and 
     await client.query('drop schema public cascade; create schema public; create schema private;')
     await client.query(`
       create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
+      alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role;
+      alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
+      alter default privileges for role postgres in schema public grant execute on functions to anon, authenticated, service_role;
       create table public.business_users(id text primary key, full_name text, system_permission text);
       insert into public.business_users values ('admin','Admin','admin'),('owner','Owner','member'),('member','Member','member');
       create table public.brands(id text primary key);
@@ -70,6 +76,7 @@ test('STO-02 registry migration enforces PostgreSQL 17 visibility, privacy, and 
     await client.query(`insert into supabase_migrations.schema_migrations values ('20261027150000')`)
     await assert.rejects(client.query(preflight), (error: { code?: string; message?: string }) => error.code === '55000' && /ALREADY_RECORDED_AS_APPLIED/.test(error.message ?? ''))
     await client.query('rollback to savepoint reject_recorded_proposal; release savepoint reject_recorded_proposal')
+    await client.query(sto02Baseline)
     await client.query(migration)
     await client.query(`
       select set_config('sto02.actor','admin',true);
