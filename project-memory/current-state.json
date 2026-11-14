@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "1ea36d214f36b9cfda77e1e15ac602147ae3c306",
+    "head": "8db6f562c5d99c9418978220dd10ecded5754fc1",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -123,10 +123,10 @@
         "components": 195,
         "lib": 291,
         "scripts": 151,
-        "supabase": 150,
-        "tests": 381
+        "supabase": 152,
+        "tests": 384
       },
-      "total": 1263
+      "total": 1268
     },
     "tests": {
       "files": [
@@ -311,6 +311,8 @@
         "tests/rc19-c515-compensation-ui-contract.test.ts",
         "tests/rc19-c515-payroll-approval-handler.test.ts",
         "tests/rc19-c515-payroll-migration-contract.test.ts",
+        "tests/rc19-c6-issue184-import.test.ts",
+        "tests/rc19-calendar-overlap-range.test.ts",
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-destination-integrity.test.ts",
@@ -439,7 +441,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 308
+      "count": 310
     },
     "migrations": {
       "files": [
@@ -562,11 +564,13 @@
         "supabase/migrations/20261110130000_rc19_c515_payroll_approval_hold.sql",
         "supabase/migrations/20261110140000_rc19_c515_overtime_cancellation_approvals.sql",
         "supabase/migrations/20261111000000_rc19_c515_live_cancellation_transition.sql",
+        "supabase/migrations/20261112000000_rc19_c2_calendar_overlap_range.sql",
         "supabase/migrations/20261112120000_rc19_audit_history_keyset.sql",
+        "supabase/migrations/20261112130000_rc19_c6_import_source_reconciliation.sql",
         "supabase/migrations/20261113083000_rc19_c4_audit_dependency.sql",
         "supabase/migrations/20261113084154_rc19_c4_atomic_staffing_replacement.sql"
       ],
-      "count": 122
+      "count": 124
     }
   },
   "verification": {
@@ -580,5 +584,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-14T20:41:03+07:00"
+  "synced_at": "2026-11-14T23:10:27+07:00"
 }
