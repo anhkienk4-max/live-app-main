@@ -98,19 +98,23 @@ async function pageAll(actor, filters, scope = 'all') {
     p_enabled: true, p_expected_version: 0, p_valid_from: new Date(Date.now() - 120_000).toISOString(),
     p_valid_until: new Date(Date.now() - 60_000).toISOString(), p_reason: 'expired disposable pagination grant',
   }), `expired grant ${brandB}`)
+  const hcmDay = offsetDays => new Date(Date.now() + 7 * 3600_000 + offsetDays * 86400_000).toISOString().slice(0, 10)
+  const fromDate = hcmDay(-2)
+  const toDate = hcmDay(2)
+  const monthBoundaryDate = '2026-12-31'
   const shiftRows = []
   for (let index = 0; index < 37; index += 1) {
     const startMinute = index
     const start = `23:${String(startMinute).padStart(2, '0')}`
     const end = `00:${String(startMinute).padStart(2, '0')}`
     const brandId = index % 2 ? brandB : brandA
-    const row = await createShift(admin.client, brandId, platformId, '2026-11-12', start, end, `C2PAG-${run} dense ${index}`)
+    const row = await createShift(admin.client, brandId, platformId, toDate, start, end, `C2PAG-${run} dense ${index}`)
     shiftRows.push(row)
   }
-  shiftRows.push(await createShift(admin.client, brandA, platformId, '2026-11-10', '23:30', '01:30', `C2PAG-${run} overnight`))
-  const monthBoundary = await createShift(admin.client, brandA, platformId, '2026-11-30', '23:30', '01:30', `C2PAG-${run} month boundary`)
+  shiftRows.push(await createShift(admin.client, brandA, platformId, fromDate, '23:30', '01:30', `C2PAG-${run} overnight`))
+  const monthBoundary = await createShift(admin.client, brandA, platformId, monthBoundaryDate, '23:30', '01:30', `C2PAG-${run} month boundary`)
 
-  const dayFilters = { from: '2026-11-10', to: '2026-11-12', calendarOverlap: true, search: `C2PAG-${run}` }
+  const dayFilters = { from: fromDate, to: toDate, calendarOverlap: true, search: `C2PAG-${run}` }
   const adminPages = await pageAll(admin.client, dayFilters)
   assert.equal(adminPages.total, 38)
   const expectedOrder = [...shiftRows].sort((a, b) => String(a.date).localeCompare(String(b.date))
@@ -151,7 +155,7 @@ async function pageAll(actor, filters, scope = 'all') {
   }), 'post-revocation next page')
   assert.ok(staleNextPage.rows.every(row => row.brand_id === brandA), 'revoked rows cannot leak across an offset page boundary')
 
-  const month = await pageAll(admin.client, { from: '2026-11-30', to: '2026-11-30', calendarOverlap: true, search: `C2PAG-${run}` })
+  const month = await pageAll(admin.client, { from: monthBoundaryDate, to: monthBoundaryDate, calendarOverlap: true, search: `C2PAG-${run}` })
   assert.deepEqual(month.rows.map(row => row.id), [monthBoundary.id])
   const anonDenied = await anon.rpc('get_shift_list_page', {
     p_scope: 'all', p_page: 1, p_page_size: 10, p_filters: dayFilters,
