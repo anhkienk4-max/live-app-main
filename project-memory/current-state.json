@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "e573b97b577d80dc9f9b9a801c851e5aa86cccbf",
+    "head": "8d70edafb09a53fb927ee9da729395907f9cbeab",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -120,13 +120,13 @@
     "source_files": {
       "roots": {
         "app": 95,
-        "components": 190,
-        "lib": 288,
-        "scripts": 114,
-        "supabase": 142,
-        "tests": 363
+        "components": 195,
+        "lib": 291,
+        "scripts": 151,
+        "supabase": 150,
+        "tests": 381
       },
-      "total": 1192
+      "total": 1263
     },
     "tests": {
       "files": [
@@ -291,6 +291,7 @@
         "tests/rc18a-shift-list-url-state.test.ts",
         "tests/rc19-attendance-evidence-review-api.test.ts",
         "tests/rc19-attendance-photo-review.test.ts",
+        "tests/rc19-audit-history-cursor.test.ts",
         "tests/rc19-auth-responsive-layout.test.tsx",
         "tests/rc19-batch01-1-acceptance.test.ts",
         "tests/rc19-batch01-3-database-identity.test.ts",
@@ -302,19 +303,31 @@
         "tests/rc19-batch05a4-storage-runtime-migration.test.ts",
         "tests/rc19-batch05a41-sequential-migrations.test.ts",
         "tests/rc19-c3-mutation-authorization.test.ts",
+        "tests/rc19-c4-atomic-staffing-replacement.test.ts",
+        "tests/rc19-c4-audit-dependency.test.ts",
         "tests/rc19-c4.4-rbac-behavior.test.ts",
         "tests/rc19-c511-persisted-e2e.test.ts",
         "tests/rc19-c511-segmented-staffing.test.ts",
+        "tests/rc19-c515-compensation-ui-contract.test.ts",
+        "tests/rc19-c515-payroll-approval-handler.test.ts",
+        "tests/rc19-c515-payroll-migration-contract.test.ts",
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-destination-integrity.test.ts",
         "tests/rc19-dynamic-rbac-server-guard.test.ts",
         "tests/rc19-effective-permission.test.ts",
         "tests/rc19-filter01a-shifts.test.ts",
+        "tests/rc19-g12-audit-history-service.test.ts",
+        "tests/rc19-g2-calendar-date-sync.test.ts",
+        "tests/rc19-g2-calendar-overlap.test.ts",
         "tests/rc19-g2-inapp-camera.test.ts",
+        "tests/rc19-g3-full-shift-editor.test.ts",
         "tests/rc19-g3-import-bulk-export-registration.test.ts",
         "tests/rc19-g4-calendar-staffing-swap.test.ts",
+        "tests/rc19-g5-attendance-ui.test.ts",
         "tests/rc19-g5-final-ui-completion.test.ts",
+        "tests/rc19-issue93-pass-swap.test.ts",
+        "tests/rc19-issue99-brand-knowledge.test.ts",
         "tests/rc19-mobile-attendance-entry.test.ts",
         "tests/rc19-mobile-month-view-parity.test.ts",
         "tests/rc19-my-payslip.test.ts",
@@ -334,6 +347,7 @@
         "tests/rc19-reports-app-router-wiring.test.ts",
         "tests/rc19-reports-export-authority.test.ts",
         "tests/rc19-reports-photo-groups-164.test.ts",
+        "tests/rc19-return-context.test.ts",
         "tests/rc19-schedule-source-storage-service.test.ts",
         "tests/rc19-self-attendance-contract.test.ts",
         "tests/rc19-shift-note-rpc-client.test.ts",
@@ -367,6 +381,7 @@
         "tests/real-dashboard-ocr-smoke.test.ts",
         "tests/registration-board-performance.test.ts",
         "tests/release-provenance.test.ts",
+        "tests/release-smoke-staged.test.ts",
         "tests/report-artifact-export-authority.test.ts",
         "tests/report-history-access.test.ts",
         "tests/report-null-semantics-consumers.test.ts",
@@ -424,7 +439,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 293
+      "count": 308
     },
     "migrations": {
       "files": [
@@ -541,9 +556,17 @@
         "supabase/migrations/20261107120000_rc19_open_shifts_server_selection.sql",
         "supabase/migrations/20261108135226_rc19_staffing_candidate_brand_scope.sql",
         "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql",
-        "supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql"
+        "supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql",
+        "supabase/migrations/20261110115529_rc19_c515_payroll_second_precision.sql",
+        "supabase/migrations/20261110123000_rc19_issue93_pass_swap_lead_times.sql",
+        "supabase/migrations/20261110130000_rc19_c515_payroll_approval_hold.sql",
+        "supabase/migrations/20261110140000_rc19_c515_overtime_cancellation_approvals.sql",
+        "supabase/migrations/20261111000000_rc19_c515_live_cancellation_transition.sql",
+        "supabase/migrations/20261112120000_rc19_audit_history_keyset.sql",
+        "supabase/migrations/20261113083000_rc19_c4_audit_dependency.sql",
+        "supabase/migrations/20261113084154_rc19_c4_atomic_staffing_replacement.sql"
       ],
-      "count": 114
+      "count": 122
     }
   },
   "verification": {
@@ -557,5 +580,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-10T10:58:42+07:00"
+  "synced_at": "2026-11-14T19:02:20+07:00"
 }
