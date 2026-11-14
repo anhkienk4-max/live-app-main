@@ -3,10 +3,12 @@
 import * as React from 'react'
 import { useRequestSequence } from '@/lib/hooks/useRequestSequence'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Eye, Filter, History, RotateCcw, ShieldAlert } from 'lucide-react'
 import { AuditAction, AuditLog, AuditModule, DeletionImpact } from '@/lib/types/database.types'
 import { auditService } from '@/lib/services/auditService'
-import { ArchivedEntitySummary, lifecycleService } from '@/lib/services/dataService'
+import { ArchivedEntitySummary, brandService, lifecycleService } from '@/lib/services/dataService'
+import type { AuditHistoryCursor } from '@/lib/services/supabaseAuditService'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasAnyPermission, hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
@@ -19,7 +21,6 @@ import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { useToast } from '@/components/ui/toast'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { useTranslation } from '@/lib/i18n'
-import { PageLoadError } from '@/components/ui/page-load-error'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import {
   auditEntityHref,
@@ -36,6 +37,31 @@ import {
 
 const actions: AuditAction[] = ['create', 'update', 'delete', 'soft_delete', 'restore', 'archive', 'unarchive', 'confirm', 'unconfirm', 'approve', 'reject', 'assign', 'unassign', 'register', 'cancel_registration', 'lock', 'reopen', 'import', 'export', 'ocr_run', 'ocr_rerun', 'ocr_reset', 'upload', 'remove_upload']
 const modules: AuditModule[] = ['calendar', 'live', 'reports', 'staff', 'brands', 'platforms', 'campaigns', 'swaps', 'imports', 'settings']
+type AuditHistoryFilters = { query: string; from: string; to: string; actorIds: string[]; brandIds: string[]; roles: string[]; modules: string[]; actions: string[]; statuses: string[]; sources: string[] }
+
+function readAuditCursor(params: URLSearchParams, prefix = 'cursor'): AuditHistoryCursor | null {
+  const created_at = params.get(`${prefix}_at`)
+  const id = params.get(`${prefix}_id`)
+  const snapshot_at = params.get(`${prefix}_snapshot`)
+  return created_at && id && snapshot_at ? { created_at, id, snapshot_at } : null
+}
+
+function isAuditCursor(value: unknown): value is AuditHistoryCursor {
+  return Boolean(value && typeof value === 'object' && 'created_at' in value && 'id' in value && 'snapshot_at' in value
+    && typeof value.created_at === 'string' && typeof value.id === 'string' && typeof value.snapshot_at === 'string')
+}
+
+function auditCursorHistoryKey(identity: string, filters: AuditHistoryFilters, sort: string, pageSize: number, cursor: AuditHistoryCursor | null) {
+  return `livestream-ops-audit-cursors:${JSON.stringify([identity, filters, sort, pageSize, cursor])}`
+}
+
+function readAuditFilters(params: URLSearchParams): AuditHistoryFilters {
+  return {
+    query: params.get('q') ?? '', from: params.get('from') ?? '', to: params.get('to') ?? '',
+    actorIds: params.getAll('actor'), brandIds: params.getAll('brand'), roles: params.getAll('role'),
+    modules: params.getAll('module'), actions: params.getAll('action'), statuses: params.getAll('status'), sources: params.getAll('source'),
+  }
+}
 
 export async function requireRestoreSuccess(restore: () => Promise<boolean | null>): Promise<void> {
   if (!await restore()) throw new Error('Restore operation failed silently')
@@ -45,48 +71,110 @@ export function AuditHistory() {
   const { currentUser, loading: userLoading } = useCurrentUser()
   const { toast } = useToast()
   const { t } = useTranslation()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const searchString = searchParams.toString()
+  const initialParams = new URLSearchParams(searchString)
   const [logs, setLogs] = React.useState<AuditLog[]>([])
-  const [total, setTotal] = React.useState(0)
   const [actors, setActors] = React.useState<Array<{ id: string; name: string }>>([])
-  const [page, setPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(20)
-  const [sort, setSort] = React.useState<'newest' | 'oldest'>('newest')
+  const [brands, setBrands] = React.useState<Awaited<ReturnType<typeof brandService.getAll>>>([])
+  const [brandLoadFailed, setBrandLoadFailed] = React.useState(false)
+  const [pageSize, setPageSize] = React.useState(() => [10, 20, 50].includes(Number(initialParams.get('size'))) ? Number(initialParams.get('size')) : 20)
+  const [sort, setSort] = React.useState<'newest' | 'oldest'>(initialParams.get('sort') === 'oldest' ? 'oldest' : 'newest')
+  const [cursor, setCursor] = React.useState(() => readAuditCursor(initialParams))
+  const [cursorHistory, setCursorHistory] = React.useState<AuditHistoryCursor[]>([])
+  const [nextCursor, setNextCursor] = React.useState<AuditHistoryCursor | null>(null)
+  const [hasMore, setHasMore] = React.useState(false)
+  const [range, setRange] = React.useState<{ from: string; to: string } | null>(null)
   const [archivedTotal,setArchivedTotal]=React.useState(0)
   const [archived, setArchived] = React.useState<ArchivedEntitySummary[]>([])
   const [archivedPage, setArchivedPage] = React.useState(1)
   const [archivedPageSize, setArchivedPageSize] = React.useState(10)
   const [selected, setSelected] = React.useState<AuditLog | null>(null)
   const [restoreTarget, setRestoreTarget] = React.useState<ArchivedEntitySummary | null>(null)
-  const [filters, setFilters] = React.useState({ query: '', from: '', to: '', actorIds: [] as string[], roles: [] as string[], modules: [] as string[], actions: [] as string[], statuses: [] as string[], sources: [] as string[] })
+  const [filters, setFilters] = React.useState(() => readAuditFilters(initialParams))
   const [showFilters, setShowFilters] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<unknown>(null)
   const [teamCapabilityDenied, setTeamCapabilityDenied] = React.useState(false)
+  const controllerRef = React.useRef<AbortController | null>(null)
+  const lastWrittenSearch = React.useRef<string | null>(null)
+  const returnRefreshScheduled = React.useRef(false)
+  const identityRef = React.useRef<string | null>(null)
   const clearAuditSurface = React.useCallback(() => {
-    setLogs([]); setSelected(null); setTotal(0); setActors([])
+    setLogs([]); setSelected(null)
     setArchived([]); setArchivedTotal(0); setRestoreTarget(null)
   }, [])
 
+  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const canView = Boolean(currentUser && hasAnyPermission(currentUser, ['audit.view', 'audit.view_team']))
   const isAdmin = Boolean(currentUser && hasPermission(currentUser, 'audit.view'))
   const {next,isCurrent,invalidate}=useRequestSequence()
 
   React.useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      const stored = Number(window.localStorage.getItem('livestream-ops-audit-page-size'))
-      if ([10, 20, 50].includes(stored)) setPageSize(stored)
+    if (!canView || userLoading) return
+    let active = true
+    void brandService.getAll().then(items => { if (active) { setBrands(items); setBrandLoadFailed(false) } }).catch(() => { if (active) setBrandLoadFailed(true) })
+    return () => { active = false }
+  }, [canView, identity, userLoading])
+
+  const writeUrl = React.useCallback((nextFilters: typeof filters, nextSort: typeof sort, nextPageSize: number, nextPageCursor: AuditHistoryCursor | null, mode: 'push' | 'replace') => {
+    const params = new URLSearchParams()
+    if (nextFilters.query) params.set('q', nextFilters.query)
+    if (nextFilters.from) params.set('from', nextFilters.from)
+    if (nextFilters.to) params.set('to', nextFilters.to)
+    for (const [key, values] of Object.entries({ actor: nextFilters.actorIds, brand: nextFilters.brandIds, role: nextFilters.roles, module: nextFilters.modules, action: nextFilters.actions, status: nextFilters.statuses, source: nextFilters.sources })) {
+      for (const value of values) params.append(key, value)
+    }
+    if (nextSort !== 'newest') params.set('sort', nextSort)
+    if (nextPageSize !== 20) params.set('size', String(nextPageSize))
+    if (nextPageCursor) {
+      params.set('cursor_at', nextPageCursor.created_at)
+      params.set('cursor_id', nextPageCursor.id)
+      params.set('cursor_snapshot', nextPageCursor.snapshot_at)
+    }
+    const url = `${window.location.pathname}${params.size ? `?${params}` : ''}`
+    lastWrittenSearch.current = params.toString()
+    router[mode](url, { scroll: false })
+  }, [router])
+
+  React.useEffect(() => {
+    if (lastWrittenSearch.current === searchString) { lastWrittenSearch.current = null; return }
+    const params = new URLSearchParams(searchString)
+    setFilters(readAuditFilters(params))
+    setSort(params.get('sort') === 'oldest' ? 'oldest' : 'newest')
+    const size = Number(params.get('size'))
+    setPageSize([10, 20, 50].includes(size) ? size : 20)
+    setCursor(readAuditCursor(params))
+    setCursorHistory([])
+    setActors([])
+  }, [searchString])
+
+  React.useEffect(() => {
+    if (userLoading) return
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      try {
+        const value: unknown = JSON.parse(window.sessionStorage.getItem(auditCursorHistoryKey(identity, filters, sort, pageSize, cursor)) || '[]')
+        setCursorHistory(Array.isArray(value) ? value.filter(isAuditCursor) : [])
+      } catch { setCursorHistory([]) }
     })
-    return () => {cancelAnimationFrame(frame);invalidate()}
-  }, [invalidate])
+    return () => { active = false }
+  }, [identity, filters, sort, pageSize, cursor, userLoading])
 
   const updateFilters = (next: Partial<typeof filters>) => {
-    setFilters(current => ({ ...current, ...next }))
-    setPage(1)
+    const updated = { ...filters, ...next }
+    setFilters(updated)
+    setCursor(null); setCursorHistory([]); setNextCursor(null); setActors([])
+    writeUrl(updated, sort, pageSize, null, 'replace')
   }
 
-  const identity=currentUser?currentUser.id+':'+(currentUser.system_permission??currentUser.role):''
   const [loadedIdentity,setLoadedIdentity]=React.useState('')
   const load = React.useCallback(async () => {
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
     const request=next()
     setLoading(true)
     setLoadError(null)
@@ -94,19 +182,21 @@ export function AuditHistory() {
     if (userLoading) {
       setTeamCapabilityDenied(false)
       setLoadedIdentity('')
+      if (controllerRef.current === controller) controllerRef.current = null
       return
     }
     if (!currentUser || !canView) {
       setTeamCapabilityDenied(false)
       setLoadedIdentity(identity)
       setLoading(false)
+      if (controllerRef.current === controller) controllerRef.current = null
       return
     }
     setTeamCapabilityDenied(false)
     try {
       if (resolveSystemPermission(currentUser) === 'leader'
         && process.env.NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT === 'true') {
-        const capability = await fetch('/api/audit/team-capability', { method: 'GET', cache: 'no-store', credentials: 'same-origin' })
+        const capability = await fetch('/api/audit/team-capability', { method: 'GET', cache: 'no-store', credentials: 'same-origin', signal: controller.signal })
         if (!isCurrent(request)) return
         if (capability.status === 401 || capability.status === 403) {
           setTeamCapabilityDenied(true); setLoadedIdentity(identity); return
@@ -119,38 +209,52 @@ export function AuditHistory() {
       if (!isCurrent(request)) return
       setTeamCapabilityDenied(false)
       const [visible, deleted] = await Promise.all([
-        auditService.getAuditLogs({ user: currentUser, page, pageSize, filters: { ...filters, actor: filters.actorIds, role: filters.roles, module: filters.modules, action: filters.actions, status: filters.statuses, source: filters.sources }, sort }),
+        auditService.getAuditHistoryPage({ user: currentUser, cursor, pageSize, filters: { ...filters, actor: filters.actorIds, brand_id: filters.brandIds, role: filters.roles, module: filters.modules, action: filters.actions, status: filters.statuses, source: filters.sources }, sort, signal: controller.signal }),
         isAdmin ? lifecycleService.getArchivedPage(currentUser.id,{page:archivedPage,pageSize:archivedPageSize as 10|20|50}) : Promise.resolve({items:[],total:0,page:1}),
       ])
       if(!isCurrent(request))return
       setLoadedIdentity(identity)
       setLogs(visible.items)
       setSelected(current => current && visible.items.some(item => item.id === current.id) ? current : null)
-      setTotal(visible.total)
-      setActors(visible.actors)
-      if (visible.page !== page) setPage(visible.page)
+      setActors(current => [...new Map([...current, ...visible.actors].map(actor => [actor.id, actor])).values()])
+      setNextCursor(visible.nextCursor); setHasMore(visible.hasMore); setRange(visible.range)
       setArchived(deleted.items);setArchivedTotal(deleted.total);setArchivedPage(deleted.page)
     } catch (error) {
-      if(isCurrent(request)){
+      if(isCurrent(request) && !controller.signal.aborted && !(error instanceof DOMException && error.name === 'AbortError')){
         clearAuditSurface()
+        setActors([])
         setTeamCapabilityDenied(false)
         setLoadedIdentity(identity)
         setLoadError(error)
       }
     } finally {
+      if (controllerRef.current === controller) controllerRef.current = null
       if(isCurrent(request))setLoading(false)
     }
-  }, [canView, currentUser, filters, isAdmin, page, pageSize, sort, archivedPage, archivedPageSize, identity, userLoading, next, isCurrent, clearAuditSurface])
+  }, [canView, currentUser, filters, isAdmin, cursor, pageSize, sort, archivedPage, archivedPageSize, identity, userLoading, next, isCurrent, clearAuditSurface])
 
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => { void load() })
-    return () => { cancelAnimationFrame(frame); invalidate() }
+    return () => { cancelAnimationFrame(frame); controllerRef.current?.abort(); invalidate() }
   }, [load,invalidate])
+
+  React.useEffect(() => {
+    if (userLoading) return
+    if (identityRef.current === null) { identityRef.current = identity; return }
+    if (identityRef.current === identity) return
+    identityRef.current = identity
+    setCursor(null); setCursorHistory([]); setNextCursor(null); setActors([])
+    if (identity) writeUrl(filters, sort, pageSize, null, 'replace')
+  }, [identity, filters, sort, pageSize, userLoading, writeUrl])
 
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT !== 'true') return
     if (!currentUser || resolveSystemPermission(currentUser) !== 'leader') return
-    const onReturn = () => { void load() }
+    const onReturn = () => {
+      if (returnRefreshScheduled.current) return
+      returnRefreshScheduled.current = true
+      queueMicrotask(() => { returnRefreshScheduled.current = false; void load() })
+    }
     const onVisibility = () => { if (document.visibilityState === 'visible') onReturn() }
     window.addEventListener('focus', onReturn)
     window.addEventListener('pageshow', onReturn)
@@ -164,10 +268,25 @@ export function AuditHistory() {
   }, [currentUser, load, invalidate])
 
   if (userLoading || loading || canView&&identity!==loadedIdentity) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
-  if (!currentUser || !canView || teamCapabilityDenied) {
-    return <Card><CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><ShieldAlert className="mb-3 h-10 w-10 text-amber-600" /><h2 className="font-semibold">{t('accessDenied')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('auditAccessDeniedHelp')}</p></CardContent></Card>
+  const loadErrorCode = loadError && typeof loadError === 'object' && 'code' in loadError ? String(loadError.code) : ''
+  if (!currentUser || !canView || teamCapabilityDenied || ['42501', 'PGRST301', '401', '403'].includes(loadErrorCode)) {
+    const help = loadErrorCode === 'PGRST301' || loadErrorCode === '401'
+      ? 'Your session may have expired. Sign in again to view Audit History.'
+      : t('auditAccessDeniedHelp')
+    return <Card><CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><ShieldAlert className="mb-3 h-10 w-10 text-amber-600" /><h2 className="font-semibold">{t('accessDenied')}</h2><p className="mt-1 text-sm text-muted-foreground">{help}</p></CardContent></Card>
   }
-  if (loadError) return <PageLoadError error={loadError} onRetry={() => { void load() }} />
+  if (loadError) {
+    const message = loadError instanceof Error && loadError.message === 'AUDIT_TEAM_CAPABILITY_UNAVAILABLE'
+      ? loadError.message
+      : loadErrorCode === 'PGRST202' || loadErrorCode === '42883'
+      ? 'The bounded C12 Audit History endpoint is unavailable in this environment.'
+      : loadErrorCode === '57014'
+        ? 'The bounded Audit History request timed out. Narrow the date range and retry.'
+        : loadErrorCode === '22023'
+          ? 'The server rejected an Audit History filter or cursor. Check the filters and retry.'
+          : 'Audit History could not be loaded. Your access and saved audit records were not changed.'
+    return <Card role="alert"><CardContent className="flex min-h-64 flex-col items-center justify-center gap-3 text-center"><h2 className="font-semibold">Audit History unavailable</h2><p className="max-w-xl text-sm text-muted-foreground">{message}</p><Button variant="outline" onClick={() => void load()}>Try again</Button></CardContent></Card>
+  }
 
   const archivedTotalPages = Math.max(1, Math.ceil(archivedTotal / archivedPageSize))
   const safeArchivedPage = Math.min(archivedPage, archivedTotalPages)
@@ -198,16 +317,18 @@ export function AuditHistory() {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3"><div><h1 className="flex items-center gap-2 text-xl font-semibold"><History className="h-5 w-5" />{t('auditHistoryTitle')}</h1><p className="text-xs text-muted-foreground">{t('auditHistoryDescription')}</p></div><Button size="sm" variant="outline" onClick={() => void load()}>{t('refresh')}</Button></div>
-      <div className="grid gap-3 sm:grid-cols-3"><Meta label={t('totalRows')} value={String(total)} /><Meta label={t('actor')} value={String(actors.length)} /><Meta label={t('systemPermissions')} value={resolveSystemPermission(currentUser)} /></div>
-      <div className={`grid min-w-0 items-start gap-3 ${selected ? 'xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)]' : 'grid-cols-1'}`}><div className="min-w-0 space-y-3"><Card><CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 py-2"><div className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><Input className="w-full sm:w-64" aria-label={t('entityActorSearch')} placeholder={t('entityActorSearch')} value={filters.query} onChange={event => updateFilters({ query: event.target.value })} /><FilterSelect value={filters.modules} onChange={value => updateFilters({ modules: value })} items={modules.map(value => ({ value, label: value }))} placeholder={t('auditModule')} /><FilterSelect value={filters.actions} onChange={value => updateFilters({ actions: value })} items={actions.map(value => ({ value, label: value.replaceAll('_', ' ') }))} placeholder={t('action')} /></div><Button size="sm" variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="audit-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>{showFilters && <CardContent id="audit-filter-panel" className="grid gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Input type="date" value={filters.from} onChange={event => updateFilters({ from: event.target.value })} />
-        <Input type="date" value={filters.to} onChange={event => updateFilters({ to: event.target.value })} />
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3"><div><h1 className="flex items-center gap-2 text-xl font-semibold"><History className="h-5 w-5" />{t('auditHistoryTitle')}</h1><p className="text-xs text-muted-foreground">{t('auditHistoryDescription')}</p></div><Button size="sm" variant="outline" onClick={() => { setCursor(null); setCursorHistory([]); setNextCursor(null); setActors([]); writeUrl(filters, sort, pageSize, null, 'push') }}>{t('refresh')}</Button></div>
+      <div className="grid gap-3 sm:grid-cols-3"><Meta label="Events on this page" value={String(logs.length)} /><Meta label="Date scope" value={range ? `${range.from} – ${range.to}` : '—'} /><Meta label={t('systemPermissions')} value={resolveSystemPermission(currentUser)} /></div>
+      <div className={`grid min-w-0 items-start gap-3 ${selected ? 'xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)]' : 'grid-cols-1'}`}><div className="min-w-0 space-y-3"><Card><CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 py-2"><div className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><Input className="w-full sm:w-64" aria-label="Search entity name" placeholder="Search entity name" value={filters.query} onChange={event => updateFilters({ query: event.target.value })} /><FilterSelect value={filters.modules} onChange={value => updateFilters({ modules: value })} items={modules.map(value => ({ value, label: value }))} placeholder={t('auditModule')} /><FilterSelect value={filters.actions} onChange={value => updateFilters({ actions: value })} items={actions.map(value => ({ value, label: value.replaceAll('_', ' ') }))} placeholder={t('action')} /></div><Button size="sm" variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} aria-controls="audit-filter-panel"><Filter className="mr-2 h-4 w-4" />{t('filters')}</Button></CardHeader>{showFilters && <CardContent id="audit-filter-panel" className="grid gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="text-xs font-medium">From date<Input aria-label="Audit history from date" type="date" value={filters.from} onChange={event => updateFilters({ from: event.target.value })} /></label>
+        <label className="text-xs font-medium">To date<Input aria-label="Audit history to date" type="date" value={filters.to} onChange={event => updateFilters({ to: event.target.value })} /></label>
          <FilterSelect value={filters.actorIds} onChange={value => updateFilters({ actorIds: value })} items={actors.map(actor => ({ value: actor.id, label: actor.name }))} placeholder={t('actor')} />
+         {!brandLoadFailed && <FilterSelect value={filters.brandIds} onChange={value => updateFilters({ brandIds: value })} items={brands.filter(brand => !brand.deleted_at && !brand.archived_at).map(brand => ({ value: brand.id, label: brand.name }))} placeholder={t('brand')} />}
          <FilterSelect value={filters.roles} onChange={value => updateFilters({ roles: value })} items={['member','leader','admin'].map(value => ({ value, label: value }))} placeholder={t('role')} />
-         <FilterSelect value={filters.statuses} onChange={value => updateFilters({ statuses: value })} items={['success','warning','failed','retryable'].map(value => ({ value, label: value }))} placeholder={t('status')} />
+         <FilterSelect value={filters.statuses} onChange={value => updateFilters({ statuses: value })} items={['success','failed'].map(value => ({ value, label: value }))} placeholder={t('status')} />
          <FilterSelect value={filters.sources} onChange={value => updateFilters({ sources: value })} items={['manual','excel_import','google_sheets','system','ocr','upload'].map(value => ({ value, label: value }))} placeholder={t('source')} />
-         <label className="text-xs font-medium">{t('auditSort')}<Select value={sort} onValueChange={value => { setSort(value as 'newest' | 'oldest'); setPage(1) }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="newest">{t('newestFirst')}</SelectItem><SelectItem value="oldest">{t('oldestFirst')}</SelectItem></SelectContent></Select></label>
+         {brandLoadFailed && <p role="status" className="text-xs text-muted-foreground">Brand options are unavailable; the Brand filter is disabled.</p>}
+         <label className="text-xs font-medium">{t('auditSort')}<Select value={sort} onValueChange={value => { const updatedSort = value as 'newest' | 'oldest'; setSort(updatedSort); setCursor(null); setCursorHistory([]); setNextCursor(null); setActors([]); writeUrl(filters, updatedSort, pageSize, null, 'push') }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="newest">{t('newestFirst')}</SelectItem><SelectItem value="oldest">{t('oldestFirst')}</SelectItem></SelectContent></Select></label>
       </CardContent>}</Card>
 
       <Card className="overflow-hidden"><CardContent className="p-0"><div className="max-h-[60vh] overflow-auto"><table className="w-full min-w-[680px] text-xs"><thead className="sticky top-0 z-10 bg-card shadow-sm"><tr className="border-b text-left"><th className="p-2">{t('time')}</th><th className="p-2">{t('actor')}</th><th className="p-2">{t('auditModule')} / {t('action')}</th><th className="p-2">{t('auditEntity')}</th><th className="p-2">{t('status')} / {t('source')}</th><th className="p-2">Correlation</th><th className="p-2">{t('auditDetails')}</th></tr></thead><tbody>{logs.map(entry => {
@@ -217,8 +338,8 @@ export function AuditHistory() {
         const badge = statusBadgeClass(opStatus)
         const safeModule = normalizeAuditModule(entry.module)
         const safeAction = normalizeAuditAction(entry.action)
-        return <tr className="cursor-pointer border-b hover:bg-muted/30" key={entry.id} aria-selected={selected?.id === entry.id} onClick={() => setSelected(entry)}><td className="px-2 py-1.5 whitespace-nowrap">{time}</td><td className="px-2 py-1.5">{actor.name}<p className="text-[10px] text-muted-foreground">{actor.role}</p></td><td className="p-2"><Badge variant="outline">{safeModule}</Badge><p className="mt-1 text-xs">{safeAction.replaceAll('_', ' ')}</p></td><td className="max-w-64 p-2"><p className="truncate font-medium" title={entry.entity_name}>{entry.entity_name}</p><p className="truncate text-[10px] text-muted-foreground" title={entry.entity_id}>{entry.entity_type} · {entry.entity_id}</p></td><td className="p-2"><Badge className={badge} variant="outline">{opStatus}</Badge><p className="mt-1 text-[10px] text-muted-foreground">{entry.source}</p></td><td className="max-w-32 truncate p-2 text-[10px] text-muted-foreground" title={entry.correlation_id}>{entry.correlation_id || '—'}</td><td className="p-2"><Button size="icon" variant="ghost" aria-label={t('viewAuditDetails')} onClick={event => { event.stopPropagation(); setSelected(entry) }}><Eye className="h-4 w-4" /></Button></td></tr>
-      })}</tbody></table>{logs.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">{t('noAuditEvents')}</p>}</div><HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); window.localStorage.setItem('livestream-ops-audit-page-size', String(size)) }} /></CardContent></Card>
+        return <tr className="cursor-pointer border-b hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" key={entry.id} tabIndex={0} aria-selected={selected?.id === entry.id} onClick={() => setSelected(entry)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelected(entry) } }}><td className="px-2 py-1.5 whitespace-nowrap">{time}</td><td className="px-2 py-1.5">{actor.name}<p className="text-[10px] text-muted-foreground">{actor.role}</p></td><td className="p-2"><Badge variant="outline">{safeModule}</Badge><p className="mt-1 text-xs">{safeAction.replaceAll('_', ' ')}</p></td><td className="max-w-64 p-2"><p className="truncate font-medium" title={entry.entity_name}>{entry.entity_name}</p><p className="truncate text-[10px] text-muted-foreground" title={entry.entity_id}>{entry.entity_type} · {entry.entity_id}</p></td><td className="p-2"><Badge className={badge} variant="outline">{opStatus}</Badge><p className="mt-1 text-[10px] text-muted-foreground">{entry.source}</p></td><td className="max-w-32 truncate p-2 text-[10px] text-muted-foreground" title={entry.correlation_id}>{entry.correlation_id || '—'}</td><td className="p-2"><Button size="icon" variant="ghost" aria-label={t('viewAuditDetails')} onClick={event => { event.stopPropagation(); setSelected(entry) }}><Eye className="h-4 w-4" /></Button></td></tr>
+      })}</tbody></table>{logs.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">{t('noAuditEvents')}</p>}</div><div data-testid="audit-keyset-pagination" className="flex flex-wrap items-center justify-between gap-3 border-t p-3"><p className="text-xs text-muted-foreground">{logs.length} events on this page{hasMore ? ' · More events available' : ''}</p><div className="flex items-center gap-2"><label className="text-xs">Rows<Select value={String(pageSize)} onValueChange={value => { const size = Number(value); setPageSize(size); setCursor(null); setCursorHistory([]); setNextCursor(null); setActors([]); window.localStorage.setItem('livestream-ops-audit-page-size', String(size)); writeUrl(filters, sort, size, null, 'push') }}><SelectTrigger className="h-9 w-20"><SelectValue /></SelectTrigger><SelectContent>{[10,20,50].map(size => <SelectItem key={size} value={String(size)}>{size}</SelectItem>)}</SelectContent></Select></label><Button variant="outline" size="sm" disabled={!cursorHistory.length} onClick={() => { const previous = cursorHistory.at(-1)!; const history = cursorHistory.slice(0, -1); window.sessionStorage.setItem(auditCursorHistoryKey(identity, filters, sort, pageSize, previous), JSON.stringify(history)); setCursorHistory(history); setCursor(previous); writeUrl(filters, sort, pageSize, previous, 'push') }}>Previous</Button><Button variant="outline" size="sm" disabled={!hasMore || !nextCursor} onClick={() => { const history = cursor ? [...cursorHistory, cursor] : cursorHistory; window.sessionStorage.setItem(auditCursorHistoryKey(identity, filters, sort, pageSize, nextCursor), JSON.stringify(history)); setCursorHistory(history); setCursor(nextCursor); writeUrl(filters, sort, pageSize, nextCursor, 'push') }}>Next</Button></div></div></CardContent></Card>
 
       </div>{selected && <aside className="min-w-0"><AuditDetail key={selected.id} entry={selected} currentUser={currentUser} onClose={() => setSelected(null)} onUpdated={async () => { await load() }} /></aside>}</div>
 

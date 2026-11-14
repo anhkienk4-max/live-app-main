@@ -115,7 +115,7 @@ test('RBAC-01B: unauthenticated client cannot invoke API, even with spoofed inpu
 test('RBAC-01B: UI preflight runs BEFORE any audit direct client fetch; signed feature flag defaults OFF',()=>{
   const ui=readFileSync(new URL('../components/features/audit/AuditHistory.tsx',import.meta.url),'utf8')
   const preflight=ui.indexOf("fetch('/api/audit/team-capability'")
-  const list=ui.indexOf("auditService.getAuditLogs({ user: currentUser")
+  const list=ui.indexOf("auditService.getAuditHistoryPage({ user: currentUser")
   assert.ok(preflight>0 && preflight<list)
   assert.match(ui,/NEXT_PUBLIC_FEATURE_RBAC01B_AUDIT_TEAM_ENFORCEMENT === 'true'/)
   assert.match(ui,/teamCapabilityDenied/)
