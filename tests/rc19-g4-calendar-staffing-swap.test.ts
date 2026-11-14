@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { shiftsForCalendarDate } from '../components/features/calendar/MonthView'
 import { shiftsForGridDate } from '../lib/utils/timeGrid'
 import { businessLocalDate } from '../lib/utils/shiftUtils'
@@ -407,19 +408,32 @@ test('G4.13: Staffing segments (K01, K02) remain intact on parent shift without 
 // -------------------------------------------------------------
 // TEST SUITE 12: P0 Atomic Replacement Safety & Failure Injection (Issue #181, #179)
 // -------------------------------------------------------------
-test('G4.14: Direct 2-step replace is blocked on client and throws ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE until Codex C4 RPC lands', () => {
-  const performReplacementOperation = (isAtomicRpcAvailable: boolean) => {
-    if (!isAtomicRpcAvailable) {
-      throw new Error('ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE: Thao tác thay người đòi hỏi RPC nguyên tử replace_shift_assignment từ backend Codex C4 (Issue #179 / #181). Thao tác 2 bước qua client bị vô hiệu hóa để bảo đảm an toàn dữ liệu phân công.')
-    }
-    return { success: true }
-  }
+test('G4.14: Replace UI uses authenticated atomic RPC and persisted readback, never two client mutations', () => {
+  const dialog = readFileSync(new URL('../components/features/calendar/AtomicStaffingReplacementDialog.tsx', import.meta.url), 'utf8')
+  const actionPanel = readFileSync(new URL('../components/features/calendar/StaffingActionPanel.tsx', import.meta.url), 'utf8')
+  const detail = readFileSync(new URL('../components/features/shifts/ShiftDetailModal.tsx', import.meta.url), 'utf8')
 
-  assert.throws(
-    () => performReplacementOperation(false),
-    /ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE/,
-    'Must refuse client-side execution when atomic backend RPC is not available'
-  )
+  assert.match(actionPanel, /<AtomicStaffingReplacementDialog/)
+  assert.match(detail, /<AtomicStaffingReplacementDialog/)
+  const rosterBranchEnd = actionPanel.indexOf('      </>}', actionPanel.indexOf('{!hasCurrentSnapshot ?'))
+  const replacementDialog = actionPanel.indexOf('<AtomicStaffingReplacementDialog')
+  assert.ok(rosterBranchEnd >= 0 && replacementDialog > rosterBranchEnd, 'replacement dialog must stay mounted while the versioned roster reloads')
+  assert.match(actionPanel, /snapshotReady=\{hasCurrentSnapshot && assigned\.some\(/)
+  assert.match(dialog, /shiftRegistrationService\.verifyReplacementCapability/)
+  assert.match(dialog, /snapshotReady\?: boolean/)
+  assert.match(dialog, /&& snapshotReady && targetHasVersions/)
+  assert.match(dialog, /shiftRegistrationService\.replaceAssignment/)
+  assert.match(dialog, /shiftRegistrationService\.getForShift/)
+  assert.match(dialog, /isAdmin && <div className="flex gap-2">/)
+  assert.match(dialog, /\(!emergency \|\| isAdmin\)/)
+  assert.match(dialog, /idempotencyKey: crypto\.randomUUID\(\)/)
+  assert.match(dialog, /PERSISTENCE_RECHECK_FAILED/)
+  for (const errorCode of [
+    'OPERATION_NOT_ALLOWED', 'LEADER_BRAND_SCOPE_REQUIRED', 'STAFFING_SEGMENT_CAPACITY_EXCEEDED',
+    'SHIFT_CONFLICT', 'ASSIGNMENT_SEGMENT_MISMATCH', 'SHIFT_VERSION_CONFLICT',
+    'IDEMPOTENCY_KEY_REUSED', 'PGRST202', '40P01', '57014',
+  ]) assert.ok(dialog.includes(errorCode), `Replacement UI must map ${errorCode} to actionable feedback`)
+  assert.doesNotMatch(dialog, /removeAssignment|assignManually/)
 })
 
 test('G4.15: Concurrency check strictly rejects missing/non-integer registration or shift versions without guessing', () => {

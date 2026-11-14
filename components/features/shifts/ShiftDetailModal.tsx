@@ -60,7 +60,6 @@ import {
   X,
   Info,
   RefreshCw,
-  ArrowRight,
   Layers,
   ShieldAlert,
 } from 'lucide-react'
@@ -88,6 +87,7 @@ import { ActualStaffingPanel } from './ActualStaffingPanel'
 import { AttendancePhotoReviewPanel } from '@/components/features/attendance/AttendancePhotoReviewPanel'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { ShiftOperationalNotesSection } from './ShiftOperationalNotesSection'
+import { AtomicStaffingReplacementDialog } from '@/components/features/calendar/AtomicStaffingReplacementDialog'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -540,8 +540,6 @@ export function ShiftDetailModal({
   const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
   const [showSwapDialog, setShowSwapDialog] = React.useState(false)
   const [replacingRegistration, setReplacingRegistration] = React.useState<ShiftRegistration | null>(null)
-  const [replacingUserId, setReplacingUserId] = React.useState('')
-  const [replacingReason, setReplacingReason] = React.useState('')
   const [shiftSwaps, setShiftSwaps] = React.useState<SwapRequest[]>([])
   const [supplementalDraft, setSupplementalDraft] = React.useState<Record<string, string>>({})
   const [adminProxyOpen, setAdminProxyOpen] = React.useState(false)
@@ -1492,8 +1490,6 @@ export function ShiftDetailModal({
                                         data-testid={`replace-staffing-${registration.id}`}
                                         onClick={() => {
                                           setReplacingRegistration(registration)
-                                          setReplacingUserId('')
-                                          setReplacingReason('')
                                         }}
                                       >
                                         <RefreshCw className="mr-1 h-3 w-3" />
@@ -1599,79 +1595,19 @@ export function ShiftDetailModal({
         </DialogContent>
       </Dialog>
 
-      {replacingRegistration && (
-        <Dialog open onOpenChange={open => { if (!open) setReplacingRegistration(null) }}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-sm font-semibold">
-                Thay thế nhân sự ({t(replacingRegistration.operational_role)})
-              </DialogTitle>
-            </DialogHeader>
-            <DialogBody className="space-y-3 text-xs">
-              <p className="text-muted-foreground">
-                Chọn nhân sự mới thay thế cho <strong>{userName(replacingRegistration.user_id)}</strong>. Thao tác sẽ gỡ phân công cũ và tạo phân công mới với đầy đủ audit trail.
-              </p>
-              <label className="block text-xs font-medium">
-                Nhân sự thay thế
-                <Select value={replacingUserId} onValueChange={setReplacingUserId}>
-                  <SelectTrigger className="mt-1 w-full"><SelectValue placeholder="Chọn nhân sự thay thế…" /></SelectTrigger>
-                  <SelectContent>
-                    {users
-                      .filter(u => u.status === 'active' && u.operational_roles?.includes(replacingRegistration.operational_role) && !registrations.some(r => r.user_id === u.id && ['approved', 'manually_assigned'].includes(r.status)))
-                      .map(u => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.full_name} ({u.email || u.id})
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="block text-xs font-medium">
-                Lý do thay người (bắt buộc)
-                <Input
-                  className="mt-1 h-8 text-xs"
-                  placeholder="VD: Điều chỉnh phân công, vắng mặt đột xuất…"
-                  value={replacingReason}
-                  onChange={e => setReplacingReason(e.target.value)}
-                />
-              </label>
-              {replacingUserId && (
-                <div className="rounded border bg-muted/20 p-2 text-xs">
-                  <span className="font-semibold block mb-1">Đối chiếu thay đổi:</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-red-700 line-through">{userName(replacingRegistration.user_id)}</span>
-                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-green-700 font-semibold">{userName(replacingUserId)}</span>
-                    <span className="text-muted-foreground">({t(replacingRegistration.operational_role)})</span>
-                  </div>
-                </div>
-              )}
-              {/* P0 Pending Backend Warning Banner */}
-              <div className="rounded border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900" role="alert" data-testid="replace-modal-pending-backend-alert">
-                <strong className="block font-semibold">Chờ RPC nguyên tử từ Backend Codex C4 (Issue #179 / #181):</strong>
-                <p className="mt-1 text-[11px] leading-relaxed">
-                  Thao tác thay người trực tiếp yêu cầu backend RPC nguyên tử (<code>replace_shift_assignment</code>) để bảo đảm toàn vẹn giao dịch. Thao tác 2 bước tách rời (gỡ rồi gán) đã bị vô hiệu hóa an toàn để chống mất mát dữ liệu phân công khi bước 2 gặp lỗi.
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => setReplacingRegistration(null)}>
-                  Đóng
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={true}
-                  className="cursor-not-allowed opacity-60"
-                  title="Chờ backend Codex C4 cung cấp RPC replace_shift_assignment nguyên tử"
-                  data-testid="modal-confirm-replace-btn"
-                >
-                  Chờ Backend RPC Codex C4 (Khóa an toàn)
-                </Button>
-              </div>
-            </DialogBody>
-          </DialogContent>
-        </Dialog>
-      )}
+      {replacingRegistration && currentUser && <AtomicStaffingReplacementDialog
+        open
+        shift={activeShift}
+        registration={replacingRegistration}
+        registrations={registrations}
+        users={users}
+        currentUser={currentUser}
+        onOpenChange={isOpen => { if (!isOpen) setReplacingRegistration(null) }}
+        onUpdated={async () => {
+          await loadStaffing()
+          onUpdate()
+        }}
+      />}
 
       <LifecycleActionDialog
         open={Boolean(deleteImpact)}

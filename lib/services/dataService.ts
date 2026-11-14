@@ -59,7 +59,11 @@ import {
   getSupabaseShiftRepository,
   type ShiftStaffingLabels,
 } from '@/lib/services/supabaseShiftService'
-import { getSupabaseShiftRegistrationRepository } from '@/lib/services/supabaseShiftRegistrationService'
+import {
+  getSupabaseShiftRegistrationRepository,
+  type ReplaceShiftAssignmentInput,
+  type ReplaceShiftAssignmentResult,
+} from '@/lib/services/supabaseShiftRegistrationService'
 import { addDateOnlyDays, calculateNullableAnalyticsMetrics, startOfBusinessWeek, type AnalyticsMetricKey } from '@/lib/utils/analytics'
 import {
   getSupabaseReportRepository,
@@ -2719,6 +2723,22 @@ export const shiftRegistrationService = {
     recordScheduleChange('remove_assignment', shift.id, { ...registration }, { ...shiftRegistrations[index] }, { actor_id: reviewerId, reason: notes })
     audit('calendar', 'unassign', 'shift_registration', id, `${actorFor(registration.user_id).full_name} · ${registration.operational_role}`, { actorId: reviewerId, before: { ...registration }, after: { ...shiftRegistrations[index] }, reason: notes })
     return Promise.resolve(shiftRegistrations[index])
+  },
+
+  async replaceAssignment(input: ReplaceShiftAssignmentInput): Promise<ReplaceShiftAssignmentResult> {
+    if (getAuthMode() !== 'supabase') throw new Error('ATOMIC_REPLACEMENT_REQUIRES_PERSISTED_RUNTIME')
+    const actor = requiredActorFor(currentUserService.getId())
+    if (!hasPermission(actor, 'shifts.assign_staff')) throw new Error('STAFFING_PERMISSION_REQUIRED')
+    if (input.emergency && resolveSystemPermission(actor) !== 'admin') throw new Error('EMERGENCY_REPLACEMENT_ADMIN_ONLY')
+    return getSupabaseShiftRegistrationRepository().replaceAssignment(input)
+  },
+
+  async verifyReplacementCapability(shiftId: string, role: OperationalRole): Promise<void> {
+    if (getAuthMode() !== 'supabase') throw new Error('ATOMIC_REPLACEMENT_REQUIRES_PERSISTED_RUNTIME')
+    const actor = requiredActorFor(currentUserService.getId())
+    if (!hasPermission(actor, 'shifts.assign_staff')) throw new Error('STAFFING_PERMISSION_REQUIRED')
+    if (!['admin', 'leader'].includes(resolveSystemPermission(actor))) throw new Error('ACTOR_NOT_AUTHORIZED')
+    return getSupabaseShiftRegistrationRepository().verifyReplacementCapability(shiftId, role)
   },
 }
 

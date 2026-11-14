@@ -1,0 +1,105 @@
+\set ON_ERROR_STOP on
+DO $$
+BEGIN
+  IF current_database() <> 'c12_audit_rehearsal'
+    OR shobj_description((SELECT oid FROM pg_database WHERE datname = current_database()), 'pg_database') <> 'CODEX_DISPOSABLE_C12_AUDIT_PG17' THEN
+    RAISE EXCEPTION 'C12_DATABASE_IDENTITY_GUARD_FAILED';
+  END IF;
+END;
+$$;
+CREATE TEMP TABLE c12_seen_audit_ids(id text PRIMARY KEY);
+GRANT INSERT, SELECT ON c12_seen_audit_ids TO authenticated;
+
+SET ROLE authenticated;
+SET c12.audit_view = 'true';
+SET c12.audit_view_team = 'false';
+DO $$
+DECLARE
+  v_page jsonb;
+  v_cursor_created timestamptz := NULL;
+  v_cursor_id text := NULL;
+  v_snapshot timestamptz := NULL;
+  v_count integer := 0;
+  v_id text;
+  v_new_event_id text;
+BEGIN
+  v_page := public.get_audit_history_page('{}'::jsonb, NULL, NULL, NULL, 50, 'newest');
+  PERFORM public.c12_assert(jsonb_array_length(v_page->'items') = 50, 'first Admin page is bounded to 50');
+  PERFORM public.c12_assert((v_page->>'has_more')::boolean, 'Admin gets has_more without a total count');
+  v_snapshot := (v_page->'next_cursor'->>'snapshot_at')::timestamptz;
+  FOR v_id IN SELECT value->>'id' FROM jsonb_array_elements(v_page->'items') LOOP
+    INSERT INTO pg_temp.c12_seen_audit_ids VALUES (v_id);
+    v_count := v_count + 1;
+  END LOOP;
+  v_new_event_id := public.c12_insert_late_event();
+  v_cursor_created := (v_page->'next_cursor'->>'created_at')::timestamptz;
+  v_cursor_id := v_page->'next_cursor'->>'id';
+
+  WHILE (v_page->>'has_more')::boolean LOOP
+    v_page := public.get_audit_history_page('{}'::jsonb, v_cursor_created, v_cursor_id, v_snapshot, 50, 'newest');
+    PERFORM public.c12_assert(jsonb_array_length(v_page->'items') <= 50, 'every page is bounded');
+    FOR v_id IN SELECT value->>'id' FROM jsonb_array_elements(v_page->'items') LOOP
+      INSERT INTO pg_temp.c12_seen_audit_ids VALUES (v_id);
+      v_count := v_count + 1;
+    END LOOP;
+    IF (v_page->>'has_more')::boolean THEN
+      v_cursor_created := (v_page->'next_cursor'->>'created_at')::timestamptz;
+      v_cursor_id := v_page->'next_cursor'->>'id';
+    END IF;
+  END LOOP;
+  PERFORM public.c12_assert(v_count = 45000, 'all snapshot rows are returned once');
+  PERFORM public.c12_assert(NOT EXISTS(SELECT 1 FROM pg_temp.c12_seen_audit_ids WHERE id = v_new_event_id), 'new event after snapshot does not shift pages');
+  v_page := public.get_audit_history_page('{"brand_id":["brand-a"]}'::jsonb, NULL, NULL, NULL, 50, 'newest');
+  PERFORM public.c12_assert(jsonb_array_length(v_page->'items') = 50 AND (SELECT bool_and(value->'after_data'->>'brand_id' = 'brand-a') FROM jsonb_array_elements(v_page->'items')), 'Brand filter uses persisted before/after metadata');
+END;
+$$;
+RESET ROLE;
+SELECT public.c12_assert(NOT has_function_privilege('anon', 'public.get_audit_history_page(jsonb,timestamp with time zone,text,timestamp with time zone,integer,text)', 'EXECUTE'), 'anon cannot invoke Audit History RPC');
+
+SET ROLE authenticated;
+SET c12.audit_view = 'false';
+SET c12.audit_view_team = 'true';
+SELECT public.get_audit_history_page('{}'::jsonb, NULL, NULL, NULL, 50, 'newest') AS c12_page \gset
+SELECT public.c12_assert(jsonb_array_length(:'c12_page'::jsonb->'items') = 50, 'Leader receives one bounded page');
+SELECT public.c12_assert((:'c12_page'::jsonb->>'has_more')::boolean, 'Leader page continuation is available');
+SELECT public.c12_assert(NOT (:'c12_page'::jsonb ? 'total'), 'response does not reveal foreign row count');
+SELECT public.c12_assert((SELECT bool_and(value->>'module' = 'calendar') FROM jsonb_array_elements(:'c12_page'::jsonb->'items')), 'Leader page has no disallowed module rows');
+
+SET c12.audit_view_team = 'false';
+SELECT public.get_audit_history_page('{}'::jsonb, NULL, NULL, NULL, 50, 'newest') AS c12_page \gset
+SELECT public.c12_assert(jsonb_array_length(:'c12_page'::jsonb->'items') = 0 AND (:'c12_page'::jsonb->>'has_more') = 'false', 'Member RLS denial returns no audit rows');
+RESET ROLE;
+
+SET ROLE authenticated;
+SET c12.audit_view = 'true';
+DO $$
+BEGIN
+  BEGIN
+    PERFORM public.get_audit_history_page('{"from":"2025-01-01","to":"2026-11-12"}'::jsonb, NULL, NULL, NULL, 20, 'newest');
+    RAISE EXCEPTION 'C12_ASSERT_FAILED: overlong range accepted';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.get_audit_history_page('{"untrusted":"value"}'::jsonb, NULL, NULL, NULL, 20, 'newest');
+    RAISE EXCEPTION 'C12_ASSERT_FAILED: unknown filter accepted';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.get_audit_history_page('{"from":"2026-99-99"}'::jsonb, NULL, NULL, NULL, 20, 'newest');
+    RAISE EXCEPTION 'C12_ASSERT_FAILED: impossible date accepted';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.get_audit_history_page('{}'::jsonb, NULL, NULL, NULL, NULL, 'newest');
+    RAISE EXCEPTION 'C12_ASSERT_FAILED: NULL page size accepted';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.get_audit_history_page('{}'::jsonb, NULL, NULL, NULL, 20, NULL);
+    RAISE EXCEPTION 'C12_ASSERT_FAILED: NULL sort accepted';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+  END;
+END;
+$$;
+RESET ROLE;
+\echo C12_PG17_KEYSET_RLS_PASS

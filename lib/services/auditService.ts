@@ -201,7 +201,7 @@ const filterAuditLogs = (logs: AuditLog[], filters: AuditLogFilters) => {
     return (!filters.from || date >= filters.from) &&
       (!filters.to || date <= filters.to) &&
       matches(entry.actor_id, filters.actor) &&
-      matches(String(entry.before?.brand_id ?? entry.after?.brand_id ?? ''), filters.brand_id) &&
+      (!values(filters.brand_id).length || values(filters.brand_id).some(brandId => entry.before?.brand_id === brandId || entry.after?.brand_id === brandId)) &&
       matches(entry.actor_role, filters.role) &&
       matches(entry.module, filters.module) &&
       matches(entry.action, filters.action) &&

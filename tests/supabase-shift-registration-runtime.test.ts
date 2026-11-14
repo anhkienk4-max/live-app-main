@@ -26,6 +26,7 @@ type RpcName =
   | 'manual_assign_shift_staff'
   | 'manual_assign_imported_shift_staff'
   | 'remove_shift_staffing'
+  | 'replace_shift_assignment'
   | 'refresh_automatic_shift_statuses'
 
 interface FakeDatabase {
@@ -35,6 +36,7 @@ interface FakeDatabase {
 
 interface FakeClientOptions {
   deniedTable?: TableName
+  requiredRegistrationColumn?: string
 }
 
 class FakeQuery {
@@ -47,7 +49,10 @@ class FakeQuery {
     private readonly options: FakeClientOptions,
   ) {}
 
-  select() {
+  select(columns?: string) {
+    if (this.table === 'shift_registrations' && this.options.requiredRegistrationColumn) {
+      assert.ok(columns?.split(',').includes(this.options.requiredRegistrationColumn), 'registration projection omits persisted segment')
+    }
     return this
   }
 
@@ -275,6 +280,34 @@ function fakeClient(database: FakeDatabase, options: FakeClientOptions = {}) {
       database.shift_registrations[index] = updated
       return { ...updated }
     },
+    replace_shift_assignment(args) {
+      if (args.p_reason === 'No-write authenticated capability check') {
+        throw { code: 'P0001', message: 'STAFFING_SEGMENT_SHIFT_MISMATCH' }
+      }
+      return {
+        replacement_id: 'replacement-1',
+        shift_id: String(args.p_shift_id),
+        staffing_segment_id: String(args.p_staffing_segment_id),
+        old_registration_id: String(args.p_registration_id),
+        registration: {
+          id: 'reg-replacement-1',
+          shift_id: String(args.p_shift_id),
+          user_id: String(args.p_replacement_user_id),
+          operational_role: String(args.p_role),
+          status: 'manually_assigned',
+          source: 'manual_assignment',
+          staffing_segment_id: String(args.p_staffing_segment_id),
+          reviewed_by: 'current-user',
+          reviewed_at: '2031-08-20T05:00:00.000Z',
+          review_notes: String(args.p_reason),
+          version: 1,
+        },
+        effective_at: '2031-08-20T05:00:00.000Z',
+        shift_version: Number(args.p_expected_shift_version) + 1,
+        roster: [],
+        replayed: false,
+      }
+    },
   }
 
   return {
@@ -441,6 +474,14 @@ test('Supabase mode registration reads come from the repository', async () => {
   })
 })
 
+test('shift registration read preserves the persisted segment for replacement', async () => {
+  const db = database()
+  db.shift_registrations[0].staffing_segment_id = 'segment-1'
+  const repository = createSupabaseShiftRegistrationRepository(fakeClient(db, { requiredRegistrationColumn: 'staffing_segment_id' }))
+  const rows = await repository.getForShift('shift-1')
+  assert.equal(rows.find(row => row.id === 'reg-1')?.staffing_segment_id, 'segment-1')
+})
+
 test('Supabase mode capacity counts pending and approved per role', async () => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
@@ -557,6 +598,91 @@ test('Supabase mode manual assign and remove go through RPCs', async () => {
     const removed = await shiftRegistrationService.removeAssignment('reg-2', '1', 'replaced')
     assert.equal(removed.status, 'removed')
     assert.equal(db.shift_registrations.find(row => row.id === 'reg-2')?.status, 'removed')
+  })
+})
+
+test('atomic assignment replacement maps the versioned RPC result', async () => {
+  const repository = createSupabaseShiftRegistrationRepository(fakeClient(database()))
+  const result = await repository.replaceAssignment({
+    shiftId: 'shift-1',
+    staffingSegmentId: 'segment-1',
+    registrationId: 'reg-1',
+    replacementUserId: 'u-replacement',
+    role: 'host',
+    expectedShiftVersion: 4,
+    expectedRegistrationVersion: 2,
+    effectiveAt: '2031-08-20T05:00:00.000Z',
+    reason: 'approved emergency replacement',
+    emergency: true,
+    idempotencyKey: 'e82a2e9c-7cb7-4507-b286-f7103bc9f6aa',
+  })
+
+  assert.equal(result.replacement_id, 'replacement-1')
+  assert.equal(result.registration.user_id, 'u-replacement')
+  assert.equal(result.registration.staffing_segment_id, 'segment-1')
+  assert.equal(result.shift_version, 5)
+  assert.equal(result.replayed, false)
+})
+
+test('atomic replacement capability probe uses a missing segment and causes no fake database writes', async () => {
+  const db = database()
+  const before = structuredClone(db)
+  const repository = createSupabaseShiftRegistrationRepository(fakeClient(db))
+
+  await repository.verifyReplacementCapability('shift-1', 'host')
+
+  assert.deepEqual(db, before)
+})
+
+test('replacement capability gate requires persisted mode and staffing authority', async () => {
+  await withEnvironment(async () => {
+    const db = database()
+    setSupabaseShiftRegistrationRepositoryForTests(createSupabaseShiftRegistrationRepository(fakeClient(db)))
+    currentUserService.bindAuthenticatedUser(adminUser())
+    setAuthMode('mock')
+    await assert.rejects(shiftRegistrationService.verifyReplacementCapability('shift-1', 'host'), /ATOMIC_REPLACEMENT_REQUIRES_PERSISTED_RUNTIME/)
+
+    setAuthMode('supabase')
+    await shiftRegistrationService.verifyReplacementCapability('shift-1', 'host')
+    currentUserService.bindAuthenticatedUser(adminUser({ id: 'u-member', role: 'staff', system_permission: 'member' }))
+    await assert.rejects(shiftRegistrationService.verifyReplacementCapability('shift-1', 'host'), /STAFFING_PERMISSION_REQUIRED/)
+  })
+})
+
+test('shiftRegistrationService exposes atomic replacement only to staffing-capable persisted actors', async () => {
+  await withEnvironment(async () => {
+    setAuthMode('supabase')
+    setSupabaseShiftRegistrationRepositoryForTests(createSupabaseShiftRegistrationRepository(fakeClient(database())))
+    currentUserService.bindAuthenticatedUser(adminUser())
+
+    const result = await shiftRegistrationService.replaceAssignment({
+      shiftId: 'shift-1',
+      staffingSegmentId: 'segment-1',
+      registrationId: 'reg-1',
+      replacementUserId: 'u-replacement',
+      role: 'host',
+      expectedShiftVersion: 4,
+      expectedRegistrationVersion: 2,
+      effectiveAt: '2031-08-20T05:00:00.000Z',
+      reason: 'approved emergency replacement',
+      emergency: true,
+      idempotencyKey: 'e82a2e9c-7cb7-4507-b286-f7103bc9f6aa',
+    })
+    assert.equal(result.registration.user_id, 'u-replacement')
+
+    currentUserService.bindAuthenticatedUser(adminUser({
+      id: 'u-member', email: 'member@example.test', role: 'staff', system_permission: 'member',
+    }))
+    await assert.rejects(
+      shiftRegistrationService.replaceAssignment({
+        shiftId: 'shift-1', staffingSegmentId: 'segment-1', registrationId: 'reg-1',
+        replacementUserId: 'u-replacement', role: 'host', expectedShiftVersion: 4,
+        expectedRegistrationVersion: 2, effectiveAt: '2031-08-20T05:00:00.000Z',
+        reason: 'denied member replacement', emergency: false,
+        idempotencyKey: 'b4836af4-b500-4b78-8e59-6fe043b8a49b',
+      }),
+      /STAFFING_PERMISSION_REQUIRED/,
+    )
   })
 })
 

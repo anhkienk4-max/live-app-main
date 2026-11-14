@@ -440,19 +440,19 @@ test('G3-09: Role-based permissions — shifts.edit contract', () => {
   assert.equal(hasPermission(member, 'shifts.edit'), false, 'Member cannot edit shifts')
 })
 
-test('G3-10: Compatibility with G4 Safety Lock — Atomic replace guard remains active', async () => {
+test('G3-10: Compatibility with G4 — replacement stays gated by authenticated atomic RPC', async () => {
   const { readFileSync } = await import('node:fs')
 
-  // Check StaffingActionPanel
+  const dialog = readFileSync('components/features/calendar/AtomicStaffingReplacementDialog.tsx', 'utf8')
   const actionPanel = readFileSync('components/features/calendar/StaffingActionPanel.tsx', 'utf8')
-  assert.match(actionPanel, /replace-pending-backend-alert/, 'StaffingActionPanel must retain pending-backend alert')
-  assert.match(actionPanel, /ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE/, 'Must throw ATOMIC_REPLACEMENT_BACKEND_UNAVAILABLE on programmatic replace')
-  assert.match(actionPanel, /data-testid="confirm-replace-btn"/, 'Replace button must exist')
-  assert.match(actionPanel, /disabled=\{true\}/, 'Replace button must remain disabled')
+  assert.match(actionPanel, /<AtomicStaffingReplacementDialog/, 'StaffingActionPanel must use the shared replacement dialog')
+  assert.match(dialog, /persistedRuntime && capability === 'ready'/, 'Replacement must remain disabled unless authenticated persisted capability is verified')
+  assert.match(dialog, /shiftRegistrationService\.verifyReplacementCapability/, 'Capability must be checked through the authenticated service')
+  assert.match(dialog, /shiftRegistrationService\.replaceAssignment/, 'Replacement must use the single atomic RPC')
+  assert.match(dialog, /getForShift\(shift\.id\)/, 'Success must require authoritative roster readback')
+  assert.match(dialog, /emergency \|\| isAdmin/, 'Emergency mode must be Admin-only')
+  assert.doesNotMatch(dialog, /removeAssignment|assignManually/, 'Replacement must never be implemented as two mutations')
 
-  // Check ShiftDetailModal
   const detailModal = readFileSync('components/features/shifts/ShiftDetailModal.tsx', 'utf8')
-  assert.match(detailModal, /replace-modal-pending-backend-alert/, 'ShiftDetailModal must retain pending-backend alert')
-  assert.match(detailModal, /data-testid="modal-confirm-replace-btn"/, 'Modal replace button must exist')
-  assert.match(detailModal, /disabled=\{true\}/, 'Modal replace button must remain disabled')
+  assert.match(detailModal, /<AtomicStaffingReplacementDialog/, 'ShiftDetailModal must use the shared replacement dialog')
 })

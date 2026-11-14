@@ -24,7 +24,12 @@ const serviceKey = process.env.C511_SERVICE_ROLE_KEY
 const password = process.env.C511_TEST_PASSWORD
 const database = process.env.C511_DATABASE
 const evidenceDir = process.env.C511_EVIDENCE_DIR
-assert.ok(baseUrl && anonKey && serviceKey && password && database && evidenceDir, 'C5.11 local runtime environment required')
+const authUsersBefore = Number(process.env.C511_AUTH_USERS_BEFORE)
+const storageObjectsBefore = Number(process.env.C511_STORAGE_OBJECTS_BEFORE)
+assert.ok(baseUrl && anonKey && serviceKey && password && database && evidenceDir
+  && Number.isSafeInteger(authUsersBefore) && authUsersBefore >= 0
+  && Number.isSafeInteger(storageObjectsBefore) && storageObjectsBefore >= 0,
+'C5.11 local runtime environment required')
 
 const routeFetch: typeof fetch = async (input, init) => {
   const request = input instanceof Request ? new Request(input, init) : new Request(input, init)
@@ -254,6 +259,30 @@ async function createImportedShift(run: number, brandId: string, brandName: stri
   return { shift, segments }
 }
 
+async function prepareC511RegistrationSettings() {
+  const settings = requireOk(await service.from('system_settings')
+    .select('id,registration_cutoff_hours,require_registration_approval,auto_lock_filled_shifts').limit(2), 'system settings read')
+  assert.ok(settings.length <= 1, 'C5.11 requires a single system settings row')
+  const original = settings[0]
+  const testValues = { registration_cutoff_hours: 0, require_registration_approval: true, auto_lock_filled_shifts: false }
+
+  if (original) {
+    requireOk(await service.from('system_settings').update(testValues).eq('id', original.id).select('id').single(), 'C5.11 test settings')
+    return async () => {
+      requireOk(await service.from('system_settings').update({
+        registration_cutoff_hours: original.registration_cutoff_hours,
+        require_registration_approval: original.require_registration_approval,
+        auto_lock_filled_shifts: original.auto_lock_filled_shifts,
+      }).eq('id', original.id).select('id').single(), 'C5.11 settings restore')
+    }
+  }
+
+  const inserted = requireOk(await service.from('system_settings').insert(testValues).select('id').single(), 'C5.11 test settings insert')
+  return async () => {
+    requireOk(await service.from('system_settings').delete().eq('id', inserted.id).select('id').single(), 'C5.11 settings cleanup')
+  }
+}
+
 let adminSession: Awaited<ReturnType<typeof signIn>>
 
 async function apiPost(handler: { POST(request: Request): Promise<Response> }, path: string, token: string, body: unknown) {
@@ -268,12 +297,6 @@ async function runPersistedScenario(run: number) {
     seedUser(run, 'HostOverflow', 'member', ['host']),
     seedUser(run, 'Support', 'member', ['support']),
   ])
-  const settings = await service.from('system_settings').select('id').limit(1)
-  assert.ifError(settings.error)
-  if (!settings.data?.length) {
-    const inserted = await service.from('system_settings').insert({ registration_cutoff_hours: 0, require_registration_approval: true, auto_lock_filled_shifts: false })
-    assert.ifError(inserted.error)
-  }
   const [adminAuth, reviewerAuth, leaderAuth, host1Auth, host2Auth, host3Auth, hostOverflowAuth, supportAuth] = await Promise.all([
     signIn(admin), signIn(reviewer), signIn(leader), signIn(host1), signIn(host2), signIn(host3),
     signIn(hostOverflow), signIn(support),
@@ -1018,8 +1041,9 @@ function persistedStart(shift: { start_at: string }, offsetMinutes: number) {
 }
 
 test('C5.12 persists authenticated Staffing, Attendance, evidence review, Payroll and payslip', async () => {
+  const restoreSettings = await prepareC511RegistrationSettings()
   try {
-    await runPersistedScenario(1)
+    await runPersistedScenario(Date.now())
     mkdirSync(evidenceDir!, { recursive: true })
     const output = {
       result: 'PASS', source_sha: process.env.C511_SOURCE_SHA,
@@ -1033,7 +1057,7 @@ test('C5.12 persists authenticated Staffing, Attendance, evidence review, Payrol
         overtime_cancellation: process.env.C515_OT_CANCELLATION_MIGRATION_SHA256,
         live_shift_cancellation: process.env.C515_LIVE_CANCELLATION_MIGRATION_SHA256,
       },
-      runtime_auth_users_before: 0, storage_objects_before: 0,
+      runtime_auth_users_before: authUsersBefore, storage_objects_before: storageObjectsBefore,
       authenticated_persisted_staffing_scenarios: 1, service_role_used_only_for_fixture_and_server_handler_backend: true,
       authenticated_roles: ['admin', 'leader', 'member'],
       exercised_api_and_rpc: [
@@ -1056,5 +1080,7 @@ test('C5.12 persists authenticated Staffing, Attendance, evidence review, Payrol
   } catch (error) {
     console.error('C511_PERSISTED_E2E_FAILED', error instanceof Error ? error.message : String(error))
     throw error
+  } finally {
+    await restoreSettings()
   }
 })

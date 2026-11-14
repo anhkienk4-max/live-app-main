@@ -14,6 +14,7 @@ import type {
 const registrationColumns = [
   'id',
   'shift_id',
+  'staffing_segment_id',
   'user_id',
   'operational_role',
   'status',
@@ -240,6 +241,40 @@ export interface ShiftRoleCapacity {
   remaining: number
 }
 
+export interface ReplaceShiftAssignmentInput {
+  shiftId: string
+  staffingSegmentId: string
+  registrationId: string
+  replacementUserId: string
+  role: OperationalRole
+  expectedShiftVersion: number
+  expectedRegistrationVersion: number
+  effectiveAt: string
+  reason: string
+  emergency: boolean
+  idempotencyKey: string
+}
+
+export interface ReplaceShiftAssignmentResult {
+  replacement_id: string
+  shift_id: string
+  staffing_segment_id: string
+  old_registration_id: string
+  registration: Pick<ShiftRegistration, 'id' | 'shift_id' | 'user_id' | 'operational_role' | 'status' | 'source' | 'reviewed_by' | 'reviewed_at' | 'review_notes' | 'version'> & {
+    staffing_segment_id: string | null
+  }
+  effective_at: string
+  shift_version: number
+  roster: Array<{
+    registration_id: string
+    user_id: string
+    role: OperationalRole
+    status: ShiftRegistration['status']
+    version: number
+  }>
+  replayed: boolean
+}
+
 export const isStaffedRegistration = (
   registration: Pick<ShiftRegistration, 'status'>,
 ): boolean =>
@@ -275,6 +310,8 @@ export interface SupabaseShiftRegistrationRepository {
     expectedVersion?: number,
   ): Promise<ShiftRegistration>
   removeAssignment(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
+  verifyReplacementCapability(shiftId: string, role: OperationalRole): Promise<void>
+  replaceAssignment(input: ReplaceShiftAssignmentInput): Promise<ReplaceShiftAssignmentResult>
 }
 
 export function createSupabaseShiftRegistrationRepository(
@@ -482,6 +519,41 @@ export function createSupabaseShiftRegistrationRepository(
       return registrationFromRow(
         requiredRow('registration remove assignment', result) as unknown as RegistrationRow,
       )
+    },
+
+    async verifyReplacementCapability(shiftId, role) {
+      const result = await client.rpc('replace_shift_assignment', {
+        p_shift_id: shiftId,
+        p_staffing_segment_id: crypto.randomUUID(),
+        p_registration_id: crypto.randomUUID(),
+        p_replacement_user_id: crypto.randomUUID(),
+        p_role: role,
+        p_expected_shift_version: 1,
+        p_expected_registration_version: 1,
+        p_effective_at: new Date().toISOString(),
+        p_reason: 'No-write authenticated capability check',
+        p_is_emergency: false,
+        p_idempotency_key: crypto.randomUUID(),
+      }).single()
+      if (result.error?.code === 'P0001' && result.error.message.includes('STAFFING_SEGMENT_SHIFT_MISMATCH')) return
+      throw result.error ?? new Error('ATOMIC_REPLACEMENT_CAPABILITY_UNVERIFIED')
+    },
+
+    async replaceAssignment(input) {
+      const result = await client.rpc('replace_shift_assignment', {
+        p_shift_id: input.shiftId,
+        p_staffing_segment_id: input.staffingSegmentId,
+        p_registration_id: input.registrationId,
+        p_replacement_user_id: input.replacementUserId,
+        p_role: input.role,
+        p_expected_shift_version: input.expectedShiftVersion,
+        p_expected_registration_version: input.expectedRegistrationVersion,
+        p_effective_at: input.effectiveAt,
+        p_reason: input.reason,
+        p_is_emergency: input.emergency,
+        p_idempotency_key: input.idempotencyKey,
+      }).single()
+      return requiredRow('atomic staffing replacement', result) as ReplaceShiftAssignmentResult
     },
   }
 }

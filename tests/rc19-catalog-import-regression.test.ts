@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
+import { resolveSystemPermission } from '../lib/permissions'
 
 // ==========================================
 // TASK E: Product Catalog Rewrite Integrity
@@ -37,8 +38,13 @@ test('TASK E: BrandCatalogWorkspace preserves complete CRUD, SKU variants, media
   assert.match(catalogSource, /action:\s*'scope\.set'/)
 
   // 6. Role-gating & permissions
-  assert.match(catalogSource, /const isAdmin = currentUser\?.system_permission === 'admin' \|\| currentUser\?.role === 'admin'/)
+  assert.match(catalogSource, /const isAdmin = !!currentUser && resolveSystemPermission\(currentUser\) === 'admin'/)
   assert.match(catalogSource, /\{isAdmin && \(/)
+  assert.equal(resolveSystemPermission({ role: 'admin', system_permission: 'admin' }), 'admin')
+  assert.equal(resolveSystemPermission({ role: 'admin', system_permission: 'member' }), 'member')
+  assert.equal(resolveSystemPermission({ role: 'leader', system_permission: 'leader' }), 'leader')
+  assert.equal(resolveSystemPermission({ role: 'member', system_permission: 'member' }), 'member')
+  assert.equal(resolveSystemPermission(null), 'member')
 })
 
 // ==========================================

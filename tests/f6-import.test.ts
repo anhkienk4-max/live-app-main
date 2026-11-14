@@ -157,7 +157,7 @@ test('F6 gives import actions and editable rows unique accessible names', () => 
 })
 
 test('F6 retains native tab semantics, filter pressed state, and live completion status', () => {
-  assert.match(history, /<Tabs defaultValue="imports">/)
+  assert.match(history, /<Tabs\b(?=[^>]*\bdefaultValue="imports")(?=[^>]*\bdata-route-readiness="ready")[^>]*>/)
   assert.match(history, /<TabsList>/)
   assert.match(history, /<TabsTrigger value="imports">/)
   assert.match(panel, /aria-pressed=\{previewFilter === filter\}/)

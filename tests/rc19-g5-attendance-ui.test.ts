@@ -231,35 +231,34 @@ test('G5-10: ShiftDetailModal & Cross-Lane Safety Regressions — G3 segments, G
     'Must mount AdminProxyAttendanceModal'
   )
 
-  // 3. G4 Safety Hotfix Invariant: Atomic Replace locked
+  // 3. G4 replacement is enabled only through the authenticated atomic service.
+  const replacementDialogPath = path.join(repoRoot, 'components/features/calendar/AtomicStaffingReplacementDialog.tsx')
+  const replacementDialog = fs.readFileSync(replacementDialogPath, 'utf8')
   assert.match(
     content,
-    /Chờ RPC nguyên tử từ Backend Codex C4/,
-    'Must preserve G4 atomic replace safety lock in ShiftDetailModal'
+    /<AtomicStaffingReplacementDialog/,
+    'ShiftDetailModal must mount the shared atomic replacement dialog'
   )
   assert.match(
-    content,
-    /replace_shift_assignment/,
-    'Must reference replace_shift_assignment in ShiftDetailModal'
+    replacementDialog,
+    /persistedRuntime && capability === 'ready'/,
+    'Replacement must remain fail-closed until authenticated persisted capability is verified'
   )
 
   const staffingPanelPath = path.join(repoRoot, 'components/features/calendar/StaffingActionPanel.tsx')
   const staffingContent = fs.readFileSync(staffingPanelPath, 'utf8')
   assert.match(
     staffingContent,
-    /Chờ RPC nguyên tử từ Backend Codex C4/,
-    'Must preserve G4 atomic replace safety lock in StaffingActionPanel'
+    /<AtomicStaffingReplacementDialog/,
+    'StaffingActionPanel must mount the shared atomic replacement dialog'
   )
   assert.match(
-    staffingContent,
-    /replace_shift_assignment/,
-    'Must reference replace_shift_assignment in StaffingActionPanel'
+    replacementDialog,
+    /shiftRegistrationService\.replaceAssignment/,
+    'Replacement must use the single atomic service, not remove and assign calls'
   )
-  assert.match(
-    staffingContent,
-    /data-testid="replace-pending-backend-alert"/,
-    'Must render replace-pending-backend-alert in StaffingActionPanel'
-  )
+  assert.match(replacementDialog, /getForShift\(shift\.id\)/, 'Success must wait for persisted roster readback')
+  assert.match(replacementDialog, /emergency \|\| isAdmin/, 'Emergency mode must be Admin-only')
 
   // 4. G3 Shift Editor Invariant: Multi-segment staffing preserved
   const editorDialogPath = path.join(repoRoot, 'components/features/shifts/ShiftFormDialog.tsx')

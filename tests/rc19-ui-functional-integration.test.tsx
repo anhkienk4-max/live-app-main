@@ -226,7 +226,7 @@ test('CATALOG: BrandCatalogWorkspace preserves production shell, calculated KPIs
   assert.match(catalogSrc, /action:\s*'scheme\.create'/)
   assert.match(catalogSrc, /action:\s*'knowledge\.create'/)
   assert.match(catalogSrc, /action:\s*'scope\.set'/)
-  assert.match(catalogSrc, /const isAdmin = currentUser\?.system_permission === 'admin' \|\| currentUser\?.role === 'admin'/)
+  assert.match(catalogSrc, /const isAdmin = !!currentUser && resolveSystemPermission\(currentUser\) === 'admin'/)
 })
 
 // =========================================================================
@@ -382,11 +382,12 @@ test('CATALOG INTERACTION: Search, multi-axis filter, SKU selection, and inspect
   // 3. Clear all filters handler
   assert.match(catalogSrc, /const clearAllFilters = \(\) => \{/)
 
-  // 4. Inspector tab switching: skus, platforms, claims, audit
-  assert.match(catalogSrc, /type InspectorTab = 'skus' \| 'platforms' \| 'claims' \| 'audit'/)
+  // 4. Inspector tab switching: skus, platforms, claims, gallery, audit
+  assert.match(catalogSrc, /type InspectorTab = 'skus' \| 'platforms' \| 'claims' \| 'gallery' \| 'audit'/)
   assert.match(catalogSrc, /setActiveInspectorTab\('skus'\)/)
   assert.match(catalogSrc, /setActiveInspectorTab\('platforms'\)/)
   assert.match(catalogSrc, /setActiveInspectorTab\('claims'\)/)
+  assert.match(catalogSrc, /setActiveInspectorTab\('gallery'\)/)
   assert.match(catalogSrc, /setActiveInspectorTab\('audit'\)/)
 })
 
@@ -397,7 +398,7 @@ test('CATALOG RBAC: Non-admin negative permission testing (zero mutation actions
   )
 
   // 1. Role determination
-  assert.match(catalogSrc, /const isAdmin = currentUser\?.system_permission === 'admin' \|\| currentUser\?.role === 'admin'/)
+  assert.match(catalogSrc, /const isAdmin = !!currentUser && resolveSystemPermission\(currentUser\) === 'admin'/)
 
   // 2. Positive & Negative gating for privileged actions
   // "Thêm Sản Phẩm Mới" only renders when isAdmin === true
@@ -412,8 +413,9 @@ test('CATALOG RBAC: Non-admin negative permission testing (zero mutation actions
   // "Thêm biến thể SKU mới" form only renders when isAdmin === true
   assert.match(catalogSrc, /\{skuId === 'new' && isAdmin && \(\s*<Card className="border-blue-300 bg-blue-50\/20">\s*<CardHeader className="pb-2">\s*<CardTitle className="text-xs font-bold">Thêm biến thể SKU mới<\/CardTitle>/)
 
-  // "Đính kèm tài nguyên / Hình ảnh" only renders when isAdmin === true
-  assert.match(catalogSrc, /\{isAdmin && \(\s*<div className="pt-2 border-t border-border\/50 space-y-2 text-xs">\s*<span className="font-bold text-slate-800">Đính kèm tài nguyên \/ Hình ảnh:<\/span>/)
+  // "Hình ảnh & tài nguyên" / ProductAssetGallery gates resource metadata and attach form behind isAdmin
+  assert.match(catalogSrc, /<ProductAssetGallery[\s\S]*?isAdmin=\{isAdmin\}[\s\S]*?onAttach=/)
+  assert.match(catalogSrc, /function ProductAssetGallery\([\s\S]*?if \(!isAdmin\) \{\s*return <section aria-label="Product gallery"[\s\S]*?Chi tiết tài nguyên và xem trước được ẩn[\s\S]*?Gắn tài nguyên hiện có vào sản phẩm/)
 
   // "Tham gia chiến dịch" only renders when isAdmin === true
   assert.match(catalogSrc, /\{isAdmin && \(\s*<div className="pt-2 border-t border-border\/50 space-y-2 text-xs">\s*<span className="font-bold text-slate-800">Tham gia chiến dịch:<\/span>/)

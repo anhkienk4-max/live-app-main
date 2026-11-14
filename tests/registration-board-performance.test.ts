@@ -23,7 +23,7 @@ test('successful actions keep their controls guarded through the authoritative r
 })
 
 test('late reference data cannot gate or invent operational board state', () => {
-  assert.match(board, /if \(userLoading \|\| !currentUser\) return <ContentSkeleton \/>/)
+  assert.match(board, /if \(userLoading \|\| !currentUser\) return <div data-route-readiness="pending"><ContentSkeleton \/><\/div>/)
   assert.match(board, /const studioOptions = React\.useMemo\(\(\) => buildStudioFilterOptions\(studios\.map/)
   assert.match(board, /brandName\(brands, shift\.brand_id\)/)
   assert.match(board, /platformName\(platforms, shift\.platform_id\)/)

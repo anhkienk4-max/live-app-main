@@ -1,0 +1,114 @@
+\set ON_ERROR_STOP on
+DO $$
+BEGIN
+  IF current_database() <> 'c12_audit_rehearsal'
+    OR shobj_description((SELECT oid FROM pg_database WHERE datname = current_database()), 'pg_database') <> 'CODEX_DISPOSABLE_C12_AUDIT_PG17' THEN
+    RAISE EXCEPTION 'C12_DATABASE_IDENTITY_GUARD_FAILED';
+  END IF;
+END;
+$$;
+CREATE TEMP TABLE c12_query_benchmark (query_type text NOT NULL, elapsed_ms double precision NOT NULL);
+GRANT INSERT ON c12_query_benchmark TO authenticated;
+
+\echo === LEGACY_INLINE_RLS_BEFORE_C12 ===
+BEGIN;
+ALTER POLICY audit_logs_read ON public.audit_logs USING (
+  private.rbac_has_permission('audit.view')
+  OR (private.rbac_has_permission('audit.view_team') AND module IN ('calendar', 'live', 'reports', 'campaigns', 'swaps', 'imports'))
+);
+SET ROLE authenticated;
+SET c12.audit_view = 'true';
+SET c12.audit_view_team = 'false';
+EXPLAIN (ANALYZE, BUFFERS, SUMMARY)
+WITH pgrst_source AS MATERIALIZED (
+  SELECT id, created_at, actor_business_user_id, actor_name, actor_role, module, action, entity_type, entity_id, entity_name,
+    before_data, after_data, changed_fields, reason, source, status, error_code, correlation_id, related_records, metadata, entity_exists
+  FROM public.audit_logs ORDER BY created_at DESC, id ASC LIMIT 20 OFFSET 0
+), pgrst_source_count AS MATERIALIZED (SELECT 1 FROM public.audit_logs)
+SELECT (SELECT count(*) FROM pgrst_source_count) AS total_result_set,
+  (SELECT count(*) FROM pgrst_source) AS page_total;
+RESET ROLE;
+ROLLBACK;
+
+SET ROLE authenticated;
+SET c12.audit_view = 'true';
+
+\echo === LEGACY_POSTGREST_PAGE_AND_EXACT_COUNT ===
+EXPLAIN (ANALYZE, BUFFERS, SUMMARY)
+WITH pgrst_source AS MATERIALIZED (
+  SELECT id, created_at, actor_business_user_id, actor_name, actor_role, module, action, entity_type, entity_id, entity_name,
+    before_data, after_data, changed_fields, reason, source, status, error_code, correlation_id, related_records, metadata, entity_exists
+  FROM public.audit_logs ORDER BY created_at DESC, id ASC LIMIT 20 OFFSET 0
+), pgrst_source_count AS MATERIALIZED (SELECT 1 FROM public.audit_logs)
+SELECT (SELECT count(*) FROM pgrst_source_count) AS total_result_set,
+  (SELECT count(*) FROM pgrst_source) AS page_total;
+
+RESET ROLE;
+\echo === KEYSET_WITHOUT_COMPOSITE_INDEX ===
+BEGIN;
+DROP INDEX public.audit_logs_cursor_created_at_id_idx;
+SET ROLE authenticated;
+EXPLAIN (ANALYZE, BUFFERS, SUMMARY)
+SELECT id, created_at FROM public.audit_logs
+WHERE created_at >= ('2026-10-14'::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+  AND created_at < ('2026-11-13'::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+  AND created_at <= statement_timestamp()
+ORDER BY created_at DESC, id DESC LIMIT 51;
+RESET ROLE;
+
+ROLLBACK;
+
+SET ROLE authenticated;
+\echo === KEYSET_WITH_COMPOSITE_INDEX ===
+EXPLAIN (ANALYZE, BUFFERS, SUMMARY)
+SELECT id, created_at FROM public.audit_logs
+WHERE created_at >= ('2026-10-14'::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+  AND created_at < ('2026-11-13'::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+  AND created_at <= statement_timestamp()
+ORDER BY created_at DESC, id DESC LIMIT 51;
+RESET ROLE;
+
+SET ROLE authenticated;
+SET c12.audit_view = 'true';
+\echo === KEYSET_FULL_ROW_DEFAULT_PLAN ===
+EXPLAIN (ANALYZE, BUFFERS, SUMMARY)
+SELECT a.* FROM public.audit_logs a
+WHERE a.created_at >= ('2026-10-14'::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+  AND a.created_at < ('2026-11-13'::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+  AND a.created_at <= statement_timestamp()
+ORDER BY a.created_at DESC, a.id DESC LIMIT 21;
+SET enable_incremental_sort = off;
+\echo === KEYSET_FULL_ROW_COMPOSITE_INDEX_PLAN ===
+EXPLAIN (ANALYZE, BUFFERS, SUMMARY)
+SELECT a.* FROM public.audit_logs a
+WHERE a.created_at >= ('2026-10-14'::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+  AND a.created_at < ('2026-11-13'::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+  AND a.created_at <= statement_timestamp()
+ORDER BY a.created_at DESC, a.id DESC LIMIT 21;
+RESET enable_incremental_sort;
+RESET ROLE;
+
+SET ROLE authenticated;
+DO $$
+DECLARE
+  v_started timestamptz;
+  v_count bigint;
+  v_page jsonb;
+BEGIN
+  FOR i IN 1..20 LOOP
+    v_started := clock_timestamp();
+    SELECT count(*) INTO v_count FROM public.audit_logs;
+    INSERT INTO pg_temp.c12_query_benchmark VALUES ('legacy_exact_count', extract(epoch FROM clock_timestamp() - v_started) * 1000);
+
+    v_started := clock_timestamp();
+    SELECT public.get_audit_history_page('{}'::jsonb, NULL, NULL, NULL, 20, 'newest') INTO v_page;
+    INSERT INTO pg_temp.c12_query_benchmark VALUES ('bounded_keyset_page', extract(epoch FROM clock_timestamp() - v_started) * 1000);
+  END LOOP;
+END;
+$$;
+RESET ROLE;
+SELECT query_type, count(*) AS samples,
+  round((percentile_cont(0.50) WITHIN GROUP (ORDER BY elapsed_ms))::numeric, 3) AS p50_ms,
+  round((percentile_cont(0.95) WITHIN GROUP (ORDER BY elapsed_ms))::numeric, 3) AS p95_ms,
+  round(max(elapsed_ms)::numeric, 3) AS max_ms
+FROM c12_query_benchmark GROUP BY query_type ORDER BY query_type;
