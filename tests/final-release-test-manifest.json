@@ -181,6 +181,8 @@
     "tests/rc19-c515-compensation-ui-contract.test.ts",
     "tests/rc19-c515-payroll-approval-handler.test.ts",
     "tests/rc19-c515-payroll-migration-contract.test.ts",
+    "tests/rc19-c6-issue184-import.test.ts",
+    "tests/rc19-calendar-overlap-range.test.ts",
     "tests/rc19-catalog-import-regression.test.ts",
     "tests/rc19-command-toolbar.test.tsx",
     "tests/rc19-destination-integrity.test.ts",

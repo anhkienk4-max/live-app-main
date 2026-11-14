@@ -52,9 +52,9 @@ export function usePagedList<T>(service: { getPage(query: ListQuery, signal?: Ab
   }, [encodedFilters, identity, key, navigate, page, pageSize, prefix, service])
   const reload = useCallback(async () => {
     // An authorized write can affect Calendar, Reports or other filtered lists.
-    invalidatePageCache()
+    invalidatePageCache(undefined, prefix)
     setRevision(value => value + 1)
-  }, [setRevision])
+  }, [prefix, setRevision])
   const active = state.key === key
   const result = active ? state.result : undefined
   return { ...pagination, reload, refreshing: Boolean(state.result && state.identity === identity && !active),

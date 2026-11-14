@@ -229,6 +229,11 @@ export interface ScheduleImportRecoveryResult {
   finalizedSkipped: number
 }
 
+export type PersistedScheduleImportResult =
+  | { kind: 'created'; shift: Shift; outcome: 'imported' | 'warning' }
+  | { kind: 'duplicate_skipped'; shiftId?: string }
+  | { kind: 'review_required'; failureCode: string }
+
 interface RecordOutcomeInput {
   rowNumber: number
   outcome: ImportBatchRecordedRowStatus
@@ -243,6 +248,8 @@ interface ProcessScheduleImportRowsInput {
   batchRows: ImportBatchRow[]
   initialShifts: Shift[]
   createShift: (data: ShiftDraft) => Promise<Shift>
+  /** Database-atomic Confirm path. It persists the row outcome with the parent. */
+  createShiftFromImport?: (rowNumber: number, data: ShiftDraft) => Promise<PersistedScheduleImportResult>
   refreshShifts: () => Promise<Shift[]>
   recordOutcome: (input: RecordOutcomeInput) => Promise<void>
   /** Update supported Shift metadata through the canonical CAS-aware service. */
@@ -260,6 +267,7 @@ export async function processScheduleImportRows({
   batchRows,
   initialShifts,
   createShift,
+  createShiftFromImport,
   refreshShifts,
   recordOutcome,
   updateShift,
@@ -381,6 +389,31 @@ export async function processScheduleImportRows({
         expectedOutcome,
       })
       result.duplicateSkipped += 1
+      continue
+    }
+
+    if (createShiftFromImport) {
+      const importDraft = preview.shift ?? preview.duplicateCandidate
+      if (!importDraft) {
+        await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_RECONCILIATION_REVIEW_REQUIRED')
+        continue
+      }
+      try {
+        const persisted = await createShiftFromImport(preview.row.row_number, {
+          ...importDraft,
+          registration_locked: false,
+        })
+        if (persisted.kind === 'created') {
+          knownShifts.push(persisted.shift)
+          result.imported += 1
+        } else if (persisted.kind === 'duplicate_skipped') {
+          result.duplicateSkipped += 1
+        } else {
+          result.retryable += 1
+        }
+      } catch (error) {
+        await persistRetryable(preview.row.row_number, expectedOutcome, scheduleImportFailureCode(error))
+      }
       continue
     }
 

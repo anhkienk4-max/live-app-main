@@ -252,7 +252,7 @@ const sourceRowNumberFor = (source: ScheduleSheetRow, index: number) =>
   typeof source[SOURCE_ROW_NUMBER] === 'number' ? source[SOURCE_ROW_NUMBER] as number : index + 2
 
 function inferSlashDateOrder(sourceRows: ScheduleSheetRow[]): {
-  order: SlashDateOrder
+  order?: SlashDateOrder
   error?: ImportError
 } {
   let inferred: SlashDateOrder | undefined
@@ -293,7 +293,7 @@ function inferSlashDateOrder(sourceRows: ScheduleSheetRow[]): {
     inferred = evidence
   }
 
-  return { order: inferred ?? 'day-first' }
+  return { order: inferred }
 }
 
 type ExcelDateParts = { y: number; m: number; d: number }
@@ -340,6 +340,83 @@ const normalizeDate = (value: unknown, slashDateOrder: SlashDateOrder): string =
     return `${legacyDayFirstMatch[3]}-${legacyDayFirstMatch[2].padStart(2, '0')}-${legacyDayFirstMatch[1].padStart(2, '0')}`
   }
   return text
+}
+
+const isoDateFromParts = (year: string, month: string, day: string) => {
+  const value = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  return validIsoDate(value) ? value : ''
+}
+
+const slashDateCandidates = (value: string) => {
+  const match = value.match(SLASH_DATE_PATTERN)
+  if (!match) return []
+  const [, first, second, year] = match
+  return [...new Set([
+    isoDateFromParts(year, second, first),
+    isoDateFromParts(year, first, second),
+  ].filter(Boolean))]
+}
+
+type ExternalScheduleIdentity = { date: string; startTime: string; endTime: string }
+
+const externalScheduleIdentity = (value: unknown): ExternalScheduleIdentity | undefined => {
+  const match = String(value ?? '').trim().match(/^[A-Z0-9]{2,20}[-_](\d{4})(\d{2})(\d{2})[-_](\d{2})(\d{2})[-_](\d{2})(\d{2})$/i)
+  if (!match) return undefined
+  const date = isoDateFromParts(match[1], match[2], match[3])
+  const startTime = `${match[4]}:${match[5]}`
+  const endTime = `${match[6]}:${match[7]}`
+  return date && validTime(startTime) && validTime(endTime)
+    ? { date, startTime, endTime }
+    : { date: '', startTime, endTime }
+}
+
+const weekdayNumber = (value: unknown): number | undefined => {
+  const normalized = normalizeLookup(value)
+  const weekdays: Record<string, number> = {
+    sunday: 0, sun: 0, cn: 0, 'chu nhat': 0,
+    monday: 1, mon: 1, thu2: 1, 'thu 2': 1, 'thu hai': 1,
+    tuesday: 2, tue: 2, thu3: 2, 'thu 3': 2, 'thu ba': 2,
+    wednesday: 3, wed: 3, thu4: 3, 'thu 4': 3, 'thu tu': 3,
+    thursday: 4, thu: 4, thu5: 4, 'thu 5': 4, 'thu nam': 4,
+    friday: 5, fri: 5, thu6: 5, 'thu 6': 5, 'thu sau': 5,
+    saturday: 6, sat: 6, thu7: 6, 'thu 7': 6, 'thu bay': 6,
+  }
+  return weekdays[normalized]
+}
+
+function resolveImportDate(
+  rawValue: unknown,
+  inferredOrder: SlashDateOrder | undefined,
+  external: ExternalScheduleIdentity | undefined,
+  sourceWeekday: unknown,
+): { date: string; error?: string } {
+  const text = String(rawValue ?? '').trim()
+  if (!text) return { date: '', error: 'Date is required.' }
+  const weekday = explicitSourceValue(sourceWeekday) ? weekdayNumber(sourceWeekday) : undefined
+  if (explicitSourceValue(sourceWeekday) && weekday === undefined) {
+    return { date: '', error: `Weekday "${String(sourceWeekday).trim()}" is not recognized.` }
+  }
+  if (external && !external.date) return { date: '', error: 'External Shift ID contains an invalid date or time.' }
+
+  let date = ''
+  const match = text.match(SLASH_DATE_PATTERN)
+  if (match && !inferredOrder) {
+    let candidates = slashDateCandidates(text)
+    if (weekday !== undefined) candidates = candidates.filter(candidate => new Date(`${candidate}T00:00:00Z`).getUTCDay() === weekday)
+    if (external) candidates = candidates.filter(candidate => candidate === external.date)
+    if (candidates.length === 1) date = candidates[0]
+    else if (candidates.length > 1) return { date: '', error: `Date "${text}" is ambiguous; use an unambiguous date or a matching External Shift ID.` }
+    else return { date: '', error: `Date "${text}" conflicts with its weekday or External Shift ID.` }
+  } else {
+    date = normalizeDate(rawValue, inferredOrder ?? 'day-first')
+  }
+
+  if (!validIsoDate(date)) return { date, error: `Date "${text}" is invalid or ambiguous.` }
+  if (external && external.date !== date) return { date, error: `Date "${text}" does not match External Shift ID date ${external.date}.` }
+  if (weekday !== undefined && new Date(`${date}T00:00:00Z`).getUTCDay() !== weekday) {
+    return { date, error: `Date ${date} does not match source weekday "${String(sourceWeekday).trim()}".` }
+  }
+  return { date }
 }
 
 const normalizeTime = (value: unknown): string => {
@@ -389,6 +466,76 @@ export const parseMultilineStaffingNames = (value: unknown): string[][] => {
   return lines.map(line =>
     line.split(/[,;]+/).map(n => n.replace(/\s+/g, ' ').trim()).filter(Boolean)
   )
+}
+
+type KaoStaffingSlot = {
+  segment_index: number
+  start_time: string
+  end_time: string
+  required_host_count: number
+  required_support_count: number
+  required_technical_count: number
+}
+
+function parseKaoStaffingSlots(value: unknown, declaredCount: unknown): { slots: KaoStaffingSlot[]; error?: string } {
+  const text = String(value ?? '').trim()
+  const countText = String(declaredCount ?? '').trim()
+  if (!text && !countText) return { slots: [] }
+  if (!text || !/^\d+$/.test(countText)) return { slots: [], error: 'Staffing slot definitions and a whole-number slot count are both required.' }
+
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const slots: KaoStaffingSlot[] = []
+  for (const line of lines) {
+    const match = line.match(/^K(\d{1,3})\s+(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})\s+H(\d+)\s+T(\d+)\s+KT(\d+)$/i)
+    if (!match) return { slots: [], error: `Staffing slot "${line}" must use K## start-end H# T# KT#.` }
+    const [, rawIndex, startTime, rawEndTime, host, support, technical] = match
+    const segmentIndex = Number(rawIndex)
+    const endTime = rawEndTime === '24:00' ? '00:00' : rawEndTime
+    const counts = [Number(host), Number(support), Number(technical)]
+    if (segmentIndex !== slots.length + 1 || !validTime(startTime) || !validTime(endTime)
+      || startTime === endTime || counts.some(count => !Number.isInteger(count) || count < 0 || count > MAX_SHIFT_CAPACITY)) {
+      return { slots: [], error: 'Staffing slots must be sequential K01…KQ entries with valid times and capacities.' }
+    }
+    slots.push({
+      segment_index: segmentIndex,
+      start_time: startTime.padStart(5, '0'),
+      end_time: endTime.padStart(5, '0'),
+      required_host_count: counts[0],
+      required_support_count: counts[1],
+      required_technical_count: counts[2],
+    })
+  }
+  if (Number(countText) !== slots.length || slots.length > MAX_SHIFT_CAPACITY) {
+    return { slots: [], error: `Declared staffing slot count ${countText} does not match ${slots.length} definitions.` }
+  }
+  return { slots }
+}
+
+function parseNamesBySlot(value: unknown, slots: KaoStaffingSlot[]): { names: Map<number, string[]>; error?: string } {
+  const text = String(value ?? '').trim()
+  const names = new Map<number, string[]>()
+  if (!text || !slots.length) return { names }
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const labeled = lines.some(line => /^K\d{1,3}\s*[:：]/i.test(line))
+  if (labeled) {
+    for (const line of lines) {
+      const match = line.match(/^K(\d{1,3})\s*[:：]\s*(.*)$/i)
+      if (!match) return { names, error: 'When staffing names use K## labels, every non-empty line must use a slot label.' }
+      const index = Number(match[1])
+      if (!slots.some(slot => slot.segment_index === index)) return { names, error: `Staffing names reference unknown slot K${String(index).padStart(2, '0')}.` }
+      const values = match[2].split(/[,;]+/).map(name => name.replace(/\s+/g, ' ').trim()).filter(Boolean)
+      names.set(index, [...(names.get(index) ?? []), ...values])
+    }
+    return { names }
+  }
+  const groups = parseMultilineStaffingNames(text)
+  if (groups.length > 1 && groups.length !== slots.length) {
+    return { names, error: 'Staffing name lines must match the number of K slots or use explicit K## labels.' }
+  }
+  if (groups.length === slots.length) slots.forEach((slot, index) => names.set(slot.segment_index, groups[index]))
+  else if (slots.length === 1 && groups.length === 1) names.set(slots[0].segment_index, groups[0])
+  else if (groups.length > 0) return { names, error: 'Staffing name lines must match the number of K slots or use explicit K## labels.' }
+  return { names }
 }
 
 const normalizeTimeRange = (value: unknown): [string, string] => {
@@ -536,7 +683,6 @@ export function parseScheduleRows(
     const rowText = Object.values(normalizedSource).map(value => String(value ?? '')).join(' ').replace(/\s+/g, ' ').trim()
     if (/^total\s*week\s*[1-4]\b/i.test(normalizeLookup(rowText))) return
     const rawDate = valueForNormalized(normalizedRow, normalizedScheduleHeaders.date)
-    const date = normalizeDate(rawDate, dateOrder.order)
     const [rangeStart, rangeEnd] = normalizeTimeRange(valueForNormalized(normalizedRow, normalizedScheduleHeaders.timeRange))
     const startTime = normalizeTime(valueForNormalized(normalizedRow, normalizedScheduleHeaders.startTime)) || rangeStart
     const rawEndTime = normalizeTime(valueForNormalized(normalizedRow, normalizedScheduleHeaders.endTime)) || rangeEnd
@@ -552,6 +698,11 @@ export function parseScheduleRows(
     const campaignName = String(valueForNormalized(normalizedRow, normalizedScheduleHeaders.campaign) ?? '').trim()
     const suppliedTitle = String(valueForNormalized(normalizedRow, normalizedScheduleHeaders.title) ?? '').trim()
     const title = suppliedTitle || (brandName && platformName ? `${brandName} – ${platformName}` : brandName)
+    const externalShiftId = String(customFieldValueFor(normalizedSource, ['External Shift ID', 'External Shift Code', 'Shift ID']) ?? suppliedTitle).trim()
+    const externalIdentity = externalScheduleIdentity(externalShiftId)
+    const sourceWeekday = customFieldValueFor(normalizedSource, ['Weekday', 'Day of week', 'Ngày trong tuần', 'Thứ'])
+    const dateResolution = resolveImportDate(rawDate, dateOrder.order, externalIdentity, sourceWeekday)
+    const date = dateResolution.date
     const rawStudio = String(valueForNormalized(normalizedRow, normalizedScheduleHeaders.studio) ?? '')
     const studio = rawStudio.trim()
     const rawExecutionSource = textValue(valueForNormalized(normalizedRow, normalizedScheduleHeaders.executionSource)).trim()
@@ -608,7 +759,7 @@ export function parseScheduleRows(
       required_support_count: normalizedSource.required_support_count,
       required_technical_count: normalizedSource.required_technical_count,
     }
-    const staffingNames = {
+    let staffingNames = {
       host_names: normalizedSource.host_names,
       assistant_names: normalizedSource.assistant_names,
       technical_names: normalizedSource.technical_names,
@@ -616,6 +767,10 @@ export function parseScheduleRows(
     const validatedStaffing = validateStaffingValues(staffingValues)
     const rowErrors: string[] = []
     const rowWarnings: string[] = []
+    if (dateResolution.error) rowErrors.push(dateResolution.error)
+    if (externalIdentity && (externalIdentity.startTime !== startTime || externalIdentity.endTime !== endTime)) {
+      rowErrors.push(`Source times ${startTime}-${endTime} do not match External Shift ID times ${externalIdentity.startTime}-${externalIdentity.endTime}.`)
+    }
     if (rawAgencyName && !parsedAgencyCode) {
       rowErrors.push(`Agency "${rawAgencyName}" không hợp lệ. Chỉ chấp nhận: ADA, SNAP, Live AI.`)
     }
@@ -628,7 +783,7 @@ export function parseScheduleRows(
       rowErrors.push(`Agency ${agencyDisplayLabel(agencyCode)} conflicts with Execution Source. Select ${executionSourceForAgency(agencyCode) === 'internal' ? 'Internal' : 'External'} or change Agency.`)
     }
 
-    if (!date) rowErrors.push('Date is required.')
+    if (!date && !dateResolution.error) rowErrors.push('Date is required.')
     else if (!validIsoDate(date)) {
       const slashOrder = dateOrder.order === 'month-first' ? 'MM/DD/YYYY' : 'DD/MM/YYYY'
       rowErrors.push(String(rawDate ?? '').trim().match(SLASH_DATE_PATTERN)
@@ -648,7 +803,66 @@ export function parseScheduleRows(
     const timeLines = String(rawTimeCell ?? '').split(/\r?\n/).map(line => line.trim()).filter(Boolean)
     const parsedSegments = parseMultilineTimeSegments(rawTimeCell)
     let staffingSegments: PlannedStaffingSegmentDraft[] | undefined
-    if (timeLines.length > 1) {
+    const slotDefinitionsText = customFieldValueFor(normalizedSource, ['Khung nhân sự', 'Staffing slots', 'Staffing segments'])
+    const declaredSlotCount = customFieldValueFor(normalizedSource, ['Số khung', 'Slot count', 'Number of slots'])
+    const hasKaoSlotSource = String(slotDefinitionsText ?? '').split(/\r?\n/).some(line => /^K(?:\d|[:\s])/i.test(line.trim()))
+    const slotDefinitions = hasKaoSlotSource
+      ? parseKaoStaffingSlots(slotDefinitionsText, declaredSlotCount)
+      : { slots: [] as KaoStaffingSlot[] }
+    if (slotDefinitions.error) rowErrors.push(slotDefinitions.error)
+    if (slotDefinitions.slots.length) {
+      const roleNames = {
+        host: parseNamesBySlot(rawNameFor('host_names'), slotDefinitions.slots),
+        support: parseNamesBySlot(rawNameFor('assistant_names'), slotDefinitions.slots),
+        technical: parseNamesBySlot(rawNameFor('technical_names'), slotDefinitions.slots),
+      }
+      for (const [role, parsed] of Object.entries(roleNames)) {
+        if (parsed.error) rowErrors.push(`${role}: ${parsed.error}`)
+      }
+      const parentStart = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3, 5))
+      const parentDuration = resolvedTime?.durationMinutes ?? 0
+      let previousEnd = -1
+      staffingSegments = slotDefinitions.slots.map(slot => {
+        const startMinute = Number(slot.start_time.slice(0, 2)) * 60 + Number(slot.start_time.slice(3, 5))
+        const endMinute = Number(slot.end_time.slice(0, 2)) * 60 + Number(slot.end_time.slice(3, 5))
+        const startOffset = (startMinute - parentStart + 1440) % 1440
+        const duration = (endMinute - startMinute + 1440) % 1440
+        const endOffset = startOffset + duration
+        if (startOffset < previousEnd || endOffset > parentDuration) {
+          rowErrors.push(`Staffing segment K${String(slot.segment_index).padStart(2, '0')} overlaps or falls outside the parent shift.`)
+        }
+        previousEnd = endOffset
+        const hostNames = roleNames.host.names.get(slot.segment_index) ?? []
+        const supportNames = roleNames.support.names.get(slot.segment_index) ?? []
+        const technicalNames = roleNames.technical.names.get(slot.segment_index) ?? []
+        if (hostNames.length > slot.required_host_count || supportNames.length > slot.required_support_count
+          || technicalNames.length > slot.required_technical_count) {
+          rowErrors.push(`Planned names exceed the capacity for staffing segment K${String(slot.segment_index).padStart(2, '0')}.`)
+        }
+        return {
+          ...slot,
+          planned_host_names: hostNames,
+          planned_support_names: supportNames,
+          planned_technical_names: technicalNames,
+        }
+      })
+      const flatten = (values: string[][]) => [...new Set(values.flat())]
+      const plannedNames = {
+        host: flatten([...roleNames.host.names.values()]),
+        support: flatten([...roleNames.support.names.values()]),
+        technical: flatten([...roleNames.technical.names.values()]),
+      }
+      staffingNames = {
+        host_names: plannedNames.host.length ? plannedNames.host : staffingNames.host_names,
+        assistant_names: plannedNames.support.length ? plannedNames.support : staffingNames.assistant_names,
+        technical_names: plannedNames.technical.length ? plannedNames.technical : staffingNames.technical_names,
+      }
+      sourcePresence.required_host_count = true
+      sourcePresence.required_support_count = true
+      sourcePresence.required_technical_count = true
+    } else if (hasKaoSlotSource) {
+      rowErrors.push('Staffing slot count has no valid canonical slot definitions.')
+    } else if (timeLines.length > 1) {
       if (parsedSegments.length !== timeLines.length || parsedSegments.some(segment =>
         !validTime(segment.startTime) || !validTime(segment.endTime) || segment.startTime === segment.endTime)) {
         rowErrors.push('Every staffing segment must contain one valid, non-zero time range.')
@@ -743,9 +957,9 @@ export function parseScheduleRows(
         studio: studio || undefined,
         ...staffingNames,
         ...(staffingSegments ? { staffing_segments: staffingSegments } : {}),
-        required_host_count: validatedStaffing.required_host_count!,
-        required_support_count: validatedStaffing.required_support_count!,
-        required_technical_count: validatedStaffing.required_technical_count!,
+        required_host_count: staffingSegments?.length ? Math.max(...staffingSegments.map(segment => segment.required_host_count)) : validatedStaffing.required_host_count!,
+        required_support_count: staffingSegments?.length ? Math.max(...staffingSegments.map(segment => segment.required_support_count)) : validatedStaffing.required_support_count!,
+        required_technical_count: staffingSegments?.length ? Math.max(...staffingSegments.map(segment => segment.required_technical_count)) : validatedStaffing.required_technical_count!,
         registration_locked: false,
         allow_multi_role: false,
         status: 'scheduled',

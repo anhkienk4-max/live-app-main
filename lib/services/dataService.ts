@@ -75,6 +75,7 @@ import { getSupabaseSwapRequestRepository } from '@/lib/services/supabaseSwapReq
 import { getSupabaseSettingsRepository } from '@/lib/services/supabaseSettingsService'
 import { getSupabaseDashboardUpdateRepository } from '@/lib/services/supabaseDashboardUpdateService'
 import { getMissingFinalReportMetricKeys } from '@/lib/utils/ocrMetricSerialization'
+import type { PersistedScheduleImportResult } from '@/lib/utils/scheduleImportRecovery'
 import type { MetricState } from '@/lib/utils/ocrCanonical'
 import { reportQueueState } from '@/lib/utils/reportQueue'
 import {
@@ -1510,6 +1511,27 @@ export const shiftService = {
       source: newShift.import_batch_id ? 'excel_import' : 'manual',
     })
     return Promise.resolve(newShift)
+  },
+
+  async createFromImport(
+    batchId: string,
+    rowNumber: number,
+    data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>,
+  ): Promise<PersistedScheduleImportResult> {
+    if (getAuthMode() !== 'supabase') throw new Error('ATOMIC_SCHEDULE_IMPORT_REQUIRES_SUPABASE')
+    const result = await getSupabaseShiftRepository().createFromImport(batchId, rowNumber, data)
+    if (result.kind === 'created') {
+      const persisted = result.shift
+      const source = scheduleImports.find(batch => batch.id === batchId)?.source === 'google_sheets'
+        ? 'google_sheets'
+        : 'excel_import'
+      upsertShiftProjection(persisted)
+      recordScheduleChange('create', persisted.id, undefined, { ...persisted }, { source })
+      audit('calendar', 'create', 'shift', persisted.id, persisted.title || `${persisted.date} ${persisted.start_time}`, {
+        after: { ...persisted }, source,
+      })
+    }
+    return result
   },
 
   async update(

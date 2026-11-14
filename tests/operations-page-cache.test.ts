@@ -44,6 +44,28 @@ test('separate filters, pages, permissions and invalidation never reuse private 
   assert.equal(readPageCache(c), undefined)
 })
 
+test('namespace invalidation preserves unrelated pages and prevents stale namespace writes', async () => {
+  invalidatePageCache()
+  const reportKey = pageCacheKey('actor-a:admin:v1', 'reports', query)
+  const shiftKey = pageCacheKey('actor-b:member:v1', 'shifts', query)
+  writePageCache(reportKey, ['old-report'])
+  let finishShift!: (page: ListPage<Item>) => void
+  const pending = readCachedListPage({ getPage: () => new Promise<ListPage<Item>>(resolve => { finishShift = resolve }) }, 'actor-b:member:v1', 'shifts', query)
+  invalidatePageCache(undefined, 'reports')
+  assert.equal(readPageCache(reportKey), undefined)
+  finishShift({ items: [{ id: 'fresh-shift' }], page: 1, pageSize: 10, total: 1 })
+  await pending
+  assert.deepEqual(readPageCache<ListPage<Item>>(shiftKey)?.items.map(item => item.id), ['fresh-shift'])
+
+  invalidatePageCache(undefined, 'shifts')
+  let finishStale!: (page: ListPage<Item>) => void
+  const stale = readCachedListPage({ getPage: () => new Promise<ListPage<Item>>(resolve => { finishStale = resolve }) }, 'actor-b:member:v1', 'shifts', query)
+  invalidatePageCache(undefined, 'shifts')
+  finishStale({ items: [{ id: 'stale-shift' }], page: 1, pageSize: 10, total: 1 })
+  await stale
+  assert.equal(readPageCache(shiftKey), undefined)
+})
+
 test('next-page prefetch is bounded and does not load all pages', async () => {
   invalidatePageCache()
   const seen: number[] = []

@@ -16,6 +16,12 @@ import { createMyPayslipHandler } from '../lib/server/myPayslipHandler'
 import { createSelfAttendancePhotoGetHandler, createSelfAttendancePhotoPostHandler } from '../lib/server/selfAttendancePhotoHandler'
 import { requirePermission } from '../lib/server/authGuards'
 import { createAttendancePhotoReviewHandler } from '../lib/server/attendancePhotoReviewHandler'
+import * as XLSX from 'xlsx'
+import { mapImportResultToBatchRows } from '../lib/utils/scheduleImportBatch'
+import { summarizeImportResult } from '../lib/utils/scheduleImportBatch'
+import { processScheduleImportRows } from '../lib/utils/scheduleImportRecovery'
+import { parseScheduleTabularData } from '../lib/utils/excelUtils'
+import { createSupabaseScheduleImportPort } from '../lib/services/supabaseScheduleImportService'
 import sharp from 'sharp'
 
 const baseUrl = process.env.C511_BASE_URL
@@ -26,10 +32,16 @@ const database = process.env.C511_DATABASE
 const evidenceDir = process.env.C511_EVIDENCE_DIR
 const authUsersBefore = Number(process.env.C511_AUTH_USERS_BEFORE)
 const storageObjectsBefore = Number(process.env.C511_STORAGE_OBJECTS_BEFORE)
+const authPort = process.env.C511_AUTH_PORT ?? '15543'
+const restPort = process.env.C511_REST_PORT ?? '15542'
 assert.ok(baseUrl && anonKey && serviceKey && password && database && evidenceDir
   && Number.isSafeInteger(authUsersBefore) && authUsersBefore >= 0
   && Number.isSafeInteger(storageObjectsBefore) && storageObjectsBefore >= 0,
 'C5.11 local runtime environment required')
+assert.match(authPort, /^\d{1,5}$/)
+assert.match(restPort, /^\d{1,5}$/)
+assert.ok(Number(authPort) > 0 && Number(authPort) <= 65535)
+assert.ok(Number(restPort) > 0 && Number(restPort) <= 65535)
 
 const routeFetch: typeof fetch = async (input, init) => {
   const request = input instanceof Request ? new Request(input, init) : new Request(input, init)
@@ -37,10 +49,10 @@ const routeFetch: typeof fetch = async (input, init) => {
   let directPort: string
   if (target.pathname.startsWith('/rest/v1/')) {
     target.pathname = target.pathname.slice('/rest/v1'.length)
-    directPort = '15542'
+    directPort = restPort
   } else if (target.pathname.startsWith('/auth/v1/')) {
     target.pathname = target.pathname.slice('/auth/v1'.length)
-    directPort = '15543'
+    directPort = authPort
   } else {
     throw new Error(`C511_LOCAL_ROUTE_UNEXPECTED:${target.pathname}`)
   }
@@ -283,6 +295,596 @@ async function prepareC511RegistrationSettings() {
   }
 }
 
+async function confirmKaoIssue184Shift(run: number, brandId: string, platformId: string, adminClient: SupabaseClient) {
+  const brandName = requireOk(await adminClient.from('brands').select('name').eq('id', brandId).single(), 'KAO fixture Brand name').name as string
+  const platformName = requireOk(await adminClient.from('platforms').select('name').eq('id', platformId).single(), 'KAO fixture Platform name').name as string
+  const sourceRow: Record<string, string | number> = {
+    Date: '11/1/2026', Time: '10:00 - 18:00', Brand: brandName, Platform: platformName,
+    'Shift title': `KAO Issue 184 ${run}`, 'External Shift ID': 'KAO-20261101-1000-1800',
+    Weekday: 'Sunday', 'Số khung': 3,
+    'Khung nhân sự': 'K01 10:00-11:00 H1 T1 KT0\nK02 11:00-16:00 H2 T1 KT0\nK03 16:00-18:00 H1 T1 KT0',
+    Host: 'K01: Planned Host A\nK02: Planned Host B, Planned Host C\nK03: Planned Host A',
+    Support: 'K01: Planned Support A\nK02: Planned Support B\nK03: Planned Support A',
+    Technical: '',
+  }
+  const sourceName = `KAO Issue 184 synthetic Google Sheet ${run}`
+  const parseSource = (source: Record<string, string | number>) => {
+    const headers = Object.keys(source)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      headers, headers.map(header => source[header]),
+    ]), 'KAO Import')
+    return parseScheduleTabularData(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer, 'array', {
+      brands: new Map([[brandName, brandId]]), platforms: new Map([[platformName, platformId]]), campaigns: new Map(),
+    }, [])
+  }
+  const preview = parseSource(sourceRow)
+  assert.equal(preview.errors.length, 0, JSON.stringify(preview.errors))
+  assert.equal(preview.validShifts.length, 1)
+  assert.equal(preview.validShifts[0].date, '2026-11-01')
+  assert.equal(preview.validShifts[0].start_at, '2026-11-01T03:00:00.000Z')
+  assert.equal(preview.validShifts[0].end_at, '2026-11-01T11:00:00.000Z')
+  const importPort = createSupabaseScheduleImportPort(adminClient)
+  const batch = await importPort.createBatch({
+    source: 'google_sheets', sourceName,
+    createdBy: 'authenticated-admin', summary: summarizeImportResult(preview),
+    previewRows: preview.rows.map(row => row.row),
+  })
+  const batchId = batch.id
+  const batchRows = await importPort.listBatchRows(batchId)
+  assert.equal(batchRows.length, 1, 'Preview should persist its source row before Confirm')
+  const shiftRepo = createSupabaseShiftRepository(adminClient)
+  const differentImportActor = await seedUser(run, 'C6ReimportDifferentAdmin', 'admin')
+  const differentImportSession = await signIn(differentImportActor)
+  const unauthorizedConfirm = await createSupabaseShiftRepository(differentImportSession.client)
+    .createFromImport(batchId, batchRows[0].source_row_number, preview.validShifts[0])
+    .then(() => ({ denied: false, message: '' }))
+    .catch(error => ({ denied: true, message: String(error.message) }))
+  assert.equal(unauthorizedConfirm.denied, true, 'another actor cannot confirm an Admin-owned import batch')
+  assert.match(unauthorizedConfirm.message, /IMPORT_BATCH_ACTOR_MISMATCH/u)
+  const unchangedPendingRow = requireOk(await adminClient.from('schedule_import_batch_rows')
+    .select('outcome,shift_id').eq('batch_id', batchId).single(), 'unauthorized C6 Confirm readback')
+  assert.equal(unchangedPendingRow.outcome, 'pending')
+  assert.equal(unchangedPendingRow.shift_id, null)
+  let nonAtomicOutcomeWrites = 0
+  let initialRpcError: string | null = null
+  const confirmed = await processScheduleImportRows({
+    batchId, previews: preview.rows, batchRows, initialShifts: [],
+    createShift: shiftRepo.create, refreshShifts: shiftRepo.getAll,
+    createShiftFromImport: async (rowNumber, data) => {
+      try { return await shiftRepo.createFromImport(batchId, rowNumber, data) }
+      catch (error) { initialRpcError = error instanceof Error ? error.message : String(error); throw error }
+    },
+    recordOutcome: input => {
+      nonAtomicOutcomeWrites += 1
+      return importPort.recordRowOutcome(batchId, input.rowNumber, input.outcome, {
+        expectedOutcome: input.expectedOutcome, shiftId: input.shiftId, failureCode: input.failureCode,
+      })
+    },
+  })
+  assert.equal(nonAtomicOutcomeWrites, 0, `successful Import Confirm and review decisions must persist receipts inside the RPC; RPC error=${initialRpcError ?? 'none'}`)
+  assert.deepEqual(confirmed, { imported: 1, recovered: 0, duplicateSkipped: 0, retryable: 0, finalizedSkipped: 0 })
+  const initialReceipt = requireOk(await adminClient.from('schedule_import_batch_rows')
+    .select('outcome,shift_id,failure_code').eq('batch_id', batchId).single(), 'KAO atomic Confirm receipt')
+  assert.equal(initialReceipt.outcome, 'imported')
+  assert.ok(initialReceipt.shift_id)
+  assert.equal(initialReceipt.failure_code, null)
+  await importPort.markBatchStatus(batchId, 'confirmed')
+
+  const parents = requireOk(await adminClient.from('shifts')
+    .select('id,brand_id,platform_id,studio,campaign_id,import_batch_id,date,start_time,end_time,start_at,end_at,version,required_host_count,required_support_count,required_technical_count')
+    .eq('brand_id', brandId).eq('date', '2026-11-01').eq('start_time', '10:00:00').eq('end_time', '18:00:00'),
+  'KAO imported parent authenticated readback') as Array<Record<string, unknown>>
+  assert.equal(parents.length, 1)
+  const parent = parents[0]
+  assert.equal(parent.id, initialReceipt.shift_id)
+  assert.equal(parent.required_host_count, 2)
+  assert.equal(parent.required_support_count, 1)
+  assert.equal(parent.required_technical_count, 0)
+  const segments = requireOk(await adminClient.from('shift_staffing_segments')
+    .select('id,shift_id,segment_index,start_at,end_at,required_host_count,required_support_count,required_technical_count,planned_host_names,planned_support_names,planned_technical_names')
+    .eq('shift_id', String(parent.id)).order('segment_index'), 'KAO imported segment authenticated readback') as Array<Record<string, unknown>>
+  assert.deepEqual(segments.map(segment => [segment.start_at, segment.end_at, segment.required_host_count, segment.required_support_count, segment.required_technical_count]), [
+    ['2026-11-01T03:00:00+00:00', '2026-11-01T04:00:00+00:00', 1, 1, 0],
+    ['2026-11-01T04:00:00+00:00', '2026-11-01T09:00:00+00:00', 2, 1, 0],
+    ['2026-11-01T09:00:00+00:00', '2026-11-01T11:00:00+00:00', 1, 1, 0],
+  ])
+  assert.deepEqual(segments.map(segment => segment.planned_host_names), [['Planned Host A'], ['Planned Host B', 'Planned Host C'], ['Planned Host A']])
+  assert.deepEqual(segments.map(segment => segment.planned_support_names), [['Planned Support A'], ['Planned Support B'], ['Planned Support A']])
+  assert.ok(segments.every(segment => Array.isArray(segment.planned_technical_names) && segment.planned_technical_names.length === 0))
+  const registrations = requireOk(await adminClient.from('shift_registrations').select('id').eq('shift_id', String(parent.id)), 'KAO assignment readback') as Array<Record<string, unknown>>
+  assert.equal(registrations.length, 0, 'planned names must not create approved assignments')
+
+  let reconciliationPayrollPeriodId: string | null = null
+  const readOperationalSnapshot = async () => {
+    const parentSnapshot = requireOk(await adminClient.from('shifts')
+      .select('id,date,start_time,end_time,start_at,end_at,version,title,status,required_host_count,required_support_count,required_technical_count')
+      .eq('id', String(parent.id)).single(), 'KAO reconciliation parent snapshot')
+    const segmentSnapshot = requireOk(await adminClient.from('shift_staffing_segments')
+      .select('id,shift_id,segment_index,start_at,end_at,required_host_count,required_support_count,required_technical_count,planned_host_names,planned_support_names,planned_technical_names')
+      .eq('shift_id', String(parent.id)).order('segment_index'), 'KAO reconciliation segment snapshot') as Array<Record<string, unknown>>
+    const registrationSnapshot = requireOk(await adminClient.from('shift_registrations')
+      .select('id,status,user_id').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation staffing snapshot')
+    const actualSnapshot = requireOk(await adminClient.from('workforce_actual_segments')
+      .select('id,staff_id,review_status,actual_start_at,actual_end_at,version').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation actual snapshot') as Array<Record<string, unknown>>
+    const actualIds = actualSnapshot.map(row => String(row.id))
+    const photoSnapshot = requireOk(await adminClient.from('self_attendance_photo_evidence')
+      .select('id,request_id,staff_id,event_kind,external_file_id,external_parent_id,checksum_sha256').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation evidence snapshot')
+    const auditSnapshot = requireOk(await adminClient.from('audit_logs')
+      .select('id,entity_id,entity_name,action').eq('entity_id', String(parent.id)).order('id'), 'KAO reconciliation audit snapshot')
+    const reportSnapshot = requireOk(await service.from('reports')
+      .select('id,shift_id,status,gmv,normalized_metrics,version_number').eq('shift_id', String(parent.id)).order('id'), 'KAO report and KPI snapshot') as Array<Record<string, unknown>>
+    const reportIds = reportSnapshot.map(report => String(report.id))
+    const reportRevisions = reportIds.length ? requireOk(await service.from('report_revisions')
+      .select('id,report_id,version,status,event,metrics').in('report_id', reportIds).order('id'), 'KAO report revision snapshot') : []
+    const reportImages = reportIds.length ? requireOk(await service.from('report_images')
+      .select('id,report_id,image_type,storage_path').in('report_id', reportIds).order('id'), 'KAO report evidence image snapshot') : []
+    const liveReportImages = reportIds.length ? requireOk(await service.from('live_report_images')
+      .select('id,report_id,category,file_url,file_name,external_file_id,external_parent_id,checksum_sha256')
+      .in('report_id', reportIds).order('id'), 'KAO live report image snapshot') : []
+    const payrollLines = actualIds.length ? requireOk(await service.from('workforce_payroll_lines')
+      .select('id,period_id,segment_id,rate_card_id,actual_seconds,payable_seconds,gross_vnd,voided_at')
+      .in('segment_id', actualIds).order('id'), 'KAO reconciliation Payroll line snapshot') : []
+    const payrollPeriods = reconciliationPayrollPeriodId ? requireOk(await service.from('workforce_payroll_periods')
+      .select('id,status,revision,locked_by,locked_at').eq('id', reconciliationPayrollPeriodId), 'KAO reconciliation Payroll period snapshot') : []
+    return { parent: parentSnapshot, segments: segmentSnapshot, registrations: registrationSnapshot,
+      actuals: actualSnapshot, photos: photoSnapshot, audits: auditSnapshot, reports: reportSnapshot,
+      reportRevisions, reportImages, liveReportImages, payrollLines, payrollPeriods }
+  }
+  const sourceBaseline = await readOperationalSnapshot()
+  const scopedLeader = await seedUser(Date.now(), 'C6ScopedLeader', 'leader')
+  const scopedLeaderAuth = await signIn(scopedLeader)
+  requireOk(await adminClient.rpc('rc19_set_leader_brand_scope', {
+    p_user_id: scopedLeader.businessId, p_brand_id: brandId, p_scope_key: 'shifts.manage',
+    p_enabled: true, p_expected_version: 0, p_valid_from: activeFrom(), p_valid_until: null,
+    p_reason: 'C6 synthetic in-scope import authorization fixture',
+  }), 'C6 scoped Leader grant fixture')
+  const leaderChangedSource = parseSource({ ...sourceRow, Host: 'K01: Scoped Leader planned label change' })
+  const leaderBatch = await importPort.createBatch({
+    source: 'google_sheets', sourceName, createdBy: 'authenticated-admin',
+    summary: summarizeImportResult(leaderChangedSource), previewRows: leaderChangedSource.rows.map(item => item.row),
+  })
+  requireOk(await service.from('schedule_import_batches').update({ created_by: scopedLeader.businessId })
+    .eq('id', leaderBatch.id).select('id').single(), 'C6 Leader batch actor fixture')
+  const leaderReview = await createSupabaseShiftRepository(scopedLeaderAuth.client).createFromImport(
+    leaderBatch.id, leaderChangedSource.rows[0].row.row_number, leaderChangedSource.validShifts[0],
+  )
+  assert.equal(leaderReview.kind, 'review_required', 'an in-scope Leader may submit a changed source only for review')
+  assert.match(leaderReview.kind === 'review_required' ? leaderReview.failureCode : '', /^IMPORT_SOURCE_CHANGED_REVIEW_REQUIRED:/)
+  const leaderReceipt = requireOk(await adminClient.from('schedule_import_batch_rows')
+    .select('outcome,shift_id,failure_code').eq('batch_id', leaderBatch.id).single(), 'C6 Leader changed-source receipt')
+  assert.equal(leaderReceipt.outcome, 'retryable')
+  assert.equal(leaderReceipt.shift_id, null)
+  assert.deepEqual(await readOperationalSnapshot(), sourceBaseline, 'Leader review must not mutate the authorized parent')
+
+  const foreignBrandId = await newBrand(`C6 Foreign Brand ${run}`)
+  const foreignBrandName = requireOk(await service.from('brands').select('name').eq('id', foreignBrandId).single(), 'C6 foreign Brand name').name as string
+  const foreignSource = { ...sourceRow, Date: '2026-11-01', Brand: foreignBrandName, 'External Shift ID': `C6-FOREIGN-${run}` }
+  const foreignWorkbook = XLSX.utils.book_new()
+  const foreignHeaders = Object.keys(foreignSource)
+  XLSX.utils.book_append_sheet(foreignWorkbook, XLSX.utils.aoa_to_sheet([
+    foreignHeaders, foreignHeaders.map(header => foreignSource[header]),
+  ]), 'C6 Foreign Brand')
+  const foreignPreview = parseScheduleTabularData(XLSX.write(foreignWorkbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer, 'array', {
+    brands: new Map([[foreignBrandName, foreignBrandId]]), platforms: new Map([[platformName, platformId]]), campaigns: new Map(),
+  }, [])
+  assert.equal(foreignPreview.errors.length, 0, JSON.stringify(foreignPreview.errors))
+  const foreignLeader = await seedUser(Date.now(), 'C6ForeignLeader', 'leader')
+  const foreignLeaderAuth = await signIn(foreignLeader)
+  const foreignBatch = await importPort.createBatch({
+    source: 'google_sheets', sourceName: `C6 foreign Brand ${run}`, createdBy: 'authenticated-admin',
+    summary: summarizeImportResult(foreignPreview), previewRows: foreignPreview.rows.map(item => item.row),
+  })
+  requireOk(await service.from('schedule_import_batches').update({ created_by: foreignLeader.businessId })
+    .eq('id', foreignBatch.id).select('id').single(), 'C6 foreign Leader batch actor fixture')
+  const foreignLeaderAttempt = await createSupabaseShiftRepository(foreignLeaderAuth.client)
+    .createFromImport(foreignBatch.id, foreignPreview.rows[0].row.row_number, foreignPreview.validShifts[0])
+    .then(() => ({ denied: false, message: '' }))
+    .catch(error => ({ denied: true, message: String(error.message) }))
+  assert.equal(foreignLeaderAttempt.denied, true, 'Leader without an active grant cannot import another Brand')
+  assert.match(foreignLeaderAttempt.message, /OPERATION_NOT_ALLOWED/u)
+  const foreignPending = requireOk(await adminClient.from('schedule_import_batch_rows')
+    .select('outcome,shift_id,failure_code').eq('batch_id', foreignBatch.id).single(), 'C6 foreign Leader receipt remains pending')
+  assert.deepEqual(foreignPending, { outcome: 'pending', shift_id: null, failure_code: null })
+
+  const member = await seedUser(Date.now(), 'C6UnauthorizedMember', 'member')
+  const memberAuth = await signIn(member)
+  const memberBatch = await importPort.createBatch({
+    source: 'google_sheets', sourceName: `C6 member ${run}`, createdBy: 'authenticated-admin',
+    summary: summarizeImportResult(foreignPreview), previewRows: foreignPreview.rows.map(item => item.row),
+  })
+  requireOk(await service.from('schedule_import_batches').update({ created_by: member.businessId })
+    .eq('id', memberBatch.id).select('id').single(), 'C6 Member batch actor fixture')
+  const memberAttempt = await createSupabaseShiftRepository(memberAuth.client)
+    .createFromImport(memberBatch.id, foreignPreview.rows[0].row.row_number, foreignPreview.validShifts[0])
+    .then(() => ({ denied: false }))
+    .catch(() => ({ denied: true }))
+  assert.equal(memberAttempt.denied, true, 'Member cannot invoke shift import Confirm')
+
+  const anonClient = createClient(baseUrl!, anonKey!, clientOptions)
+  const anonAttempt = await anonClient.rpc('create_schedule_import_shift', {
+    p_batch_id: foreignBatch.id, p_row_number: foreignPreview.rows[0].row.row_number,
+    p_data: {}, p_segments: [],
+  })
+  assert.ok(anonAttempt.error, 'anonymous role cannot execute the import RPC')
+  const unauthorizedReceipts = requireOk(await adminClient.from('schedule_import_batch_rows')
+    .select('outcome,shift_id').in('batch_id', [foreignBatch.id, memberBatch.id]), 'C6 unauthorized receipt readback') as Array<Record<string, unknown>>
+  assert.equal(unauthorizedReceipts.length, 2)
+  assert.ok(unauthorizedReceipts.every(row => row.outcome === 'pending' && row.shift_id === null))
+  const roleScopeResults = {
+    in_scope_leader: 'authenticated Leader with active shifts.manage Brand grant receives review_required; no parent mutation',
+    foreign_brand_leader: 'authenticated Leader without Brand grant denied; pending receipt unchanged',
+    member: 'authenticated Member denied Confirm; pending receipt unchanged',
+    anonymous: 'anon EXECUTE denied; pending receipt unchanged',
+  }
+
+  const importSourceRevision = async (source: Record<string, string | number>, expectedFields: string[] = [], expectedSnapshot = sourceBaseline) => {
+    const revisionPreview = parseSource(source)
+    assert.equal(revisionPreview.errors.length, 0, `changed source should remain syntactically valid: ${JSON.stringify(revisionPreview.errors)}`)
+    assert.equal(revisionPreview.validShifts.length, 1)
+    const revisionBatch = await importPort.createBatch({
+      source: 'google_sheets', sourceName, createdBy: 'authenticated-admin',
+      summary: summarizeImportResult(revisionPreview), previewRows: revisionPreview.rows.map(item => item.row),
+    })
+    const revisionRows = await importPort.listBatchRows(revisionBatch.id)
+    assert.equal(revisionRows.length, 1)
+    let fallbackOutcomeWrites = 0
+    let revisionRpcError: string | null = null
+    const result = await processScheduleImportRows({
+      batchId: revisionBatch.id, previews: revisionPreview.rows, batchRows: revisionRows, initialShifts: [],
+      createShift: shiftRepo.create, refreshShifts: shiftRepo.getAll,
+      createShiftFromImport: async (rowNumber, data) => {
+        try { return await shiftRepo.createFromImport(revisionBatch.id, rowNumber, data) }
+        catch (error) { revisionRpcError = error instanceof Error ? error.message : String(error); throw error }
+      },
+      recordOutcome: input => {
+        fallbackOutcomeWrites += 1
+        return importPort.recordRowOutcome(revisionBatch.id, input.rowNumber, input.outcome, {
+          expectedOutcome: input.expectedOutcome, shiftId: input.shiftId, failureCode: input.failureCode,
+        })
+      },
+    })
+    assert.equal(fallbackOutcomeWrites, 0, `RPC-confirmed duplicate/review outcomes must own their receipts; RPC error=${revisionRpcError ?? 'none'}`)
+    const receipt = requireOk(await adminClient.from('schedule_import_batch_rows')
+      .select('outcome,shift_id,failure_code').eq('batch_id', revisionBatch.id).single(), 'changed-source persisted receipt')
+    const originalReceipt = requireOk(await adminClient.from('schedule_import_batch_rows')
+      .select('outcome,shift_id,failure_code').eq('batch_id', batchId).single(), 'original source receipt remains immutable')
+    assert.equal(originalReceipt.outcome, 'imported')
+    assert.equal(originalReceipt.shift_id, String(parent.id))
+    assert.equal(originalReceipt.failure_code, null)
+    const current = await readOperationalSnapshot()
+    assert.deepEqual(current, expectedSnapshot, 'changed-source review must preserve parent, segments, staffing, evidence, actuals and audit')
+    if (expectedFields.length) {
+      assert.deepEqual(result, { imported: 0, recovered: 0, duplicateSkipped: 0, retryable: 1, finalizedSkipped: 0 })
+      assert.equal(receipt.outcome, 'retryable')
+      assert.equal(receipt.shift_id, null)
+      assert.match(String(receipt.failure_code), /^IMPORT_SOURCE_CHANGED_REVIEW_REQUIRED:/)
+      for (const field of expectedFields) assert.ok(String(receipt.failure_code).includes(field), `${field} should be reported: ${receipt.failure_code}`)
+      await importPort.markBatchStatus(revisionBatch.id, 'failed')
+      const retry = await shiftRepo.createFromImport(revisionBatch.id, revisionRows[0].source_row_number, revisionPreview.validShifts[0])
+      assert.equal(retry.kind, 'review_required', 'retrying a review-required row stays fail-closed')
+    }
+    return { result, receipt, revisionBatch, revisionPreview }
+  }
+
+  const identical = await importSourceRevision(sourceRow)
+  assert.equal(identical.result.duplicateSkipped, 1)
+  assert.equal(identical.receipt.outcome, 'duplicate_skipped')
+  assert.equal(identical.receipt.shift_id, null)
+  await importPort.markBatchStatus(identical.revisionBatch.id, 'confirmed')
+
+  await importSourceRevision({
+    ...sourceRow, Host: 'K01: Planned Host A Revised\nK02: Planned Host B, Planned Host C\nK03: Planned Host A',
+  }, ['host_names'])
+  await importSourceRevision({
+    ...sourceRow, 'Khung nhân sự': 'K01 10:00-11:00 H1 T1 KT0\nK02 11:00-16:00 H3 T1 KT0\nK03 16:00-18:00 H1 T1 KT0',
+    Host: 'K01: Planned Host A\nK02: Planned Host B, Planned Host C, Planned Host D\nK03: Planned Host A',
+  }, ['staffing_segments'])
+  await importSourceRevision({
+    ...sourceRow, 'Khung nhân sự': 'K01 10:00-11:00 H1 T1 KT0\nK02 11:00-15:00 H2 T1 KT0\nK03 15:00-18:00 H1 T1 KT0',
+  }, ['staffing_segments'])
+  await importSourceRevision({
+    ...sourceRow, Date: '11/2/2026', Weekday: 'Monday', 'External Shift ID': 'KAO-20261102-1000-1800',
+  }, ['date', 'external_shift_code'])
+  await importSourceRevision({
+    ...sourceRow, Time: '09:00 - 18:00', 'External Shift ID': 'KAO-20261101-0900-1800',
+    'Khung nhân sự': 'K01 09:00-10:00 H1 T1 KT0\nK02 10:00-15:00 H2 T1 KT0\nK03 15:00-18:00 H1 T1 KT0',
+  }, ['start_time', 'external_shift_code', 'staffing_segments'])
+
+  const concurrentRevision = parseSource({ ...sourceRow, Host: 'K01: Concurrent Host Change' })
+  assert.equal(concurrentRevision.errors.length, 0, JSON.stringify(concurrentRevision.errors))
+  const concurrentRevisionBatches = await Promise.all([0, 1].map(() => importPort.createBatch({
+    source: 'google_sheets', sourceName, createdBy: 'authenticated-admin',
+    summary: summarizeImportResult(concurrentRevision), previewRows: concurrentRevision.rows.map(item => item.row),
+  })))
+  const concurrentRevisionResults = await Promise.all(concurrentRevisionBatches.map(async revisionBatch => {
+    const revisionRows = await importPort.listBatchRows(revisionBatch.id)
+    return processScheduleImportRows({
+      batchId: revisionBatch.id, previews: concurrentRevision.rows, batchRows: revisionRows, initialShifts: [],
+      createShift: shiftRepo.create, refreshShifts: shiftRepo.getAll,
+      createShiftFromImport: (rowNumber, data) => shiftRepo.createFromImport(revisionBatch.id, rowNumber, data),
+      recordOutcome: input => importPort.recordRowOutcome(revisionBatch.id, input.rowNumber, input.outcome, {
+        expectedOutcome: input.expectedOutcome, shiftId: input.shiftId, failureCode: input.failureCode,
+      }),
+    })
+  }))
+  assert.ok(concurrentRevisionResults.every(result => result.imported === 0 && result.retryable === 1))
+  for (const revisionBatch of concurrentRevisionBatches) {
+    const receipt = requireOk(await adminClient.from('schedule_import_batch_rows')
+      .select('outcome,shift_id,failure_code').eq('batch_id', revisionBatch.id).single(), 'concurrent changed-source receipt')
+    assert.equal(receipt.outcome, 'retryable')
+    assert.equal(receipt.shift_id, null)
+    assert.match(String(receipt.failure_code), /^IMPORT_SOURCE_CHANGED_REVIEW_REQUIRED:/)
+    assert.ok(String(receipt.failure_code).includes('host_names'))
+    await importPort.markBatchStatus(revisionBatch.id, 'failed')
+  }
+  assert.deepEqual(await readOperationalSnapshot(), sourceBaseline, 'concurrent changed-source reviews must preserve the original shift and all history')
+  const concurrentOriginalReceipt = requireOk(await adminClient.from('schedule_import_batch_rows')
+    .select('outcome,shift_id,failure_code').eq('batch_id', batchId).single(), 'concurrent original source receipt readback')
+  assert.equal(concurrentOriginalReceipt.outcome, 'imported')
+  assert.equal(concurrentOriginalReceipt.shift_id, String(parent.id))
+  assert.equal(concurrentOriginalReceipt.failure_code, null)
+
+  const adminAuthUser = await adminClient.auth.getUser()
+  assert.ifError(adminAuthUser.error)
+  assert.ok(adminAuthUser.data.user)
+  const adminActor = requireOk(await service.from('business_users').select('id')
+    .eq('auth_user_id', adminAuthUser.data.user.id).single(), 'C6 fixture Admin identity')
+  const protectedHost = await seedUser(run, 'C6ReimportProtectedHost', 'member', ['host'])
+  const payrollAdmin = await seedUser(run, 'C6ReimportPayrollAdmin', 'admin')
+
+  const approvedRegistration = await createSupabaseShiftRegistrationRepository(adminClient).assignManually(
+    String(parent.id), protectedHost.businessId, 'host',
+    'C6 synthetic protected assignment fixture', Number(parent.version),
+  )
+  assert.equal(approvedRegistration.status, 'manually_assigned')
+  await importSourceRevision({
+    ...sourceRow, Host: 'K01: Approved Host Label Change\nK02: Planned Host B, Planned Host C\nK03: Planned Host A',
+  }, ['host_names'], await readOperationalSnapshot())
+
+  requireOk(await service.from('shifts').update({ status: 'completed' }).eq('id', String(parent.id)).select('id').single(), 'C6 synthetic completed shift fixture')
+  const photoRequestId = crypto.randomUUID()
+  requireOk(await service.from('self_attendance_photo_evidence').insert({
+    request_id: photoRequestId, shift_id: String(parent.id), staff_id: protectedHost.businessId,
+    operational_role: 'host', event_kind: 'check_in', provider: 'google_drive',
+    external_file_id: `c6-synthetic-photo-${run}`, external_parent_id: `c6-synthetic-parent-${run}`,
+    file_name: `C6 synthetic attendance ${run}.jpg`, mime_type: 'image/jpeg', size_bytes: 64,
+    checksum_sha256: 'a'.repeat(64), shift_context: { synthetic_fixture: true }, capture_source: 'camera',
+  }).select('id').single(), 'C6 synthetic private-photo receipt fixture')
+  const actualId = `c6_actual_${run}_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`
+  requireOk(await service.from('workforce_actual_segments').insert({
+    id: actualId, shift_id: String(parent.id), staff_id: protectedHost.businessId, operational_role: 'host',
+    event_kind: 'worked', coverage_kind: 'planned', actual_start_at: '2026-11-01T03:00:00Z',
+    actual_end_at: '2026-11-01T04:00:00Z', review_status: 'draft', evidence_note: 'C6 synthetic protected actual fixture',
+    created_by: protectedHost.businessId,
+  }).select('id').single(), 'C6 synthetic draft actual fixture')
+  const approvedActual = requireOk(await service.from('workforce_actual_segments').update({
+    review_status: 'approved', reviewed_by: adminActor.id, reviewed_at: new Date().toISOString(),
+    review_note: 'C6 synthetic protected actual approved by fixture', version: 2,
+  }).eq('id', actualId).select('id,version').single(), 'C6 synthetic approved actual fixture')
+  requireOk(await service.from('workforce_payroll_segment_decisions').insert({
+    segment_id: actualId, state: 'admin_confirmed', reviewed_by: adminActor.id,
+    confirmed_by: payrollAdmin.businessId, confirmed_at: new Date().toISOString(),
+    reason: 'C6 synthetic protected payroll decision fixture', missing_evidence: [], segment_version: approvedActual.version,
+  }).select('segment_id').single(), 'C6 synthetic confirmed Payroll decision fixture')
+  await importSourceRevision({
+    ...sourceRow, 'Khung nhân sự': 'K01 10:00-11:00 H1 T1 KT0\nK02 11:00-15:00 H2 T1 KT0\nK03 15:00-18:00 H1 T1 KT0',
+  }, ['staffing_segments'], await readOperationalSnapshot())
+
+  const rateId = `c6_rate_${run}_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`
+  requireOk(await service.from('workforce_rate_cards').insert({
+    id: rateId, staff_id: protectedHost.businessId, operational_role: 'host', effective_from: '2026-01-01',
+    vnd_per_hour: 120000, overtime_multiplier_basis_points: 10000, approved_by: adminActor.id,
+    approved_at: new Date().toISOString(), approval_note: 'C6 synthetic immutable Payroll fixture rate',
+  }).select('id').single(), 'C6 synthetic approved rate fixture')
+  const existingPeriods = requireOk(await service.from('workforce_payroll_periods').select('revision')
+    .eq('period_start', '2026-11-01').eq('period_end', '2026-11-30'), 'C6 existing synthetic Payroll revisions') as Array<{ revision: number }>
+  const revision = existingPeriods.reduce((latest, item) => Math.max(latest, Number(item.revision) || 0), 0) + 1
+  const period = requireOk(await service.from('workforce_payroll_periods').insert({
+    period_start: '2026-11-01', period_end: '2026-11-30', revision, status: 'draft', created_by: payrollAdmin.businessId,
+  }).select('id').single(), 'C6 synthetic Payroll period fixture')
+  reconciliationPayrollPeriodId = String(period.id)
+  requireOk(await service.from('workforce_payroll_lines').insert({
+    period_id: period.id, segment_id: actualId, rate_card_id: rateId, staff_id: protectedHost.businessId,
+    operational_role: 'host', actual_minutes: 60, payable_minutes: 60, overtime_minutes: 0,
+    rate_vnd_per_hour: 120000, overtime_multiplier_basis_points: 10000, gross_vnd: 120000,
+    calculation_version: 'legacy-minute-snapshot-v1',
+  }).select('id').single(), 'C6 synthetic Payroll line fixture')
+  const transitionPeriod = async (client: SupabaseClient, actorId: string, expected: string, target: string) => requireOk(
+    await client.rpc('workforce_rc16_transition_payroll', {
+      p_period_id: period.id, p_expected_status: expected, p_target_status: target,
+      p_actor_id: actorId, p_reason: `C6 synthetic ${expected} to ${target} fixture transition`,
+    }), `C6 Payroll ${target} fixture transition`)
+  await transitionPeriod(service, String(adminActor.id), 'draft', 'reviewed')
+  await transitionPeriod(service, payrollAdmin.businessId, 'reviewed', 'confirmed')
+  await transitionPeriod(service, String(adminActor.id), 'confirmed', 'payroll_ready')
+  await transitionPeriod(service, payrollAdmin.businessId, 'payroll_ready', 'locked')
+  const lockedSnapshot = await readOperationalSnapshot()
+  assert.equal((lockedSnapshot.payrollPeriods as Array<{ status: string }>)[0]?.status, 'locked')
+  await importSourceRevision({
+    ...sourceRow, Date: '11/2/2026', Weekday: 'Monday', 'External Shift ID': 'KAO-20261102-1000-1800',
+  }, ['date', 'external_shift_code'], lockedSnapshot)
+
+  const staleUpdate = await adminClient.rpc('update_shift', {
+    p_shift_id: String(parent.id), p_patch: { title: `stale overwrite ${run}` },
+    p_confirm_impact: false, p_expected_version: Number(parent.version) - 1,
+  })
+  assert.ok(staleUpdate.error, 'a stale version must be rejected by the database RPC')
+  const afterStaleUpdate = requireOk(await adminClient.from('shifts').select('title,version').eq('id', String(parent.id)).single(), 'stale version readback')
+  assert.equal(afterStaleUpdate.title, `KAO Issue 184 ${run}`)
+
+  const faultSource = {
+    Date: '2026-11-02', Time: '10:00 - 12:00', Brand: brandName, Platform: platformName,
+    'Shift title': '', 'External Shift ID': '', Weekday: 'Monday', 'Số khung': 2,
+    'Khung nhân sự': 'K01 10:00-11:00 H1 T1 KT0\nK02 11:00-12:00 H1 T1 KT0',
+    Host: 'K01: Planned Host A\nK02: Planned Host A',
+    Support: 'K01: Planned Support A\nK02: Planned Support A', Technical: '',
+  }
+  for (const fault of ['second_segment_capacity', 'duplicate_segment_index'] as const) {
+    const title = `C511 rollback ${fault} ${run}`
+    const row = { ...faultSource, 'Shift title': title, 'External Shift ID': `C511-ROLLBACK-${fault}-${run}` }
+    const faultWorkbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(faultWorkbook, XLSX.utils.aoa_to_sheet([
+      Object.keys(row), Object.keys(row).map(key => row[key as keyof typeof row]),
+    ]), 'Fault Injection')
+    const faultPreview = parseScheduleTabularData(XLSX.write(faultWorkbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer, 'array', {
+      brands: new Map([[brandName, brandId]]), platforms: new Map([[platformName, platformId]]), campaigns: new Map(),
+    }, [])
+    assert.equal(faultPreview.errors.length, 0, JSON.stringify(faultPreview.errors))
+    const faultImport = createSupabaseScheduleImportPort(adminClient)
+    const faultBatch = await faultImport.createBatch({
+      source: 'google_sheets', sourceName: `Synthetic fault ${fault} ${run}`,
+      createdBy: 'authenticated-admin', summary: summarizeImportResult(faultPreview),
+      previewRows: faultPreview.rows.map(item => item.row),
+    })
+    const candidate = faultPreview.rows[0].shift!
+    assert.equal(candidate.staffing_segments?.length, 2)
+    const brokenSegments = candidate.staffing_segments!.map((segment, index) => ({
+      ...segment,
+      ...(fault === 'second_segment_capacity' && index === 1 ? { required_host_count: 101 } : {}),
+      ...(fault === 'duplicate_segment_index' && index === 1 ? { segment_index: 1 } : {}),
+    }))
+    const injectedPreviews = faultPreview.rows.map(item => ({
+      ...item, shift: { ...item.shift!, staffing_segments: brokenSegments },
+    }))
+    const batchRows = await faultImport.listBatchRows(faultBatch.id)
+    const result = await processScheduleImportRows({
+      batchId: faultBatch.id, previews: injectedPreviews, batchRows, initialShifts: [],
+      createShift: createSupabaseShiftRepository(adminClient).create,
+      refreshShifts: createSupabaseShiftRepository(adminClient).getAll,
+      recordOutcome: input => faultImport.recordRowOutcome(faultBatch.id, input.rowNumber, input.outcome, {
+        expectedOutcome: input.expectedOutcome, shiftId: input.shiftId, failureCode: input.failureCode,
+      }),
+    })
+    assert.equal(result.imported, 0, `${fault} must never be reported as successfully imported`)
+    assert.equal(result.retryable, 1)
+    const storedOutcome = requireOk(await adminClient.from('schedule_import_batch_rows')
+      .select('outcome,shift_id,failure_code').eq('batch_id', faultBatch.id).single(), `${fault} persisted import outcome`)
+    assert.equal(storedOutcome.outcome, 'retryable')
+    assert.equal(storedOutcome.shift_id, null)
+    assert.ok(storedOutcome.failure_code)
+    const rolledBackParent = requireOk(await adminClient.from('shifts').select('id').eq('title', title), `${fault} parent rollback`) as Array<Record<string, unknown>>
+    assert.equal(rolledBackParent.length, 0, `${fault} parent must rollback with segment insert`)
+    const rolledBackAudit = requireOk(await adminClient.from('audit_logs').select('id').eq('entity_name', title), `${fault} audit rollback`) as Array<Record<string, unknown>>
+    assert.equal(rolledBackAudit.length, 0, `${fault} parent audit must rollback with transaction`)
+  }
+
+  const concurrentTitle = `C511 concurrent confirm ${run}`
+  const concurrentSource = { ...faultSource, Date: '2026-11-03', Weekday: 'Tuesday', 'Shift title': concurrentTitle,
+    'External Shift ID': `C511-CONCURRENT-${run}` }
+  const concurrentWorkbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(concurrentWorkbook, XLSX.utils.aoa_to_sheet([
+    Object.keys(concurrentSource), Object.keys(concurrentSource).map(key => concurrentSource[key as keyof typeof concurrentSource]),
+  ]), 'Concurrent Confirm')
+  const concurrentPreview = parseScheduleTabularData(XLSX.write(concurrentWorkbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer, 'array', {
+    brands: new Map([[brandName, brandId]]), platforms: new Map([[platformName, platformId]]), campaigns: new Map(),
+  }, [])
+  assert.equal(concurrentPreview.errors.length, 0, JSON.stringify(concurrentPreview.errors))
+  const concurrentImport = createSupabaseScheduleImportPort(adminClient)
+  const concurrentBatch = await concurrentImport.createBatch({
+    source: 'google_sheets', sourceName: `Synthetic concurrent Confirm ${run}`,
+    createdBy: 'authenticated-admin', summary: summarizeImportResult(concurrentPreview),
+    previewRows: concurrentPreview.rows.map(item => item.row),
+  })
+  const concurrentBatchRows = await concurrentImport.listBatchRows(concurrentBatch.id)
+  const concurrentRepo = createSupabaseShiftRepository(adminClient)
+  const concurrentWorker = () => processScheduleImportRows({
+    batchId: concurrentBatch.id, previews: concurrentPreview.rows, batchRows: concurrentBatchRows,
+    initialShifts: [], createShift: concurrentRepo.create, refreshShifts: concurrentRepo.getAll,
+    recordOutcome: input => concurrentImport.recordRowOutcome(concurrentBatch.id, input.rowNumber, input.outcome, {
+      expectedOutcome: input.expectedOutcome, shiftId: input.shiftId, failureCode: input.failureCode,
+    }),
+  })
+  const concurrentResults = await Promise.all([concurrentWorker(), concurrentWorker()])
+  const concurrentParents = requireOk(await adminClient.from('shifts').select('id')
+    .eq('import_batch_id', concurrentBatch.id), 'concurrent parent readback') as Array<Record<string, unknown>>
+  assert.equal(concurrentParents.length, 1, 'concurrent Confirm creates one parent')
+  const concurrentSegments = requireOk(await adminClient.from('shift_staffing_segments').select('id')
+    .eq('shift_id', String(concurrentParents[0].id)), 'concurrent segment readback') as Array<Record<string, unknown>>
+  assert.equal(concurrentSegments.length, 2)
+  assert.equal(concurrentResults.reduce((count, result) => count + result.imported + result.recovered, 0), 2)
+  const concurrentOutcome = requireOk(await adminClient.from('schedule_import_batch_rows')
+    .select('outcome,shift_id').eq('batch_id', concurrentBatch.id).single(), 'concurrent row outcome')
+  assert.ok(['imported', 'warning'].includes(String(concurrentOutcome.outcome)))
+  assert.equal(concurrentOutcome.shift_id, concurrentParents[0].id)
+  const concurrentAudits = requireOk(await adminClient.from('audit_logs').select('id')
+    .eq('entity_name', concurrentTitle), 'concurrent audit count') as Array<Record<string, unknown>>
+  assert.ok(concurrentAudits.length >= 1, 'committed parent has an audit event')
+  assert.equal(new Set(concurrentAudits.map(event => event.entity_id)).size, 1, 'concurrent audit events refer to one canonical parent')
+
+  const timeoutTitle = `C511 timeout outcome ${run}`
+  const timeoutSource = { ...faultSource, Date: '2026-11-04', Weekday: 'Wednesday', 'Shift title': timeoutTitle,
+    'External Shift ID': `C511-TIMEOUT-${run}` }
+  const timeoutWorkbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(timeoutWorkbook, XLSX.utils.aoa_to_sheet([
+    Object.keys(timeoutSource), Object.keys(timeoutSource).map(key => timeoutSource[key as keyof typeof timeoutSource]),
+  ]), 'Timeout Outcome')
+  const timeoutPreview = parseScheduleTabularData(XLSX.write(timeoutWorkbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer, 'array', {
+    brands: new Map([[brandName, brandId]]), platforms: new Map([[platformName, platformId]]), campaigns: new Map(),
+  }, [])
+  const timeoutImport = createSupabaseScheduleImportPort(adminClient)
+  const timeoutBatch = await timeoutImport.createBatch({
+    source: 'google_sheets', sourceName: `Synthetic statement-timeout ${run}`,
+    createdBy: 'authenticated-admin', summary: summarizeImportResult(timeoutPreview),
+    previewRows: timeoutPreview.rows.map(item => item.row),
+  })
+  const timeoutBatchRows = await timeoutImport.listBatchRows(timeoutBatch.id)
+  const timeoutResult = await processScheduleImportRows({
+    batchId: timeoutBatch.id, previews: timeoutPreview.rows, batchRows: timeoutBatchRows,
+    initialShifts: [], createShift: async () => { throw Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' }) },
+    refreshShifts: async () => [],
+    recordOutcome: input => timeoutImport.recordRowOutcome(timeoutBatch.id, input.rowNumber, input.outcome, {
+      expectedOutcome: input.expectedOutcome, shiftId: input.shiftId, failureCode: input.failureCode,
+    }),
+  })
+  assert.equal(timeoutResult.imported, 0)
+  assert.equal(timeoutResult.retryable, 1)
+  const timeoutOutcome = requireOk(await adminClient.from('schedule_import_batch_rows')
+    .select('outcome,failure_code').eq('batch_id', timeoutBatch.id).single(), 'timeout row outcome')
+  assert.equal(timeoutOutcome.outcome, 'retryable')
+  assert.equal(timeoutOutcome.failure_code, '57014')
+  assert.equal((requireOk(await adminClient.from('shifts').select('id').eq('title', timeoutTitle), 'timeout no-parent readback') as unknown[]).length, 0)
+  records.push({ run, transaction_faults: ['second segment capacity rollback', 'duplicate segment index rollback'],
+    concurrent_confirm: 'one parent, two segments, one import outcome and audit events for one canonical parent',
+    timeout_error: '57014 persisted as retryable; imported count remained zero',
+    stale_version: 'update_shift rejected stale expected version without changing parent' })
+
+  const reimport = parseSource(sourceRow)
+  const retryRows = mapImportResultToBatchRows(`${batchId}-retry`, reimport)
+  retryRows.forEach(row => { row.status = 'pending' })
+  let retryCreateCalled = false
+  const retry = await processScheduleImportRows({
+    batchId: `${batchId}-retry`, previews: reimport.rows, batchRows: retryRows, initialShifts: [parent as never],
+    createShift: async () => { retryCreateCalled = true; throw new Error('duplicate parent must not be recreated') },
+    refreshShifts: async () => [parent as never], recordOutcome: async () => undefined,
+  })
+  assert.equal(retry.duplicateSkipped, 1)
+  assert.equal(retryCreateCalled, false)
+
+  records.push({
+    run, shift_id: parent.id, segment_ids: segments.map(segment => segment.id),
+    imported_via: 'XLSX Preview -> processScheduleImportRows Confirm -> authenticated create_schedule_import_shift RPC -> authenticated DB readback',
+    original_receipt_immutable: true,
+    changed_source: {
+      A: 'identical source -> duplicate_skipped; same parent and child IDs',
+      B: 'planned Host names -> retryable review_required; no assignment created',
+      C: 'K02 Host capacity H2 to H3 -> retryable review_required; no staffing mutation',
+      D: 'K02 time window change -> retryable review_required; no segment mutation',
+      E: 'parent date and external code change -> retryable review_required; no parent mutation',
+      F: 'parent start/end and external code change -> retryable review_required; no parent or segment mutation',
+      G: 'approved manual assignment present -> review_required; registration and audit preserved',
+      H: 'synthetic photo receipt, approved actual and decision present -> review_required; evidence and actuals preserved',
+      I: 'locked Payroll period and line present -> review_required; locked records preserved',
+      J: 'two concurrent changed-source requests -> both retryable, original import receipt unchanged',
+    },
+    authorization: roleScopeResults,
+    planned_names_created_assignments: false,
+    unsupported_changes: 'all changed source requires explicit manual reconciliation; no automatic mutation is currently supported',
+    locator_limit: 'history matching uses source + source_name + row_number; renamed source or moved row lacks a stable source-document/row identity and requires separate design before claiming support',
+    synthetic_provider_evidence: 'test fixture only; no Google Drive I/O or provider-backed evidence claim',
+  })
+}
+
 let adminSession: Awaited<ReturnType<typeof signIn>>
 
 async function apiPost(handler: { POST(request: Request): Promise<Response> }, path: string, token: string, body: unknown) {
@@ -307,6 +909,7 @@ async function runPersistedScenario(run: number) {
   requireOk(await service.from('platforms').insert({ id: platformId, name: platformName, status: 'active' }).select('id').single(), 'seed platform')
   const brandA = await newBrand(`C5.11 Brand A ${run}`)
   const brandB = await newBrand(`C5.11 Brand B ${run}`)
+  await confirmKaoIssue184Shift(run, brandA, platformId, adminAuth.client)
   const grant = await adminAuth.client.rpc('rc19_set_leader_brand_scope', {
     p_user_id: leader.businessId, p_brand_id: brandA, p_scope_key: 'shifts.manage',
     p_enabled: true, p_expected_version: 0, p_valid_from: activeFrom(), p_valid_until: null,
@@ -322,8 +925,9 @@ async function runPersistedScenario(run: number) {
   }
   const listedBrands = await leaderAuth.client.rpc('rc19_current_leader_brand_ids', { p_scope_key: 'shifts.manage' })
   assert.deepEqual(requireOk(listedBrands, 'leader scope read'), [brandA])
-  const { shift, segments } = await createImportedShift(run, brandA, `C5.11 Brand A ${run}`, platformId, platformName)
-  const foreign = await createImportedShift(run, brandB, `C5.11 Brand B ${run}`, platformId, platformName)
+  const runOffsetMinutes = 90
+  const { shift, segments } = await createImportedShift(run, brandA, `C5.11 Brand A ${run}`, platformId, platformName, runOffsetMinutes)
+  const foreign = await createImportedShift(run, brandB, `C5.11 Brand B ${run}`, platformId, platformName, runOffsetMinutes)
   requireOk(await adminAuth.client.rpc('rc19_set_leader_brand_scope', {
     p_user_id: leader.businessId, p_brand_id: brandB, p_scope_key: 'shifts.manage',
     p_enabled: true, p_expected_version: 0,
@@ -785,7 +1389,7 @@ async function runPersistedScenario(run: number) {
   const cancellationHost1Auth = await signIn(cancellationHost1)
   const cancellationHost2 = await seedUser(run, 'CancellationHostTwo', 'member', ['host'])
   const cancellationHost2Auth = await signIn(cancellationHost2)
-  const cancellationShiftSetup = await createImportedShift(run, brandA, `C5.11 Brand A ${run}`, cancellationPlatformId, cancellationPlatformName)
+  const cancellationShiftSetup = await createImportedShift(run, brandA, `C5.11 Brand A ${run}`, cancellationPlatformId, cancellationPlatformName, runOffsetMinutes)
   const cancellationShift = cancellationShiftSetup.shift
   assert.notEqual(cancellationShift.id, shift.id)
   const cancellationHost1Registration = await createSupabaseShiftRegistrationRepository(cancellationHost1Auth.client)
@@ -1083,4 +1687,37 @@ test('C5.12 persists authenticated Staffing, Attendance, evidence review, Payrol
   } finally {
     await restoreSettings()
   }
+})
+
+test('C6 PG17 Preview/Confirm fault injection is atomic and retryable', async () => {
+  const run = Date.now() + 100
+  const admin = await seedUser(run, 'C6Admin', 'admin')
+  const adminAuth = await signIn(admin)
+  const brandId = await newBrand(`C6 PG17 Brand ${run}`)
+  const platformId = `platform_c6_${crypto.randomUUID().replaceAll('-', '').slice(0, 18)}`
+  requireOk(await service.from('platforms').insert({ id: platformId, name: `C6 PG17 ${run}`, status: 'active' }).select('id').single(), 'C6 fixture platform')
+  const settings = await service.from('system_settings').select('id').limit(1)
+  assert.ifError(settings.error)
+  if (!settings.data?.length) {
+    const inserted = await service.from('system_settings').insert({ registration_cutoff_hours: 0, require_registration_approval: true, auto_lock_filled_shifts: false })
+    assert.ifError(inserted.error)
+  }
+  await confirmKaoIssue184Shift(run, brandId, platformId, adminAuth.client)
+  mkdirSync(evidenceDir!, { recursive: true })
+  const path = join(evidenceDir!, `c6-import-transaction-${run}.json`)
+  writeFileSync(path, JSON.stringify({
+    result: 'PASS', source_sha: process.env.C511_SOURCE_SHA, worktree_dirty: process.env.C511_WORKTREE_DIRTY === 'true',
+    c6_migration_sha256: process.env.C6_MIGRATION_SHA256, postgres: process.env.C511_POSTGRES_VERSION,
+    database, marker: 'CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY',
+    authenticated_actor: 'synthetic Admin',
+    reimport_identity_contract: 'source + source_name + row_number receipt history; business-code changes within that locator are detected and never create a new parent',
+    reimport_supported_mutation: 'none; all changed source returns retryable IMPORT_SOURCE_CHANGED_REVIEW_REQUIRED',
+    scenario_results: records.find(record => 'changed_source' in record)?.changed_source,
+    authorization_results: records.find(record => 'authorization' in record)?.authorization,
+    fault_injection: ['second-segment capacity rollback', 'duplicate segment index rollback', 'stale expected version denied'],
+    concurrent_confirm: 'one parent, two segments, persisted idempotent row outcome, audit history linked to canonical parent',
+    timeout_response: 'PostgreSQL SQLSTATE 57014 recorded retryable; imported count remained zero (injected RPC error contract)',
+    production_accessed: false,
+  }, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' })
+  console.log(`C6_PG17_EVIDENCE=${path}`)
 })

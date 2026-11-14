@@ -317,12 +317,12 @@ test('repeated canonical slots across worksheets keep duplicate semantics', () =
 test('Vietnamese headers and Khung giờ map to the canonical schedule fields', () => {
   const csv = [
     ['Ngày', 'Khung giờ', 'Thương hiệu', 'Nền tảng', 'Chiến dịch', 'Tên ca', 'Studio', 'Số host bắt buộc', 'Số support bắt buộc', 'Số technical bắt buộc'],
-    ['02/09/2026', '19:30 - 23:30', 'Mars Wrigley', 'TikTok Shop', 'World Cup', 'Ca tối', 'Studio B', 2, 1, 1],
+    ['20/09/2026', '19:30 - 23:30', 'Mars Wrigley', 'TikTok Shop', 'World Cup', 'Ca tối', 'Studio B', 2, 1, 1],
   ].map(csvRow).join('\n')
   const result = parseScheduleTabularData(csv, 'string', maps)
 
   assert.equal(result.validRows, 1)
-  assert.equal(result.validShifts[0].date, '2026-09-02')
+  assert.equal(result.validShifts[0].date, '2026-09-20')
   assert.equal(result.validShifts[0].start_time, '19:30')
   assert.equal(result.validShifts[0].end_time, '23:30')
   assert.equal(result.validShifts[0].title, 'Ca tối')

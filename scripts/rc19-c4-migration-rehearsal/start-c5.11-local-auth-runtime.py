@@ -21,8 +21,8 @@ AUTH_CONTAINER = "supabase_auth_rc19-supabase-recovery"
 REST_CONTAINER = "supabase_rest_rc19-supabase-recovery"
 MARKER = "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY"
 NETWORK = "rc19-recovery-local"
-AUTH_PORT = 15543
-REST_PORT = 15542
+AUTH_PORT = int(os.environ.get("C511_AUTH_PORT", "15543"))
+REST_PORT = int(os.environ.get("C511_REST_PORT", "15542"))
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / f"rc19-c511-local-runtime-{uuid.uuid4().hex}.json"
 
@@ -150,6 +150,8 @@ def main() -> None:
         raise RuntimeError("REFUSED_WRONG_LOCAL_DATABASE_IDENTITY")
     if not (170000 <= int(parts[0]) < 180000) or parts[3:5] != ["0", "0"]:
         raise RuntimeError("REFUSED_DATABASE_VERSION_OR_NONEMPTY_TEST_DATA")
+    if not (1 <= AUTH_PORT <= 65535 and 1 <= REST_PORT <= 65535 and AUTH_PORT != REST_PORT):
+        raise RuntimeError("REFUSED_INVALID_LOCAL_AUTH_REST_PORTS")
     if not available(AUTH_PORT) or not available(REST_PORT):
         raise RuntimeError("REFUSED_LOOPBACK_PORT_IN_USE")
 
@@ -207,6 +209,8 @@ def main() -> None:
             "rest_container": rest_name,
             "auth_url": f"http://127.0.0.1:{AUTH_PORT}",
             "rest_url": f"http://127.0.0.1:{REST_PORT}",
+            "auth_port": AUTH_PORT,
+            "rest_port": REST_PORT,
             "local_jwt_secret": jwt_secret,
             "anon_key": anon_key,
             "service_role_key": sign(jwt_secret, {**base_claims, "role": "service_role"}),

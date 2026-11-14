@@ -4,7 +4,11 @@ import * as React from 'react'
 import { useCurrentUser } from './useCurrentUser'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { workforceService, workforceErrorMessage, type WorkforceCapabilities } from '@/lib/services/workforceService'
-import { readSharedWorkforceCapabilities, invalidateSharedWorkforceCapabilities } from '@/lib/services/sharedWorkforceCapabilities'
+import {
+  readSharedWorkforceCapabilities,
+  invalidateSharedWorkforceCapabilities,
+  subscribeToWorkforceCapabilityResume,
+} from '@/lib/services/sharedWorkforceCapabilities'
 import { ROLE_DEFAULTS_CATALOG } from '@/lib/rbac/roleDefaults'
 import { permissionMatrix, resolveSystemPermission, type Permission } from '@/lib/permissions'
 import { HARD_RESTRICTED_PERMISSIONS } from '@/lib/rbac/effectivePermission'
@@ -101,14 +105,11 @@ export function useWorkforceCapabilities() {
       setResult(identityKey ? { identityKey, error: message || 'Quyền truy cập đã thay đổi. Vui lòng xác minh lại.' } : null)
     }
     const refresh = () => { invalidateSharedWorkforceCapabilities(identityKey); reload() }
-    const visible = () => { if (document.visibilityState === 'visible') refresh() }
+    const unsubscribeResume = subscribeToWorkforceCapabilityResume(refresh)
     window.addEventListener('workforce-access-invalidated', invalidate)
-    window.addEventListener('focus', refresh)
-    document.addEventListener('visibilitychange', visible)
     return () => {
       window.removeEventListener('workforce-access-invalidated', invalidate)
-      window.removeEventListener('focus', refresh)
-      document.removeEventListener('visibilitychange', visible)
+      unsubscribeResume()
     }
   }, [identityKey, mockMode])
 

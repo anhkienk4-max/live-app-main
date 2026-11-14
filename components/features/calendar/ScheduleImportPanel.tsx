@@ -13,6 +13,7 @@ import {
 } from '@/lib/services/dataService'
 import { Brand, Campaign, DeletionImpact, Platform, ScheduleImportBatch, Shift, User, type SupplementalShiftFieldType } from '@/lib/types/database.types'
 import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
+import { getAuthMode } from '@/lib/auth/authMode'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import {
@@ -696,6 +697,9 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         batchRows,
         initialShifts: existingShifts,
         createShift: shiftService.create,
+        ...(getAuthMode() === 'supabase' ? {
+          createShiftFromImport: (rowNumber, shift) => shiftService.createFromImport(batch.id, rowNumber, shift),
+        } : {}),
         refreshShifts: shiftService.getAll,
         updateShift: (shiftId, patch) => shiftService.update(shiftId, patch),
         recordOutcome: async ({ rowNumber, outcome, expectedOutcome, shiftId, failureCode }) => {

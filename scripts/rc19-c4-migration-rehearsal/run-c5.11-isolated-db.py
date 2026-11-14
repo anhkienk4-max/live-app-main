@@ -19,6 +19,14 @@ BASELINE_RESULT = BASELINE_DIR / "result.json"
 MANIFEST = EVIDENCE / "c5.3-final-migration-manifest.json"
 MIGRATION = ROOT / "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql"
 MIGRATION_C512 = ROOT / "supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql"
+MIGRATION_ISSUE93 = ("20261110123000", ROOT / "supabase/migrations/20261110123000_rc19_issue93_pass_swap_lead_times.sql", "rc19_issue93_pass_swap_lead_times")
+POST_20261111_MIGRATIONS = [
+    ("20261112000000", ROOT / "supabase/migrations/20261112000000_rc19_c2_calendar_overlap_range.sql", "rc19_c2_calendar_overlap_range"),
+    ("20261112120000", ROOT / "supabase/migrations/20261112120000_rc19_audit_history_keyset.sql", "rc19_audit_history_keyset"),
+    ("20261112130000", ROOT / "supabase/migrations/20261112130000_rc19_c6_import_source_reconciliation.sql", "rc19_c6_import_source_reconciliation"),
+    ("20261113083000", ROOT / "supabase/migrations/20261113083000_rc19_c4_audit_dependency.sql", "rc19_c4_audit_dependency"),
+    ("20261113084154", ROOT / "supabase/migrations/20261113084154_rc19_c4_atomic_staffing_replacement.sql", "rc19_c4_atomic_staffing_replacement"),
+]
 MIGRATIONS_C515 = [
     ("20261110115529", ROOT / "supabase/migrations/20261110115529_rc19_c515_payroll_second_precision.sql", "rc19_c515_payroll_second_precision"),
     ("20261110130000", ROOT / "supabase/migrations/20261110130000_rc19_c515_payroll_approval_hold.sql", "rc19_c515_payroll_approval_hold"),
@@ -35,7 +43,7 @@ DB_CONTAINER = os.environ.get("C511_DB_CONTAINER", "supabase_db_rc19-supabase-re
 def run(args: list[str], *, input_text: str | None = None, timeout: int = 180) -> str:
     if args[0] in {"psql", "pg_dump", "createdb"}:
         args = ["docker", "exec", "-i", DB_CONTAINER, *args]
-    result = subprocess.run(args, input=input_text, text=True, capture_output=True,
+    result = subprocess.run(args, input=input_text, text=True, encoding="utf-8", capture_output=True,
                             timeout=timeout)
     if result.returncode:
         raise RuntimeError(f"exit={result.returncode} {' '.join(args)}\n{(result.stderr or result.stdout)[-3500:]}")
@@ -52,7 +60,7 @@ def sha(path: Path) -> str:
 
 
 def exact_sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+    return sha(path).upper()
 
 
 def main() -> None:
@@ -77,6 +85,9 @@ def main() -> None:
         item = next((entry for entry in c515_manifest["additional_migrations"] if entry.get("version") == version), None)
         if not item or item.get("file") != path.relative_to(ROOT).as_posix() or item.get("sha256") != exact_sha(path):
             raise RuntimeError("REFUSED_C515_MIGRATION_SOURCE_HASH:" + version)
+    for _version, path, _name in [MIGRATION_ISSUE93, *POST_20261111_MIGRATIONS]:
+        if not path.is_file():
+            raise RuntimeError("REFUSED_FORWARD_MIGRATION_MISSING:" + path.name)
 
     source = query("select current_setting('server_version_num')||'|'||current_database()||'|'||coalesce(shobj_description(oid,'pg_database'),'')||'|'||(select count(*) from auth.users) from pg_database where datname=current_database()")
     fields = source.strip().split("|")
@@ -155,6 +166,7 @@ def main() -> None:
         log.append("local_auth_schema_migration_receipts_copied=" + auth_ledger_count)
         postgrest_grants = """
         grant usage on schema public to anon, authenticated, service_role, supabase_auth_admin;
+        grant usage on schema private to authenticated;
         grant all privileges on all tables in schema public to anon, authenticated, service_role;
         grant all privileges on all sequences in schema public to anon, authenticated, service_role;
         alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role;
@@ -183,6 +195,21 @@ def main() -> None:
         if len(b) != 5 or b[1] != db_name or b[2] != "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY" or b[3:] != ["0", "0"]:
             raise RuntimeError("REFUSED_NONEMPTY_OR_UNMARKED_TARGET_DATABASE " + before)
 
+        baseline_receipt_rows = []
+        for entry in manifest["entries"]:
+            b_ver = entry["version"]
+            b_file = entry["file"]
+            b_sha = entry["sha256"]
+            b_name = Path(b_file).stem.split("_", 1)[1]
+            baseline_receipt_rows.append(
+                "insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("
+                f"'{b_ver}',array['file={b_file}','sha256={b_sha}'],"
+                f"'{b_name}','c53-verified-snapshot','c53:{b_ver}:{b_sha}') on conflict (version) do nothing;"
+            )
+        run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name],
+            input_text="\n".join(baseline_receipt_rows), timeout=60)
+        log.append(f"c53_baseline_receipts_recorded={len(baseline_receipt_rows)}")
+
         applied = run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name],
                       input_text=MIGRATION.read_text(encoding="utf-8"), timeout=120)
         log.append("c511_migration_apply=PASS")
@@ -199,6 +226,18 @@ def main() -> None:
               "'rc19_c512_attendance_photo_review','c512-local-pg1711','c512:20261109131324:"+sha(MIGRATION_C512)+"');", db_name)
         c515_receipts = []
         for version, path, name in MIGRATIONS_C515:
+            if version == "20261110130000":
+                i93_ver, i93_path, i93_name = MIGRATION_ISSUE93
+                i93_hash = exact_sha(i93_path)
+                i93_out = run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-1", "-U", "postgres", "-d", db_name],
+                              input_text=i93_path.read_text(encoding="utf-8"), timeout=120)
+                query(
+                    "insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("
+                    f"'{i93_ver}',array['file={i93_path.relative_to(ROOT).as_posix()}','sha256={i93_hash}'],"
+                    f"'{i93_name}','rc19-w4-pg1711','w4:{i93_ver}:{i93_hash}');",
+                    db_name,
+                )
+                log.append(f"issue93_migration_apply=PASS lines={len(i93_out.splitlines())}")
             migration_hash = exact_sha(path)
             started_at = datetime.now(timezone.utc).isoformat()
             atomic_args = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name]
@@ -227,9 +266,33 @@ def main() -> None:
                 "migration_receipt_readback": receipt, "schema_dump_sha256_after_migration": schema_fingerprint,
                 "migration_output_lines": len(output.splitlines()),
             })
+        forward_receipts = []
+        for version, path, name in POST_20261111_MIGRATIONS:
+            f_hash = exact_sha(path)
+            f_out = run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-1", "-U", "postgres", "-d", db_name],
+                        input_text=path.read_text(encoding="utf-8"), timeout=120)
+            query(
+                "insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("
+                f"'{version}',array['file={path.relative_to(ROOT).as_posix()}','sha256={f_hash}'],"
+                f"'{name}','rc19-w4-pg1711','w4:{version}:{f_hash}');",
+                db_name,
+            )
+            f_receipt = query(
+                "select version||'|'||name||'|'||array_to_string(statements,';') from supabase_migrations.schema_migrations "
+                f"where version='{version}' and name='{name}'", db_name,
+            ).strip()
+            if f_hash not in f_receipt:
+                raise RuntimeError("FORWARD_MIGRATION_RECEIPT_MISMATCH:" + version)
+            log.extend([f"{name}_apply=PASS", f"{name}_receipt={f_receipt}", f"{name}_output_lines={len(f_out.splitlines())}"])
+            forward_receipts.append({
+                "version": version, "file": path.relative_to(ROOT).as_posix(), "sha256": f_hash,
+                "receipt": f_receipt, "output_lines": len(f_out.splitlines()),
+            })
+        query("notify pgrst, 'reload schema';", db_name)
         final = query("select current_setting('server_version_num')||'|'||current_database()||'|'||coalesce(shobj_description(oid,'pg_database'),'')||'|'||(select count(*) from auth.users)||'|'||(select count(*) from public.shift_staffing_segments)||'|'||(select count(*) from supabase_migrations.schema_migrations) from pg_database where datname=current_database()", db_name).strip()
         log.append("final_state=" + final)
         log.append("c511_receipt_inserted_after_successful_apply=1")
+        c6_entry = next((r for r in forward_receipts if r["version"] == "20261112130000"), None)
         evidence = {
             "result": "PASS",
             "target_database": db_name,
@@ -244,7 +307,10 @@ def main() -> None:
             "c511_migration_sha256": sha(MIGRATION),
             "c512_migration": str(MIGRATION_C512.relative_to(ROOT).as_posix()),
             "c512_migration_sha256": sha(MIGRATION_C512),
+            "c6_migration": c6_entry["file"] if c6_entry else None,
+            "c6_migration_sha256": c6_entry["sha256"] if c6_entry else None,
             "c515_migrations": c515_receipts,
+            "forward_migrations_reconciled": forward_receipts,
             "auth_users_after_restore": 0,
             "storage_objects_after_restore": 0,
             "shift_staffing_segments_created": 0,

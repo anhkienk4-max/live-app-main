@@ -211,7 +211,7 @@ const staffingSourceAliases: Record<PreviewStaffingField, string[]> = {
 
 const staffingNameSourceAliases: Record<PreviewStaffingNameField, string[]> = {
   host_names: ['host_names', 'Host', 'Tên Host', 'MC', 'Live Host', 'Host live'],
-  assistant_names: ['assistant_names', 'Trợ', 'Trợ lý', 'Tro ly', 'Tro', 'Trợ live', 'Tro live', 'Trợ ca', 'Tro ca', 'Assistant'],
+  assistant_names: ['assistant_names', 'Support', 'Trợ', 'Trợ lý', 'Tro ly', 'Tro', 'Trợ live', 'Tro live', 'Trợ ca', 'Tro ca', 'Assistant'],
   technical_names: ['technical_names', 'Kỹ thuật', 'Ky thuat', 'Technical', 'Tech', 'KT', 'Kỹ thuật viên', 'Ky thuat vien'],
 }
 

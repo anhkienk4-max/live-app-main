@@ -528,3 +528,33 @@ test('duplicateCandidate ambiguous slot does not first-match wrong shift', async
   assert.equal(outcomes[0].outcome, 'retryable')
   assert.equal(outcomes[0].failureCode, 'IMPORT_RECONCILIATION_AMBIGUOUS')
 })
+
+test('atomic persisted Confirm owns its receipt and never falls back to client create or enrichment', async () => {
+  let atomicCalls = 0
+  let fallbackCreateCalls = 0
+  let receiptCalls = 0
+  const result = await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [preview()],
+    batchRows: [batchRow()],
+    initialShifts: [],
+    createShift: async () => {
+      fallbackCreateCalls += 1
+      return shift('unexpected')
+    },
+    createShiftFromImport: async () => {
+      atomicCalls += 1
+      return { kind: 'review_required', failureCode: 'IMPORT_SOURCE_CHANGED_REVIEW_REQUIRED:title' }
+    },
+    refreshShifts: async () => [],
+    recordOutcome: async () => { receiptCalls += 1 },
+    updateShift: async () => { throw new Error('atomic import cannot enrich an existing shift') },
+    updateStaffingLabels: async () => { throw new Error('atomic import cannot rewrite planned labels') },
+  })
+
+  assert.equal(atomicCalls, 1)
+  assert.equal(fallbackCreateCalls, 0)
+  assert.equal(receiptCalls, 0, 'the database RPC commits the row receipt with the decision')
+  assert.equal(result.imported, 0)
+  assert.equal(result.retryable, 1)
+})

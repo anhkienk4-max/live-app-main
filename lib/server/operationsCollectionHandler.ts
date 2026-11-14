@@ -13,6 +13,7 @@ import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMaste
 import { shiftFromRow } from '@/lib/services/supabaseShiftService'
 import { registrationFromRow } from '@/lib/services/supabaseShiftRegistrationService'
 import { withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
+import type { PersistedStaffingSegment } from '@/lib/types/database.types'
 import type { ListQuery } from '@/lib/services/operationsPageService'
 
 const shiftFilterKeys = ['search','from','to','brandIds','platformIds','campaignIds','studios','roles','registrationStatuses','statuses','descending','assignedUserIds','hostIds','supportIds','technicalIds','operationalRoles','staffingStates','registrationStates','hasImportedStaffing','shiftIds']
@@ -21,7 +22,7 @@ const filterKeys: Record<string,string[]> = {
   staff:['search','statuses','roles','systemPermissions','archived'],brands:['search','statuses'],platforms:['search','statuses'],campaigns:['search','statuses','brandIds'],
   notifications:['search','statuses','types'],reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],report_queue:['search','from','to','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses'],analytics_reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],registration_reviews:['search','statuses','roles'],
   archives:[],account_requests:['statuses'],live_updates:['shiftIds'],import_batches:[],schedule_changes:['from','to','actorIds','actionIds','shiftIds','brandIds','sources'],
-  swaps:['search','from','to','brandIds','platformIds','campaignIds','scope','requesterIds','roles','statuses'],quality:['severity','qualitySources'],
+  swaps:['search','from','to','brandIds','platformIds','campaignIds','scope','requesterIds','roles','statuses','shiftIds'],quality:['severity','qualitySources'],
 }
 const choices = z.array(z.string().min(1).max(128)).max(50).optional()
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value).optional()
@@ -76,10 +77,42 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
       const client = dependencies.createClient ? await dependencies.createClient() : await (await import('@/lib/supabase/server')).createClient()
       const query = value as ListQuery
       if (entity === 'shifts' || entity === 'live_shifts' || entity === 'open_shifts' || entity === 'my_shifts') {
-        let effectiveFilters = query.filters; if (entity === 'my_shifts' && user.businessUserId && typeof client.from === 'function') { let regReq = client.from('shift_registrations').select('shift_id').eq('user_id', user.businessUserId).in('status', query.filters?.registrationStatuses?.length ? query.filters.registrationStatuses : ['pending', 'approved', 'manually_assigned']); if (query.filters?.roles?.length) regReq = regReq.in('operational_role', query.filters.roles); const regRes = await regReq.limit(100); if (!regRes.error && Array.isArray(regRes.data)) { const myIds = [...new Set((regRes.data as Array<{ shift_id: string }>).map(r => r.shift_id))]; const filterIds = query.filters?.shiftIds?.length ? myIds.filter(id => query.filters!.shiftIds!.includes(id)) : myIds; if (filterIds.length === 0) return reply({ items: [], registrations: [], total: 0, page: 1, pageSize: query.pageSize, pendingIds: [], pendingTotal: 0, pendingPage: 1, studios: [] }); if (filterIds.length <= 50) effectiveFilters = { ...query.filters, shiftIds: filterIds }; } } const result = await client.rpc('get_shift_list_page', { p_scope: entity === 'shifts' || entity === 'live_shifts' ? 'all' : entity === 'open_shifts' ? 'open' : 'mine', p_page: query.page, p_page_size: query.pageSize, p_filters: effectiveFilters, p_pending_page: query.pendingPage, p_include_live: entity === 'live_shifts' })
+        let effectiveFilters = query.filters
+        if (entity === 'my_shifts' && user.businessUserId && typeof client.from === 'function') {
+          let regReq = client.from('shift_registrations').select('shift_id').eq('user_id', user.businessUserId).in('status', query.filters?.registrationStatuses?.length ? query.filters.registrationStatuses : ['pending', 'approved', 'manually_assigned'])
+          if (query.filters?.roles?.length) regReq = regReq.in('operational_role', query.filters.roles)
+          const regRes = await regReq.limit(100)
+          if (!regRes.error && Array.isArray(regRes.data)) {
+            const myIds = [...new Set((regRes.data as Array<{ shift_id: string }>).map(r => r.shift_id))]
+            const filterIds = query.filters?.shiftIds?.length ? myIds.filter(id => query.filters!.shiftIds!.includes(id)) : myIds
+            if (filterIds.length === 0) return reply({ items: [], registrations: [], total: 0, page: 1, pageSize: query.pageSize, pendingIds: [], pendingTotal: 0, pendingPage: 1, studios: [] })
+            if (filterIds.length <= 50) effectiveFilters = { ...query.filters, shiftIds: filterIds }
+          }
+        }
+        const rpcFilters = effectiveFilters?.from && effectiveFilters.to
+          ? { ...effectiveFilters, calendarOverlap: true }
+          : effectiveFilters
+        const result = await client.rpc('get_shift_list_page', { p_scope: entity === 'shifts' || entity === 'live_shifts' ? 'all' : entity === 'open_shifts' ? 'open' : 'mine', p_page: query.page, p_page_size: query.pageSize, p_filters: rpcFilters, p_pending_page: query.pendingPage, p_include_live: entity === 'live_shifts' })
         if (result.error) throw result.error
         const { rows, registrations, ...metadata } = result.data
-        const items = await withShiftStaffingSummary(client, rows.map((row: Parameters<typeof shiftFromRow>[0]) => ({ ...shiftFromRow(row, 'database'), registration_conflict: row.registration_conflict === true })))
+        const shifts: Array<ReturnType<typeof shiftFromRow> & { registration_conflict: boolean }> = rows.map((row: Parameters<typeof shiftFromRow>[0]) => ({ ...shiftFromRow(row, 'database'), registration_conflict: row.registration_conflict === true }))
+        const [segments, summarizedShifts] = await Promise.all([
+          shifts.length && typeof client.from === 'function'
+            ? client.from('shift_staffing_segments')
+                .select('id,shift_id,segment_index,start_at,end_at,required_host_count,required_support_count,required_technical_count,planned_host_names,planned_support_names,planned_technical_names')
+                .in('shift_id', shifts.map(shift => shift.id)).order('start_at').order('id')
+            : Promise.resolve({ data: [], error: null }),
+          withShiftStaffingSummary(client, shifts),
+        ])
+        if (segments.error) throw segments.error
+        const segmentsByShift = new Map<string, PersistedStaffingSegment[]>()
+        for (const segment of segments.data ?? []) {
+          segmentsByShift.set(segment.shift_id, [...(segmentsByShift.get(segment.shift_id) ?? []), segment as PersistedStaffingSegment])
+        }
+        const items = summarizedShifts.map(shift => ({
+          ...shift,
+          ...(segmentsByShift.has(shift.id) ? { persisted_staffing_segments: segmentsByShift.get(shift.id) } : {}),
+        }))
         return reply({ ...metadata, items, registrations: registrations.map(registrationFromRow), ...(entity==='live_shifts'?{updates:(metadata.updates??[]).map(dashboardUpdateFromRow)}:{}) })
       }
       if(entity==='archives'){

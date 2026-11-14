@@ -9,6 +9,11 @@ assert.deepEqual([...manifest.node_test_files].sort(), inventory, 'Release manif
 const selectedInventory = process.argv.includes('--exclude-postgres17')
   ? inventory.filter(file => !file.toLowerCase().includes('postgres17'))
   : inventory
+const concurrencyArg = process.argv.find(argument => /^--test-concurrency=\d+$/.test(argument))
+const testConcurrency = Number(concurrencyArg?.split('=')[1] ?? 4)
+if (!Number.isInteger(testConcurrency) || testConcurrency < 1 || testConcurrency > 16) {
+  throw new Error('Canonical test concurrency must be between 1 and 16')
+}
 assert.ok(selectedInventory.length > 0, 'Release regression must include test files')
 if (selectedInventory.length !== inventory.length) {
   console.log(`PostgreSQL 17 integration files are delegated to dedicated disposable database gates (${inventory.length - selectedInventory.length}).`)
@@ -23,7 +28,7 @@ const isolatedRuntimeEnv = [
   'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_URL', 'SUPABASE_SECRET_KEY',
   'C511_BASE_URL', 'C511_ANON_KEY', 'C511_SERVICE_ROLE_KEY', 'C511_TEST_PASSWORD', 'C511_DATABASE',
   'C511_AUTH_USERS_BEFORE', 'C511_STORAGE_OBJECTS_BEFORE',
-  'C511_EVIDENCE_DIR', 'C511_POSTGRES_VERSION', 'C511_MIGRATION_SHA256', 'C512_MIGRATION_SHA256',
+  'C511_EVIDENCE_DIR', 'C511_POSTGRES_VERSION', 'C511_AUTH_PORT', 'C511_REST_PORT', 'C511_MIGRATION_SHA256', 'C512_MIGRATION_SHA256',
   'C515_SECONDS_MIGRATION_SHA256', 'C515_APPROVAL_MIGRATION_SHA256',
   'C515_OT_CANCELLATION_MIGRATION_SHA256', 'C515_LIVE_CANCELLATION_MIGRATION_SHA256',
   'C511_SOURCE_SHA', 'FEATURE_SELF_ATTENDANCE_PHOTO', 'FILE_STORAGE_ENABLED', 'FEATURE_SELF_ATTENDANCE_REVIEW',
@@ -59,7 +64,7 @@ assert.deepEqual(parseSummary('# tests 4\n# pass 3\n# fail 0\n# skipped 1'), { t
 const run = (label, files, env) => new Promise(resolve => {
   console.log(`\n=== ${label} ===`)
   const child = spawn(process.execPath, ['--import', './tests/typescript-alias-loader.mjs',
-    '--test', '--test-concurrency=4', '--test-reporter=tap', ...files], { env, stdio: ['ignore', 'pipe', 'inherit'] })
+    '--test', `--test-concurrency=${testConcurrency}`, '--test-reporter=tap', ...files], { env, stdio: ['ignore', 'pipe', 'inherit'] })
   let output = ''
   child.stdout.on('data', chunk => { output += chunk; process.stdout.write(chunk) })
   child.on('error', error => {

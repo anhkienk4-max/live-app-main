@@ -9,7 +9,10 @@ export function ShiftChangeBridge({ userId, enabled }: { userId: string | null; 
   React.useEffect(() => {
     if (!enabled || !userId) return
     return subscribeToShiftChanges(createClient(), userId, () => {
-      invalidatePageCache()
+      invalidatePageCache(undefined, [
+        'shifts', 'open_shifts', 'my_shifts', 'live_shifts', 'calendar_window',
+        'registration_reviews', 'swaps', 'reports', 'report_queue', 'analytics_reports',
+      ])
       window.dispatchEvent(new Event(SHIFT_DATA_CHANGED_EVENT))
     })
   }, [enabled, userId])
