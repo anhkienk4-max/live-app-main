@@ -650,7 +650,7 @@ export function SelfAttendancePanel({
                     {/* Time Window Compliance Tagging */}
                     <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                       {compliance.isWithinWindow ? (
-                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700 font-medium" data-testid="attendance-checkin-timing-warning">
                           {en ? compliance.labelEn : compliance.labelVi}
                         </Badge>
                       ) : (
@@ -915,7 +915,7 @@ export function SelfAttendancePanel({
                     {/* Time Window Compliance Tagging */}
                     <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                       {compliance.isWithinWindow ? (
-                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700 font-medium" data-testid="attendance-checkout-timing-warning">
                           {en ? compliance.labelEn : compliance.labelVi}
                         </Badge>
                       ) : (
