@@ -54,7 +54,7 @@ import {
   finalReportRecapFields,
   normalizeFinalReportRecap,
 } from '@/lib/utils/finalReportRecap'
-import { LiveReportImageEditor, LiveReportImageGallery } from '@/components/features/reports/LiveReportImageGallery'
+import { LiveReportImageDisplay, LiveReportImageEditor, LiveReportImageGallery } from '@/components/features/reports/LiveReportImageGallery'
 import {
   moveLiveReportImage,
   resolveLiveReportImagePermissions,
@@ -1083,21 +1083,11 @@ export function ReportDetailModal({
                         const imgUrl = signedUrls[image.id] || ((image.image_url.startsWith('blob:') || image.image_url.startsWith('data:') || image.image_url.startsWith('http://') || image.image_url.startsWith('https://')) ? image.image_url : null)
                         return (
                           <div className="space-y-2 rounded-lg border p-2" key={image.id}>
-                            {imgUrl ? (
-                              <Image
-                                unoptimized
-                                width={1280}
-                                height={720}
-                                src={imgUrl}
-                                alt={image.original_name || image.image_type}
-                                className="aspect-video w-full rounded-md object-cover"
-                              />
-                            ) : (
-                              <div className="aspect-video w-full flex items-center justify-center rounded-md bg-muted/20 text-muted-foreground">
-                                <FileImage className="h-8 w-8 opacity-40" />
-                              </div>
-                            )}
-                          <div className="flex items-center justify-between gap-2">
+                            <LiveReportImageDisplay
+                              src={imgUrl}
+                              alt={image.original_name || image.image_type}
+                            />
+                            <div className="flex items-center justify-between gap-2">
                             <p className="min-w-0 truncate text-xs">{image.original_name || image.image_type}</p>
                             {liveImagePermissions.canEdit && (
                               <Button

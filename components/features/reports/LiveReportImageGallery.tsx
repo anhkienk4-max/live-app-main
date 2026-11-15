@@ -3,12 +3,14 @@
 import * as React from 'react'
 import Image from 'next/image'
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ChevronLeft,
   ChevronRight,
   FileImage,
   Images,
+  RefreshCw,
   Save,
   Star,
   Trash2,
@@ -65,10 +67,107 @@ function resolveLiveReportImageUrl(
 ): string | null {
   if (signedUrls?.[image.id]) return signedUrls[image.id]
   const raw = image.thumbnail_url || image.file_url
-  if (raw && (raw.startsWith('blob:') || raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://'))) {
-    return raw
+  if (!raw) return null
+
+  // Local client draft preview
+  if (raw.startsWith('blob:')) return raw
+
+  // Restricted base64 data URIs: image types only
+  if (raw.startsWith('data:')) {
+    if (/^data:image\/(jpeg|png|webp|gif);base64,/i.test(raw)) {
+      return raw
+    }
+    return null
   }
+
+  // Trusted HTTP/HTTPS URLs
+  if (raw.startsWith('https://') || raw.startsWith('http://')) {
+    try {
+      new URL(raw)
+      return raw
+    } catch {
+      return null
+    }
+  }
+
   return null
+}
+
+export function LiveReportImageDisplay({
+  src,
+  alt,
+  className,
+  aspect = 'aspect-video',
+  onRetry,
+}: {
+  src: string | null
+  alt: string
+  className?: string
+  aspect?: string
+  onRetry?: () => void
+}) {
+  const [loadError, setLoadError] = React.useState(false)
+  const [retryKey, setRetryKey] = React.useState(0)
+
+  React.useEffect(() => {
+    setLoadError(false)
+  }, [src])
+
+  if (!src) {
+    return (
+      <div
+        className={`${aspect} w-full flex flex-col items-center justify-center rounded-md border border-dashed bg-muted/20 text-muted-foreground p-3 text-center`}
+        data-testid="live-image-placeholder-empty"
+      >
+        <FileImage className="h-8 w-8 opacity-40 mb-1" />
+        <span className="text-[11px] font-medium">Chưa có ảnh</span>
+        <span className="text-[10px] text-muted-foreground">Chưa có liên kết ảnh hoặc ảnh chưa sẵn sàng</span>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div
+        className={`${aspect} w-full flex flex-col items-center justify-center rounded-md border border-amber-300 bg-amber-50/70 p-3 text-center text-amber-900 space-y-1.5`}
+        data-testid="live-image-error-fallback"
+        role="alert"
+      >
+        <AlertTriangle className="h-6 w-6 text-amber-600" />
+        <span className="text-xs font-semibold">Không thể tải ảnh</span>
+        <p className="text-[10px] text-amber-800 max-w-[200px]">
+          Liên kết có thể đã hết hạn hoặc kết nối bị gián đoạn.
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[10px] border-amber-400 bg-white hover:bg-amber-100 text-amber-900"
+          onClick={() => {
+            setLoadError(false)
+            setRetryKey(k => k + 1)
+            onRetry?.()
+          }}
+          data-testid="live-image-retry-btn"
+        >
+          <RefreshCw className="mr-1 h-3 w-3" />
+          Tải lại ảnh
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      key={retryKey}
+      src={src}
+      alt={alt}
+      className={`${aspect} w-full rounded-md border object-cover ${className || ''}`}
+      onError={() => setLoadError(true)}
+      loading="lazy"
+    />
+  )
 }
 
 export function LiveReportImageEditor({
@@ -296,20 +395,10 @@ function LiveReportImageEditorCard({
   return (
     <article className="space-y-3 rounded-lg border p-3" data-testid={`live-image-card-${image.id}`}>
       <div className="relative">
-        {imageUrl ? (
-          <Image
-            unoptimized
-            src={imageUrl}
-            alt={image.title || image.file_name}
-            width={1280}
-            height={720}
-            className="aspect-video w-full rounded-md border object-cover"
-          />
-        ) : (
-          <div className="aspect-video w-full flex items-center justify-center rounded-md border bg-muted/20 text-muted-foreground">
-            <FileImage className="h-8 w-8 opacity-40" />
-          </div>
-        )}
+        <LiveReportImageDisplay
+          src={imageUrl}
+          alt={image.title || image.file_name}
+        />
         {image.is_cover && (
           <Badge className="absolute left-2 top-2 bg-amber-500 text-white" data-testid="live-image-cover-badge">
             <Star className="mr-1 h-3 w-3 fill-current" />{t('reportCover')}
@@ -419,13 +508,12 @@ export function LiveReportImageGallery({
           onClick={() => setViewerId(cover.id)}
           data-testid="live-report-cover"
         >
-          {coverUrl ? (
-            <Image unoptimized src={coverUrl} alt={cover.title || cover.file_name} width={1280} height={720} className="max-h-[420px] w-full object-cover transition-transform group-hover:scale-[1.01]" />
-          ) : (
-            <div className="h-64 w-full flex items-center justify-center bg-muted/20 text-muted-foreground">
-              <FileImage className="h-12 w-12 opacity-40" />
-            </div>
-          )}
+          <LiveReportImageDisplay
+            src={coverUrl}
+            alt={cover.title || cover.file_name}
+            aspect="max-h-[420px] aspect-video"
+            className="transition-transform group-hover:scale-[1.01]"
+          />
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 text-white">
             <Badge className="mb-2 bg-amber-500 text-white"><Star className="mr-1 h-3 w-3 fill-current" />{t('reportCover')}</Badge>
             <p className="font-semibold">{cover.title || cover.file_name}</p>
@@ -465,13 +553,10 @@ export function LiveReportImageGallery({
                   onClick={() => setViewerId(image.id)}
                   data-testid={`gallery-image-${image.id}`}
                 >
-                  {itemUrl ? (
-                    <Image unoptimized src={itemUrl} alt={image.title || image.file_name} width={1280} height={720} className="aspect-video w-full object-cover" />
-                  ) : (
-                    <div className="aspect-video w-full flex items-center justify-center bg-muted/20 text-muted-foreground">
-                      <FileImage className="h-8 w-8 opacity-40" />
-                    </div>
-                  )}
+                  <LiveReportImageDisplay
+                    src={itemUrl}
+                    alt={image.title || image.file_name}
+                  />
                   <div className="space-y-2 p-3">
                     <Badge variant="outline">{t(liveReportImageCategoryTranslationKeys[image.category])}</Badge>
                     <LiveReportImageMetadata image={image} />
@@ -486,13 +571,12 @@ export function LiveReportImageGallery({
           <DialogHeader><DialogTitle className="text-white">{viewerImage?.title || viewerImage?.file_name}</DialogTitle></DialogHeader>
           {viewerImage && (
             <div className="relative flex min-h-[70vh] items-center justify-center">
-              {viewerUrl ? (
-                <Image unoptimized src={viewerUrl} alt={viewerImage.title || viewerImage.file_name} width={1920} height={1080} className="max-h-[78vh] max-w-full object-contain" />
-              ) : (
-                <div className="flex h-64 w-64 items-center justify-center text-muted-foreground">
-                  <FileImage className="h-16 w-16 opacity-40" />
-                </div>
-              )}
+              <LiveReportImageDisplay
+                src={viewerUrl}
+                alt={viewerImage.title || viewerImage.file_name}
+                aspect="max-h-[78vh] max-w-full"
+                className="object-contain"
+              />
               <Button className="absolute left-2" type="button" size="icon" variant="secondary" disabled={viewerIndex <= 0} aria-label={t('previousImage')} onClick={() => setViewerId(filtered[viewerIndex - 1]?.id || null)}><ChevronLeft className="h-5 w-5" /></Button>
               <Button className="absolute right-2" type="button" size="icon" variant="secondary" disabled={viewerIndex >= filtered.length - 1} aria-label={t('nextImage')} onClick={() => setViewerId(filtered[viewerIndex + 1]?.id || null)}><ChevronRight className="h-5 w-5" /></Button>
             </div>

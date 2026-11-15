@@ -13,6 +13,7 @@ import {
 } from '@/lib/services/supabaseSelfAttendanceService'
 import {
   calculateAttendanceTimePolicy,
+  checkAttendanceTimingCompliance,
   type AttendanceRole,
   type AttendanceEventKind,
   type SelfAttendanceEvent,
@@ -548,20 +549,37 @@ export function SelfAttendancePanel({
 
       {/* Overall Status Banner */}
       {ready && (
-        <div className="flex items-center justify-between rounded-md bg-white border px-3 py-2 text-xs shadow-2xs">
-          <span className="text-slate-600">Trạng thái tổng thể:</span>
-          <span
-            role="status"
-            data-testid="self-attendance-status"
-            className="font-bold text-slate-800"
-            aria-live="polite"
-          >
-            {checkedOut
-              ? (en ? 'Completed (Checked out)' : 'Hoàn thành ca (Đã check-out)')
-              : checkedIn
-              ? (en ? 'In Progress (Checked in · Check-out available)' : 'Đang trong ca (Đã check-in · Có thể check-out)')
-              : (en ? 'Not checked in' : 'Chưa check-in')}
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 rounded-md bg-white border px-3 py-2 text-xs shadow-2xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-slate-600 font-medium">{en ? 'Overall Shift Progress:' : 'Tiến trình ca trực:'}</span>
+            <span
+              role="status"
+              data-testid="self-attendance-status"
+              className="font-bold text-slate-800"
+              aria-live="polite"
+            >
+              {checkedOut
+                ? (en ? 'Completed (Checked out)' : 'Hoàn thành ca (Đã check-out)')
+                : checkedIn
+                ? (en ? 'In Progress (Checked in · Check-out available)' : 'Đang trong ca (Đã check-in · Có thể check-out)')
+                : (en ? 'Not checked in' : 'Chưa check-in')}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            {checkedOut ? (
+              <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800">
+                {en ? 'Check-in & Check-out Recorded' : 'Đã đủ mốc Check-in & Check-out'}
+              </Badge>
+            ) : checkedIn ? (
+              <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">
+                {en ? 'Check-in Recorded · Awaiting Check-out' : 'Đã check-in · Chờ hoàn tất ca để check-out'}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-slate-200 text-slate-500">
+                {en ? 'Awaiting Arrival' : 'Chờ bắt đầu ca'}
+              </Badge>
+            )}
+          </div>
         </div>
       )}
 
@@ -594,41 +612,87 @@ export function SelfAttendancePanel({
             </div>
 
             {/* Check-in Recorded Receipt or Input */}
-            {checkedIn ? (
-              <div className="space-y-2 text-xs">
-                <div className="rounded bg-emerald-50/50 border border-emerald-200 p-2 text-emerald-950 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-emerald-800">Server Receipt:</span>
-                    <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
-                      {checkedIn.verification_status}
-                    </Badge>
+            {checkedIn ? (() => {
+              const compliance = checkAttendanceTimingCompliance(
+                checkedIn.recorded_at,
+                shiftContext.start_time,
+                shiftContext.end_time,
+                'check_in',
+                timePolicy.timeZone
+              )
+              return (
+                <div className="space-y-2 text-xs">
+                  <div className="rounded bg-emerald-50/50 border border-emerald-200 p-2.5 text-emerald-950 space-y-1.5">
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <span className="font-semibold text-emerald-900">{en ? 'Server Receipt:' : 'Biên nhận máy chủ:'}</span>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                          {en ? 'Event Logged' : 'Đã ghi nhận mốc giờ'}
+                        </Badge>
+                        {checkedIn.verification_status === 'pending_verification' ? (
+                          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-800 font-medium" data-testid="attendance-checkin-verification-badge">
+                            {en ? 'Photo Pending Review' : 'Ảnh chờ đối soát'}
+                          </Badge>
+                        ) : checkedIn.verification_status === 'verified' ? (
+                          <Badge variant="outline" className="border-emerald-400 bg-emerald-100 text-[10px] text-emerald-900 font-medium">
+                            {en ? 'Photo Verified' : 'Ảnh đã duyệt'}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-rose-300 bg-rose-50 text-[10px] text-rose-800 font-medium">
+                            {en ? 'Photo Rejected' : 'Ảnh bị từ chối'}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <p className="font-mono text-[11px] text-slate-800">
+                      {displayTime(checkedIn.recorded_at, language)}
+                    </p>
+                    {/* Time Window Compliance Tagging */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      {compliance.isWithinWindow ? (
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                          {en ? compliance.labelEn : compliance.labelVi}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-400 bg-amber-50 text-[10px] text-amber-800 font-semibold" data-testid="attendance-checkin-timing-warning">
+                          {en ? compliance.labelEn : compliance.labelVi}
+                        </Badge>
+                      )}
+                    </div>
+                    {!compliance.isWithinWindow && (
+                      <p className="text-[10px] text-amber-800 italic" data-testid="attendance-checkin-timing-details">
+                        {en ? compliance.detailsEn : compliance.detailsVi}
+                      </p>
+                    )}
+                    <div className="text-[10px] text-slate-600 pt-0.5 space-y-0.5 border-t border-emerald-200/60">
+                      <p>
+                        {checkedIn.photo_available
+                          ? (en ? '• Drive Storage: Metadata attached (awaiting provider readback)' : '• Lưu trữ Drive: Đã gắn metadata (chờ provider đối soát)')
+                          : (en ? '• Drive Storage: No attached photo' : '• Lưu trữ Drive: Chưa gắn ảnh Drive')}
+                      </p>
+                      <p className="text-slate-500">
+                        {en ? '• Status distinction: Arrival time is confirmed. Photo verification remains pending review.' : '• Phân định: Mốc giờ có mặt đã xác nhận. Xác minh ảnh minh chứng đang chờ đối soát.'}
+                      </p>
+                    </div>
                   </div>
-                  <p className="font-mono text-[11px]">
-                    {displayTime(checkedIn.recorded_at, language)}
-                  </p>
-                  <p className="text-[10px] text-emerald-700">
-                    {checkedIn.photo_available
-                      ? (en ? '• Drive photo attached' : '• Đã gắn ảnh Drive')
-                      : (en ? '• No verified photo' : '• Chưa có ảnh xác thực')}
-                  </p>
-                </div>
 
-                {/* Authenticated Check-in Image Evidence */}
-                {checkedIn.photo_available && (
-                  <div className="space-y-1" data-testid="attendance-checkin-evidence">
-                    <span className="font-medium text-slate-700 text-[11px]">
-                      {en ? 'Check-in Photo Evidence:' : 'Ảnh bằng chứng Check-in:'}
-                    </span>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      className="max-h-44 w-full rounded border object-contain bg-black/5"
-                      src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedIn.event_id)}
-                      alt="Check-in attendance evidence"
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
+                  {/* Authenticated Check-in Image Evidence */}
+                  {checkedIn.photo_available && (
+                    <div className="space-y-1" data-testid="attendance-checkin-evidence">
+                      <span className="font-medium text-slate-700 text-[11px]">
+                        {en ? 'Check-in Photo Evidence:' : 'Ảnh bằng chứng Check-in:'}
+                      </span>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        className="max-h-44 w-full rounded border object-contain bg-black/5"
+                        src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedIn.event_id)}
+                        alt="Check-in attendance evidence"
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })() : (
               <div className="space-y-2 text-xs">
                 <p className="text-slate-600">
                   {en
@@ -813,41 +877,87 @@ export function SelfAttendancePanel({
                   Cần hoàn tất Check-in thành công trước khi có thể chụp ảnh và ghi nhận Check-out rời ca.
                 </p>
               </div>
-            ) : checkedOut ? (
-              <div className="space-y-2 text-xs">
-                <div className="rounded bg-emerald-50/50 border border-emerald-200 p-2 text-emerald-950 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-emerald-800">Server Receipt:</span>
-                    <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
-                      {checkedOut.verification_status}
-                    </Badge>
+            ) : checkedOut ? (() => {
+              const compliance = checkAttendanceTimingCompliance(
+                checkedOut.recorded_at,
+                shiftContext.start_time,
+                shiftContext.end_time,
+                'check_out',
+                timePolicy.timeZone
+              )
+              return (
+                <div className="space-y-2 text-xs">
+                  <div className="rounded bg-emerald-50/50 border border-emerald-200 p-2.5 text-emerald-950 space-y-1.5">
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <span className="font-semibold text-emerald-900">{en ? 'Server Receipt:' : 'Biên nhận máy chủ:'}</span>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                          {en ? 'Event Logged' : 'Đã ghi nhận mốc giờ'}
+                        </Badge>
+                        {checkedOut.verification_status === 'pending_verification' ? (
+                          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-800 font-medium" data-testid="attendance-checkout-verification-badge">
+                            {en ? 'Photo Pending Review' : 'Ảnh chờ đối soát'}
+                          </Badge>
+                        ) : checkedOut.verification_status === 'verified' ? (
+                          <Badge variant="outline" className="border-emerald-400 bg-emerald-100 text-[10px] text-emerald-900 font-medium">
+                            {en ? 'Photo Verified' : 'Ảnh đã duyệt'}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-rose-300 bg-rose-50 text-[10px] text-rose-800 font-medium">
+                            {en ? 'Photo Rejected' : 'Ảnh bị từ chối'}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <p className="font-mono text-[11px] text-slate-800">
+                      {displayTime(checkedOut.recorded_at, language)}
+                    </p>
+                    {/* Time Window Compliance Tagging */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      {compliance.isWithinWindow ? (
+                        <Badge variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">
+                          {en ? compliance.labelEn : compliance.labelVi}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-400 bg-amber-50 text-[10px] text-amber-800 font-semibold" data-testid="attendance-checkout-timing-warning">
+                          {en ? compliance.labelEn : compliance.labelVi}
+                        </Badge>
+                      )}
+                    </div>
+                    {!compliance.isWithinWindow && (
+                      <p className="text-[10px] text-amber-800 italic" data-testid="attendance-checkout-timing-details">
+                        {en ? compliance.detailsEn : compliance.detailsVi}
+                      </p>
+                    )}
+                    <div className="text-[10px] text-slate-600 pt-0.5 space-y-0.5 border-t border-emerald-200/60">
+                      <p>
+                        {checkedOut.photo_available
+                          ? (en ? '• Drive Storage: Metadata attached (awaiting provider readback)' : '• Lưu trữ Drive: Đã gắn metadata (chờ provider đối soát)')
+                          : (en ? '• Drive Storage: No attached photo' : '• Lưu trữ Drive: Chưa gắn ảnh Drive')}
+                      </p>
+                      <p className="text-slate-500">
+                        {en ? '• Status distinction: Departure time is confirmed. Photo verification remains pending review.' : '• Phân định: Mốc giờ rời ca đã xác nhận. Xác minh ảnh minh chứng đang chờ đối soát.'}
+                      </p>
+                    </div>
                   </div>
-                  <p className="font-mono text-[11px]">
-                    {displayTime(checkedOut.recorded_at, language)}
-                  </p>
-                  <p className="text-[10px] text-emerald-700">
-                    {checkedOut.photo_available
-                      ? (en ? '• Drive photo attached' : '• Đã gắn ảnh Drive')
-                      : (en ? '• No verified photo' : '• Chưa có ảnh xác thực')}
-                  </p>
-                </div>
 
-                {/* Authenticated Check-out Image Evidence */}
-                {checkedOut.photo_available && (
-                  <div className="space-y-1" data-testid="attendance-checkout-evidence">
-                    <span className="font-medium text-slate-700 text-[11px]">
-                      {en ? 'Check-out Photo Evidence:' : 'Ảnh bằng chứng Check-out:'}
-                    </span>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      className="max-h-44 w-full rounded border object-contain bg-black/5"
-                      src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedOut.event_id)}
-                      alt="Check-out attendance evidence"
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
+                  {/* Authenticated Check-out Image Evidence */}
+                  {checkedOut.photo_available && (
+                    <div className="space-y-1" data-testid="attendance-checkout-evidence">
+                      <span className="font-medium text-slate-700 text-[11px]">
+                        {en ? 'Check-out Photo Evidence:' : 'Ảnh bằng chứng Check-out:'}
+                      </span>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        className="max-h-44 w-full rounded border object-contain bg-black/5"
+                        src={'/api/workforce/self-attendance-photo?event_id=' + encodeURIComponent(checkedOut.event_id)}
+                        alt="Check-out attendance evidence"
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })() : (
               <div className="space-y-2 text-xs">
                 <p className="text-slate-600">
                   {en

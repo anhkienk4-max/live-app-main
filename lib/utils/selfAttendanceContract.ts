@@ -33,6 +33,100 @@ export function decodeSelfAttendanceHistory(data: unknown): SelfAttendanceEvent[
   return rows
 }
 
+export interface AttendanceTimingCompliance {
+  isWithinWindow: boolean
+  labelVi: string
+  labelEn: string
+  isOutsideWindowWarning: boolean
+  detailsVi: string
+  detailsEn: string
+}
+
+/**
+ * Checks whether an attendance event was recorded within the compliant time window:
+ * - Check-in: [T_start - 120m, T_end]
+ * - Check-out: [T_start, T_end + 120m]
+ * Events outside this range are still recorded by the server, but flagged for manual management review.
+ */
+export function checkAttendanceTimingCompliance(
+  recordedAtIso: string,
+  startTime: string,
+  endTime: string,
+  kind: AttendanceEventKind,
+  timeZone = 'Asia/Ho_Chi_Minh'
+): AttendanceTimingCompliance {
+  const dateObj = new Date(recordedAtIso)
+  if (!Number.isFinite(dateObj.getTime())) {
+    return {
+      isWithinWindow: false,
+      labelVi: 'Thời gian không hợp lệ',
+      labelEn: 'Invalid time',
+      isOutsideWindowWarning: true,
+      detailsVi: 'Không thể phân tích mốc thời gian ghi nhận.',
+      detailsEn: 'Unable to parse recorded timestamp.',
+    }
+  }
+
+  // Format time in the shift timezone
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  const recordedParts = formatter.format(dateObj).split(':')
+  const recordedMins = parseInt(recordedParts[0], 10) * 60 + parseInt(recordedParts[1], 10)
+
+  const startMins = parseMinutesFromTimeString(startTime)
+  const endMins = parseMinutesFromTimeString(endTime)
+
+  const checkInMinMins = ((startMins - 120) % 1440 + 1440) % 1440
+  const checkOutMaxMins = ((endMins + 120) % 1440 + 1440) % 1440
+
+  let isWithin = true
+  if (kind === 'check_in') {
+    // Compliant check-in window: between T_start - 120m and T_end
+    if (checkInMinMins <= endMins) {
+      isWithin = recordedMins >= checkInMinMins && recordedMins <= endMins
+    } else {
+      // Crosses midnight window
+      isWithin = recordedMins >= checkInMinMins || recordedMins <= endMins
+    }
+  } else {
+    // Compliant check-out window: between T_start and T_end + 120m
+    if (startMins <= checkOutMaxMins) {
+      isWithin = recordedMins >= startMins && recordedMins <= checkOutMaxMins
+    } else {
+      // Crosses midnight window
+      isWithin = recordedMins >= startMins || recordedMins <= checkOutMaxMins
+    }
+  }
+
+  if (isWithin) {
+    return {
+      isWithinWindow: true,
+      labelVi: 'Đúng khung giờ chuẩn',
+      labelEn: 'Within standard window',
+      isOutsideWindowWarning: false,
+      detailsVi: 'Ghi nhận trong cửa sổ cho phép của ca trực.',
+      detailsEn: 'Recorded within the authorized shift window.',
+    }
+  }
+
+  const recordedTimeLabel = `${recordedParts[0].padStart(2, '0')}:${recordedParts[1].padStart(2, '0')}`
+  const openTime = formatMinutesToTimeString(startMins - 120)
+  const closeTime = formatMinutesToTimeString(endMins + 120)
+
+  return {
+    isWithinWindow: false,
+    labelVi: 'Ngoài khung giờ chuẩn',
+    labelEn: 'Outside standard window',
+    isOutsideWindowWarning: true,
+    detailsVi: `Ghi nhận lúc ${recordedTimeLabel} (Khung giờ chuẩn: ${openTime} – ${closeTime}). Hệ thống lưu biên nhận thực tế để quản lý đối soát.`,
+    detailsEn: `Recorded at ${recordedTimeLabel} (Standard window: ${openTime} – ${closeTime}). Stored for management review.`,
+  }
+}
+
 export interface AttendanceTimePolicy {
   timeZone: string
   checkInOpensTime: string

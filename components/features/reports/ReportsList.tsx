@@ -9,7 +9,7 @@ import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/se
 import { readTransientData } from '@/lib/services/transientDataCache'
 import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2, LayoutGrid, Table as TableIcon, List as ListIcon, CalendarDays } from 'lucide-react'
+import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2, LayoutGrid, Table as TableIcon, List as ListIcon, CalendarDays, MoreHorizontal } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
   reportImageService,
@@ -722,38 +722,62 @@ export function ReportsList() {
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">Danh sách các báo cáo livestream đã lập, cập nhật chỉ số hoặc lưu trữ theo quyền phân cấp.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
+          <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto" role="group" aria-label="Tùy chọn chế độ xem">
             <Button
               type="button"
-              variant={createdViewMode === 'cards' ? 'secondary' : 'outline'}
+              variant={createdViewMode === 'cards' ? 'default' : 'outline'}
               size="sm"
               onClick={() => setCreatedViewMode('cards')}
-              className="h-8 gap-1.5 text-xs font-medium"
-              title="Chế độ thẻ"
+              className={`h-8 gap-1.5 text-xs font-medium ${createdViewMode === 'cards' ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs' : ''}`}
+              title="Chế độ thẻ (Mặc định cho di động và duyệt nhanh)"
               aria-label="Chế độ thẻ"
+              aria-pressed={createdViewMode === 'cards'}
+              data-state={createdViewMode === 'cards' ? 'active' : 'inactive'}
             >
               <LayoutGrid className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Chế độ thẻ</span>
             </Button>
             <Button
               type="button"
-              variant={createdViewMode === 'table' ? 'secondary' : 'outline'}
+              variant={createdViewMode === 'table' ? 'default' : 'outline'}
               size="sm"
               onClick={() => setCreatedViewMode('table')}
-              className="h-8 gap-1.5 text-xs font-medium"
-              title="Chế độ bảng"
+              className={`h-8 gap-1.5 text-xs font-medium ${createdViewMode === 'table' ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs' : ''}`}
+              title="Chế độ bảng (Đầy đủ cột cho màn hình rộng)"
               aria-label="Chế độ bảng"
+              aria-pressed={createdViewMode === 'table'}
+              data-state={createdViewMode === 'table' ? 'active' : 'inactive'}
             >
               <TableIcon className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Chế độ bảng</span>
             </Button>
-            <Button type="button" variant={createdViewMode === 'list' ? 'secondary' : 'outline'} size="sm"
-              onClick={() => setCreatedViewMode('list')} className="h-8 gap-1.5 text-xs" aria-label="Chế độ danh sách">
-              <ListIcon className="h-3.5 w-3.5" /><span className="hidden sm:inline">Danh sách</span>
+            <Button
+              type="button"
+              variant={createdViewMode === 'list' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setCreatedViewMode('list')}
+              className={`h-8 gap-1.5 text-xs font-medium ${createdViewMode === 'list' ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs' : ''}`}
+              title="Chế độ danh sách (Thu gọn)"
+              aria-label="Chế độ danh sách"
+              aria-pressed={createdViewMode === 'list'}
+              data-state={createdViewMode === 'list' ? 'active' : 'inactive'}
+            >
+              <ListIcon className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Danh sách</span>
             </Button>
-            <Button type="button" variant={createdViewMode === 'calendar' ? 'secondary' : 'outline'} size="sm"
-              onClick={() => setCreatedViewMode('calendar')} className="h-8 gap-1.5 text-xs" aria-label="Chế độ lịch">
-              <CalendarDays className="h-3.5 w-3.5" /><span className="hidden sm:inline">Lịch</span>
+            <Button
+              type="button"
+              variant={createdViewMode === 'calendar' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setCreatedViewMode('calendar')}
+              className={`h-8 gap-1.5 text-xs font-medium ${createdViewMode === 'calendar' ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs' : ''}`}
+              title="Chế độ lịch theo ca"
+              aria-label="Chế độ lịch"
+              aria-pressed={createdViewMode === 'calendar'}
+              data-state={createdViewMode === 'calendar' ? 'active' : 'inactive'}
+            >
+              <CalendarDays className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Lịch</span>
             </Button>
           </div>
         </div>
@@ -792,120 +816,219 @@ export function ReportsList() {
               else { setEditingReport(undefined); openReportDetail(report); setShowForm(false) }
             }}/>
         ) : createdViewMode === 'table' ? (
-          <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-muted/50 text-muted-foreground border-b uppercase text-[10px] tracking-wider font-semibold">
-                <tr>
-                  <th className="px-3.5 py-2.5">Thời gian</th>
-                  <th className="px-3.5 py-2.5">Brand</th>
-                  <th className="px-3.5 py-2.5">Nền tảng</th>
-                  <th className="px-3.5 py-2.5">Chiến dịch</th>
-                  <th className="px-3.5 py-2.5">Nhân sự ca</th>
-                  <th className="px-3.5 py-2.5 text-right">Doanh thu</th>
-                  <th className="px-3.5 py-2.5 text-right">Đơn hàng</th>
-                  <th className="px-3.5 py-2.5 text-center">Trạng thái</th>
-                  <th className="px-3.5 py-2.5 text-right">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filteredReports.map(report => {
-                  const shift = shiftById.get(report.shift_id)
-                  if (!shift) {
-                    const context = historicalContexts[report.id]
-                    if (!context) return (
-                      <tr key={report.id} className="bg-amber-500/5" data-testid="report-history-context-missing">
-                        <td colSpan={9} className="px-3.5 py-2 text-xs text-amber-700">
-                          Không thể tải ngữ cảnh lịch sử cho báo cáo {report.id}. Ca gốc không thuộc phạm vi hiện tại.
-                        </td>
-                      </tr>
-                    )
-                    const historicalStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
-                    const historicalRevenue = reportRevenue(report)
-                    return (
-                      <tr key={report.id} className="hover:bg-muted/20" data-testid="report-historical-read-only">
-                        <td className="px-3.5 py-2.5 font-medium whitespace-nowrap">{context.date} <span className="text-[10px] text-muted-foreground block">{context.start_time.slice(0,5)}–{context.end_time.slice(0,5)}</span></td>
-                        <td className="px-3.5 py-2.5 font-medium">{nameById(brands, context.brand_id)}</td>
-                        <td className="px-3.5 py-2.5 text-muted-foreground">{nameById(platforms, context.platform_id)}</td>
-                        <td className="px-3.5 py-2.5 text-muted-foreground">{nameById(campaigns, context.campaign_id ?? undefined)}</td>
-                        <td className="px-3.5 py-2.5 text-muted-foreground text-[11px]">—</td>
-                        <td className="px-3.5 py-2.5 text-right font-medium">{historicalRevenue == null ? t('noData') : formatCurrency(historicalRevenue)}</td>
-                        <td className="px-3.5 py-2.5 text-right font-medium">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</td>
-                        <td className="px-3.5 py-2.5 text-center"><Badge variant="outline" className="text-[10px]" title={"Trạng thái: " + historicalStatus}>Lịch sử · Chỉ xem</Badge></td>
-                        <td className="px-3.5 py-2.5 text-right">
-                          <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedHistoricalReport(report)} className="h-7 px-2 text-xs">
-                            <FileText className="mr-1 h-3.5 w-3.5" />Chi tiết
-                          </Button>
-                        </td>
-                      </tr>
-                    )
-                  }
-                  const reportStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
-                  const revenue = reportRevenue(report)
-                  const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
-                  const isEditableDraft = reportStatus === 'draft' || reportStatus === 'reopened'
-                  const canRemove = Boolean(currentUser && (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id))
-                  const canArchive = Boolean(currentUser && hasPermission(currentUser, 'audit.restore'))
+          <>
+            {/* Desktop and Tablet Responsive Table (>= md) */}
+            <div className="hidden md:block overflow-x-auto rounded-lg border bg-card shadow-sm">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-muted/50 text-muted-foreground border-b uppercase text-[10px] tracking-wider font-semibold">
+                  <tr>
+                    <th className="px-3.5 py-2.5">Thời gian</th>
+                    <th className="px-3.5 py-2.5">Brand</th>
+                    <th className="hidden sm:table-cell px-3.5 py-2.5">Nền tảng</th>
+                    <th className="hidden xl:table-cell px-3.5 py-2.5">Chiến dịch</th>
+                    <th className="hidden lg:table-cell px-3.5 py-2.5">Nhân sự ca</th>
+                    <th className="px-3.5 py-2.5 text-right">Doanh thu</th>
+                    <th className="hidden md:table-cell px-3.5 py-2.5 text-right">Đơn hàng</th>
+                    <th className="px-3.5 py-2.5 text-center">Trạng thái</th>
+                    <th className="px-3.5 py-2.5 text-right">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredReports.map(report => {
+                    const shift = shiftById.get(report.shift_id)
+                    if (!shift) {
+                      const context = historicalContexts[report.id]
+                      if (!context) return (
+                        <tr key={report.id} className="bg-amber-500/5" data-testid="report-history-context-missing">
+                          <td colSpan={9} className="px-3.5 py-2 text-xs text-amber-700">
+                            Không thể tải ngữ cảnh lịch sử cho báo cáo {report.id}. Ca gốc không thuộc phạm vi hiện tại.
+                          </td>
+                        </tr>
+                      )
+                      const historicalStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+                      const historicalRevenue = reportRevenue(report)
+                      return (
+                        <tr key={report.id} className="hover:bg-muted/20" data-testid="report-historical-read-only">
+                          <td className="px-3.5 py-2.5 font-medium whitespace-nowrap">{context.date} <span className="text-[10px] text-muted-foreground block">{context.start_time.slice(0,5)}–{context.end_time.slice(0,5)}</span></td>
+                          <td className="px-3.5 py-2.5 font-medium">{nameById(brands, context.brand_id)}</td>
+                          <td className="hidden sm:table-cell px-3.5 py-2.5 text-muted-foreground">{nameById(platforms, context.platform_id)}</td>
+                          <td className="hidden xl:table-cell px-3.5 py-2.5 text-muted-foreground">{nameById(campaigns, context.campaign_id ?? undefined)}</td>
+                          <td className="hidden lg:table-cell px-3.5 py-2.5 text-muted-foreground text-[11px]">—</td>
+                          <td className="px-3.5 py-2.5 text-right font-medium">{historicalRevenue == null ? t('noData') : formatCurrency(historicalRevenue)}</td>
+                          <td className="hidden md:table-cell px-3.5 py-2.5 text-right font-medium">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</td>
+                          <td className="px-3.5 py-2.5 text-center"><Badge variant="outline" className="text-[10px]" title={"Trạng thái: " + historicalStatus}>Lịch sử · Chỉ xem</Badge></td>
+                          <td className="px-3.5 py-2.5 text-right">
+                            <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedHistoricalReport(report)} className="h-7 px-2 text-xs">
+                              <FileText className="mr-1 h-3.5 w-3.5" />Chi tiết
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    }
+                    const reportStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+                    const revenue = reportRevenue(report)
+                    const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
+                    const isEditableDraft = reportStatus === 'draft' || reportStatus === 'reopened'
+                    const canRemove = Boolean(currentUser && (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id))
+                    const canArchive = Boolean(currentUser && hasPermission(currentUser, 'audit.restore'))
 
+                    return (
+                      <tr key={report.id} className="hover:bg-muted/20">
+                        <td className="px-3.5 py-2.5 font-medium whitespace-nowrap">{shift.date} <span className="text-[10px] text-muted-foreground block">{shift.start_time.slice(0,5)}–{shift.end_time.slice(0,5)}</span></td>
+                        <td className="px-3.5 py-2.5 font-semibold text-foreground">{nameById(brands, shift.brand_id)}</td>
+                        <td className="hidden sm:table-cell px-3.5 py-2.5 text-muted-foreground">{nameById(platforms, shift.platform_id)}</td>
+                        <td className="hidden xl:table-cell px-3.5 py-2.5 text-muted-foreground truncate max-w-[140px]">{nameById(campaigns, shift.campaign_id)}</td>
+                        <td className="hidden lg:table-cell px-3.5 py-2.5 text-muted-foreground text-[11px] truncate max-w-[150px]">{roleNames(shift, 'host')}</td>
+                        <td className="px-3.5 py-2.5 text-right font-medium">{revenue == null ? t('noData') : formatCurrency(revenue)}</td>
+                        <td className="hidden md:table-cell px-3.5 py-2.5 text-right font-medium">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</td>
+                        <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
+                          <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className={report.metrics_confirmed ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 text-[10px]' : 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 text-[10px]'}>
+                            {statusLabel}
+                          </Badge>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={isEditableDraft ? 'secondary' : 'outline'}
+                              className="h-7 px-2.5 text-xs font-medium"
+                              onClick={() => {
+                                if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
+                                else openReportDetail(report)
+                              }}
+                            >
+                              {isEditableDraft ? t('continueReport') : t('viewDetails')}
+                            </Button>
+                            {(canExportReports(currentUser) || ((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive))) && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  className="inline-flex items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground h-7 w-7 p-0 shrink-0"
+                                  aria-label="Thao tác khác"
+                                  title="Thao tác khác"
+                                  data-testid={`report-action-menu-${report.id}`}
+                                >
+                                  <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="text-xs">
+                                  <DropdownMenuItem onClick={() => {
+                                    if (isEditableDraft) openReportDetail(report)
+                                    else { setEditingReport(report); setShowForm(true) }
+                                  }}>
+                                    <FileText className="mr-2 h-3.5 w-3.5" />
+                                    {isEditableDraft ? 'Xem bản đầy đủ' : 'Chỉnh sửa báo cáo'}
+                                  </DropdownMenuItem>
+                                  {canExportReports(currentUser) && (
+                                    <DropdownMenuItem onClick={() => void runReportExport('report', [report.id])}>
+                                      <Download className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                                      {t('exportExcel')}
+                                    </DropdownMenuItem>
+                                  )}
+                                  {Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)) && (
+                                    <DropdownMenuItem
+                                      onClick={() => void requestRemove(report)}
+                                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                    >
+                                      <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                      {report.metrics_confirmed ? t('archiveReport') : t('deleteDraftReport')}
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Adaptive Card View (< md) to Prevent Horizontal Page Overflow */}
+            <div className="md:hidden space-y-3" data-testid="reports-table-mobile-cards">
+              {filteredReports.map(report => {
+                const shift = shiftById.get(report.shift_id)
+                const revenue = reportRevenue(report)
+                const reportStatus = report.status || (report.metrics_confirmed ? 'confirmed' : 'draft')
+                const statusLabel = reportStatus === 'in_review' ? t('inReview') : t(reportStatus)
+                const isEditableDraft = reportStatus === 'draft' || reportStatus === 'reopened'
+                const canRemove = Boolean(currentUser && (hasPermission(currentUser, 'reports.review') || report.submitted_by === currentUser.id))
+                const canArchive = Boolean(currentUser && hasPermission(currentUser, 'audit.restore'))
+
+                if (!shift) {
                   return (
-                    <tr key={report.id} className="hover:bg-muted/20">
-                      <td className="px-3.5 py-2.5 font-medium whitespace-nowrap">{shift.date} <span className="text-[10px] text-muted-foreground block">{shift.start_time.slice(0,5)}–{shift.end_time.slice(0,5)}</span></td>
-                      <td className="px-3.5 py-2.5 font-semibold text-foreground">{nameById(brands, shift.brand_id)}</td>
-                      <td className="px-3.5 py-2.5 text-muted-foreground">{nameById(platforms, shift.platform_id)}</td>
-                      <td className="px-3.5 py-2.5 text-muted-foreground truncate max-w-[140px]">{nameById(campaigns, shift.campaign_id)}</td>
-                      <td className="px-3.5 py-2.5 text-muted-foreground text-[11px] truncate max-w-[150px]">{roleNames(shift, 'host')}</td>
-                      <td className="px-3.5 py-2.5 text-right font-medium">{revenue == null ? t('noData') : formatCurrency(revenue)}</td>
-                      <td className="px-3.5 py-2.5 text-right font-medium">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</td>
-                      <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
-                        <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className={report.metrics_confirmed ? 'bg-green-600/10 text-green-700 hover:bg-green-600/20 text-[10px]' : 'bg-amber-600/10 text-amber-700 hover:bg-amber-600/20 text-[10px]'}>
-                          {statusLabel}
-                        </Badge>
-                      </td>
-                      <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isEditableDraft ? 'secondary' : 'ghost'}
-                            className="h-7 px-2 text-xs"
-                            onClick={() => {
-                              if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
-                              else openReportDetail(report)
-                            }}
-                          >
-                            {isEditableDraft ? t('continueReport') : t('viewDetails')}
-                          </Button>
-                          {canExportReports(currentUser) && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0"
-                              title={t('exportExcel')}
-                              onClick={() => void runReportExport('report', [report.id])}
-                            >
-                              <Download className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          )}
-                          {Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)) && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              title={report.metrics_confirmed ? t('archiveReport') : t('deleteDraftReport')}
-                              onClick={() => void requestRemove(report)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    <Card key={report.id} className="p-3 border-muted shadow-none">
+                      <p className="text-xs text-muted-foreground">Báo cáo #{report.id}</p>
+                    </Card>
                   )
-                })}
-              </tbody>
-            </table>
-          </div>
+                }
+
+                return (
+                  <Card key={report.id} className="p-3.5 border-border shadow-xs space-y-2.5">
+                    <div className="flex items-center justify-between gap-2 border-b pb-2">
+                      <div>
+                        <span className="font-semibold text-sm text-foreground">{nameById(brands, shift.brand_id)}</span>
+                        <p className="text-[11px] text-muted-foreground">{shift.date} · {shift.start_time.slice(0,5)}–{shift.end_time.slice(0,5)}</p>
+                      </div>
+                      <Badge variant={report.metrics_confirmed ? 'default' : 'secondary'} className="text-[10px]">
+                        {statusLabel}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">{t('revenue')}</span>
+                        <span className="font-semibold">{revenue == null ? t('noData') : formatCurrency(revenue)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">{t('orders')}</span>
+                        <span className="font-semibold">{report.orders == null ? t('noData') : report.orders.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={isEditableDraft ? 'secondary' : 'default'}
+                        className="flex-1 text-xs h-8"
+                        onClick={() => {
+                          if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
+                          else openReportDetail(report)
+                        }}
+                      >
+                        {isEditableDraft ? t('continueReport') : t('viewDetails')}
+                      </Button>
+                      {(canExportReports(currentUser) || ((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive))) && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            className="inline-flex items-center justify-center rounded-md border border-input bg-background hover:bg-accent h-8 w-8 p-0 shrink-0"
+                            aria-label="Thao tác khác"
+                          >
+                            <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="text-xs">
+                            {canExportReports(currentUser) && (
+                              <DropdownMenuItem onClick={() => void runReportExport('report', [report.id])}>
+                                <Download className="mr-2 h-3.5 w-3.5" />{t('exportExcel')}
+                              </DropdownMenuItem>
+                            )}
+                            {Boolean((!report.metrics_confirmed && canRemove) || (report.metrics_confirmed && canArchive)) && (
+                              <DropdownMenuItem
+                                onClick={() => void requestRemove(report)}
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                              >
+                                <Trash2 className="mr-2 h-3.5 w-3.5" />{report.metrics_confirmed ? t('archiveReport') : t('deleteDraftReport')}
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          </>
         ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredReports.map(report => {
