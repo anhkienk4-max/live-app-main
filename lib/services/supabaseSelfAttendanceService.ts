@@ -38,7 +38,7 @@ export async function writeSelfAttendancePhoto(
   })
   const payload=await response.json()
   if(!response.ok||payload?.ok!==true)
-    throw new Error(payload?.error?.code || 'ATTENDANCE_PHOTO_UPLOAD_FAILED')
+    throw new Error(payload?.error?.code || payload?.error?.message || 'ATTENDANCE_PHOTO_UPLOAD_FAILED')
   const event=decodeSelfAttendanceEvent(payload.event)
   if(event.shift_id!==shiftId||event.role!==role||event.event!==kind
     ||event.photo_available!==true)throw new Error('ATTENDANCE_PHOTO_RESPONSE_INVALID')

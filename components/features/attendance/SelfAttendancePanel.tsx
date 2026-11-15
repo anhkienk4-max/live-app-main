@@ -82,7 +82,7 @@ export function formatAttendanceErrorMessage(rawError: unknown, language: 'vi' |
       ? 'Choose a JPG, PNG or WebP image up to 4 MB.'
       : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.'
   }
-  if (text.includes('NETWORK_ERROR') || text.includes('FAILED_TO_FETCH') || text.includes('57014') || text.includes('500') || text.includes('ATTENDANCE_READ_FAILED')) {
+  if (text.includes('NETWORK_ERROR') || text.includes('FAILED_TO_FETCH') || text.includes('57014') || text.includes('500') || text.includes('ATTENDANCE_READ_FAILED') || text.includes('ATTENDANCE_PHOTO_UPLOAD_FAILED')) {
     return en
       ? 'Server connection error. Please check your network and try again.'
       : 'Lỗi kết nối máy chủ khi tải/lưu chấm công. Vui lòng kiểm tra mạng và thử lại.'
