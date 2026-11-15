@@ -352,11 +352,11 @@ export function buildReportActions(
   const isArchived = input.status === 'archived'
   const isConfirmedOrReopened = input.status === 'confirmed' || input.status === 'reopened'
 
-  // View/Continue is PRIMARY (most-likely valid action for reports)
+  // View is SECONDARY (canonical rule: no fabricated Review action)
   result.push({
     key: 'view',
     label: labels.view,
-    tier: 'primary',
+    tier: 'secondary',
     icon: icons?.view,
     onClick: handlers.onView,
     testId: 'action-view-report',
