@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
 import {
   AlertTriangle,
   ArrowDown,
@@ -107,11 +106,22 @@ export function LiveReportImageDisplay({
   onRetry?: () => void
 }) {
   const [loadError, setLoadError] = React.useState(false)
+  const [prevSrc, setPrevSrc] = React.useState(src)
   const [retryKey, setRetryKey] = React.useState(0)
 
-  React.useEffect(() => {
+  if (prevSrc !== src) {
+    setPrevSrc(src)
     setLoadError(false)
-  }, [src])
+  }
+
+  const effectiveSrc = React.useMemo(() => {
+    if (!src) return ''
+    if (retryKey > 0 && (src.startsWith('http://') || src.startsWith('https://'))) {
+      const sep = src.includes('?') ? '&' : '?'
+      return `${src}${sep}_retry=${retryKey}`
+    }
+    return src
+  }, [src, retryKey])
 
   if (!src) {
     return (
@@ -161,7 +171,7 @@ export function LiveReportImageDisplay({
     // eslint-disable-next-line @next/next/no-img-element
     <img
       key={retryKey}
-      src={src}
+      src={effectiveSrc}
       alt={alt}
       className={`${aspect} w-full rounded-md border object-cover ${className || ''}`}
       onError={() => setLoadError(true)}
