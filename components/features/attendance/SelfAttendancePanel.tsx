@@ -727,9 +727,22 @@ export function SelfAttendancePanel({
                 )}
 
                 {errorCheckIn && (
-                  <p role="alert" className="text-xs text-rose-600" data-testid="attendance-checkin-error">
-                    {errorCheckIn}
-                  </p>
+                  <div className="flex items-center justify-between gap-2 rounded border border-rose-200 bg-rose-50/80 p-2 text-rose-900">
+                    <p role="alert" className="text-xs text-rose-700" data-testid="attendance-checkin-error">
+                      {errorCheckIn}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px] border-rose-300 bg-white text-rose-800 hover:bg-rose-50 shrink-0"
+                      onClick={() => void submitCheckIn()}
+                      data-testid="attendance-checkin-retry-btn"
+                    >
+                      <RefreshCw className="mr-1 h-3 w-3" />
+                      {en ? 'Retry' : 'Thử lại'}
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
@@ -933,9 +946,22 @@ export function SelfAttendancePanel({
                 )}
 
                 {errorCheckOut && (
-                  <p role="alert" className="text-xs text-rose-600" data-testid="attendance-checkout-error">
-                    {errorCheckOut}
-                  </p>
+                  <div className="flex items-center justify-between gap-2 rounded border border-rose-200 bg-rose-50/80 p-2 text-rose-900">
+                    <p role="alert" className="text-xs text-rose-700" data-testid="attendance-checkout-error">
+                      {errorCheckOut}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px] border-rose-300 bg-white text-rose-800 hover:bg-rose-50 shrink-0"
+                      onClick={() => void submitCheckOut()}
+                      data-testid="attendance-checkout-retry-btn"
+                    >
+                      <RefreshCw className="mr-1 h-3 w-3" />
+                      {en ? 'Retry' : 'Thử lại'}
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
