@@ -20,6 +20,7 @@ import {
 import { AttendanceCorrectionPanel } from './AttendanceCorrectionPanel'
 import { AttendanceCameraCapture } from './AttendanceCameraCapture'
 import {
+  AlertTriangle,
   Camera,
   Clock,
   FileImage,
@@ -52,6 +53,42 @@ const displayTime = (value: string, language: 'vi' | 'en') =>
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(new Date(value))
+
+export function formatAttendanceErrorMessage(rawError: unknown, language: 'vi' | 'en'): string {
+  const en = language === 'en'
+  const text = (rawError instanceof Error ? rawError.message : String(rawError || '')).toUpperCase()
+  if (text.includes('401') || text.includes('PGRST301') || text.includes('JWT_EXPIRED') || text.includes('SESSION_EXPIRED')) {
+    return en
+      ? 'Your session has expired. Please sign in again.'
+      : 'Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.'
+  }
+  if (text.includes('403') || text.includes('42501') || text.includes('PERMISSION_DENIED') || text.includes('NOT_AUTHORIZED')) {
+    return en
+      ? 'Permission denied. You are not authorized to record attendance for this shift.'
+      : 'Từ chối quyền truy cập. Bạn không có quyền điểm danh cho ca trực này.'
+  }
+  if (text.includes('VIEW_ONLY') || text.includes('NOT_ELIGIBLE') || text.includes('SHIFT_COMPLETED') || text.includes('SHIFT_CANCELLED')) {
+    return en
+      ? 'This shift is in view-only mode and cannot accept new attendance submissions.'
+      : 'Ca trực đang ở trạng thái chỉ xem, không thể gửi thêm điểm danh.'
+  }
+  if (text.includes('ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE') || text.includes('RECOVERY_UNAVAILABLE')) {
+    return en
+      ? 'No previously uploaded photo found to recover. Please take or select a photo to continue.'
+      : 'Không tìm thấy ảnh đã lưu cần khôi phục. Vui lòng chụp hoặc chọn ảnh để tiếp tục.'
+  }
+  if (text.includes('PHOTO_TOO_LARGE') || text.includes('INVALID_IMAGE') || text.includes('4 MB')) {
+    return en
+      ? 'Choose a JPG, PNG or WebP image up to 4 MB.'
+      : 'Ảnh JPG, PNG hoặc WebP, tối đa 4 MB. Vui lòng chụp/chọn lại.'
+  }
+  if (text.includes('NETWORK_ERROR') || text.includes('FAILED_TO_FETCH') || text.includes('57014') || text.includes('500') || text.includes('ATTENDANCE_READ_FAILED')) {
+    return en
+      ? 'Server connection error. Please check your network and try again.'
+      : 'Lỗi kết nối máy chủ khi tải/lưu chấm công. Vui lòng kiểm tra mạng và thử lại.'
+  }
+  return rawError instanceof Error ? rawError.message : (en ? 'An error occurred. Please try again.' : 'Đã xảy ra lỗi, vui lòng thử lại.')
+}
 
 export function SelfAttendancePanel({
   actorId,
@@ -220,7 +257,7 @@ export function SelfAttendancePanel({
       setErrorCheckIn(
         en
           ? 'Photo check-in is unavailable in this environment.'
-          : 'Lưu ảnh Drive chưa được kích hoạt cho môi trường này.'
+          : 'Tính năng lưu ảnh chấm công đang tắt trong môi trường này.'
       )
       return
     }
@@ -253,13 +290,7 @@ export function SelfAttendancePanel({
       setSnapshot(null)
       setNonce(v => v + 1)
     } catch (err) {
-      setErrorCheckIn(
-        err instanceof Error
-          ? err.message
-          : en
-          ? 'Could not record check-in. Try again.'
-          : 'Không thể ghi nhận check-in, vui lòng thử lại.'
-      )
+      setErrorCheckIn(formatAttendanceErrorMessage(err, language))
     } finally {
       lock.current = false
       setBusyCheckIn(false)
@@ -273,7 +304,7 @@ export function SelfAttendancePanel({
       setErrorCheckOut(
         en
           ? 'Photo check-out is unavailable in this environment.'
-          : 'Lưu ảnh Drive chưa được kích hoạt cho môi trường này.'
+          : 'Tính năng lưu ảnh chấm công đang tắt trong môi trường này.'
       )
       return
     }
@@ -306,13 +337,7 @@ export function SelfAttendancePanel({
       setSnapshot(null)
       setNonce(v => v + 1)
     } catch (err) {
-      setErrorCheckOut(
-        err instanceof Error
-          ? err.message
-          : en
-          ? 'Could not record check-out. Try again.'
-          : 'Không thể ghi nhận check-out, vui lòng thử lại.'
-      )
+      setErrorCheckOut(formatAttendanceErrorMessage(err, language))
     } finally {
       lock.current = false
       setBusyCheckOut(false)
@@ -342,17 +367,7 @@ export function SelfAttendancePanel({
       setSnapshot(null)
       setNonce(v => v + 1)
     } catch (err) {
-      const msg =
-        err instanceof Error && err.message === 'ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE'
-          ? en
-            ? 'No saved photo to recover. Take a photo to continue.'
-            : 'Không có ảnh đã lưu cần khôi phục. Hãy chụp ảnh để tiếp tục.'
-          : err instanceof Error
-          ? err.message
-          : en
-          ? 'Could not recover attendance. Try again.'
-          : 'Không khôi phục được, vui lòng thử lại.'
-
+      const msg = formatAttendanceErrorMessage(err, language)
       if (kind === 'check_in') setErrorCheckIn(msg)
       else setErrorCheckOut(msg)
     } finally {
@@ -466,17 +481,69 @@ export function SelfAttendancePanel({
         </p>
       </div>
 
-      {/* Loading & Read Error Notices */}
-      {!ready && !snapshot?.error && (
-        <p role="status" className="text-xs text-slate-500">
-          {en ? 'Checking attendance history…' : 'Đang kiểm tra nhật ký chấm công server…'}
-        </p>
+      {/* Photo attendance disabled informational banner */}
+      {!photoFeatureReady && (
+        <div
+          role="status"
+          className="rounded-md border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-900 space-y-1 shadow-2xs"
+          data-testid="attendance-photo-disabled-notice"
+        >
+          <div className="flex items-center gap-1.5 font-semibold text-amber-950">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            <span>{en ? 'Photo Attendance Disabled' : 'Lưu ảnh điểm danh đang tắt'}</span>
+          </div>
+          <p className="text-[11px] text-amber-800 leading-relaxed">
+            {en
+              ? 'Photo attendance feature is disabled in this environment (NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO). Photos cannot be submitted.'
+              : 'Tính năng lưu ảnh chấm công chưa được kích hoạt trong môi trường này (NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_PHOTO). Không thể gửi ảnh điểm danh.'}
+          </p>
+        </div>
       )}
+
+      {/* Loading State */}
+      {!ready && !snapshot?.error && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-2xs"
+          data-testid="self-attendance-loading"
+        >
+          <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-600 shrink-0" />
+          <span>{en ? 'Loading attendance records from server…' : 'Đang kiểm tra nhật ký chấm công server…'}</span>
+        </div>
+      )}
+
+      {/* Read Error State with Retry & Session Recovery */}
       {snapshot?.key === key && snapshot.error && (
-        <p role="alert" className="text-xs text-red-600">
-          {en ? 'Could not load attendance: ' : 'Không thể tải chấm công: '}
-          {snapshot.error}
-        </p>
+        <div
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50/90 p-3 text-xs text-red-900 space-y-2 shadow-2xs"
+          data-testid="self-attendance-load-error"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 font-semibold text-red-950">
+              <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0" />
+              <span>{en ? 'Attendance Load Error' : 'Lỗi tải nhật ký chấm công'}</span>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-[11px] border-red-300 bg-white text-red-800 hover:bg-red-50"
+              onClick={() => {
+                setSnapshot(null)
+                setNonce(v => v + 1)
+              }}
+              data-testid="self-attendance-retry-btn"
+            >
+              <RefreshCw className="mr-1 h-3 w-3" />
+              {en ? 'Retry' : 'Thử lại'}
+            </Button>
+          </div>
+          <p className="text-[11px] text-red-800 leading-relaxed">
+            {formatAttendanceErrorMessage(snapshot.error, language)}
+          </p>
+        </div>
       )}
 
       {/* Overall Status Banner */}
@@ -629,7 +696,7 @@ export function SelfAttendancePanel({
                     className="text-xs text-slate-500"
                   >
                     <RotateCcw className="mr-1 h-3 w-3" />
-                    {en ? 'Recover' : 'Khôi phục'}
+                    {en ? 'Recover photo' : 'Khôi phục ảnh đã tải'}
                   </Button>
                 </div>
 
@@ -679,7 +746,7 @@ export function SelfAttendancePanel({
                 onClick={() => void submitCheckIn()}
                 data-testid="attendance-checkin-submit-btn"
               >
-                {busyCheckIn ? (en ? 'Recording…' : 'Đang ghi nhận…') : (en ? 'Upload photo and check-in' : 'Tải ảnh và Check-in')}
+                {busyCheckIn ? (en ? 'Recording…' : 'Đang ghi nhận…') : !photoFeatureReady ? (en ? 'Photo check-in disabled' : 'Lưu ảnh check-in đang tắt') : (en ? 'Upload photo and check-in' : 'Tải ảnh và Check-in')}
               </Button>
             </div>
           )}
@@ -835,7 +902,7 @@ export function SelfAttendancePanel({
                     className="text-xs text-slate-500"
                   >
                     <RotateCcw className="mr-1 h-3 w-3" />
-                    {en ? 'Recover' : 'Khôi phục'}
+                    {en ? 'Recover photo' : 'Khôi phục ảnh đã tải'}
                   </Button>
                 </div>
 
@@ -885,7 +952,7 @@ export function SelfAttendancePanel({
                 onClick={() => void submitCheckOut()}
                 data-testid="attendance-checkout-submit-btn"
               >
-                {busyCheckOut ? (en ? 'Recording…' : 'Đang ghi nhận…') : (en ? 'Upload photo and check-out' : 'Tải ảnh và Check-out')}
+                {busyCheckOut ? (en ? 'Recording…' : 'Đang ghi nhận…') : !photoFeatureReady ? (en ? 'Photo check-out disabled' : 'Lưu ảnh check-out đang tắt') : (en ? 'Upload photo and check-out' : 'Tải ảnh và Check-out')}
               </Button>
             </div>
           )}

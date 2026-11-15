@@ -332,6 +332,7 @@ export function AttendanceCameraCapture({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid="attendance-camera-capture"
+        data-event-kind={eventKind}
         className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-lg p-0 overflow-hidden flex flex-col gap-0 border-slate-800 bg-slate-950 text-slate-100 shadow-2xl"
       >
         {/* Header */}

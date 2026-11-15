@@ -8,6 +8,7 @@ import {
   parseMinutesFromTimeString,
   formatMinutesToTimeString,
 } from '../lib/utils/selfAttendanceContract'
+import { formatAttendanceErrorMessage } from '../components/features/attendance/SelfAttendancePanel'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -268,4 +269,53 @@ test('G5-10: ShiftDetailModal & Cross-Lane Safety Regressions — G3 segments, G
     /data-testid="shift-segments-editor-section"/,
     'Must preserve G3 staffing segments editor'
   )
+})
+
+test('G5-11: SelfAttendancePanel — Error classification, clear recovery action, photo-disabled notice, and loading/retry states', () => {
+  // 1. Error classification unit tests
+  assert.match(
+    formatAttendanceErrorMessage(new Error('PGRST301 JWT expired'), 'vi'),
+    /Phiên làm việc đã hết hạn/
+  )
+  assert.match(
+    formatAttendanceErrorMessage(new Error('401 unauthorized'), 'en'),
+    /session has expired/
+  )
+  assert.match(
+    formatAttendanceErrorMessage(new Error('42501 permission denied'), 'vi'),
+    /Từ chối quyền truy cập/
+  )
+  assert.match(
+    formatAttendanceErrorMessage(new Error('SHIFT_VIEW_ONLY'), 'vi'),
+    /chỉ xem/
+  )
+  assert.match(
+    formatAttendanceErrorMessage(new Error('ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE'), 'vi'),
+    /Không tìm thấy ảnh đã lưu/
+  )
+  assert.match(
+    formatAttendanceErrorMessage(new Error('57014 query timeout'), 'vi'),
+    /Lỗi kết nối máy chủ/
+  )
+
+  // 2. Source contract tests for UI improvements
+  const panelPath = path.join(repoRoot, 'components/features/attendance/SelfAttendancePanel.tsx')
+  const content = fs.readFileSync(panelPath, 'utf8')
+
+  // Photo disabled visible banner
+  assert.match(content, /data-testid="attendance-photo-disabled-notice"/, 'Must render visible photo disabled banner')
+
+  // Clear recovery action text (replacing ambiguous "Khôi phục")
+  assert.match(content, /Khôi phục ảnh đã tải/, 'Must have unambiguous recovery label')
+  assert.match(content, /Recover photo/, 'Must have English unambiguous recovery label')
+
+  // Accessible loading and error retry elements
+  assert.match(content, /data-testid="self-attendance-loading"/, 'Must render accessible loading state')
+  assert.match(content, /data-testid="self-attendance-load-error"/, 'Must render accessible error alert')
+  assert.match(content, /data-testid="self-attendance-retry-btn"/, 'Must render retry button for load failures')
+
+  // Camera capture event kind separation
+  const cameraCapturePath = path.join(repoRoot, 'components/features/attendance/AttendanceCameraCapture.tsx')
+  const cameraContent = fs.readFileSync(cameraCapturePath, 'utf8')
+  assert.match(cameraContent, /data-event-kind=\{eventKind\}/, 'Camera capture must tag DialogContent with eventKind')
 })
