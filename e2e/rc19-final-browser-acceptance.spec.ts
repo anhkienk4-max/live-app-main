@@ -221,7 +221,7 @@ test.describe('RC19 G5 Attendance Final Browser Acceptance', () => {
       await expect(cardB).toContainText('ĐÃ GHI NHẬN')
 
       // 14a. Verify shift completion state
-      await expect(page.getByTestId('self-attendance-status')).toContainText('Đã hoàn thành ca')
+      await expect(page.getByTestId('self-attendance-status')).toContainText('Hoàn thành ca')
 
       // 15. Verify no horizontal overflow
       const hasHorizontalScroll = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
@@ -241,7 +241,7 @@ test.describe('RC19 G5 Attendance Final Browser Acceptance', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await setupMemberUser(page, 'vi')
 
-    // Scenario: check-in is 09:15 (compliant for 09:00 - 13:00 shift)
+    // Scenario: check-in is 09:15 (compliant for 09:00 - 13:00 shift in Asia/Ho_Chi_Minh)
     const todayStr = new Date().toISOString().slice(0, 10)
     const compliantEvent = {
       event_id: 'evt-checkin-compliant',
@@ -249,7 +249,7 @@ test.describe('RC19 G5 Attendance Final Browser Acceptance', () => {
       staff_id: memberUser.userId,
       role: memberUser.role,
       event: 'check_in',
-      recorded_at: `${todayStr}T09:15:00.000Z`,
+      recorded_at: `${todayStr}T09:15:00+07:00`,
       verification_status: 'pending_verification',
       replayed: false,
       photo_available: true,
@@ -366,10 +366,11 @@ test.describe('RC19 G7 Reports Final Browser Acceptance', () => {
           // On mobile (390px), table view adapts to responsive cards
           await expect(page.getByTestId('reports-table-mobile-cards')).toBeVisible()
         } else if (vp.width === 768) {
-          // On tablet (768px), primary CTA or action dropdown is accessible
+          // On tablet (768px), primary CTA and action dropdown are both accessible
           const viewBtn = page.getByRole('button', { name: /Xem chi tiết|Tiếp tục/i }).first()
           const actionMenu = page.getByTestId(/^report-action-menu-/).first()
-          await expect(viewBtn.or(actionMenu)).toBeVisible()
+          await expect(viewBtn).toBeVisible()
+          await expect(actionMenu).toBeVisible()
         }
 
         // Toggle back to Cards view
