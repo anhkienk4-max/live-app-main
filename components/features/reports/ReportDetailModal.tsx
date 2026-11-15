@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { liveReportImageService, ocrService, reportImageService, reportService } from '@/lib/services/dataService'
 import { ReportImage } from '@/lib/types/database.types'
 import { format } from 'date-fns'
-import { AlertTriangle, ChevronDown, ChevronUp, DollarSign, TrendingUp, Users, ThumbsUp, MessageCircle, Share2, ExternalLink, Star, Download, Check, X, Pencil, RotateCcw, ScanText, Trash2, History, LockOpen, Upload } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, DollarSign, TrendingUp, Users, ThumbsUp, MessageCircle, Share2, ExternalLink, Star, Download, Check, X, Pencil, RotateCcw, ScanText, Trash2, History, LockOpen, Upload, FileImage } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission, canExportReportDetail } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
@@ -1079,16 +1079,24 @@ export function ReportDetailModal({
                 {images.filter(image => image.image_type === 'dashboard').length === 0
                   ? <p className="text-sm text-gray-500">{t('noEvidenceImages')}</p>
                   : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {images.filter(image => image.image_type === 'dashboard').map(image => (
-                        <div className="space-y-2 rounded-lg border p-2" key={image.id}>
-                          <Image
-                            unoptimized
-                            width={1280}
-                            height={720}
-                            src={signedUrls[image.id] || (image.image_url.startsWith('blob:') || image.image_url.startsWith('data:') ? image.image_url : '')}
-                            alt={image.original_name || image.image_type}
-                            className="aspect-video w-full rounded-md object-cover"
-                          />
+                      {images.filter(image => image.image_type === 'dashboard').map(image => {
+                        const imgUrl = signedUrls[image.id] || ((image.image_url.startsWith('blob:') || image.image_url.startsWith('data:') || image.image_url.startsWith('http://') || image.image_url.startsWith('https://')) ? image.image_url : null)
+                        return (
+                          <div className="space-y-2 rounded-lg border p-2" key={image.id}>
+                            {imgUrl ? (
+                              <Image
+                                unoptimized
+                                width={1280}
+                                height={720}
+                                src={imgUrl}
+                                alt={image.original_name || image.image_type}
+                                className="aspect-video w-full rounded-md object-cover"
+                              />
+                            ) : (
+                              <div className="aspect-video w-full flex items-center justify-center rounded-md bg-muted/20 text-muted-foreground">
+                                <FileImage className="h-8 w-8 opacity-40" />
+                              </div>
+                            )}
                           <div className="flex items-center justify-between gap-2">
                             <p className="min-w-0 truncate text-xs">{image.original_name || image.image_type}</p>
                             {liveImagePermissions.canEdit && (
@@ -1104,7 +1112,8 @@ export function ReportDetailModal({
                             )}
                           </div>
                         </div>
-                      ))}
+                      )
+                    })}
                     </div>}
               </CardContent>
             </Card>

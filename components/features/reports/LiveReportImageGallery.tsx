@@ -7,6 +7,7 @@ import {
   ArrowUp,
   ChevronLeft,
   ChevronRight,
+  FileImage,
   Images,
   Save,
   Star,
@@ -56,6 +57,18 @@ const validationTranslationKeys: Record<LiveReportImageValidationCode, Translati
   empty_file: 'liveImageEmptyFileError',
   title_too_long: 'liveImageTitleTooLongError',
   description_too_long: 'liveImageDescriptionTooLongError',
+}
+
+function resolveLiveReportImageUrl(
+  image: { id: string; thumbnail_url?: string | null; file_url: string },
+  signedUrls?: Record<string, string>,
+): string | null {
+  if (signedUrls?.[image.id]) return signedUrls[image.id]
+  const raw = image.thumbnail_url || image.file_url
+  if (raw && (raw.startsWith('blob:') || raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://'))) {
+    return raw
+  }
+  return null
 }
 
 export function LiveReportImageEditor({
@@ -278,17 +291,25 @@ function LiveReportImageEditorCard({
     void onUpdate(image, payload)
   }
 
+  const imageUrl = resolveLiveReportImageUrl(image, signedUrls)
+
   return (
     <article className="space-y-3 rounded-lg border p-3" data-testid={`live-image-card-${image.id}`}>
       <div className="relative">
-        <Image
-          unoptimized
-          src={signedUrls?.[image.id] || ((image.thumbnail_url || image.file_url).startsWith('blob:') || (image.thumbnail_url || image.file_url).startsWith('data:') ? (image.thumbnail_url || image.file_url) : '')}
-          alt={image.title || image.file_name}
-          width={1280}
-          height={720}
-          className="aspect-video w-full rounded-md border object-cover"
-        />
+        {imageUrl ? (
+          <Image
+            unoptimized
+            src={imageUrl}
+            alt={image.title || image.file_name}
+            width={1280}
+            height={720}
+            className="aspect-video w-full rounded-md border object-cover"
+          />
+        ) : (
+          <div className="aspect-video w-full flex items-center justify-center rounded-md border bg-muted/20 text-muted-foreground">
+            <FileImage className="h-8 w-8 opacity-40" />
+          </div>
+        )}
         {image.is_cover && (
           <Badge className="absolute left-2 top-2 bg-amber-500 text-white" data-testid="live-image-cover-badge">
             <Star className="mr-1 h-3 w-3 fill-current" />{t('reportCover')}
@@ -384,8 +405,10 @@ export function LiveReportImageGallery({
   const ordered = sortedLiveReportImages(images)
   const filtered = filterLiveReportImagesByCategories(ordered, selectedCategories)
   const cover = ordered.find(image => image.is_cover)
+  const coverUrl = cover ? resolveLiveReportImageUrl(cover, signedUrls) : null
   const viewerIndex = filtered.findIndex(image => image.id === viewerId)
   const viewerImage = viewerIndex >= 0 ? filtered[viewerIndex] : null
+  const viewerUrl = viewerImage ? resolveLiveReportImageUrl(viewerImage, signedUrls) : null
 
   return (
     <section className="space-y-4" data-testid="live-report-image-gallery">
@@ -396,7 +419,13 @@ export function LiveReportImageGallery({
           onClick={() => setViewerId(cover.id)}
           data-testid="live-report-cover"
         >
-          <Image unoptimized src={signedUrls?.[cover.id] || (cover.file_url.startsWith('blob:') || cover.file_url.startsWith('data:') ? cover.file_url : '')} alt={cover.title || cover.file_name} width={1280} height={720} className="max-h-[420px] w-full object-cover transition-transform group-hover:scale-[1.01]" />
+          {coverUrl ? (
+            <Image unoptimized src={coverUrl} alt={cover.title || cover.file_name} width={1280} height={720} className="max-h-[420px] w-full object-cover transition-transform group-hover:scale-[1.01]" />
+          ) : (
+            <div className="h-64 w-full flex items-center justify-center bg-muted/20 text-muted-foreground">
+              <FileImage className="h-12 w-12 opacity-40" />
+            </div>
+          )}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 text-white">
             <Badge className="mb-2 bg-amber-500 text-white"><Star className="mr-1 h-3 w-3 fill-current" />{t('reportCover')}</Badge>
             <p className="font-semibold">{cover.title || cover.file_name}</p>
@@ -426,21 +455,30 @@ export function LiveReportImageGallery({
       {images.length === 0
         ? <p className="rounded-lg bg-muted/40 p-4 text-sm text-muted-foreground">{t('noLiveSessionImages')}</p>
         : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map(image => (
-              <button
-                type="button"
-                className="overflow-hidden rounded-lg border bg-card text-left transition-shadow hover:shadow-md"
-                key={image.id}
-                onClick={() => setViewerId(image.id)}
-                data-testid={`gallery-image-${image.id}`}
-              >
-                <Image unoptimized src={signedUrls?.[image.id] || ((image.thumbnail_url || image.file_url).startsWith('blob:') || (image.thumbnail_url || image.file_url).startsWith('data:') ? (image.thumbnail_url || image.file_url) : '')} alt={image.title || image.file_name} width={1280} height={720} className="aspect-video w-full object-cover" />
-                <div className="space-y-2 p-3">
-                  <Badge variant="outline">{t(liveReportImageCategoryTranslationKeys[image.category])}</Badge>
-                  <LiveReportImageMetadata image={image} />
-                </div>
-              </button>
-            ))}
+            {filtered.map(image => {
+              const itemUrl = resolveLiveReportImageUrl(image, signedUrls)
+              return (
+                <button
+                  type="button"
+                  className="overflow-hidden rounded-lg border bg-card text-left transition-shadow hover:shadow-md"
+                  key={image.id}
+                  onClick={() => setViewerId(image.id)}
+                  data-testid={`gallery-image-${image.id}`}
+                >
+                  {itemUrl ? (
+                    <Image unoptimized src={itemUrl} alt={image.title || image.file_name} width={1280} height={720} className="aspect-video w-full object-cover" />
+                  ) : (
+                    <div className="aspect-video w-full flex items-center justify-center bg-muted/20 text-muted-foreground">
+                      <FileImage className="h-8 w-8 opacity-40" />
+                    </div>
+                  )}
+                  <div className="space-y-2 p-3">
+                    <Badge variant="outline">{t(liveReportImageCategoryTranslationKeys[image.category])}</Badge>
+                    <LiveReportImageMetadata image={image} />
+                  </div>
+                </button>
+              )
+            })}
           </div>}
 
       <Dialog open={Boolean(viewerImage)} onOpenChange={open => !open && setViewerId(null)}>
@@ -448,7 +486,13 @@ export function LiveReportImageGallery({
           <DialogHeader><DialogTitle className="text-white">{viewerImage?.title || viewerImage?.file_name}</DialogTitle></DialogHeader>
           {viewerImage && (
             <div className="relative flex min-h-[70vh] items-center justify-center">
-              <Image unoptimized src={signedUrls?.[viewerImage.id] || (viewerImage.file_url.startsWith('blob:') || viewerImage.file_url.startsWith('data:') ? viewerImage.file_url : '')} alt={viewerImage.title || viewerImage.file_name} width={1920} height={1080} className="max-h-[78vh] max-w-full object-contain" />
+              {viewerUrl ? (
+                <Image unoptimized src={viewerUrl} alt={viewerImage.title || viewerImage.file_name} width={1920} height={1080} className="max-h-[78vh] max-w-full object-contain" />
+              ) : (
+                <div className="flex h-64 w-64 items-center justify-center text-muted-foreground">
+                  <FileImage className="h-16 w-16 opacity-40" />
+                </div>
+              )}
               <Button className="absolute left-2" type="button" size="icon" variant="secondary" disabled={viewerIndex <= 0} aria-label={t('previousImage')} onClick={() => setViewerId(filtered[viewerIndex - 1]?.id || null)}><ChevronLeft className="h-5 w-5" /></Button>
               <Button className="absolute right-2" type="button" size="icon" variant="secondary" disabled={viewerIndex >= filtered.length - 1} aria-label={t('nextImage')} onClick={() => setViewerId(filtered[viewerIndex + 1]?.id || null)}><ChevronRight className="h-5 w-5" /></Button>
             </div>
