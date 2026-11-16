@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { OperationalRole, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
-import { currentUserService, shiftRegistrationService } from '@/lib/services/dataService'
+import type { ShiftStaffingSegmentOption } from '@/lib/services/supabaseShiftRegistrationService'
+import { currentUserService, shiftRegistrationService, userService } from '@/lib/services/dataService'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { hasPermission } from '@/lib/permissions'
 import { SHIFT_DATA_CHANGED_EVENT } from '@/lib/services/shiftChangeSubscription'
@@ -54,6 +55,12 @@ export function AtomicStaffingReplacementDialog({
 }: Props) {
   const persistedRuntime = getAuthMode() === 'supabase'
   const [replacementUserId, setReplacementUserId] = React.useState('')
+  const [legacySegmentResult, setLegacySegmentResult] = React.useState<{
+    key: string
+    segments?: ShiftStaffingSegmentOption[]
+    error?: string
+  } | null>(null)
+  const [legacySegmentSelection, setLegacySegmentSelection] = React.useState<{ key: string; id: string } | null>(null)
   const [reason, setReason] = React.useState('')
   const [emergency, setEmergency] = React.useState(initialEmergency)
   const [emergencyAt, setEmergencyAt] = React.useState('')
@@ -62,9 +69,32 @@ export function AtomicStaffingReplacementDialog({
   const [capabilityMessage, setCapabilityMessage] = React.useState('')
   const [completed, setCompleted] = React.useState(false)
   const [committedUnverified, setCommittedUnverified] = React.useState(false)
+  const [fallbackUsers, setFallbackUsers] = React.useState<{ actorKey: string; users: User[] } | null>(null)
+  const [fallbackUsersError, setFallbackUsersError] = React.useState<{ actorKey: string; code: string } | null>(null)
   const [feedback, setFeedback] = React.useState<{ kind: 'error' | 'warning' | 'success'; message: string } | null>(null)
   const submitLock = React.useRef(false)
   const pendingRequest = React.useRef<{ signature: string; input: Parameters<typeof shiftRegistrationService.replaceAssignment>[0] } | null>(null)
+  const actorKey = `${currentUser.id}:${currentUser.system_permission ?? currentUser.role}`
+
+  React.useEffect(() => {
+    if (!open || !persistedRuntime || users.length > 0) return
+    let active = true
+    void userService.getAll()
+      .then(result => {
+        if (!active) return
+        setFallbackUsers({ actorKey, users: result })
+        setFallbackUsersError(null)
+      })
+      .catch(error => {
+        if (!active) return
+        const message = error instanceof Error ? error.message : ''
+        const code = error && typeof error === 'object' && 'code' in error
+          ? String(error.code)
+          : /^[A-Z][A-Z0-9_]{0,80}$/.test(message) ? message : error instanceof Error ? error.name : 'UNKNOWN'
+        setFallbackUsersError({ actorKey, code })
+      })
+    return () => { active = false }
+  }, [actorKey, open, persistedRuntime, users.length])
 
   React.useEffect(() => {
     if (!open || !persistedRuntime) return
@@ -79,21 +109,53 @@ export function AtomicStaffingReplacementDialog({
     return () => { active = false }
   }, [open, persistedRuntime, shift.id, registration.operational_role, currentUser.id, currentUser.system_permission, currentUser.role])
 
+  React.useEffect(() => {
+    if (!open || !persistedRuntime || registration.staffing_segment_id) return
+    let active = true
+    void shiftRegistrationService.getSegmentsForShift(shift.id)
+      .then(segments => {
+        if (active) setLegacySegmentResult({ key: `${shift.id}:${registration.id}`, segments })
+      })
+      .catch(error => {
+        if (active) setLegacySegmentResult({ key: `${shift.id}:${registration.id}`, error: errorText(error) })
+      })
+    return () => { active = false }
+  }, [open, persistedRuntime, shift.id, registration.id, registration.staffing_segment_id])
+
   const isAdmin = currentUser.system_permission === 'admin' || currentUser.role === 'admin'
   const canReplace = hasPermission(currentUser, 'shifts.assign_staff') &&
     ['admin', 'leader'].includes(currentUser.system_permission ?? currentUser.role)
   const targetHasVersions = Number.isInteger(shift.version) && (shift.version ?? 0) > 0 &&
     Number.isInteger(registration.version) && (registration.version ?? 0) > 0
-  const segmentId = registration.staffing_segment_id ?? ''
+  const legacyLookupKey = `${shift.id}:${registration.id}`
+  const legacyLookupReady = legacySegmentResult?.key === legacyLookupKey
+  const legacySegmentsLoading = open && persistedRuntime && !registration.staffing_segment_id && !legacyLookupReady
+  const legacySegmentsError = legacyLookupReady ? legacySegmentResult?.error ?? '' : ''
+  const legacySegments = legacyLookupReady ? legacySegmentResult?.segments ?? [] : []
+  const roleCompatibleLegacySegments = legacySegments.filter(segment =>
+    (registration.operational_role === 'host' ? segment.required_host_count
+      : registration.operational_role === 'support' ? segment.required_support_count
+        : segment.required_technical_count) > 0,
+  )
+  const selectedLegacySegmentId = legacySegmentSelection?.key === legacyLookupKey &&
+    roleCompatibleLegacySegments.some(segment => segment.id === legacySegmentSelection.id)
+    ? legacySegmentSelection.id
+    : roleCompatibleLegacySegments.length === 1 ? roleCompatibleLegacySegments[0].id : ''
+  const segmentId = registration.staffing_segment_id ?? selectedLegacySegmentId
   const assignedIds = new Set(registrations.filter(row =>
     row.id !== registration.id && ['approved', 'manually_assigned'].includes(row.status),
   ).map(row => row.user_id))
-  const candidates = users.filter(user => user.status === 'active' &&
+  const fallbackDirectory = fallbackUsers?.actorKey === actorKey ? fallbackUsers.users : []
+  const hasFallbackUsersError = fallbackUsersError?.actorKey === actorKey
+  const fallbackUsersLoading = users.length === 0 && persistedRuntime && fallbackUsers?.actorKey !== actorKey && !hasFallbackUsersError
+  const candidateDirectory = users.length > 0 ? users : fallbackDirectory
+  const candidates = candidateDirectory.filter(user => user.status === 'active' &&
     user.id !== registration.user_id && user.operational_roles?.includes(registration.operational_role) &&
     !assignedIds.has(user.id))
   const validEmergencyTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(emergencyAt)
   const canSubmit = !busy && !completed && !committedUnverified && persistedRuntime && capability === 'ready' && canReplace &&
     (!emergency || isAdmin) && snapshotReady && targetHasVersions && Boolean(segmentId) &&
+    (Boolean(registration.staffing_segment_id) || (legacyLookupReady && !legacySegmentsError && roleCompatibleLegacySegments.some(segment => segment.id === selectedLegacySegmentId))) &&
     candidates.some(user => user.id === replacementUserId) && reason.trim().length > 0 &&
     reason.trim().length <= 1000 && (!emergency || validEmergencyTime)
 
@@ -164,7 +226,7 @@ export function AtomicStaffingReplacementDialog({
       setCommittedUnverified(false)
       setFeedback(refreshFailure
         ? { kind: 'warning', message: 'Đã nhận receipt và xác minh phân công đã lưu; màn hình cha chưa tải lại được. Hãy tải lại ca.' }
-        : { kind: 'success', message: `Đã xác minh thay thế ${users.find(user => user.id === registration.user_id)?.full_name ?? registration.user_id} → ${users.find(user => user.id === replacementUserId)?.full_name ?? replacementUserId} trên máy chủ.` })
+        : { kind: 'success', message: `Đã xác minh thay thế ${candidateDirectory.find(user => user.id === registration.user_id)?.full_name ?? registration.user_id} → ${candidateDirectory.find(user => user.id === replacementUserId)?.full_name ?? replacementUserId} trên máy chủ.` })
     } catch (error) {
       setFeedback({ kind: committed ? 'warning' : 'error', message: committed
         ? `Máy chủ đã ghi nhận nhưng chưa xác minh được roster; không gửi yêu cầu mới. ${errorText(error)}`
@@ -179,8 +241,8 @@ export function AtomicStaffingReplacementDialog({
     }
   }
 
-  const originalName = users.find(user => user.id === registration.user_id)?.full_name ?? registration.user_id
-  const replacementName = users.find(user => user.id === replacementUserId)?.full_name ?? replacementUserId
+  const originalName = candidateDirectory.find(user => user.id === registration.user_id)?.full_name ?? registration.user_id
+  const replacementName = candidateDirectory.find(user => user.id === replacementUserId)?.full_name ?? replacementUserId
 
   return (
     <Dialog open={open} onOpenChange={next => { if (!busy) onOpenChange(next) }}>
@@ -196,10 +258,21 @@ export function AtomicStaffingReplacementDialog({
           {persistedRuntime && capability === 'checking' && <p role="status">Đang xác minh RPC C4, tài khoản và phạm vi ca trên máy chủ…</p>}
           {persistedRuntime && capability === 'unavailable' && <p role="alert" className="rounded border border-amber-300 bg-amber-50 p-2 text-amber-900">{capabilityMessage || 'Chưa xác minh được backend C4 cho ca này. Thay người vẫn bị khóa.'}</p>}
           {!snapshotReady && !completed && !committedUnverified && <p role="status">Đang đồng bộ roster đã lưu. Thao tác thay người đang khóa.</p>}
-          {!segmentId && <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-red-800">Phân công này chưa có segment ID đã lưu. Không thể thay thế an toàn.</p>}
+          {!registration.staffing_segment_id && legacySegmentsLoading && <p role="status">Đang tải các phân đoạn có thể thay thế…</p>}
+          {!registration.staffing_segment_id && legacySegmentsError && <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-red-800">Không đọc được phân đoạn từ máy chủ: {legacySegmentsError}</p>}
+          {!registration.staffing_segment_id && !legacySegmentsLoading && !legacySegmentsError && legacySegments.length === 0 && <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-red-800">Ca cũ chưa có phân đoạn. Phân công parent-level được giữ nguyên; thay thế nguyên tử C4 chưa thể áp dụng an toàn.</p>}
+          {!registration.staffing_segment_id && !legacySegmentsLoading && !legacySegmentsError && legacySegments.length > 0 && roleCompatibleLegacySegments.length === 0 && <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-red-800">Không có phân đoạn nào định biên vai trò {roleLabel[registration.operational_role]}; cần rà soát cấu hình ca trước khi thay.</p>}
+          {!registration.staffing_segment_id && roleCompatibleLegacySegments.length > 1 && <label className="block font-medium">Chọn phân đoạn cho phân công legacy
+            <select aria-label="Chọn phân đoạn thay thế" className="mt-1 w-full rounded border bg-background p-2" value={selectedLegacySegmentId} onChange={event => setLegacySegmentSelection({ key: legacyLookupKey, id: event.target.value })}>
+              <option value="">Chọn phân đoạn phù hợp…</option>
+              {roleCompatibleLegacySegments.map(segment => <option key={segment.id} value={segment.id}>#{segment.segment_index} · {new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' }).format(new Date(segment.start_at))} – {new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' }).format(new Date(segment.end_at))}</option>)}
+            </select>
+            <span className="mt-1 block font-normal text-muted-foreground">Phân công cũ không đổi; lựa chọn này gắn phân công thay thế với phân đoạn đã xác nhận.</span>
+          </label>}
+          {!segmentId && registration.staffing_segment_id && <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-red-800">Phân công này chưa có segment ID đã lưu. Không thể thay thế an toàn.</p>}
           {!targetHasVersions && <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-red-800">Thiếu phiên bản ca hoặc phân công đã lưu. Hãy tải lại ca.</p>}
           <p className="text-muted-foreground">
-            Ca <strong>{shift.title || shift.id}</strong> · Segment <code>{segmentId || '—'}</code> · {roleLabel[registration.operational_role]}
+            Ca <strong>{shift.title || shift.id}</strong> · Segment <code>{segmentId || (legacySegmentsLoading ? 'đang tải' : 'chưa chọn')}</code> · {roleLabel[registration.operational_role]}
           </p>
           {isAdmin && <div className="flex gap-2">
             <Button type="button" size="sm" variant={emergency ? 'outline' : 'default'} disabled={busy} onClick={() => { setEmergency(false); setFeedback(null) }}>Thay thường</Button>
@@ -210,6 +283,9 @@ export function AtomicStaffingReplacementDialog({
               <option value="">Chọn nhân sự đủ năng lực…</option>
               {candidates.map(user => <option key={user.id} value={user.id}>{user.full_name} ({user.email || user.id})</option>)}
             </select>
+            {fallbackUsersLoading && <span role="status" className="mt-1 block text-xs text-muted-foreground">Đang tải danh sách nhân sự…</span>}
+            {hasFallbackUsersError && <span role="alert" data-testid="replacement-directory-error" data-error-code={fallbackUsersError?.code} className="mt-1 block text-xs text-red-700">Không tải được danh sách nhân sự. Hãy đóng và mở lại ca để thử lại.</span>}
+            {users.length === 0 && fallbackUsers?.actorKey === actorKey && fallbackDirectory.length === 0 && <span role="status" className="mt-1 block text-xs text-muted-foreground">Không có nhân sự phù hợp trong phạm vi được phép.</span>}
           </label>
           {emergency ? <label className="block font-medium">Thời điểm hiệu lực (+07:00)
             <Input className="mt-1" type="datetime-local" required value={emergencyAt} onChange={event => setEmergencyAt(event.target.value)} />

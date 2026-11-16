@@ -255,6 +255,16 @@ export interface ReplaceShiftAssignmentInput {
   idempotencyKey: string
 }
 
+export interface ShiftStaffingSegmentOption {
+  id: string
+  segment_index: number
+  start_at: string
+  end_at: string
+  required_host_count: number
+  required_support_count: number
+  required_technical_count: number
+}
+
 export interface ReplaceShiftAssignmentResult {
   replacement_id: string
   shift_id: string
@@ -299,7 +309,7 @@ export interface SupabaseShiftRegistrationRepository {
     notes?: string,
     expectedVersions?: Record<string, number>,
   ): Promise<ShiftRegistrationReviewResult[]>
-  assignManually(shiftId: string, userId: string, role: OperationalRole, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
+  assignManually(shiftId: string, userId: string, role: OperationalRole, notes?: string, expectedVersion?: number, staffingSegmentId?: string): Promise<ShiftRegistration>
   assignImported(
     shiftId: string,
     userId: string,
@@ -311,6 +321,7 @@ export interface SupabaseShiftRegistrationRepository {
   ): Promise<ShiftRegistration>
   removeAssignment(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
   verifyReplacementCapability(shiftId: string, role: OperationalRole): Promise<void>
+  getSegmentsForShift(shiftId: string): Promise<ShiftStaffingSegmentOption[]>
   replaceAssignment(input: ReplaceShiftAssignmentInput): Promise<ReplaceShiftAssignmentResult>
 }
 
@@ -482,14 +493,23 @@ export function createSupabaseShiftRegistrationRepository(
         }))
     },
 
-    async assignManually(shiftId, userId, role, notes, expectedVersion) {
-      const result = await client.rpc('manual_assign_shift_staff', {
-        p_shift_id: shiftId,
-        p_user_id: userId,
-        p_role: role,
-        p_notes: notes ?? null,
-        p_expected_version: expectedVersion ?? null,
-      }).single()
+    async assignManually(shiftId, userId, role, notes, expectedVersion, staffingSegmentId) {
+      const result = staffingSegmentId
+        ? await client.rpc('manual_assign_shift_staff_to_segment', {
+          p_shift_id: shiftId,
+          p_user_id: userId,
+          p_role: role,
+          p_notes: notes ?? null,
+          p_expected_version: expectedVersion ?? null,
+          p_staffing_segment_id: staffingSegmentId,
+        }).single()
+        : await client.rpc('manual_assign_shift_staff', {
+          p_shift_id: shiftId,
+          p_user_id: userId,
+          p_role: role,
+          p_notes: notes ?? null,
+          p_expected_version: expectedVersion ?? null,
+        }).single()
       return registrationFromRow(
         requiredRow('registration manual assign', result) as unknown as RegistrationRow,
       )
@@ -539,21 +559,32 @@ export function createSupabaseShiftRegistrationRepository(
       throw result.error ?? new Error('ATOMIC_REPLACEMENT_CAPABILITY_UNVERIFIED')
     },
 
+    async getSegmentsForShift(shiftId) {
+      const result = await client.from('shift_staffing_segments')
+        .select('id,segment_index,start_at,end_at,required_host_count,required_support_count,required_technical_count')
+        .eq('shift_id', shiftId)
+        .order('start_at', { ascending: true })
+        .order('id', { ascending: true })
+      if (result.error) throw requestError('staffing segment read', result.error)
+      return result.data ?? []
+    },
+
     async replaceAssignment(input) {
-      const result = await client.rpc('replace_shift_assignment', {
-        p_shift_id: input.shiftId,
-        p_staffing_segment_id: input.staffingSegmentId,
-        p_registration_id: input.registrationId,
-        p_replacement_user_id: input.replacementUserId,
-        p_role: input.role,
-        p_expected_shift_version: input.expectedShiftVersion,
-        p_expected_registration_version: input.expectedRegistrationVersion,
-        p_effective_at: input.effectiveAt,
-        p_reason: input.reason,
-        p_is_emergency: input.emergency,
-        p_idempotency_key: input.idempotencyKey,
-      }).single()
-      return requiredRow('atomic staffing replacement', result) as ReplaceShiftAssignmentResult
+      const response = await fetch('/api/staffing/replacements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const payload = await response.json().catch(() => null) as {
+        ok?: boolean
+        data?: ReplaceShiftAssignmentResult
+        error?: { code?: string }
+      } | null
+      if (!response.ok || !payload?.ok || !payload.data) {
+        const code = payload?.error?.code || 'STAFFING_REPLACEMENT_FAILED'
+        throw new RegistrationRequestError(code, code)
+      }
+      return payload.data
     },
   }
 }

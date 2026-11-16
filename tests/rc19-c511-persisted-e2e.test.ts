@@ -83,19 +83,20 @@ async function seedUser(run: number, name: string, permission: 'admin' | 'leader
   const authId = crypto.randomUUID()
   const businessId = shortId(name, run)
   const email = `${businessId}@c511.invalid`
-  const inserted = await service.from('business_users').insert({
-    id: businessId, auth_user_id: authId, email, full_name: `${name} C5.11 ${run}`,
-    role: permission === 'member' ? 'staff' : permission,
-    system_permission: permission, operational_roles: roles,
-    status: 'active', account_status: 'active', email_verified: true, auth_provider: 'email',
-  }).select('id,auth_user_id,email,full_name,role,system_permission,operational_roles,status,account_status,email_verified,auth_provider,join_date,created_at,updated_at').single()
-  assert.ifError(inserted.error)
   const created = await service.auth.admin.createUser({
     id: authId, email, password: password!, email_confirm: true,
     app_metadata: { system_permission: permission, business_user_id: businessId },
     user_metadata: { full_name: `${name} C5.11 ${run}` },
   })
   assert.ifError(created.error)
+  const inserted = await service.from('business_users').insert({
+    id: businessId, auth_user_id: authId, email, full_name: `${name} C5.11 ${run}`,
+    role: permission === 'member' ? 'staff' : permission,
+    system_permission: permission, operational_roles: roles,
+    status: 'active', account_status: 'active', email_verified: true, auth_provider: 'email',
+  }).select('id,auth_user_id,email,full_name,role,system_permission,operational_roles,status,account_status,email_verified,auth_provider,join_date,created_at,updated_at').single()
+  if (inserted.error) await service.auth.admin.deleteUser(authId)
+  assert.ifError(inserted.error)
   return { authId, businessId, email, user: inserted.data }
 }
 
@@ -405,12 +406,13 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
       .eq('shift_id', String(parent.id)).order('segment_index'), 'KAO reconciliation segment snapshot') as Array<Record<string, unknown>>
     const registrationSnapshot = requireOk(await adminClient.from('shift_registrations')
       .select('id,status,user_id').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation staffing snapshot')
-    const actualSnapshot = requireOk(await adminClient.from('workforce_actual_segments')
+    // This independent persistence oracle inspects server-only records; all mutations and authorization checks stay on actor sessions.
+    const actualSnapshot = requireOk(await service.from('workforce_actual_segments')
       .select('id,staff_id,review_status,actual_start_at,actual_end_at,version').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation actual snapshot') as Array<Record<string, unknown>>
     const actualIds = actualSnapshot.map(row => String(row.id))
-    const photoSnapshot = requireOk(await adminClient.from('self_attendance_photo_evidence')
+    const photoSnapshot = requireOk(await service.from('self_attendance_photo_evidence')
       .select('id,request_id,staff_id,event_kind,external_file_id,external_parent_id,checksum_sha256').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation evidence snapshot')
-    const auditSnapshot = requireOk(await adminClient.from('audit_logs')
+    const auditSnapshot = requireOk(await service.from('audit_logs')
       .select('id,entity_id,entity_name,action').eq('entity_id', String(parent.id)).order('id'), 'KAO reconciliation audit snapshot')
     const reportSnapshot = requireOk(await service.from('reports')
       .select('id,shift_id,status,gmv,normalized_metrics,version_number').eq('shift_id', String(parent.id)).order('id'), 'KAO report and KPI snapshot') as Array<Record<string, unknown>>
@@ -635,7 +637,7 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
 
   const approvedRegistration = await createSupabaseShiftRegistrationRepository(adminClient).assignManually(
     String(parent.id), protectedHost.businessId, 'host',
-    'C6 synthetic protected assignment fixture', Number(parent.version),
+    'C6 synthetic protected assignment fixture', Number(parent.version), String(segments[0].id),
   )
   assert.equal(approvedRegistration.status, 'manually_assigned')
   await importSourceRevision({
@@ -662,11 +664,12 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
     review_status: 'approved', reviewed_by: adminActor.id, reviewed_at: new Date().toISOString(),
     review_note: 'C6 synthetic protected actual approved by fixture', version: 2,
   }).eq('id', actualId).select('id,version').single(), 'C6 synthetic approved actual fixture')
-  requireOk(await service.from('workforce_payroll_segment_decisions').insert({
-    segment_id: actualId, state: 'admin_confirmed', reviewed_by: adminActor.id,
-    confirmed_by: payrollAdmin.businessId, confirmed_at: new Date().toISOString(),
-    reason: 'C6 synthetic protected payroll decision fixture', missing_evidence: [], segment_version: approvedActual.version,
-  }).select('segment_id').single(), 'C6 synthetic confirmed Payroll decision fixture')
+  const protectedDecision = requireOk(await adminClient.rpc('rc19_c515_record_payroll_review', {
+    p_segment_id: actualId, p_segment_version: approvedActual.version,
+    p_reason: 'C6 synthetic protected Payroll decision fixture',
+  }), 'C6 authenticated protected Payroll decision fixture') as { state: string; missing_evidence: string[] }
+  assert.equal(protectedDecision.state, 'payroll_hold', 'incomplete synthetic evidence must remain on Hold')
+  assert.ok(protectedDecision.missing_evidence.length > 0)
   await importSourceRevision({
     ...sourceRow, 'Khung nhân sự': 'K01 10:00-11:00 H1 T1 KT0\nK02 11:00-15:00 H2 T1 KT0\nK03 15:00-18:00 H1 T1 KT0',
   }, ['staffing_segments'], await readOperationalSnapshot())
@@ -678,10 +681,11 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
     approved_at: new Date().toISOString(), approval_note: 'C6 synthetic immutable Payroll fixture rate',
   }).select('id').single(), 'C6 synthetic approved rate fixture')
   const existingPeriods = requireOk(await service.from('workforce_payroll_periods').select('revision')
-    .eq('period_start', '2026-11-01').eq('period_end', '2026-11-30'), 'C6 existing synthetic Payroll revisions') as Array<{ revision: number }>
+    .eq('period_start', '2026-11-01').eq('period_end', '2026-11-01'), 'C6 existing synthetic Payroll revisions') as Array<{ revision: number }>
   const revision = existingPeriods.reduce((latest, item) => Math.max(latest, Number(item.revision) || 0), 0) + 1
   const period = requireOk(await service.from('workforce_payroll_periods').insert({
-    period_start: '2026-11-01', period_end: '2026-11-30', revision, status: 'draft', created_by: payrollAdmin.businessId,
+    // Keep this protected KAO fixture scoped to its source day; unrelated approved C5.11 actuals are reconciled separately.
+    period_start: '2026-11-01', period_end: '2026-11-01', revision, status: 'draft', created_by: payrollAdmin.businessId,
   }).select('id').single(), 'C6 synthetic Payroll period fixture')
   reconciliationPayrollPeriodId = String(period.id)
   requireOk(await service.from('workforce_payroll_lines').insert({
@@ -925,7 +929,7 @@ async function runPersistedScenario(run: number) {
   }
   const listedBrands = await leaderAuth.client.rpc('rc19_current_leader_brand_ids', { p_scope_key: 'shifts.manage' })
   assert.deepEqual(requireOk(listedBrands, 'leader scope read'), [brandA])
-  const runOffsetMinutes = 90
+  const runOffsetMinutes = 60
   const { shift, segments } = await createImportedShift(run, brandA, `C5.11 Brand A ${run}`, platformId, platformName, runOffsetMinutes)
   const foreign = await createImportedShift(run, brandB, `C5.11 Brand B ${run}`, platformId, platformName, runOffsetMinutes)
   requireOk(await adminAuth.client.rpc('rc19_set_leader_brand_scope', {

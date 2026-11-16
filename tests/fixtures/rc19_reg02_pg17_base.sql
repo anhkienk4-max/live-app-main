@@ -1,6 +1,6 @@
 -- REG-02 isolated PostgreSQL 17 fixture. Test-only schema; never run on Production.
-create role authenticated nologin;
-create role anon nologin;
+do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;
+do $$ begin create role anon nologin; exception when duplicate_object then null; end $$;
 create schema auth;
 create schema private;
 create or replace function auth.uid() returns uuid language sql stable set search_path=''

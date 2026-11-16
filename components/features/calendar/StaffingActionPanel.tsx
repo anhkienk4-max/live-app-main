@@ -11,10 +11,11 @@ import { readStaffingCandidates, type StaffingCandidateRow } from '@/lib/service
 import { SHIFT_DATA_CHANGED_EVENT } from '@/lib/services/shiftChangeSubscription'
 import { staffingCandidates } from '@/lib/utils/staffingCandidates'
 import type { OperationalRole, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
+import type { ShiftStaffingSegmentOption } from '@/lib/services/supabaseShiftRegistrationService'
 import { AtomicStaffingReplacementDialog } from './AtomicStaffingReplacementDialog'
 
 type Decision =
-  | { kind: 'assign'; role: OperationalRole; userId: string }
+  | { kind: 'assign'; role: OperationalRole; userId: string; staffingSegmentId?: string }
   | { kind: 'approve' | 'reject'; registrationId: string }
   | { kind: 'remove'; registrationId: string }
 
@@ -37,6 +38,12 @@ const availabilityLabels: Record<CandidateViewRow['availability'], string> = {
   already_on_shift: 'Đã đăng ký/phân công trong ca',
   unchecked: 'Chưa kiểm tra lịch (chế độ mock)',
 }
+const staffingSegmentLabel = (segment: ShiftStaffingSegmentOption) =>
+  `#${segment.segment_index} · ${new Intl.DateTimeFormat('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short',
+  }).format(new Date(segment.start_at))} – ${new Intl.DateTimeFormat('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short',
+  }).format(new Date(segment.end_at))}`
 
 export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
   const { currentUser } = useCurrentUser()
@@ -58,6 +65,9 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
   const [reviewNotes, setReviewNotes] = React.useState('')
   const [candidatePage, setCandidatePage] = React.useState(1)
   const [userId, setUserId] = React.useState('')
+  const [staffingSegmentId, setStaffingSegmentId] = React.useState('')
+  const [segmentSnapshot, setSegmentSnapshot] = React.useState<{ key: string; items: ShiftStaffingSegmentOption[] } | null>(null)
+  const [segmentError, setSegmentError] = React.useState<{ key: string; message: string } | null>(null)
   const [decision, setDecision] = React.useState<{ scope: string; value: Decision } | null>(null)
   const [readRevision, setReadRevision] = React.useState(0)
 
@@ -65,6 +75,7 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
   const [replaceTarget, setReplaceTarget] = React.useState<ShiftRegistration | null>(null)
 
   const versionReady = Number.isInteger(shift.version) && (shift.version ?? 0) > 0
+  const segmentKey = `${ownerKey}:${shift.id}:${shift.version ?? 'no-version'}`
   React.useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedSearch(search.trim()), 250)
     return () => window.clearTimeout(timeout)
@@ -86,6 +97,20 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
     })
     return () => { active = false }
   }, [ownerKey, scope, shift.id, shift.version, readRevision, canAssign, canReview])
+
+  React.useEffect(() => {
+    if (!ownerKey || !canAssign || getAuthMode() !== 'supabase') return
+    let active = true
+    void shiftRegistrationService.getSegmentsForShift(shift.id)
+      .then(items => { if (active) setSegmentSnapshot({ key: segmentKey, items }) })
+      .catch(error => {
+        if (active) {
+          setSegmentSnapshot(null)
+          setSegmentError({ key: segmentKey, message: error instanceof Error ? error.message : 'Không thể đọc phân đoạn ca.' })
+        }
+      })
+    return () => { active = false }
+  }, [ownerKey, canAssign, shift.id, segmentKey, readRevision])
 
   const normalizedSearch = debouncedSearch
   const searchSettled = normalizedSearch === search.trim()
@@ -139,17 +164,28 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
   const assigned = rows.filter(reg => reg.status === 'approved' || reg.status === 'manually_assigned')
   const candidateData = getAuthMode() === 'mock' ? mockCandidateSnapshot : (candidateSnapshot?.key === candidateKey ? candidateSnapshot : null)
   const candidate = candidateData?.items.find(item => item.user_id === userId && item.availableForAssignment)
+  const allSegments = segmentSnapshot?.key === segmentKey ? segmentSnapshot.items : []
+  const roleSegments = allSegments.filter(segment => (role === 'host' ? segment.required_host_count
+    : role === 'support' ? segment.required_support_count : segment.required_technical_count) > 0)
+  const selectedSegment = roleSegments.length === 1 ? roleSegments[0] : roleSegments.find(segment => segment.id === staffingSegmentId)
+  const segmentReadReady = getAuthMode() === 'mock' || segmentSnapshot?.key === segmentKey
+  const segmentReadFailed = segmentError?.key === segmentKey
 
   // CRITICAL FIX: Voluntary registration cutoff (shift.registration_locked) MUST NOT block Admin/Leader manual assignment.
   const canStartAssignment = canAssign && searchSettled && hasCurrentSnapshot && candidateData && versionReady &&
     shift.status === 'scheduled' &&
-    Boolean(currentCapacity && currentCapacity.remaining > 0) && Boolean(candidate)
+    Boolean(currentCapacity && currentCapacity.remaining > 0) && Boolean(candidate) &&
+    (getAuthMode() === 'mock' || (segmentReadReady && !segmentReadFailed && (allSegments.length === 0 || Boolean(selectedSegment))))
 
   // Clear, human-readable disabled reason explanation
   const getDisabledReason = (): string | null => {
     if (!canAssign) return 'Tài khoản không có quyền phân công nhân sự.'
     if (shift.status !== 'scheduled') return `Ca đang ở trạng thái "${shift.status}", không thể phân công mới.`
     if (!versionReady) return 'Thiếu phiên bản ca hợp lệ (v0 hoặc không xác định).'
+    if (getAuthMode() === 'supabase' && !segmentReadReady && !segmentReadFailed) return 'Đang tải các phân đoạn để kiểm tra phân công…'
+    if (segmentReadFailed) return 'Không thể đọc phân đoạn ca. Hãy tải lại trước khi phân công.'
+    if (allSegments.length > 0 && roleSegments.length === 0) return 'Không có phân đoạn nào định biên vai trò đã chọn.'
+    if (roleSegments.length > 1 && !selectedSegment) return 'Ca có nhiều phân đoạn phù hợp. Hãy chọn phân đoạn trước khi xác nhận.'
     if (currentCapacity && currentCapacity.remaining <= 0) return `Đã đủ định biên cho vai trò này (${currentCapacity.approved}/${currentCapacity.required}). Hãy gỡ hoặc thay người nếu cần.`
     if (!searchSettled || !candidateData) return 'Đang kiểm tra khả dụng của nhân sự…'
     if (userId && !candidate) {
@@ -181,11 +217,12 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
           requestedDecision.role !== role || requestedDecision.userId !== userId) {
           throw new Error('Danh sách ứng viên hoặc phiên bản ca đã thay đổi. Hãy tải lại.')
         }
+        if (requestedDecision.staffingSegmentId !== selectedSegment?.id) throw new Error('STAFFING_SEGMENT_SELECTION_REQUIRED')
         if (!Number.isInteger(shift.version)) {
           throw new Error('VERSION_MISSING_OR_INVALID: Ca trực thiếu phiên bản hợp lệ. Hãy tải lại.')
         }
         mutation = await shiftRegistrationService.assignManually(
-          shift.id, item.user_id, requestedDecision.role, currentUser.id, shift.version,
+          shift.id, item.user_id, requestedDecision.role, currentUser.id, shift.version, selectedSegment?.id,
         )
       } else if (requestedDecision.kind === 'remove') {
         const registration = rows.find(row => row.id === requestedDecision.registrationId && (row.status === 'approved' || row.status === 'manually_assigned'))
@@ -338,10 +375,20 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
         {canAssign && <div className="space-y-2 border-t pt-3">
           <h4 className="font-medium">Bổ sung nhân sự</h4>
           <label className="block text-xs">Vai trò
-            <select aria-label="Vai trò cần bổ sung" className="mt-1 w-full rounded border bg-white p-2 text-sm" value={role} onChange={event => { setRole(event.target.value as OperationalRole); setCandidatePage(1); setUserId(''); setDecision(null) }}>
+            <select aria-label="Vai trò cần bổ sung" className="mt-1 w-full rounded border bg-white p-2 text-sm" value={role} onChange={event => { setRole(event.target.value as OperationalRole); setCandidatePage(1); setUserId(''); setStaffingSegmentId(''); setDecision(null) }}>
               {roles.map(value => <option key={value} value={value}>{value === 'host' ? 'Host' : value === 'support' ? 'Trợ livestream' : 'Kỹ thuật'}</option>)}
             </select>
           </label>
+          {getAuthMode() === 'supabase' && !segmentReadReady && !segmentReadFailed && <p role="status" className="text-xs text-slate-600">Đang tải phân đoạn…</p>}
+          {getAuthMode() === 'supabase' && segmentReadFailed && <p role="alert" className="text-xs text-red-700">Không thể đọc phân đoạn ca: {segmentError?.message}</p>}
+          {getAuthMode() === 'supabase' && allSegments.length > 0 && roleSegments.length === 0 && <p role="alert" className="text-xs text-red-700">Không có phân đoạn nào định biên vai trò đã chọn.</p>}
+          {getAuthMode() === 'supabase' && roleSegments.length === 1 && <p className="text-xs text-slate-600">Phân đoạn phù hợp: {staffingSegmentLabel(roleSegments[0])}</p>}
+          {getAuthMode() === 'supabase' && roleSegments.length > 1 && <label className="block text-xs">Phân đoạn phân công
+            <select aria-label="Chọn phân đoạn phân công" className="mt-1 w-full rounded border bg-white p-2 text-sm" value={staffingSegmentId} onChange={event => { setStaffingSegmentId(event.target.value); setDecision(null) }}>
+              <option value="">Chọn phân đoạn phù hợp…</option>
+              {roleSegments.map(segment => <option key={segment.id} value={segment.id}>{staffingSegmentLabel(segment)}</option>)}
+            </select>
+          </label>}
           <div className="flex items-center justify-between text-xs text-slate-600">
             <span>Định biên: {currentCapacity?.approved ?? 0}/{currentCapacity?.required ?? 0} · Chờ: {currentCapacity?.pending ?? 0} · Thiếu: {currentCapacity?.remaining ?? 0}</span>
             {shift.registration_locked && (
@@ -375,7 +422,7 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
               type="button"
               size="sm"
               disabled={busy || !canStartAssignment}
-              onClick={() => { if (candidate) setDecision({ scope, value: { kind: 'assign', role, userId: candidate.user_id } }) }}
+              onClick={() => { if (candidate) setDecision({ scope, value: { kind: 'assign', role, userId: candidate.user_id, staffingSegmentId: selectedSegment?.id } }) }}
             >
               Phân công
             </Button>
@@ -390,7 +437,7 @@ export function StaffingActionPanel({ shift, users, onUpdated }: Props) {
         {activeDecision && <div data-testid="staffing-confirmation" className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3">
           <p className="text-sm font-medium">
             {activeDecision.kind === 'assign'
-              ? `Xác nhận phân công ${candidateData?.items.find(item => item.user_id === activeDecision.userId)?.full_name ?? activeDecision.userId} vào vai trò ${activeDecision.role}`
+              ? `Xác nhận phân công ${candidateData?.items.find(item => item.user_id === activeDecision.userId)?.full_name ?? activeDecision.userId} vào vai trò ${activeDecision.role}${selectedSegment ? ` · ${staffingSegmentLabel(selectedSegment)}` : ''}`
               : activeDecision.kind === 'remove'
               ? `Xác nhận gỡ phân công nhân sự ${(() => { const reg = rows.find(r => r.id === activeDecision.registrationId); return reg ? (users.find(u => u.id === reg.user_id)?.full_name || reg.user_id) : 'này' })()}`
               : activeDecision.kind === 'approve'

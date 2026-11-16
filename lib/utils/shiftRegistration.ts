@@ -148,6 +148,12 @@ export function formatRegistrationErrorMessage(message: string): string {
   if (upper.includes('ALREADY_REGISTERED') || normalized.includes('already has this role') || normalized.includes('already registered') || normalized.includes('double registration')) {
     return 'Bạn đã đăng ký hoặc được phân công vai trò này trong ca.'
   }
+  if (upper.includes('STAFFING_SEGMENT_SELECTION_REQUIRED')) {
+    return 'Ca có nhiều phân đoạn phù hợp. Hãy chọn rõ phân đoạn trước khi phân công.'
+  }
+  if (upper.includes('STAFFING_SEGMENT_ROLE_INCOMPATIBLE')) {
+    return 'Không có phân đoạn nào định biên vai trò này. Hãy rà soát cấu hình ca.'
+  }
   if (normalized.includes('cannot occupy multiple roles')) {
     return 'Nhân sự không thể đảm nhiệm nhiều vai trò trong cùng một ca.'
   }

@@ -5,6 +5,7 @@ import { test } from 'node:test'
 const migration = readFileSync(new URL('../supabase/migrations/20261113084154_rc19_c4_atomic_staffing_replacement.sql', import.meta.url), 'utf8')
 const repository = readFileSync(new URL('../lib/services/supabaseShiftRegistrationService.ts', import.meta.url), 'utf8')
 const dataService = readFileSync(new URL('../lib/services/dataService.ts', import.meta.url), 'utf8')
+const handler = readFileSync(new URL('../lib/server/staffingReplacementHandler.ts', import.meta.url), 'utf8')
 
 test('replacement is a fail-closed atomic, idempotent RPC over persisted staffing segments', () => {
   const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION public.replace_shift_assignment(')
@@ -44,14 +45,17 @@ test('replacement RPC is executable only by authenticated callers and never expo
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.replace_shift_assignment\([\s\S]*?TO authenticated/i)
 })
 
-test('typed service forwards the complete request to the single authoritative RPC', () => {
+test('typed service forwards the complete request through the authorized API to the authoritative RPC', () => {
   assert.match(repository, /replaceAssignment\(input: ReplaceShiftAssignmentInput\)/)
-  assert.match(repository, /client\.rpc\('replace_shift_assignment'/)
+  assert.match(repository, /fetch\('\/api\/staffing\/replacements'/)
+  assert.match(repository, /body: JSON\.stringify\(input\)/)
+  assert.match(handler, /requirePermission\(request, 'shifts\.assign_staff'/)
+  assert.match(handler, /rpc\('replace_shift_assignment'/)
   for (const field of [
     'p_shift_id', 'p_staffing_segment_id', 'p_registration_id', 'p_replacement_user_id',
     'p_role', 'p_expected_shift_version', 'p_expected_registration_version', 'p_effective_at',
     'p_reason', 'p_is_emergency', 'p_idempotency_key',
-  ]) assert.match(repository, new RegExp(`${field}: input\\.`))
+  ]) assert.match(handler, new RegExp(`${field}: input\\.`))
   assert.match(dataService, /replaceAssignment\(input: ReplaceShiftAssignmentInput\)/)
   assert.match(dataService, /getSupabaseShiftRegistrationRepository\(\)\.replaceAssignment\(input\)/)
 })

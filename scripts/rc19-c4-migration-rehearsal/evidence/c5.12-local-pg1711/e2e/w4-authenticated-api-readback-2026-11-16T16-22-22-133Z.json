@@ -1,0 +1,68 @@
+{
+  "result": "PASS",
+  "candidate_head": "b305c4f0c2be23dcdfa399e72a51c76690e346bd",
+  "database": "rc19_c511_e2e_20261116154014",
+  "postgres": "17.11",
+  "database_marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "migration_receipts": [
+    "20261113083000",
+    "20261113084154",
+    "20261115120000",
+    "20261115130000",
+    "20261115140000",
+    "20261115174231",
+    "20261116120000"
+  ],
+  "source_tree_dirty": true,
+  "workflows": [
+    {
+      "workflow": "Admin Standard Replace server API",
+      "result": "PASS",
+      "status": 200,
+      "shift_id": "9fa11a6b-b8e9-46a9-8342-1053440a6c38",
+      "segment_id": "f3dad53f-77f6-4c65-a74c-5f50192f992a",
+      "old_registration_id": "5b8985eb-d8fb-4c26-ac03-3c431a55a33e",
+      "new_registration_id": "fe37baa6-41a2-422c-bc25-132006937126",
+      "receipt_id": "a291573e-dc52-4b69-a6f0-868b51a6bd8f",
+      "fresh_authenticated_readback": "PASS",
+      "idempotent_replay": "PASS",
+      "member_denied": 403
+    },
+    {
+      "workflow": "PASS request/accept/Admin approval",
+      "result": "PASS",
+      "request_id": "281c6edc-8580-41a7-b5f7-ea604ba1de76",
+      "shift_id": "efa1398d-6f3d-4f1c-b40f-779e906cc69c",
+      "preflight": "VERIFIED_CLEAR",
+      "accepted": "accepted",
+      "approved": "completed",
+      "fresh_session_readback": "PASS"
+    },
+    {
+      "workflow": "Swap exchange request/accept/Admin approval",
+      "result": "PASS",
+      "request_id": "50ab9a5b-1ae7-4b81-bbb2-1b599499b710",
+      "left_shift_id": "e3b76211-42d3-496e-8fb0-a440fa27eea3",
+      "right_shift_id": "a006c5bb-7bd9-41d4-a4b8-a24dc34a4721",
+      "preflight": "VERIFIED_CLEAR",
+      "accepted": "accepted",
+      "approved": "completed",
+      "fresh_session_readback": "PASS"
+    }
+  ],
+  "historical_preservation": {
+    "result": "PASS",
+    "before_sha256": "7694869f570010403ecc34cb84a5c3f79af832e4a2ec3c52d3399ede943597e3",
+    "after_sha256": "7694869f570010403ecc34cb84a5c3f79af832e4a2ec3c52d3399ede943597e3",
+    "attendance_events": 4,
+    "photo_receipts": 4,
+    "photo_reviews": 4,
+    "approved_actuals": 2,
+    "locked_payroll_lines": 2,
+    "payroll_period_status": "locked",
+    "historical_audit_rows": 12
+  },
+  "provider": "local GoTrue/PostgREST and PostgreSQL; no Google Drive I/O",
+  "production_accessed": false,
+  "staging_accessed": false
+}

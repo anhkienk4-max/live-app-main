@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHmac } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 
@@ -27,6 +28,7 @@ const persistedE2e = 'tests/rc19-c511-persisted-e2e.test.ts'
 const isolatedRuntimeEnv = [
   'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_URL', 'SUPABASE_SECRET_KEY',
   'C511_BASE_URL', 'C511_ANON_KEY', 'C511_SERVICE_ROLE_KEY', 'C511_TEST_PASSWORD', 'C511_DATABASE',
+  'C511_LOCAL_JWT_SECRET',
   'C511_AUTH_USERS_BEFORE', 'C511_STORAGE_OBJECTS_BEFORE',
   'C511_EVIDENCE_DIR', 'C511_POSTGRES_VERSION', 'C511_AUTH_PORT', 'C511_REST_PORT', 'C511_MIGRATION_SHA256', 'C512_MIGRATION_SHA256',
   'C515_SECONDS_MIGRATION_SHA256', 'C515_APPROVAL_MIGRATION_SHA256',
@@ -49,6 +51,30 @@ const stripReactServerCondition = value => (value || '')
   .replace(/(?:^|\s)--conditions(?:=|\s+)react-server(?=\s|$)/g, ' ')
   .replace(/\s+/g, ' ').trim()
 const addReactServerCondition = value => [stripReactServerCondition(value), '--conditions=react-server'].filter(Boolean).join(' ')
+const signLocalJwt = (secret, role, issuedAt) => {
+  const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url')
+  const unsigned = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({
+    iss: 'supabase', aud: 'authenticated', iat: issuedAt, exp: issuedAt + 3600, role,
+  })}`
+  const signature = createHmac('sha256', secret).update(unsigned).digest('base64url')
+  return `${unsigned}.${signature}`
+}
+const freshPersistedEnv = env => {
+  const secret = env.C511_LOCAL_JWT_SECRET
+  if (!secret) return env
+  const issuedAt = Math.floor(Date.now() / 1000)
+  const anonKey = signLocalJwt(secret, 'anon', issuedAt)
+  const serviceRoleKey = signLocalJwt(secret, 'service_role', issuedAt)
+  const refreshed = {
+    ...env,
+    C511_ANON_KEY: anonKey,
+    C511_SERVICE_ROLE_KEY: serviceRoleKey,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
+    SUPABASE_SECRET_KEY: serviceRoleKey,
+  }
+  delete refreshed.C511_LOCAL_JWT_SECRET
+  return refreshed
+}
 const runtimeReady = isolatedRuntimeEnv.every(key => Boolean(process.env[key]))
 
 const parseSummary = output => {
@@ -92,7 +118,18 @@ if (runtimeReady && selectedInventory.includes(persistedE2e)) {
 }
 
 const results = []
-for (const [label, files, env] of runs) results.push({ label, ...await run(label, files, env) })
+for (const [label, files, env] of runs) {
+  const childEnv = label.startsWith('C5.11 persisted E2E') ? freshPersistedEnv(env) : env
+  if (label.startsWith('C5.11 persisted E2E') && env.C511_LOCAL_JWT_SECRET) {
+    const [header, payload] = childEnv.C511_SERVICE_ROLE_KEY.split('.')
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
+    assert.equal(claims.role, 'service_role')
+    assert.ok(claims.exp > Math.floor(Date.now() / 1000) + 3500, 'Persisted E2E JWT must be refreshed immediately before its child starts')
+    assert.equal(childEnv.C511_LOCAL_JWT_SECRET, undefined, 'JWT signing secret must not be inherited by the test child')
+    assert.ok(header)
+  }
+  results.push({ label, ...await run(label, files, childEnv) })
+}
 
 const summaries = results.map(result => ({ ...result, summary: parseSummary(result.output) }))
 const combined = summaries.reduce((total, result) => {

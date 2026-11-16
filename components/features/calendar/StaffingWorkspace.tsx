@@ -246,7 +246,7 @@ export function StaffingWorkspace() {
   useEffect(() => {
     let active = true
     const frame = requestAnimationFrame(() => {
-      if (currentUser)
+      if (identity)
         void loadReferences()
           .then(reference => {
             if (active) {
@@ -265,7 +265,7 @@ export function StaffingWorkspace() {
       active = false
       cancelAnimationFrame(frame)
     }
-  }, [currentUser, identity, loadReferences, referenceReload])
+  }, [identity, loadReferences, referenceReload])
 
   const load = useCallback(async () => {
     const request = next()

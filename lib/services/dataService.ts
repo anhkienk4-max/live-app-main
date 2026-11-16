@@ -63,6 +63,7 @@ import {
   getSupabaseShiftRegistrationRepository,
   type ReplaceShiftAssignmentInput,
   type ReplaceShiftAssignmentResult,
+  type ShiftStaffingSegmentOption,
 } from '@/lib/services/supabaseShiftRegistrationService'
 import { addDateOnlyDays, calculateNullableAnalyticsMetrics, startOfBusinessWeek, type AnalyticsMetricKey } from '@/lib/utils/analytics'
 import {
@@ -2521,12 +2522,13 @@ export const shiftRegistrationService = {
     role: OperationalRole,
     reviewerId: string,
     expectedVersion?: number,
+    staffingSegmentId?: string,
   ): Promise<ShiftRegistration> {
     if (getAuthMode() === 'supabase') {
       if (!hasPermission(requiredActorFor(reviewerId), 'shifts.assign_staff')) {
         throw new Error('Only a Leader or Admin can assign staff.')
       }
-      const registration = await getSupabaseShiftRegistrationRepository().assignManually(shiftId, userId, role, undefined, expectedVersion)
+      const registration = await getSupabaseShiftRegistrationRepository().assignManually(shiftId, userId, role, undefined, expectedVersion, staffingSegmentId)
       recordScheduleChange('manual_assign', shiftId, undefined, { ...registration }, { actor_id: reviewerId })
       audit('calendar', 'assign', 'shift_registration', registration.id, `${registration.user_id} · ${role}`, { actorId: reviewerId, after: { ...registration }, relatedRecords: [{ entity_type: 'shift', entity_id: shiftId, entity_name: shiftId }] })
       return registration
@@ -2761,6 +2763,11 @@ export const shiftRegistrationService = {
     if (!hasPermission(actor, 'shifts.assign_staff')) throw new Error('STAFFING_PERMISSION_REQUIRED')
     if (!['admin', 'leader'].includes(resolveSystemPermission(actor))) throw new Error('ACTOR_NOT_AUTHORIZED')
     return getSupabaseShiftRegistrationRepository().verifyReplacementCapability(shiftId, role)
+  },
+
+  async getSegmentsForShift(shiftId: string): Promise<ShiftStaffingSegmentOption[]> {
+    if (getAuthMode() !== 'supabase') throw new Error('ATOMIC_REPLACEMENT_REQUIRES_PERSISTED_RUNTIME')
+    return getSupabaseShiftRegistrationRepository().getSegmentsForShift(shiftId)
   },
 }
 

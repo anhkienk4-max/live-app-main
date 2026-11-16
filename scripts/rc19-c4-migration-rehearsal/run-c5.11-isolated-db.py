@@ -26,6 +26,11 @@ POST_20261111_MIGRATIONS = [
     ("20261112130000", ROOT / "supabase/migrations/20261112130000_rc19_c6_import_source_reconciliation.sql", "rc19_c6_import_source_reconciliation"),
     ("20261113083000", ROOT / "supabase/migrations/20261113083000_rc19_c4_audit_dependency.sql", "rc19_c4_audit_dependency"),
     ("20261113084154", ROOT / "supabase/migrations/20261113084154_rc19_c4_atomic_staffing_replacement.sql", "rc19_c4_atomic_staffing_replacement"),
+    ("20261115120000", ROOT / "supabase/migrations/20261115120000_rc19_w4_legacy_segment_compatibility.sql", "rc19_w4_legacy_segment_compatibility"),
+    ("20261115130000", ROOT / "supabase/migrations/20261115130000_rc19_w4_segmented_manual_assignment.sql", "rc19_w4_segmented_manual_assignment"),
+    ("20261115140000", ROOT / "supabase/migrations/20261115140000_rc19_w4_pass_swap_segment_preservation.sql", "rc19_w4_pass_swap_segment_preservation"),
+    ("20261115174231", ROOT / "supabase/migrations/20261115174231_rc19_w4_retire_unguarded_swap_approval.sql", "rc19_w4_retire_unguarded_swap_approval"),
+    ("20261116120000", ROOT / "supabase/migrations/20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql", "rc19_w4_swap_preflight_and_segment_capacity"),
 ]
 MIGRATIONS_C515 = [
     ("20261110115529", ROOT / "supabase/migrations/20261110115529_rc19_c515_payroll_second_precision.sql", "rc19_c515_payroll_second_precision"),

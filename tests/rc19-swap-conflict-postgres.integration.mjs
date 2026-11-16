@@ -3,10 +3,13 @@ import { readFileSync } from 'node:fs'
 import { spawn, spawnSync } from 'node:child_process'
 
 const container = process.env.SWAP_PG_CONTAINER
-assert.equal(container, 'ada-swap-pg17', 'Use only the disposable SWAP PostgreSQL 17 container')
+const database = process.env.SWAP_PG_DATABASE
+const databaseMarker = 'CODEX_DISPOSABLE_RC19_W4_SWAP_PREFLIGHT_TEST_ONLY'
+assert.ok(container, 'Set SWAP_PG_CONTAINER to the isolated disposable PostgreSQL 17 container')
+assert.ok(database, 'Set SWAP_PG_DATABASE to the isolated disposable database')
 const read = path => readFileSync(path, 'utf8')
 function psql(sql, expectedFailure = false) {
-  const result = spawnSync('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A'], { input: sql, encoding: 'utf8', timeout: 30000, maxBuffer: 2 * 1024 * 1024 })
+  const result = spawnSync('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', database, '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A'], { input: sql, encoding: 'utf8', timeout: 30000, maxBuffer: 2 * 1024 * 1024 })
   if (result.error) throw result.error
   if (expectedFailure) {
     assert.notEqual(result.status, 0, 'Expected authorization or validation rejection')
@@ -17,6 +20,11 @@ function psql(sql, expectedFailure = false) {
 }
 function query(sql) { return psql(sql).split('\n').filter(Boolean).at(-1)?.trim() ?? '' }
 const as = (n, sql) => `set role authenticated; set request.jwt.claim.sub='00000000-0000-4000-8000-${String(n).padStart(12, '0')}'; ${sql}`
+assert.equal(
+  query(`select current_setting('server_version_num')::integer / 10000 || '|' || current_database() || '|' || coalesce(shobj_description(oid, 'pg_database'), '') from pg_database where datname = current_database()`),
+  `17|${database}|${databaseMarker}`,
+  'Only the explicitly marked disposable PostgreSQL 17 database may receive fixture writes',
+)
 function functionSource(file, name) {
   const source = read(file)
   const lower = source.toLowerCase()
@@ -101,7 +109,7 @@ psql("update public.business_users set operational_roles=array['host','support',
 const before = query('select count(*) from public.shift_registrations')
 function concurrentCall(sql) {
   return new Promise((resolve, reject) => {
-    const child = spawn('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A'], { stdio: ['pipe','pipe','pipe'] })
+    const child = spawn('docker', ['exec', '-i', container, 'psql', '-X', '-U', 'postgres', '-d', database, '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A'], { stdio: ['pipe','pipe','pipe'] })
     let stdout='', stderr=''
     child.stdout.setEncoding('utf8').on('data', chunk => stdout += chunk)
     child.stderr.setEncoding('utf8').on('data', chunk => stderr += chunk)

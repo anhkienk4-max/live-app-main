@@ -601,20 +601,33 @@ test('Supabase mode manual assign and remove go through RPCs', async () => {
   })
 })
 
-test('atomic assignment replacement maps the versioned RPC result', async () => {
+test('atomic assignment replacement posts the versioned request to the same-origin API', async t => {
   const repository = createSupabaseShiftRegistrationRepository(fakeClient(database()))
-  const result = await repository.replaceAssignment({
+  const expected = {
     shiftId: 'shift-1',
     staffingSegmentId: 'segment-1',
     registrationId: 'reg-1',
     replacementUserId: 'u-replacement',
-    role: 'host',
+    role: 'host' as const,
     expectedShiftVersion: 4,
     expectedRegistrationVersion: 2,
     effectiveAt: '2031-08-20T05:00:00.000Z',
     reason: 'approved emergency replacement',
     emergency: true,
     idempotencyKey: 'e82a2e9c-7cb7-4507-b286-f7103bc9f6aa',
+  }
+  const fetchMock = t.mock.method(globalThis, 'fetch', async (url, init) => {
+    assert.equal(url, '/api/staffing/replacements')
+    assert.equal(init?.method, 'POST')
+    assert.deepEqual(JSON.parse(String(init?.body)), expected)
+    return Response.json({ ok: true, data: {
+      replacement_id: 'replacement-1', shift_id: 'shift-1',
+      registration: { user_id: 'u-replacement', staffing_segment_id: 'segment-1' },
+      shift_version: 5, replayed: false,
+    } })
+  })
+  const result = await repository.replaceAssignment({
+    ...expected,
   })
 
   assert.equal(result.replacement_id, 'replacement-1')
@@ -622,6 +635,7 @@ test('atomic assignment replacement maps the versioned RPC result', async () => 
   assert.equal(result.registration.staffing_segment_id, 'segment-1')
   assert.equal(result.shift_version, 5)
   assert.equal(result.replayed, false)
+  assert.equal(fetchMock.mock.callCount(), 1)
 })
 
 test('atomic replacement capability probe uses a missing segment and causes no fake database writes', async () => {
@@ -649,11 +663,16 @@ test('replacement capability gate requires persisted mode and staffing authority
   })
 })
 
-test('shiftRegistrationService exposes atomic replacement only to staffing-capable persisted actors', async () => {
+test('shiftRegistrationService exposes atomic replacement only to staffing-capable persisted actors', async t => {
   await withEnvironment(async () => {
     setAuthMode('supabase')
     setSupabaseShiftRegistrationRepositoryForTests(createSupabaseShiftRegistrationRepository(fakeClient(database())))
     currentUserService.bindAuthenticatedUser(adminUser())
+    const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json({ ok: true, data: {
+      replacement_id: 'replacement-1', shift_id: 'shift-1',
+      registration: { user_id: 'u-replacement', staffing_segment_id: 'segment-1' },
+      shift_version: 5, replayed: false,
+    } }))
 
     const result = await shiftRegistrationService.replaceAssignment({
       shiftId: 'shift-1',
@@ -669,6 +688,7 @@ test('shiftRegistrationService exposes atomic replacement only to staffing-capab
       idempotencyKey: 'e82a2e9c-7cb7-4507-b286-f7103bc9f6aa',
     })
     assert.equal(result.registration.user_id, 'u-replacement')
+    assert.equal(fetchMock.mock.callCount(), 1)
 
     currentUserService.bindAuthenticatedUser(adminUser({
       id: 'u-member', email: 'member@example.test', role: 'staff', system_permission: 'member',
@@ -683,6 +703,7 @@ test('shiftRegistrationService exposes atomic replacement only to staffing-capab
       }),
       /STAFFING_PERMISSION_REQUIRED/,
     )
+    assert.equal(fetchMock.mock.callCount(), 1, 'Member denial must happen before any replacement API request')
   })
 })
 

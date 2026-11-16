@@ -248,6 +248,8 @@
     "tests/rc19-u15-ux-quality.test.ts",
     "tests/rc19-ui-functional-integration.test.tsx",
     "tests/rc19-unified-import-postgres17.test.ts",
+    "tests/rc19-w4-legacy-segment-compatibility.test.ts",
+    "tests/rc19-w4-staffing-conflict-api.test.ts",
     "tests/rc19-wave3-verification.test.ts",
     "tests/rc19-workforce-authority.test.ts",
     "tests/real-dashboard-ocr-smoke.test.ts",
