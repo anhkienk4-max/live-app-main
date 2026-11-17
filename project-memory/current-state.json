@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "947d79a15939697b3d64aa5f2ae743ee5e0e4cb1",
+    "head": "a3d8d0aec811002bd0420c702a912be7f0109c73",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -92,6 +92,7 @@
       "app/api/role-defaults/route.ts",
       "app/api/schedule-source-files/route.ts",
       "app/api/staff/invite/route.ts",
+      "app/api/staffing/replacements/route.ts",
       "app/api/storage-resources/route.ts",
       "app/api/workforce/actual/route.ts",
       "app/api/workforce/attendance-evidence-review/route.ts",
@@ -119,14 +120,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 95,
+        "app": 96,
         "components": 195,
-        "lib": 291,
-        "scripts": 151,
-        "supabase": 152,
-        "tests": 384
+        "lib": 292,
+        "scripts": 167,
+        "supabase": 158,
+        "tests": 387
       },
-      "total": 1268
+      "total": 1295
     },
     "tests": {
       "files": [
@@ -378,6 +379,8 @@
         "tests/rc19-u15-ux-quality.test.ts",
         "tests/rc19-ui-functional-integration.test.tsx",
         "tests/rc19-unified-import-postgres17.test.ts",
+        "tests/rc19-w4-legacy-segment-compatibility.test.ts",
+        "tests/rc19-w4-staffing-conflict-api.test.ts",
         "tests/rc19-wave3-verification.test.ts",
         "tests/rc19-workforce-authority.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
@@ -441,7 +444,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 310
+      "count": 312
     },
     "migrations": {
       "files": [
@@ -568,9 +571,15 @@
         "supabase/migrations/20261112120000_rc19_audit_history_keyset.sql",
         "supabase/migrations/20261112130000_rc19_c6_import_source_reconciliation.sql",
         "supabase/migrations/20261113083000_rc19_c4_audit_dependency.sql",
-        "supabase/migrations/20261113084154_rc19_c4_atomic_staffing_replacement.sql"
+        "supabase/migrations/20261113084154_rc19_c4_atomic_staffing_replacement.sql",
+        "supabase/migrations/20261115120000_rc19_w4_legacy_segment_compatibility.sql",
+        "supabase/migrations/20261115130000_rc19_w4_segmented_manual_assignment.sql",
+        "supabase/migrations/20261115140000_rc19_w4_pass_swap_segment_preservation.sql",
+        "supabase/migrations/20261115174231_rc19_w4_retire_unguarded_swap_approval.sql",
+        "supabase/migrations/20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql",
+        "supabase/migrations/20261117160000_rc19_w4_pass_recipient_visibility.sql"
       ],
-      "count": 124
+      "count": 130
     }
   },
   "verification": {
@@ -584,5 +593,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-14T23:47:20+07:00"
+  "synced_at": "2026-11-17T15:42:45+07:00"
 }
