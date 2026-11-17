@@ -1,7 +1,8 @@
 # ADR-DRAFT — OPS Drive-first Full Data Storage (Owner direction, 2026-11-17)
 
-> **Status:** OWNER-DIRECTED TARGET / DESIGN NOT IMPLEMENTED.  
+> **Status:** OWNER-APPROVED TARGET / **DEFERRED UNTIL AFTER RC19 PRODUCTION GO-LIVE** / NOT IMPLEMENTED.  
 > **Scope:** Next.js/Vercel + Supabase PostgreSQL + Google Drive/OneDrive for ADA OPS Livestream.  
+> **Owner priority decision 2026-11-17:** The full Drive-first structured-data migration (DFS-01..08), reducing operational data in PostgreSQL, new archive/outbox, and comprehensive Drive-first recovery redesign are **POST-GO-LIVE ONLY**. Do not run DFS tasks, rewrite current Storage Contract V2, alter working data paths, migrate existing business rows, or let this future architecture delay RC19. Preserve FULL PASS and existing code. **Still mandatory for current RC19:** provider-real Google Drive verification for in-scope file/report evidence, secure ACL for confidential data, and a safe Production DB migration/recovery plan. No Staging deployment.  
 > **Source:** Owner says *all persistent business information*, not only binary/media, should be durably retained on Drive. Deployed runtimes and databases should hold only the minimum metadata/index/transactional projection necessary for operations.  
 > **CRITICAL:** This target **differs** from the existing production/Core V1 architecture. Do not rewrite FULL PASS, migrate/deploy, purge PostgreSQL tables, or claim compliance until migration/restore/consistency gates are passed.  
 > **Deployment path:** Direct Production only; staging/preview is not a prerequisite per `project-memory/decisions/RC16H-production-only.md`; isolated local/disposable Postgres testing and production migration safety remain required.  
@@ -59,7 +60,7 @@
 - Restore into isolated disposable PostgreSQL 17 (never production); assert schema/RLS/ACL/auth mapping, migration ledger, counts, critical payroll/attendance invariants, event receipt and Drive object readback. Record exact source/time/size/hash and RPO/RTO evidence.
 - Deployment rollback (Vercel) is not a DB rollback. Avoid destructive migrations; use expand/migrate/contract and explicit recovery plan.
 
-## 6. Rollout work packages (PLAN ONLY)
+## 6. Rollout work packages (PLAN ONLY — activate only AFTER RC19 Production Go-live)
 
 | ID | Earliest wave | Scope | Exit evidence | Dependent |
 |---|---|---|---|---|
@@ -90,4 +91,4 @@
 - [V1.1 post-go-live plan](OPS_POST_GO_LIVE_V1_1_122_TASKS.md).
 - [Owner's Notion roadmap](https://app.notion.com/p/41b5449511e68184a07ad66f248d8e81).
 
-**Status: architecture requirement recorded, implementation not performed, migration not authorized.**
+**Status: DEFERRED POST-GO-LIVE. Requirements preserved; not a pre-Go-live blocker, not implemented, no migrations/deploy authorized.**
