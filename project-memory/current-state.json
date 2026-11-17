@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "90ed6f8c2cc0350babf516e1d6711ea77d741d81",
+    "head": "8df7ac09996daddf81e77c605491422d24543f62",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -123,11 +123,11 @@
         "app": 96,
         "components": 195,
         "lib": 292,
-        "scripts": 170,
+        "scripts": 172,
         "supabase": 158,
         "tests": 388
       },
-      "total": 1299
+      "total": 1301
     },
     "tests": {
       "files": [
@@ -594,5 +594,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-17T16:41:43+07:00"
+  "synced_at": "2026-11-17T18:09:50+07:00"
 }
