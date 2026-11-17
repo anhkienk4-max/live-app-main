@@ -1,0 +1,27 @@
+{
+  "db": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "shift": "W4 UI Atomic Replace ui_1794890074612_22ec09ce",
+  "dialogs": 1,
+  "text": "c 2 ca của tôi C5.11 persisted E2E run 1794886705715 17/11/2026 · 12:09 - 14:09 Host Thương hiệu C5.11 Brand A 1794886705715 Nền tảng C5.11 Platform 1794886705715 Chiến dịch — Trạng thái Đã duyệt Chấm công Ghi chú Xem chi tiết ca W4 UI Atomic Replace ui_1794890074612_22ec09ce 22/11/2026 · 10:00 - 11:00 Host Thương hiệu W4 UI Test Brand ui_1794890074612_22ec09ce Nền tảng W4 UI Test Platform ui_1794890074612_22ec09ce Chiến dịch — Trạng thái Được Admin/Leader phân công Chấm công Ghi chú Xem chi tiết ca Hiển thị 1–2 trên tổng số 2 bản ghi 10 Trang 1 / 1 Tổng quan Lịch trực Ca trực Trực tiếp Thêm Đã lên lịch W4 UI Atomic Replace ui_1794890074612_22ec09ce W4 UI Test Brand ui_1794890074612_22ec09ce • W4 UI Test Platform ui_1794890074612_22ec09ce 22 thg 11 năm 2026 10:00 – 11:00 synthetic You have view-only access to this shift. Editing requires additional permissions. Thông tin chi tiết và thao tác cho ca livestream này. Tổng quan Điều phối ca Chi tiết Check-in / Check-out Ghi chú Tính năng Chấm công cá nhân (Check-in / Check-out) chưa khả dụng trong môi trường này. Cấu hình NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE đang tắt. Chấm công ảnh yêu cầu định tuyến Google Drive đã xác thực. Đóng Close",
+  "buttons": [
+    "Đóng",
+    "Close",
+    ""
+  ],
+  "inputs": [
+    {
+      "type": "text",
+      "accept": "",
+      "disabled": false,
+      "label": "Tìm ca theo thương hiệu, nền tảng hoặc ghi chú…"
+    },
+    {
+      "type": "text",
+      "accept": "",
+      "disabled": false,
+      "label": null
+    }
+  ],
+  "networkErrors": []
+}

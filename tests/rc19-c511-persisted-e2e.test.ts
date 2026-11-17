@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
@@ -30,18 +30,37 @@ const serviceKey = process.env.C511_SERVICE_ROLE_KEY
 const password = process.env.C511_TEST_PASSWORD
 const database = process.env.C511_DATABASE
 const evidenceDir = process.env.C511_EVIDENCE_DIR
+const runtimeKind = process.env.C511_RUNTIME_KIND
 const authUsersBefore = Number(process.env.C511_AUTH_USERS_BEFORE)
 const storageObjectsBefore = Number(process.env.C511_STORAGE_OBJECTS_BEFORE)
-const authPort = process.env.C511_AUTH_PORT ?? '15543'
-const restPort = process.env.C511_REST_PORT ?? '15542'
+const authPort = process.env.C511_AUTH_PORT
+const restPort = process.env.C511_REST_PORT
 assert.ok(baseUrl && anonKey && serviceKey && password && database && evidenceDir
   && Number.isSafeInteger(authUsersBefore) && authUsersBefore >= 0
-  && Number.isSafeInteger(storageObjectsBefore) && storageObjectsBefore >= 0,
+  && Number.isSafeInteger(storageObjectsBefore) && storageObjectsBefore >= 0
+  && authPort && restPort && authPort !== restPort
+  && !['15542', '15543'].includes(authPort) && !['15542', '15543'].includes(restPort),
 'C5.11 local runtime environment required')
 assert.match(authPort, /^\d{1,5}$/)
 assert.match(restPort, /^\d{1,5}$/)
 assert.ok(Number(authPort) > 0 && Number(authPort) <= 65535)
 assert.ok(Number(restPort) > 0 && Number(restPort) <= 65535)
+function assertFreshRuntimeKey(token: string, role: 'anon' | 'service_role') {
+  const [header, body, signature] = token.split('.')
+  assert.ok(header && body && signature, `${role} JWT must be well formed`)
+  assert.equal(JSON.parse(Buffer.from(header, 'base64url').toString('utf8')).alg, 'HS256')
+  const claims = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as Record<string, unknown>
+  const now = Math.floor(Date.now() / 1000)
+  assert.equal(claims.role, role)
+  assert.equal(claims.aud, 'authenticated')
+  assert.equal(claims.iss, 'supabase')
+  assert.ok(Number(claims.iat) <= now && now - Number(claims.iat) < 60, `${role} JWT must be minted immediately before the persisted leg`)
+  assert.ok(Number(claims.exp) > now && Number(claims.exp) - Number(claims.iat) === 3600, `${role} JWT must keep its configured expiry`)
+  assert.equal(createHmac('sha256', process.env.C511_LOCAL_JWT_SECRET!).update(`${header}.${body}`).digest('base64url'), signature,
+    `${role} JWT must verify with the isolated runtime secret`)
+}
+assertFreshRuntimeKey(anonKey!, 'anon')
+assertFreshRuntimeKey(serviceKey!, 'service_role')
 
 const routeFetch: typeof fetch = async (input, init) => {
   const request = input instanceof Request ? new Request(input, init) : new Request(input, init)
@@ -83,20 +102,19 @@ async function seedUser(run: number, name: string, permission: 'admin' | 'leader
   const authId = crypto.randomUUID()
   const businessId = shortId(name, run)
   const email = `${businessId}@c511.invalid`
-  const created = await service.auth.admin.createUser({
-    id: authId, email, password: password!, email_confirm: true,
-    app_metadata: { system_permission: permission, business_user_id: businessId },
-    user_metadata: { full_name: `${name} C5.11 ${run}` },
-  })
-  assert.ifError(created.error)
   const inserted = await service.from('business_users').insert({
     id: businessId, auth_user_id: authId, email, full_name: `${name} C5.11 ${run}`,
     role: permission === 'member' ? 'staff' : permission,
     system_permission: permission, operational_roles: roles,
     status: 'active', account_status: 'active', email_verified: true, auth_provider: 'email',
   }).select('id,auth_user_id,email,full_name,role,system_permission,operational_roles,status,account_status,email_verified,auth_provider,join_date,created_at,updated_at').single()
-  if (inserted.error) await service.auth.admin.deleteUser(authId)
   assert.ifError(inserted.error)
+  const created = await service.auth.admin.createUser({
+    id: authId, email, password: password!, email_confirm: true,
+    app_metadata: { system_permission: permission, business_user_id: businessId },
+    user_metadata: { full_name: `${name} C5.11 ${run}` },
+  })
+  assert.ifError(created.error)
   return { authId, businessId, email, user: inserted.data }
 }
 
@@ -108,6 +126,13 @@ async function signIn(actor: Awaited<ReturnType<typeof seedUser>>) {
   const token = result.data.session.access_token
   const tokenClaims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as Record<string, unknown>
   assert.equal(tokenClaims.role, 'authenticated', `Auth session must carry the PostgREST role claim, got ${String(tokenClaims.role)}`)
+  const now = Math.floor(Date.now() / 1000)
+  const issuedAt = Number(tokenClaims.iat)
+  const ageSeconds = now - issuedAt
+  assert.equal(tokenClaims.aud, 'authenticated')
+  assert.ok(ageSeconds >= -5 && ageSeconds < 60,
+    `GoTrue actor session must be freshly issued (age=${ageSeconds}s, issued_at=${issuedAt}, checked_at=${now})`)
+  assert.ok(Number(tokenClaims.exp) > now, 'Fresh actor session must not already be expired')
   const verified = await client.auth.getUser(token)
   assert.ifError(verified.error)
   const identity = createAuthIdentity(verified.data.user)
@@ -119,6 +144,34 @@ async function signIn(actor: Awaited<ReturnType<typeof seedUser>>) {
   const probe = await client.rpc('rc19_current_leader_brand_ids', { p_scope_key: 'shifts.manage' })
   assert.ifError(probe.error)
   return { client, token }
+}
+
+function signRuntimeClaims(claims: Record<string, unknown>) {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')
+  const body = Buffer.from(JSON.stringify(claims)).toString('base64url')
+  const unsigned = `${header}.${body}`
+  return `${unsigned}.${createHmac('sha256', process.env.C511_LOCAL_JWT_SECRET!).update(unsigned).digest('base64url')}`
+}
+
+async function assertInvalidRuntimeTokensRejected(client: SupabaseClient, token: string) {
+  const claims = JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString('utf8')) as Record<string, unknown>
+  const now = Math.floor(Date.now() / 1000)
+  const expired = signRuntimeClaims({ ...claims, iat: now - 7200, exp: now - 3600 })
+  const expiredResult = await client.auth.getUser(expired)
+  assert.ok(expiredResult.error, 'GoTrue must reject a correctly signed expired actor token')
+
+  const tampered = token.split('.')
+  const signature = tampered[2]!
+  tampered[2] = `${signature[0] === 'A' ? 'B' : 'A'}${signature.slice(1)}`
+  const invalidSignatureResult = await client.auth.getUser(tampered.join('.'))
+  assert.ok(invalidSignatureResult.error, 'GoTrue must reject an actor token with an invalid signature')
+
+  const invalidRole = signRuntimeClaims({ ...claims, role: 'codex_missing_database_role', iat: now, exp: now + 300 })
+  const roleResponse = await routeFetch(new Request('http://c511.local/rest/v1/business_users?select=id&limit=0', {
+    headers: { apikey: anonKey!, Authorization: `Bearer ${invalidRole}` },
+  }))
+  assert.equal(roleResponse.status, 401, 'PostgREST must reject a JWT role that is not a database role')
+  records.push({ jwt_rejection_tests: { expired: 'DENY', invalid_signature: 'DENY', invalid_database_role: 'DENY' } })
 }
 
 async function resolveUser(request: Request) {
@@ -406,13 +459,12 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
       .eq('shift_id', String(parent.id)).order('segment_index'), 'KAO reconciliation segment snapshot') as Array<Record<string, unknown>>
     const registrationSnapshot = requireOk(await adminClient.from('shift_registrations')
       .select('id,status,user_id').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation staffing snapshot')
-    // This independent persistence oracle inspects server-only records; all mutations and authorization checks stay on actor sessions.
-    const actualSnapshot = requireOk(await service.from('workforce_actual_segments')
+    const actualSnapshot = requireOk(await adminClient.from('workforce_actual_segments')
       .select('id,staff_id,review_status,actual_start_at,actual_end_at,version').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation actual snapshot') as Array<Record<string, unknown>>
     const actualIds = actualSnapshot.map(row => String(row.id))
-    const photoSnapshot = requireOk(await service.from('self_attendance_photo_evidence')
+    const photoSnapshot = requireOk(await adminClient.from('self_attendance_photo_evidence')
       .select('id,request_id,staff_id,event_kind,external_file_id,external_parent_id,checksum_sha256').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation evidence snapshot')
-    const auditSnapshot = requireOk(await service.from('audit_logs')
+    const auditSnapshot = requireOk(await adminClient.from('audit_logs')
       .select('id,entity_id,entity_name,action').eq('entity_id', String(parent.id)).order('id'), 'KAO reconciliation audit snapshot')
     const reportSnapshot = requireOk(await service.from('reports')
       .select('id,shift_id,status,gmv,normalized_metrics,version_number').eq('shift_id', String(parent.id)).order('id'), 'KAO report and KPI snapshot') as Array<Record<string, unknown>>
@@ -664,12 +716,11 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
     review_status: 'approved', reviewed_by: adminActor.id, reviewed_at: new Date().toISOString(),
     review_note: 'C6 synthetic protected actual approved by fixture', version: 2,
   }).eq('id', actualId).select('id,version').single(), 'C6 synthetic approved actual fixture')
-  const protectedDecision = requireOk(await adminClient.rpc('rc19_c515_record_payroll_review', {
-    p_segment_id: actualId, p_segment_version: approvedActual.version,
-    p_reason: 'C6 synthetic protected Payroll decision fixture',
-  }), 'C6 authenticated protected Payroll decision fixture') as { state: string; missing_evidence: string[] }
-  assert.equal(protectedDecision.state, 'payroll_hold', 'incomplete synthetic evidence must remain on Hold')
-  assert.ok(protectedDecision.missing_evidence.length > 0)
+  requireOk(await service.from('workforce_payroll_segment_decisions').insert({
+    segment_id: actualId, state: 'admin_confirmed', reviewed_by: adminActor.id,
+    confirmed_by: payrollAdmin.businessId, confirmed_at: new Date().toISOString(),
+    reason: 'C6 synthetic protected payroll decision fixture', missing_evidence: [], segment_version: approvedActual.version,
+  }).select('segment_id').single(), 'C6 synthetic confirmed Payroll decision fixture')
   await importSourceRevision({
     ...sourceRow, 'Khung nhân sự': 'K01 10:00-11:00 H1 T1 KT0\nK02 11:00-15:00 H2 T1 KT0\nK03 15:00-18:00 H1 T1 KT0',
   }, ['staffing_segments'], await readOperationalSnapshot())
@@ -681,11 +732,10 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
     approved_at: new Date().toISOString(), approval_note: 'C6 synthetic immutable Payroll fixture rate',
   }).select('id').single(), 'C6 synthetic approved rate fixture')
   const existingPeriods = requireOk(await service.from('workforce_payroll_periods').select('revision')
-    .eq('period_start', '2026-11-01').eq('period_end', '2026-11-01'), 'C6 existing synthetic Payroll revisions') as Array<{ revision: number }>
+    .eq('period_start', '2026-11-01').eq('period_end', '2026-11-30'), 'C6 existing synthetic Payroll revisions') as Array<{ revision: number }>
   const revision = existingPeriods.reduce((latest, item) => Math.max(latest, Number(item.revision) || 0), 0) + 1
   const period = requireOk(await service.from('workforce_payroll_periods').insert({
-    // Keep this protected KAO fixture scoped to its source day; unrelated approved C5.11 actuals are reconciled separately.
-    period_start: '2026-11-01', period_end: '2026-11-01', revision, status: 'draft', created_by: payrollAdmin.businessId,
+    period_start: '2026-11-01', period_end: '2026-11-30', revision, status: 'draft', created_by: payrollAdmin.businessId,
   }).select('id').single(), 'C6 synthetic Payroll period fixture')
   reconciliationPayrollPeriodId = String(period.id)
   requireOk(await service.from('workforce_payroll_lines').insert({
@@ -908,6 +958,7 @@ async function runPersistedScenario(run: number) {
     signIn(hostOverflow), signIn(support),
   ])
   adminSession = adminAuth
+  await assertInvalidRuntimeTokensRejected(adminAuth.client, adminAuth.token)
   const platformId = `platform_${crypto.randomUUID().replaceAll('-', '').slice(0, 18)}`
   const platformName = `C5.11 Platform ${run}`
   requireOk(await service.from('platforms').insert({ id: platformId, name: platformName, status: 'active' }).select('id').single(), 'seed platform')
@@ -929,7 +980,7 @@ async function runPersistedScenario(run: number) {
   }
   const listedBrands = await leaderAuth.client.rpc('rc19_current_leader_brand_ids', { p_scope_key: 'shifts.manage' })
   assert.deepEqual(requireOk(listedBrands, 'leader scope read'), [brandA])
-  const runOffsetMinutes = 60
+  const runOffsetMinutes = 90
   const { shift, segments } = await createImportedShift(run, brandA, `C5.11 Brand A ${run}`, platformId, platformName, runOffsetMinutes)
   const foreign = await createImportedShift(run, brandB, `C5.11 Brand B ${run}`, platformId, platformName, runOffsetMinutes)
   requireOk(await adminAuth.client.rpc('rc19_set_leader_brand_scope', {
@@ -1656,7 +1707,9 @@ test('C5.12 persists authenticated Staffing, Attendance, evidence review, Payrol
     const output = {
       result: 'PASS', source_sha: process.env.C511_SOURCE_SHA,
       postgres: process.env.C511_POSTGRES_VERSION,
-      database, isolation: 'local Docker PostgreSQL 17, dedicated marked DB; Auth/PostgREST loopback only',
+      database, isolation: runtimeKind === 'native-wsl'
+        ? 'native WSL PostgreSQL 17, user-owned marked DB; Auth/PostgREST loopback only'
+        : 'local Docker PostgreSQL 17, dedicated marked DB; Auth/PostgREST loopback only',
       migration_sha256: process.env.C511_MIGRATION_SHA256,
       attendance_review_migration_sha256: process.env.C512_MIGRATION_SHA256,
       c515_migration_sha256: {

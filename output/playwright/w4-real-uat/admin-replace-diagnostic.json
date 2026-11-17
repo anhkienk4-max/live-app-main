@@ -1,0 +1,69 @@
+{
+  "result": "OBSERVED",
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "shift_id": "d5e4caee-99a0-417b-83b2-16d99519f64f",
+  "registration_id": "c77c9b79-ec21-4f3e-8a9e-e306d2280971",
+  "reads": [
+    {
+      "status": 200,
+      "range": "0-25/26",
+      "count": 26,
+      "target": true,
+      "target_status": "active",
+      "target_roles": [
+        "host"
+      ],
+      "target_account_status": "active"
+    }
+  ],
+  "options": [
+    {
+      "label": "Chọn nhân sự đủ năng lực…",
+      "value": ""
+    },
+    {
+      "label": "Admin W4 synthetic (admin_ui_1794890054824_7496b893@w4.invalid)",
+      "value": "admin_ui_1794890054824_7496b893"
+    },
+    {
+      "label": "C6ReimportProtectedHost C5.11 1794886705715 (C6ReimportProtectedHost_c511_1794886705715_d9b0ea4cd96347@c511.invalid)",
+      "value": "C6ReimportProtectedHost_c511_1794886705715_d9b0ea4cd96347"
+    },
+    {
+      "label": "C6ReimportProtectedHost C5.11 1794886776005 (C6ReimportProtectedHost_c511_1794886776005_9b40c5da3bf74c@c511.invalid)",
+      "value": "C6ReimportProtectedHost_c511_1794886776005_9b40c5da3bf74c"
+    },
+    {
+      "label": "CancellationHostOne C5.11 1794886705715 (CancellationHostOne_c511_1794886705715_be29845874154d@c511.invalid)",
+      "value": "CancellationHostOne_c511_1794886705715_be29845874154d"
+    },
+    {
+      "label": "CancellationHostTwo C5.11 1794886705715 (CancellationHostTwo_c511_1794886705715_b4754e9d172041@c511.invalid)",
+      "value": "CancellationHostTwo_c511_1794886705715_b4754e9d172041"
+    },
+    {
+      "label": "HostOne C5.11 1794886705715 (HostOne_c511_1794886705715_5f2238403c0c40@c511.invalid)",
+      "value": "HostOne_c511_1794886705715_5f2238403c0c40"
+    },
+    {
+      "label": "HostOverflow C5.11 1794886705715 (HostOverflow_c511_1794886705715_28df8a3f4a6543@c511.invalid)",
+      "value": "HostOverflow_c511_1794886705715_28df8a3f4a6543"
+    },
+    {
+      "label": "HostThree C5.11 1794886705715 (HostThree_c511_1794886705715_5685750186254d@c511.invalid)",
+      "value": "HostThree_c511_1794886705715_5685750186254d"
+    },
+    {
+      "label": "HostTwo C5.11 1794886705715 (HostTwo_c511_1794886705715_a73a0921852248@c511.invalid)",
+      "value": "HostTwo_c511_1794886705715_a73a0921852248"
+    },
+    {
+      "label": "UiReplacement W4 UI synthetic (UiReplacement_ui_1794890074612_22ec09ce@w4.invalid)",
+      "value": "UiReplacement_ui_1794890074612_22ec09ce"
+    }
+  ],
+  "errors": [],
+  "directory_target_option": true,
+  "capability_error": []
+}

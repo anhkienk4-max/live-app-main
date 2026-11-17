@@ -1007,7 +1007,7 @@ function MemberDashboard(props: CommonProps) {
   let myRequests: import('./presentation/member/MemberDashboardView').RequestEntry[] | null = null
   if (registrations !== null || swapRequests !== null) {
     const myPendingRegs = registrations ? registrations.filter(r => r.user_id === currentUser.id && r.status === 'pending') : []
-    const mySwapRequests = swapRequests ? swapRequests.filter(s => s.requester_id === currentUser.id || s.counterpart_id === currentUser.id) : []
+    const mySwapRequests = swapRequests ? swapRequests.filter(s => s.requester_id === currentUser.id || s.counterpart_id === currentUser.id || s.replacement_staff_id === currentUser.id) : []
     myRequests = [
       ...myPendingRegs.map(() => ({ type: 'registration' as const, title: 'Đăng ký ca', status: 'pending' as const })),
       ...mySwapRequests.filter(s => s.status === 'pending' || s.status === 'accepted').map(() => ({

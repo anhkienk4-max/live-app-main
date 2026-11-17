@@ -1,0 +1,20 @@
+{
+  "result": "FAIL",
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "shift_id": "d5e4caee-99a0-417b-83b2-16d99519f64f",
+  "registration_id": "c77c9b79-ec21-4f3e-8a9e-e306d2280971",
+  "replace_rpc_count": 2,
+  "api_statuses": [
+    400,
+    400
+  ],
+  "fresh_session_readback": "NOT_RUN",
+  "screenshots": [
+    "admin-replace-confirm-desktop.png",
+    "admin-replace-failure-targeted.png"
+  ],
+  "target_option_visible": true,
+  "confirm_enabled": true,
+  "error": "locator.waitFor: Timeout 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('dialog').getByRole('status').filter({ hasText: /Đã xác minh thay thế/ }) to be visible\u001b[22m\n"
+}

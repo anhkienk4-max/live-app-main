@@ -1,0 +1,73 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "pg": "170011",
+  "requestId": "5cb0960d-7322-4da0-9c62-c2d7b088e40d",
+  "uiSuccess": false,
+  "uiRow": "",
+  "rpc": [
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_staff_directory"
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_shift_staffing_summary"
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_staff_directory"
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_shift_staffing_summary"
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/approve_shift_swap_request"
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_staff_directory"
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_staff_directory"
+    }
+  ],
+  "httpStatuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+  ],
+  "freshSessionReadback": {
+    "httpStatus": 200,
+    "row": {
+      "id": "5cb0960d-7322-4da0-9c62-c2d7b088e40d",
+      "status": "completed",
+      "version": 5,
+      "approved_by": "admin_ui_1794890054824_7496b893",
+      "approved_at": "2026-11-17T07:56:15.463379+00:00",
+      "requester_id": "HostOne_c511_1794886705715_5f2238403c0c40",
+      "replacement_staff_id": "UiReplacement_ui_1794890074612_22ec09ce"
+    }
+  },
+  "lockedPayroll": {
+    "before": {
+      "periodCount": 3,
+      "lineCount": 6,
+      "sha256": "ea468279670ee91917a88d7c030f3799a201ca8f9e6a12ab416452b0b6b93cae"
+    },
+    "after": {
+      "periodCount": 3,
+      "lineCount": 6,
+      "sha256": "ea468279670ee91917a88d7c030f3799a201ca8f9e6a12ab416452b0b6b93cae"
+    },
+    "unchanged": true
+  },
+  "screenshot": "C:\\Users\\KienNguyen\\Downloads\\KIEN ADA code\\OPS LIVESTREAM PLATFORM\\rc19-w4-final-integration\\output\\playwright\\w4-real-uat/admin-pass-approved.png"
+}

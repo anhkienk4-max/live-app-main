@@ -1,0 +1,144 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "ui": "Thay thế nhân sự\n\nCa W4 UI Atomic Replace ui_1794890074612_22ec09ce · Segment b5644837-37a3-47a4-b295-3c2ed31e4bfe · Host\n\nThay thường\nKhẩn cấp (Admin)\nNhân sự thay thế · Host\nChọn nhân sự đủ năng lực…\nAdmin W4 synthetic (admin_ui_1794890054824_7496b893@w4.invalid)\nC6ReimportProtectedHost C5.11 1794886776005 (C6ReimportProtectedHost_c511_1794886776005_9b40c5da3bf74c@c511.invalid)\nCancellationHostOne C5.11 1794886705715 (CancellationHostOne_c511_1794886705715_be29845874154d@c511.invalid)\nCancellationHostTwo C5.11 1794886705715 (CancellationHostTwo_c511_1794886705715_b4754e9d172041@c511.invalid)\nHostOverflow C5.11 1794886705715 (HostOverflow_c511_1794886705715_28df8a3f4a6543@c511.invalid)\nHostThree C5.11 1794886705715 (HostThree_c511_1794886705715_5685750186254d@c511.invalid)\nHostTwo C5.11 1794886705715 (HostTwo_c511_1794886705715_a73a0921852248@c511.invalid)\nUiOriginal W4 UI synthetic (UiOriginal_ui_1794890074612_22ec09ce@w4.invalid)\nUiReplacement W4 UI synthetic (UiReplacement_ui_1794890074612_22ec09ce@w4.invalid)\n\nThời điểm hiệu lực: thời gian ghi nhận bởi PostgreSQL khi xác nhận.\n\nLý do bắt buộc\n\nXác nhận thay đổi · v13 / v1\n\nHostOne C5.11 1794886705715\nC6ReimportProtectedHost C5.11 1794886705715\n· Host\n\nd5e4caee-99a0-417b-83b2-16d99519f64f · b5644837-37a3-47a4-b295-3c2ed31e4bfe\n\nĐã xác minh thay thế HostOne C5.11 1794886705715 → C6ReimportProtectedHost C5.11 1794886705715 trên máy chủ.\n\nThao tác giữ nguyên lịch sử phân công, ảnh/chấm công và Payroll. Chỉ một RPC nguyên tử được gửi; kết quả chỉ thành công sau khi roster đã được đọc lại từ máy chủ.\n\nĐóng\nXác nhận thay thế\nClose",
+  "route": {
+    "status": 200,
+    "ok": true,
+    "error": null
+  },
+  "session_roster_readback": [
+    {
+      "id": "1083c32a-6dd3-4365-84d0-9564a522e366",
+      "user_id": "HostOne_c511_1794886705715_5f2238403c0c40",
+      "status": "removed",
+      "staffing_segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+      "operational_role": "host"
+    },
+    {
+      "id": "d2d6905c-a5c5-4b13-81f0-1524f4731681",
+      "user_id": "C6ReimportProtectedHost_c511_1794886705715_d9b0ea4cd96347",
+      "status": "manually_assigned",
+      "staffing_segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+      "operational_role": "host"
+    }
+  ],
+  "list_responses": [
+    {
+      "status": 200,
+      "contentRange": "0-1/*",
+      "rowCount": 2,
+      "targetVisible": false,
+      "rowStatuses": []
+    },
+    {
+      "status": 200,
+      "contentRange": "0-1/*",
+      "rowCount": 2,
+      "targetVisible": false,
+      "rowStatuses": []
+    },
+    {
+      "status": 200,
+      "contentRange": "0-2/*",
+      "rowCount": 3,
+      "targetVisible": false,
+      "rowStatuses": [
+        {
+          "status": "manually_assigned",
+          "user_id": "HostOne_c511_1794886705715_5f2238403c0c40"
+        }
+      ]
+    },
+    {
+      "status": 200,
+      "contentRange": "0-2/*",
+      "rowCount": 3,
+      "targetVisible": false,
+      "rowStatuses": [
+        {
+          "status": "manually_assigned",
+          "user_id": "HostOne_c511_1794886705715_5f2238403c0c40"
+        }
+      ]
+    },
+    {
+      "status": 200,
+      "contentRange": "0-2/*",
+      "rowCount": 3,
+      "targetVisible": false,
+      "rowStatuses": [
+        {
+          "status": "manually_assigned",
+          "user_id": "HostOne_c511_1794886705715_5f2238403c0c40"
+        }
+      ]
+    },
+    {
+      "status": 200,
+      "contentRange": "0-2/*",
+      "rowCount": 3,
+      "targetVisible": false,
+      "rowStatuses": [
+        {
+          "status": "manually_assigned",
+          "user_id": "HostOne_c511_1794886705715_5f2238403c0c40"
+        }
+      ]
+    },
+    {
+      "status": 200,
+      "contentRange": "0-3/*",
+      "rowCount": 4,
+      "targetVisible": true,
+      "rowStatuses": [
+        {
+          "status": "removed",
+          "user_id": "HostOne_c511_1794886705715_5f2238403c0c40"
+        },
+        {
+          "status": "manually_assigned",
+          "user_id": "C6ReimportProtectedHost_c511_1794886705715_d9b0ea4cd96347"
+        }
+      ]
+    },
+    {
+      "status": 200,
+      "contentRange": "0-3/*",
+      "rowCount": 4,
+      "targetVisible": true,
+      "rowStatuses": [
+        {
+          "status": "removed",
+          "user_id": "HostOne_c511_1794886705715_5f2238403c0c40"
+        },
+        {
+          "status": "manually_assigned",
+          "user_id": "C6ReimportProtectedHost_c511_1794886705715_d9b0ea4cd96347"
+        }
+      ]
+    },
+    {
+      "status": 200,
+      "contentRange": "0-3/*",
+      "rowCount": 4,
+      "targetVisible": true,
+      "rowStatuses": [
+        {
+          "status": "removed",
+          "user_id": "HostOne_c511_1794886705715_5f2238403c0c40"
+        },
+        {
+          "status": "manually_assigned",
+          "user_id": "C6ReimportProtectedHost_c511_1794886705715_d9b0ea4cd96347"
+        }
+      ]
+    }
+  ],
+  "feedback": [
+    "Đã xác minh thay thế HostOne C5.11 1794886705715 → C6ReimportProtectedHost C5.11 1794886705715 trên máy chủ."
+  ],
+  "screenshots": [
+    "admin-replace-final-state-completion-1440.png"
+  ]
+}

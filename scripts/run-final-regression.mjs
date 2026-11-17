@@ -51,31 +51,31 @@ const stripReactServerCondition = value => (value || '')
   .replace(/(?:^|\s)--conditions(?:=|\s+)react-server(?=\s|$)/g, ' ')
   .replace(/\s+/g, ' ').trim()
 const addReactServerCondition = value => [stripReactServerCondition(value), '--conditions=react-server'].filter(Boolean).join(' ')
-const signLocalJwt = (secret, role, issuedAt) => {
-  const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url')
-  const unsigned = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({
-    iss: 'supabase', aud: 'authenticated', iat: issuedAt, exp: issuedAt + 3600, role,
-  })}`
-  const signature = createHmac('sha256', secret).update(unsigned).digest('base64url')
-  return `${unsigned}.${signature}`
-}
-const freshPersistedEnv = env => {
-  const secret = env.C511_LOCAL_JWT_SECRET
-  if (!secret) return env
-  const issuedAt = Math.floor(Date.now() / 1000)
-  const anonKey = signLocalJwt(secret, 'anon', issuedAt)
-  const serviceRoleKey = signLocalJwt(secret, 'service_role', issuedAt)
-  const refreshed = {
-    ...env,
-    C511_ANON_KEY: anonKey,
-    C511_SERVICE_ROLE_KEY: serviceRoleKey,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
-    SUPABASE_SECRET_KEY: serviceRoleKey,
-  }
-  delete refreshed.C511_LOCAL_JWT_SECRET
-  return refreshed
-}
 const runtimeReady = isolatedRuntimeEnv.every(key => Boolean(process.env[key]))
+const freshRuntimeKeys = env => {
+  const secret = env.C511_LOCAL_JWT_SECRET
+  if (!secret) throw new Error('C511_LOCAL_JWT_SECRET_REQUIRED_FOR_FRESH_RUNTIME_KEYS')
+  const issuedAt = Math.floor(Date.now() / 1000)
+  const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url')
+  const header = encode({ alg: 'HS256', typ: 'JWT' })
+  const sign = role => {
+    const body = encode({ iss: 'supabase', aud: 'authenticated', iat: issuedAt, exp: issuedAt + 3600, role })
+    const unsigned = `${header}.${body}`
+    const signature = createHmac('sha256', secret).update(unsigned).digest('base64url')
+    const claims = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'))
+    assert.equal(claims.role, role)
+    assert.equal(claims.iat, issuedAt)
+    assert.equal(claims.exp, issuedAt + 3600)
+    return `${unsigned}.${signature}`
+  }
+  return {
+    ...env,
+    C511_ANON_KEY: sign('anon'),
+    C511_SERVICE_ROLE_KEY: sign('service_role'),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: sign('anon'),
+    SUPABASE_SECRET_KEY: sign('service_role'),
+  }
+}
 
 const parseSummary = output => {
   const read = key => Number(output.match(new RegExp(`^# ${key} (\\d+)$`, 'm'))?.[1])
@@ -105,10 +105,11 @@ let runs
 if (runtimeReady && selectedInventory.includes(persistedE2e)) {
   const regularEnv = { ...baseEnv }
   for (const key of isolatedRuntimeEnv) delete regularEnv[key]
-  const e2eEnv = { ...process.env, NODE_OPTIONS: addReactServerCondition(process.env.NODE_OPTIONS) }
   runs = [
     ['canonical regression (runtime isolated)', selectedInventory.filter(file => file !== persistedE2e), regularEnv],
-    ['C5.11 persisted E2E (isolated runtime + react-server)', [persistedE2e], e2eEnv],
+    ['C5.11 persisted E2E (isolated runtime + react-server)', [persistedE2e], () => freshRuntimeKeys({
+      ...process.env, NODE_OPTIONS: addReactServerCondition(process.env.NODE_OPTIONS),
+    })],
   ]
 } else {
   runs = [['canonical regression', selectedInventory, baseEnv]]
@@ -118,17 +119,9 @@ if (runtimeReady && selectedInventory.includes(persistedE2e)) {
 }
 
 const results = []
-for (const [label, files, env] of runs) {
-  const childEnv = label.startsWith('C5.11 persisted E2E') ? freshPersistedEnv(env) : env
-  if (label.startsWith('C5.11 persisted E2E') && env.C511_LOCAL_JWT_SECRET) {
-    const [header, payload] = childEnv.C511_SERVICE_ROLE_KEY.split('.')
-    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
-    assert.equal(claims.role, 'service_role')
-    assert.ok(claims.exp > Math.floor(Date.now() / 1000) + 3500, 'Persisted E2E JWT must be refreshed immediately before its child starts')
-    assert.equal(childEnv.C511_LOCAL_JWT_SECRET, undefined, 'JWT signing secret must not be inherited by the test child')
-    assert.ok(header)
-  }
-  results.push({ label, ...await run(label, files, childEnv) })
+for (const [label, files, envOrFactory] of runs) {
+  const env = typeof envOrFactory === 'function' ? envOrFactory() : envOrFactory
+  results.push({ label, ...await run(label, files, env) })
 }
 
 const summaries = results.map(result => ({ ...result, summary: parseSummary(result.output) }))

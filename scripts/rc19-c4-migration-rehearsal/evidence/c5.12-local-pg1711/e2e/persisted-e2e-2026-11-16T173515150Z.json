@@ -1,0 +1,223 @@
+{
+  "result": "PASS",
+  "source_sha": "7200a90c91b2ae6a2d155e451f6cddb77f0ae5e3+dirty-candidate",
+  "postgres": "170011",
+  "database": "rc19_c511_e2e_20261116173417",
+  "isolation": "native WSL PostgreSQL 17, user-owned marked DB; Auth/PostgREST loopback only",
+  "migration_sha256": "d7abbe6cce5356af5a134fb2cbf97b3d0d295a50bd737bd2737db7977d41bce0",
+  "attendance_review_migration_sha256": "a8e81fe5c771bc2c2f8fd06bd32eab372759966c9686c026ab1259c3c4ace877",
+  "c515_migration_sha256": {
+    "second_precision": "c7c86f3717e8062703ca8c51d506f7121f6cf7abe925ac93ce260bd9f0a7d9ea",
+    "approval_hold": "3a911fdf8eafa28ce034a2c6c6a22de87811cd955cca7536bef36920df912c9b",
+    "overtime_cancellation": "f00974e5b790e034ce19daed6cd2d69bce6cb8396c6b8887a5ccb482de848c02",
+    "live_shift_cancellation": "4df3c7e0ca54b4996d7470f4e418b2f178efc5e787fb655fb7b84e8e4d717e39"
+  },
+  "runtime_auth_users_before": 0,
+  "storage_objects_before": 0,
+  "authenticated_persisted_staffing_scenarios": 1,
+  "service_role_used_only_for_fixture_and_server_handler_backend": true,
+  "authenticated_roles": [
+    "admin",
+    "leader",
+    "member"
+  ],
+  "exercised_api_and_rpc": [
+    "Supabase Auth sign-up/sign-in/getUser",
+    "create_shift_with_staffing_segments",
+    "rc19_set_leader_brand_scope",
+    "rc19_current_leader_brand_ids",
+    "register_for_staffing_segment",
+    "approve_shift_registration",
+    "server-side photo upload handler",
+    "self_attendance_record",
+    "review_self_attendance_photo",
+    "RLS shifts and staffing-segment reads"
+  ],
+  "staffing_persistence": "PASS",
+  "attendance_persistence": "PASS",
+  "evidence_review": "PASS",
+  "approved_actual_minutes": "PASS",
+  "payroll_persistence": "PASS",
+  "member_payslip_readback": "PASS",
+  "storage_adapter": "server-side dependency-injected local byte store; not selectable by client; SHA readback verified",
+  "real_drive_e2e": "BLOCKED: Production Drive OAuth identity and private folder ACL have not been verified in this local task",
+  "production_accessed": false,
+  "production_credentials_used": false,
+  "real_drive_io": false,
+  "evidence_records": [
+    {
+      "jwt_rejection_tests": {
+        "expired": "DENY",
+        "invalid_signature": "DENY",
+        "invalid_database_role": "DENY"
+      }
+    },
+    {
+      "run": 1794850486856,
+      "transaction_faults": [
+        "second segment capacity rollback",
+        "duplicate segment index rollback"
+      ],
+      "concurrent_confirm": "one parent, two segments, one import outcome and audit events for one canonical parent",
+      "timeout_error": "57014 persisted as retryable; imported count remained zero",
+      "stale_version": "update_shift rejected stale expected version without changing parent"
+    },
+    {
+      "run": 1794850486856,
+      "shift_id": "473d5165-909a-4f36-a356-47e3768d57cb",
+      "segment_ids": [
+        "2182f02b-4eb6-4cae-b470-8a6d3f455822",
+        "4b455760-e9aa-4200-8ce3-a3f4e0cd4fe7",
+        "127ea12a-4ec1-4493-97a8-9c4f77795f37"
+      ],
+      "imported_via": "XLSX Preview -> processScheduleImportRows Confirm -> authenticated create_schedule_import_shift RPC -> authenticated DB readback",
+      "original_receipt_immutable": true,
+      "changed_source": {
+        "A": "identical source -> duplicate_skipped; same parent and child IDs",
+        "B": "planned Host names -> retryable review_required; no assignment created",
+        "C": "K02 Host capacity H2 to H3 -> retryable review_required; no staffing mutation",
+        "D": "K02 time window change -> retryable review_required; no segment mutation",
+        "E": "parent date and external code change -> retryable review_required; no parent mutation",
+        "F": "parent start/end and external code change -> retryable review_required; no parent or segment mutation",
+        "G": "approved manual assignment present -> review_required; registration and audit preserved",
+        "H": "synthetic photo receipt, approved actual and decision present -> review_required; evidence and actuals preserved",
+        "I": "locked Payroll period and line present -> review_required; locked records preserved",
+        "J": "two concurrent changed-source requests -> both retryable, original import receipt unchanged"
+      },
+      "authorization": {
+        "in_scope_leader": "authenticated Leader with active shifts.manage Brand grant receives review_required; no parent mutation",
+        "foreign_brand_leader": "authenticated Leader without Brand grant denied; pending receipt unchanged",
+        "member": "authenticated Member denied Confirm; pending receipt unchanged",
+        "anonymous": "anon EXECUTE denied; pending receipt unchanged"
+      },
+      "planned_names_created_assignments": false,
+      "unsupported_changes": "all changed source requires explicit manual reconciliation; no automatic mutation is currently supported",
+      "locator_limit": "history matching uses source + source_name + row_number; renamed source or moved row lacks a stable source-document/row identity and requires separate design before claiming support",
+      "synthetic_provider_evidence": "test fixture only; no Google Drive I/O or provider-backed evidence claim"
+    },
+    {
+      "run": 1794850486856,
+      "shift_id": "db0fe2de-740f-43d5-85ec-a99bb3b79410",
+      "segment_ids": [
+        "d076e37c-c7a7-4d24-ba48-a763a2858496",
+        "3bf781b4-5311-4fde-8b29-160ed662ffe6"
+      ],
+      "imported_via": "parseScheduleRows -> SupabaseShiftRepository.create -> authenticated RPC"
+    },
+    {
+      "run": 1794850486856,
+      "shift_id": "8fd480c1-6bd4-461e-a5b5-e4212b17ebe9",
+      "segment_ids": [
+        "ee6cc578-8d65-4ffc-bdf5-41e0ddddb87b",
+        "7255e4df-0f33-458c-846f-e5099b5bf901"
+      ],
+      "imported_via": "parseScheduleRows -> SupabaseShiftRepository.create -> authenticated RPC"
+    },
+    {
+      "run": 1794850486856,
+      "shift_id": "4b631f03-8ab3-493c-a03d-1a8aa9bc9551",
+      "segment_ids": [
+        "85d04e21-b88f-4c7e-80a4-8a8f6b1649ce",
+        "e276a200-6f28-496f-a54d-22b30ad8b47e"
+      ],
+      "imported_via": "parseScheduleRows -> SupabaseShiftRepository.create -> authenticated RPC"
+    },
+    {
+      "run": 1794850486856,
+      "brand_ids": [
+        "brand_65ec755d3e9d41968d",
+        "brand_f422a4d38db34670bd"
+      ],
+      "actor_business_ids": [
+        "Admin_c511_1794850486856_b46e74487cf341",
+        "Reviewer_c511_1794850486856_44d69e4d29aa41",
+        "Leader_c511_1794850486856_af04bc856b4242",
+        "HostOne_c511_1794850486856_28fc0dbd611e40",
+        "HostTwo_c511_1794850486856_817cb0dfd08b46",
+        "HostThree_c511_1794850486856_8145dd3aefcb45",
+        "Support_c511_1794850486856_f20055f2ae924d"
+      ],
+      "shift_id": "db0fe2de-740f-43d5-85ec-a99bb3b79410",
+      "foreign_shift_id": "8fd480c1-6bd4-461e-a5b5-e4212b17ebe9",
+      "registration_ids": [
+        "cd4cb801-60bf-4a8b-b6dc-90f5b6b8f7e9",
+        "18e94fea-2cf3-4bb1-a1a0-aa9d9d6f085c",
+        "de3b5657-63a3-41cf-b245-a286e4c2b877",
+        "1529b4a2-c732-4199-8c28-1f788de66a32"
+      ],
+      "actual_segment_ids": [
+        "f1c38556-a88f-4f47-9ba4-7f29ec6316f4",
+        "5d681153-aa7c-4793-ad35-aaf3d41111f2"
+      ],
+      "attendance_event_ids": [
+        "7b1c90c8-3217-42a2-ae3e-06a41677c25e",
+        "bddd3286-a568-4e34-947f-699c212c0dbd"
+      ],
+      "attendance_photo_receipts": [
+        {
+          "request_id": "86cc6541-25fd-4973-8968-caf807243b6c",
+          "event_kind": "check_in",
+          "external_file_id": "c511-local-file-5917d9dc-001f-4b86-a7ff-3bf733dc938a",
+          "external_parent_id": "c511-local-parent-check_in-e3ad875f-1bd8-4475-9737-9708632d8145",
+          "checksum_sha256": "f867f89ea5c1852169edf5f6ab903a3f7270bddc79def545b261dcbaf2879134"
+        },
+        {
+          "request_id": "a8d4e4bd-af1c-45f4-a3e0-95e3cdb6e599",
+          "event_kind": "check_out",
+          "external_file_id": "c511-local-file-81147a0c-f34a-44dd-b25f-dbf8a18d1850",
+          "external_parent_id": "c511-local-parent-check_out-f795369a-7a26-4339-a7fd-c3ee8687ea02",
+          "checksum_sha256": "0c537f87bdaea1f54d46dc9af1596a9f88745f08d056a3ccdcb37f5379b24011"
+        }
+      ],
+      "attendance_evidence_reviews": [
+        {
+          "attendance_event_id": "7b1c90c8-3217-42a2-ae3e-06a41677c25e",
+          "evidence_request_id": "86cc6541-25fd-4973-8968-caf807243b6c",
+          "version": 1,
+          "evidence_revision": 1,
+          "decision": "approved",
+          "reviewer_id": "Reviewer_c511_1794850486856_44d69e4d29aa41"
+        },
+        {
+          "attendance_event_id": "bddd3286-a568-4e34-947f-699c212c0dbd",
+          "evidence_request_id": "a8d4e4bd-af1c-45f4-a3e0-95e3cdb6e599",
+          "version": 1,
+          "evidence_revision": 1,
+          "decision": "approved",
+          "reviewer_id": "Reviewer_c511_1794850486856_44d69e4d29aa41"
+        }
+      ],
+      "payroll_period_id": "68750a5f-0e9b-40b3-8ae2-065741c7dc32",
+      "payroll_line_ids": [
+        "80e22c6f-6ffd-4bee-bf6c-d975b4bd1a04",
+        "a93e05c1-e0cb-47c2-bafa-26cd3d555657"
+      ],
+      "results": {
+        "leader_same_brand_read": "ALLOW",
+        "leader_foreign_brand_read": "DENY",
+        "leader_foreign_brand_approval": "DENY",
+        "leader_revoked_approval": "DENY",
+        "capacity_exceeded_approval": "DENY",
+        "member_self_approval": "DENY",
+        "member_foreign_registration_mutation": "DENY",
+        "attendance_persisted_after_new_session": "PASS",
+        "photo_receipt_and_checksum_readback": "PASS",
+        "check_in_out_separate_evidence": "PASS",
+        "photo_retry_idempotent": "PASS",
+        "independent_evidence_review": "PASS",
+        "member_self_review": "DENY",
+        "unauthorized_attendance": "DENY",
+        "member_actual_api": "DENY",
+        "expired_session": "DENY",
+        "approved_actual_minutes": "PASS",
+        "missing_rate_reconciled_as_skip": "PASS",
+        "payroll_retry_no_double_count": "PASS",
+        "payroll_roles_separated_and_locked": "PASS",
+        "member_own_payslip": "PASS",
+        "other_member_payslip": "DENY",
+        "forged_payslip_owner": "DENY",
+        "member_payroll_api": "DENY"
+      }
+    }
+  ]
+}

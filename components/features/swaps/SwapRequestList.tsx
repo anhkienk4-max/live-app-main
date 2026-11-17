@@ -110,7 +110,7 @@ export function SwapRequestList() {
   const nameFor = (items: Array<{ id: string; name: string }>, id?: string) => id ? items.find(item => item.id === id)?.name || '—' : '—'
   const userName = (id?: string) => id ? displayUsers.find(user => user.id === id)?.full_name || '—' : '—'
   const roleFor = (swap: SwapRequest): OperationalRole => swap.operational_role || (swap.new_support_id ? 'support' : swap.new_technical_id ? 'technical' : 'host')
-  const replacementFor = (swap: SwapRequest) => swap.replacement_staff_id || swap.new_host_id || swap.new_support_id || swap.new_technical_id
+  const replacementFor = (swap: SwapRequest) => swap.replacement_staff_id || swap.counterpart_id || swap.new_host_id || swap.new_support_id || swap.new_technical_id
   const filtered=mineMode ? swaps.filter(swap => swap.mode === mineMode) : swaps
   const updateFilters = (next: React.SetStateAction<Filters>) => {
     setFilters(next)

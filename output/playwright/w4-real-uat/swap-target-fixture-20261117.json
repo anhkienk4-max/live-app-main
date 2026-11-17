@@ -1,0 +1,22 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "postgres_version": "170011",
+  "brand_id": "brand_ui_1794890074612_22ec09ce",
+  "shift": {
+    "id": "881c2bde-541a-4683-8b0c-7731e9d67402",
+    "title": "W4 UI Exchange Target swap_1794902289481_db42bb72",
+    "date": "2026-11-23",
+    "segment_id": "8acd8daf-830f-42f3-86cb-aa062cfbf3a8"
+  },
+  "counterpart_business_id": "UiOriginal_ui_1794890074612_22ec09ce",
+  "assignment": {
+    "id": "70588f52-08b1-41c5-ad78-aee69b10bb8a",
+    "status": "manually_assigned",
+    "operational_role": "host"
+  },
+  "setup_rpc": {
+    "create_status": 200,
+    "assign_status": 200
+  }
+}

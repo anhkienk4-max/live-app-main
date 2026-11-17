@@ -1,0 +1,40 @@
+{
+  "result": "PASS",
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "shift_id": "d5e4caee-99a0-417b-83b2-16d99519f64f",
+  "registration_id": "c77c9b79-ec21-4f3e-8a9e-e306d2280971",
+  "replace_rpc_count": 2,
+  "api_statuses": [
+    400,
+    400
+  ],
+  "fresh_session_readback": "PASS",
+  "screenshots": [
+    "admin-replace-confirm-desktop.png",
+    "admin-replace-success-desktop.png",
+    "admin-replace-mobile-390.png"
+  ],
+  "target_option_visible": true,
+  "confirm_enabled": true,
+  "ui": "ROUTE_CAPTURED",
+  "route_response": {
+    "status": 200,
+    "code": null
+  },
+  "route_request": {
+    "url": "http://localhost:3102/api/staffing/replacements",
+    "page_origin": "http://localhost:3102",
+    "origin": "http://localhost:3102",
+    "referer": "http://localhost:3102/staffing?shift_tab=staffing",
+    "sec_fetch_site": "same-origin",
+    "host": "localhost:3102"
+  },
+  "roster": {
+    "rows": 2,
+    "old_status": "removed",
+    "new_status": "manually_assigned",
+    "segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe"
+  },
+  "mobile_horizontal_overflow": false
+}

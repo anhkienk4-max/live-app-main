@@ -1,0 +1,53 @@
+{
+  "db": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "role": "member",
+  "route": "/calendar?tab=attendance&mine_view=card",
+  "http": 200,
+  "content": "adaOPS LIVESTREAM EN HC Lịch Quản lý lịch livestream, đăng ký ca và nhập lịch Lịch ca Ca đang mở Ca của tôi Chấm công Import lịch Lịch sử import Chọn ca của bạn để Check-in / Check-out và theo dõi minh chứng. Đăng ký, PASS/Đổi ca và quản lý ca nằm ở mục Ca của tôi. Mở Ca của tôi Bộ lọc 2 ca của tôi C5.11 persisted E2E run 1794886705715 17/11/2026 · 12:09 - 14:09 Host Thương hiệu C5.11 Brand A 1794886705715 Nền tảng C5.11 Platform 1794886705715 Chiến dịch — Trạng thái Đã duyệt Chấm công Ghi chú Xem chi tiết ca W4 UI Atomic Replace ui_1794890074612_22ec09ce 22/11/2026 · 10:00 - 11:00 Host Thương hiệu W4 UI Test Brand ui_1794890074612_22ec09ce Nền tảng W4 UI Test Platform ui_1794890074612_22ec09ce Chiến dịch — Trạng thái Được Admin/Leader phân công Chấm công Ghi chú Xem chi tiết ca Hiển thị 1–2 trên tổng số 2 bản ghi 10 Trang 1 / 1 Tổng quan Lịch trực Ca trực Trực tiếp Thêm",
+  "buttons": [
+    "Tìm kiếm...⌘K",
+    "",
+    "EN",
+    "HCHostOne C5.11 1794886705715member",
+    "Mở Ca của tôi",
+    "Bộ lọc",
+    "Dạng thẻ",
+    "Danh sách gọn",
+    "Dạng bảng",
+    "Tháng",
+    "Chấm công",
+    "Ghi chú",
+    "Xem chi tiết ca",
+    "Chấm công",
+    "Ghi chú",
+    "Xem chi tiết ca",
+    "",
+    "",
+    "",
+    "",
+    "Thêm",
+    ""
+  ],
+  "statuses": [
+    ""
+  ],
+  "api": [
+    {
+      "path": "/api/auth/providers",
+      "status": 200
+    },
+    {
+      "path": "/api/workforce/capabilities",
+      "status": 200
+    },
+    {
+      "path": "/api/rbac/capabilities",
+      "status": 200
+    },
+    {
+      "path": "/api/operations/collection",
+      "status": 200
+    }
+  ]
+}

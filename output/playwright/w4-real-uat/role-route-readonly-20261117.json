@@ -1,0 +1,174 @@
+{
+  "db": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "results": [
+    {
+      "role": "admin",
+      "route": "/calendar",
+      "http": 200,
+      "final": "/calendar",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "admin",
+      "route": "/staffing",
+      "http": 200,
+      "final": "/staffing",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "admin",
+      "route": "/swaps",
+      "http": 200,
+      "final": "/swaps",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "admin",
+      "route": "/payroll",
+      "http": 200,
+      "final": "/payroll",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "admin",
+      "route": "/reports",
+      "http": 200,
+      "final": "/reports",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "admin",
+      "route": "/audit",
+      "http": 200,
+      "final": "/audit",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "admin",
+      "route": "/workforce",
+      "http": 200,
+      "final": "/workforce",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "leader",
+      "route": "/calendar",
+      "http": 200,
+      "final": "/calendar",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "leader",
+      "route": "/staffing",
+      "http": 200,
+      "final": "/staffing",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "leader",
+      "route": "/swaps",
+      "http": 200,
+      "final": "/swaps",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "leader",
+      "route": "/payroll",
+      "http": 200,
+      "final": "/payroll",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "leader",
+      "route": "/reports",
+      "http": 200,
+      "final": "/reports",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "leader",
+      "route": "/audit",
+      "http": 200,
+      "final": "/audit",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "leader",
+      "route": "/workforce",
+      "http": 200,
+      "final": "/workforce",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "member",
+      "route": "/calendar",
+      "http": 200,
+      "final": "/calendar",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "member",
+      "route": "/staffing",
+      "http": 200,
+      "final": "/staffing",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "member",
+      "route": "/swaps",
+      "http": 200,
+      "final": "/swaps",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "member",
+      "route": "/payroll",
+      "http": 200,
+      "final": "/payroll",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "member",
+      "route": "/reports",
+      "http": 200,
+      "final": "/reports",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "member",
+      "route": "/audit",
+      "http": 200,
+      "final": "/audit",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    },
+    {
+      "role": "member",
+      "route": "/workforce",
+      "http": 200,
+      "final": "/workforce",
+      "text": "LiveStream Ops TỔNG QUAN Tổng quan Hồ sơ Thông báo VẬN HÀNH LIVESTREAM Lịch Ca trực Ca đang mở Lịch trình của tôi Đăng ký ca Điều phối ca Đổi ca Trực tiếp Chấm công DỮ LIỆU & BÁO CÁO Báo cáo Phân tích Kho file Danh mục s",
+      "errors": []
+    }
+  ]
+}

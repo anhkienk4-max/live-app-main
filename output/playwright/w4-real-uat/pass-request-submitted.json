@@ -1,0 +1,69 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "pg": "170011",
+  "member": "HostOne_c511_1794886705715_5f2238403c0c40",
+  "admin": "admin_ui_1794890054824_7496b893",
+  "ui_success": true,
+  "conflict_preflight_clear": true,
+  "rpc": [
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_staff_directory",
+      "body": {
+        "id": "Admin_c511_1794886705715_88a2dc746f2647"
+      }
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_staff_directory",
+      "body": {
+        "id": "Admin_c511_1794886705715_88a2dc746f2647"
+      }
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_staff_directory",
+      "body": {
+        "id": "Admin_c511_1794886705715_88a2dc746f2647"
+      }
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/check_shift_swap_conflict",
+      "body": "VERIFIED_CLEAR"
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/create_shift_swap_request",
+      "body": {
+        "id": "5cb0960d-7322-4da0-9c62-c2d7b088e40d",
+        "status": "pending",
+        "version": 2
+      }
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_staff_directory",
+      "body": {
+        "id": "Admin_c511_1794886705715_88a2dc746f2647"
+      }
+    },
+    {
+      "status": 200,
+      "path": "/rest/v1/rpc/get_shift_staffing_summary",
+      "body": {}
+    }
+  ],
+  "request": {
+    "id": "5cb0960d-7322-4da0-9c62-c2d7b088e40d",
+    "requester_id": "HostOne_c511_1794886705715_5f2238403c0c40",
+    "replacement_staff_id": "UiReplacement_ui_1794890074612_22ec09ce",
+    "mode": "replacement",
+    "status": "pending",
+    "version": 2,
+    "shift_id": "d5e4caee-99a0-417b-83b2-16d99519f64f"
+  },
+  "fresh_session_readback_http": 200,
+  "screenshot": "C:\\Users\\KienNguyen\\Downloads\\KIEN ADA code\\OPS LIVESTREAM PLATFORM\\rc19-w4-final-integration\\output\\playwright\\w4-real-uat/pass-request-submitted.png"
+}

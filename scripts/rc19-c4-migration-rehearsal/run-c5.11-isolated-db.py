@@ -26,11 +26,12 @@ POST_20261111_MIGRATIONS = [
     ("20261112130000", ROOT / "supabase/migrations/20261112130000_rc19_c6_import_source_reconciliation.sql", "rc19_c6_import_source_reconciliation"),
     ("20261113083000", ROOT / "supabase/migrations/20261113083000_rc19_c4_audit_dependency.sql", "rc19_c4_audit_dependency"),
     ("20261113084154", ROOT / "supabase/migrations/20261113084154_rc19_c4_atomic_staffing_replacement.sql", "rc19_c4_atomic_staffing_replacement"),
-    ("20261115120000", ROOT / "supabase/migrations/20261115120000_rc19_w4_legacy_segment_compatibility.sql", "rc19_w4_legacy_segment_compatibility"),
-    ("20261115130000", ROOT / "supabase/migrations/20261115130000_rc19_w4_segmented_manual_assignment.sql", "rc19_w4_segmented_manual_assignment"),
-    ("20261115140000", ROOT / "supabase/migrations/20261115140000_rc19_w4_pass_swap_segment_preservation.sql", "rc19_w4_pass_swap_segment_preservation"),
-    ("20261115174231", ROOT / "supabase/migrations/20261115174231_rc19_w4_retire_unguarded_swap_approval.sql", "rc19_w4_retire_unguarded_swap_approval"),
-    ("20261116120000", ROOT / "supabase/migrations/20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql", "rc19_w4_swap_preflight_and_segment_capacity"),
+        ("20261115120000", ROOT / "supabase/migrations/20261115120000_rc19_w4_legacy_segment_compatibility.sql", "rc19_w4_legacy_segment_compatibility"),
+        ("20261115130000", ROOT / "supabase/migrations/20261115130000_rc19_w4_segmented_manual_assignment.sql", "rc19_w4_segmented_manual_assignment"),
+        ("20261115140000", ROOT / "supabase/migrations/20261115140000_rc19_w4_pass_swap_segment_preservation.sql", "rc19_w4_pass_swap_segment_preservation"),
+        ("20261115174231", ROOT / "supabase/migrations/20261115174231_rc19_w4_retire_unguarded_swap_approval.sql", "rc19_w4_retire_unguarded_swap_approval"),
+        ("20261116120000", ROOT / "supabase/migrations/20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql", "rc19_w4_swap_preflight_and_segment_capacity"),
+        ("20261117160000", ROOT / "supabase/migrations/20261117160000_rc19_w4_pass_recipient_visibility.sql", "rc19_w4_pass_recipient_visibility"),
 ]
 MIGRATIONS_C515 = [
     ("20261110115529", ROOT / "supabase/migrations/20261110115529_rc19_c515_payroll_second_precision.sql", "rc19_c515_payroll_second_precision"),
@@ -42,12 +43,19 @@ SOURCE_DB = "postgres"
 SOURCE_MARKER = "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY"
 
 
-DB_CONTAINER = os.environ.get("C511_DB_CONTAINER", "supabase_db_rc19-supabase-recovery")
+DB_CONTAINER = os.environ.get("C511_DB_CONTAINER", "")
+NETWORK = os.environ.get("C511_NETWORK", "")
+NATIVE_PGHOST = os.environ.get("C511_NATIVE_PGHOST", "")
+NATIVE_PGPORT = os.environ.get("C511_NATIVE_PGPORT", "")
+NATIVE_PGDATA = os.environ.get("C511_NATIVE_PGDATA", "")
 
 
 def run(args: list[str], *, input_text: str | None = None, timeout: int = 180) -> str:
     if args[0] in {"psql", "pg_dump", "createdb"}:
-        args = ["docker", "exec", "-i", DB_CONTAINER, *args]
+        if NATIVE_PGHOST:
+            args = [*args[:1], "-h", NATIVE_PGHOST, "-p", NATIVE_PGPORT, *args[1:]]
+        else:
+            args = ["docker", "exec", "-i", DB_CONTAINER, *args]
     result = subprocess.run(args, input=input_text, text=True, encoding="utf-8", capture_output=True,
                             timeout=timeout)
     if result.returncode:
@@ -69,6 +77,26 @@ def exact_sha(path: Path) -> str:
 
 
 def main() -> None:
+    native = bool(NATIVE_PGHOST)
+    if native:
+        if (NATIVE_PGHOST != "/home/anhkienk4/.local/share/rc19-c511-native" or
+                NATIVE_PGPORT != "55439" or
+                NATIVE_PGDATA != "/home/anhkienk4/.local/share/rc19-c511-native/pgdata"):
+            raise RuntimeError("REFUSED_UNVERIFIED_NATIVE_C5_C11_CLUSTER")
+    elif (not DB_CONTAINER.startswith("codexb-c511-pg-") or
+          not NETWORK.startswith("codexb-c511-") or
+          not os.environ.get("C511_LOCAL_DB_PORT", "").isdecimal()):
+        raise RuntimeError("REFUSED_MISSING_EXPLICIT_C5_C11_DISPOSABLE_STACK")
+    if not native:
+        container = json.loads(run(["docker", "inspect", DB_CONTAINER], timeout=10))[0]
+        labels = container.get("Config", {}).get("Labels") or {}
+        networks = container.get("NetworkSettings", {}).get("Networks") or {}
+        network = json.loads(run(["docker", "network", "inspect", NETWORK], timeout=10))[0]
+        if (labels.get("codex.owner") != "side-c5-c11" or set(networks) != {NETWORK} or
+                (network.get("Labels") or {}).get("codex.owner") != "side-c5-c11" or
+                (network.get("Options") or {}).get("com.docker.network.bridge.host_binding_ipv4") != "127.0.0.1" or
+                len(network.get("Containers") or {}) != 1):
+            raise RuntimeError("REFUSED_NON_DEDICATED_C5_C11_DISPOSABLE_STACK")
     source_head = sys.argv[1] if len(sys.argv) > 1 else "UNRECORDED"
     worktree_dirty = sys.argv[2].lower() == "true" if len(sys.argv) > 2 else True
     baseline_result = json.loads(BASELINE_RESULT.read_text(encoding="utf-8-sig"))
@@ -100,14 +128,20 @@ def main() -> None:
         raise RuntimeError("REFUSED_SOURCE_STACK_IDENTITY")
     if not (170000 <= int(fields[0]) < 180000) or fields[3] != "0":
         raise RuntimeError("REFUSED_SOURCE_PG_VERSION_OR_AUTH_STATE")
-    docker_running = run(["docker", "inspect", "--format", "{{.State.Running}}", DB_CONTAINER], timeout=10)
-    listeners = run(["docker", "port", DB_CONTAINER], timeout=10)
-    db_port = os.environ.get("C511_LOCAL_DB_PORT", "54322")
-    published = [line.strip() for line in listeners.splitlines() if line.strip()]
-    if (not db_port.isdecimal() or not 1 <= int(db_port) <= 65535 or
-            docker_running.strip() != "true" or not published or
-            any(not line.endswith(f"127.0.0.1:{db_port}") for line in published)):
-        raise RuntimeError("REFUSED_NON_LOOPBACK_SUPABASE_RUNTIME")
+    if native:
+        native_identity = query("select current_setting('data_directory')||'|'||current_setting('listen_addresses')||'|'||current_setting('port')")
+        if native_identity.strip() != f"{NATIVE_PGDATA}|127.0.0.1|{NATIVE_PGPORT}":
+            raise RuntimeError("REFUSED_NATIVE_CLUSTER_BINDING_OR_DATA_DIRECTORY:" + native_identity)
+        db_port = NATIVE_PGPORT
+    else:
+        docker_running = run(["docker", "inspect", "--format", "{{.State.Running}}", DB_CONTAINER], timeout=10)
+        listeners = run(["docker", "port", DB_CONTAINER], timeout=10)
+        db_port = os.environ.get("C511_LOCAL_DB_PORT", "54322")
+        published = [line.strip() for line in listeners.splitlines() if line.strip()]
+        if (not db_port.isdecimal() or not 1 <= int(db_port) <= 65535 or
+                docker_running.strip() != "true" or not published or
+                any(not line.endswith(f"127.0.0.1:{db_port}") for line in published)):
+            raise RuntimeError("REFUSED_NON_LOOPBACK_SUPABASE_RUNTIME")
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     db_name = "rc19_c511_e2e_" + run_id.replace("T", "").replace("Z", "")

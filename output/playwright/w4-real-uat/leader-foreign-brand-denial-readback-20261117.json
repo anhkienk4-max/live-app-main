@@ -1,0 +1,17 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "actor_role": "leader",
+  "foreign_shift": "3b62f62c-0813-4c09-9c9f-1903b3372231",
+  "foreign_brand": "brand_8ccb685a444e4c8ba2",
+  "before_count": 1,
+  "after_count": 1,
+  "before_sha256": "4bb4ae71565fe32f5416917127e1d7693223c97c156edb619bbe2a24123ee4bc",
+  "after_sha256": "4bb4ae71565fe32f5416917127e1d7693223c97c156edb619bbe2a24123ee4bc",
+  "denial": {
+    "http_status": 403,
+    "sqlstate": "42501",
+    "code": "LEADER_BRAND_SCOPE_REQUIRED"
+  },
+  "unchanged": true
+}

@@ -4126,13 +4126,13 @@ export const swapRequestService = {
     const { search, statuses, scope, requesterIds, roles, ...shiftFilters } = f
     const ids = new Set(filterMockList(shifts, shiftFilters).map(shift => shift.id))
     const filtered = all.filter(swap => ids.has(swap.shift_id)
-      && (!scope || scope === 'all' || (scope === 'mine' ? swap.requester_id === actor.id : swap.counterpart_id === actor.id))
+      && (!scope || scope === 'all' || (scope === 'mine' ? swap.requester_id === actor.id : swapParticipantId(swap) === actor.id))
       && (!requesterIds?.length || requesterIds.includes(swap.requester_id))
       && (!statuses?.length || statuses.includes(swap.status))
       && (!roles?.length || roles.includes(swap.operational_role ?? (swap.new_support_id ? 'support' : swap.new_technical_id ? 'technical' : 'host')))
       && (!search || [swap.id, shifts.find(s=>s.id===swap.shift_id)?.title, swap.reason, users.find(u=>u.id===swap.requester_id)?.full_name, users.find(u=>u.id===(swap.replacement_staff_id||swap.counterpart_id))?.full_name].join(' ').toLowerCase().includes(search.trim().toLowerCase())))
       .sort((a,b)=>b.created_at.localeCompare(a.created_at)||a.id.localeCompare(b.id))
-    return { ...localListPage(filtered,query), counts: { all: all.length, mine: all.filter(s=>s.requester_id===actor.id).length, forMe: all.filter(s=>s.counterpart_id===actor.id).length,
+    return { ...localListPage(filtered,query), counts: { all: all.length, mine: all.filter(s=>s.requester_id===actor.id).length, forMe: all.filter(s=>swapParticipantId(s)===actor.id).length,
       pending: all.filter(s=>s.status==='pending').length, accepted: all.filter(s=>s.status==='accepted'||s.status==='approved').length,
       completed: all.filter(s=>s.status==='completed').length, rejected: all.filter(s=>s.status==='rejected').length, cancelled: all.filter(s=>s.status==='cancelled').length } }
   },
