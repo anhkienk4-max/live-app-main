@@ -1,756 +1,19 @@
--- RC19 W4 PRODUCTION CONSOLIDATED MIGRATION MANIFEST (Migrations 118-130)
+-- RC19 W4 PRODUCTION CONSOLIDATED MIGRATION MANIFEST (11 Verified Unapplied Migrations)
 -- Target: Supabase Production (egdjnpmoasarrttvhgds)
--- Generated at: 2026-11-17T10:51:41.579Z
+-- Generated at: 2026-11-17T16:11:30.214Z
+-- Reconciled: Excludes already-applied 20261110140000 and 20261111000000
 
 BEGIN;
-
-/*******************************************************************************
- * Migration: 20261110140000_rc19_c515_overtime_cancellation_approvals.sql
- * Version:   20261110140000
- *******************************************************************************/
--- BEGIN (nested)
-create table public.workforce_overtime_requests (
-  id uuid primary key default gen_random_uuid(),
-  segment_id text not null unique references public.workforce_actual_segments(id) on delete restrict,
-  overtime_start_at timestamptz not null,
-  overtime_end_at timestamptz not null,
-  overtime_seconds integer generated always as
-    (extract(epoch from (overtime_end_at-overtime_start_at))::integer) stored,
-  day_class text not null check (day_class in ('weekday','weekend','holiday')),
-  time_class text not null check (time_class in ('day','night')),
-  reason text not null check (char_length(btrim(reason)) between 8 and 2000),
-  evidence_receipt_id text not null check (char_length(btrim(evidence_receipt_id)) between 1 and 200),
-  requested_by text not null references public.business_users(id) on delete restrict,
-  leader_preapproved_by text references public.business_users(id) on delete restrict,
-  admin_confirmed_by text references public.business_users(id) on delete restrict,
-  rate_card_id text references public.workforce_rate_cards(id) on delete restrict,
-  multiplier_basis_points integer check (multiplier_basis_points between 10000 and 50000),
-  state text not null check (state in ('pending_admin_confirmation','admin_confirmed','rejected')),
-  version integer not null default 1 check (version > 0),
-  idempotency_key uuid not null unique,
-  created_at timestamptz not null default statement_timestamp(),
-  updated_at timestamptz not null default statement_timestamp(),
-  check (overtime_end_at > overtime_start_at),
-  check ((state='admin_confirmed' and admin_confirmed_by is not null and rate_card_id is not null
-      and multiplier_basis_points is not null)
-    or (state<>'admin_confirmed' and admin_confirmed_by is null)),
-  check (leader_preapproved_by is null or leader_preapproved_by<>admin_confirmed_by)
-);
-create index workforce_overtime_requests_queue_idx on public.workforce_overtime_requests(state,created_at);
-
-create table public.workforce_overtime_request_events (
-  id uuid primary key default gen_random_uuid(),
-  request_id uuid not null references public.workforce_overtime_requests(id) on delete restrict,
-  actor_id text not null references public.business_users(id) on delete restrict,
-  action text not null check (action in ('requested','leader_preapproved','admin_confirmed','rejected')),
-  from_state text,
-  to_state text not null,
-  reason text not null check (char_length(btrim(reason)) between 8 and 2000),
-  version integer not null check (version > 0),
-  idempotency_key uuid not null unique,
-  created_at timestamptz not null default statement_timestamp(),
-  unique(request_id,version)
-);
-
-alter table public.workforce_payroll_lines
-  add column overtime_request_id uuid references public.workforce_overtime_requests(id) on delete restrict,
-  add column overtime_day_class text,
-  add column overtime_time_class text,
-  add constraint workforce_payroll_overtime_contract check (
-    actual_seconds is null or overtime_seconds=0 or
-    (overtime_request_id is not null and overtime_day_class in ('weekday','weekend','holiday')
-      and overtime_time_class in ('day','night'))
-  );
-
-create table public.workforce_cancellation_compensation_cases (
-  id uuid primary key default gen_random_uuid(),
-  shift_id text not null references public.shifts(id) on delete restrict,
-  staff_id text not null references public.business_users(id) on delete restrict,
-  operational_role text not null check (operational_role in ('host','support','technical')),
-  actual_seconds integer not null default 0 check (actual_seconds between 0 and 86400),
-  actual_earnings_vnd bigint check (actual_earnings_vnd is null or actual_earnings_vnd between 0 and 1000000000000),
-  actual_segment_id text references public.workforce_actual_segments(id) on delete restrict,
-  registration_id text references public.shift_registrations(id) on delete restrict,
-  cancellation_source text not null check (cancellation_source='brand_ada'),
-  cancellation_reason text not null check (char_length(btrim(cancellation_reason)) between 8 and 2000),
-  reason text not null check (char_length(btrim(reason)) between 8 and 2000),
-  evidence_receipt_id text not null check (char_length(btrim(evidence_receipt_id)) between 1 and 200),
-  proposed_amount_vnd bigint not null check (proposed_amount_vnd between 1 and 1000000000000),
-  proposed_by text not null references public.business_users(id) on delete restrict,
-  leader_preapproved_by text references public.business_users(id) on delete restrict,
-  admin_confirmed_by text references public.business_users(id) on delete restrict,
-  period_id text not null references public.workforce_payroll_periods(id) on delete restrict,
-  state text not null check (state in ('pending_admin_confirmation','admin_confirmed','rejected')),
-  version integer not null default 1 check (version > 0),
-  idempotency_key uuid not null unique,
-  created_at timestamptz not null default statement_timestamp(),
-  updated_at timestamptz not null default statement_timestamp(),
-  check ((actual_segment_id is not null) <> (registration_id is not null)),
-  check ((state='admin_confirmed' and admin_confirmed_by is not null)
-    or (state<>'admin_confirmed' and admin_confirmed_by is null)),
-  check (leader_preapproved_by is null or leader_preapproved_by<>admin_confirmed_by)
-);
-create index workforce_cancellation_compensation_queue_idx
-  on public.workforce_cancellation_compensation_cases(state,period_id,created_at);
-create unique index workforce_cancellation_compensation_assignment_active_uq
-  on public.workforce_cancellation_compensation_cases((coalesce(actual_segment_id,registration_id)))
-  where state in ('pending_admin_confirmation','admin_confirmed');
-
-create table public.workforce_cancellation_compensation_events (
-  id uuid primary key default gen_random_uuid(),
-  case_id uuid not null references public.workforce_cancellation_compensation_cases(id) on delete restrict,
-  actor_id text not null references public.business_users(id) on delete restrict,
-  action text not null check (action in ('proposed','leader_preapproved','admin_confirmed','rejected','edited')),
-  from_state text,
-  to_state text not null,
-  reason text not null check (char_length(btrim(reason)) between 8 and 2000),
-  amount_vnd bigint not null check (amount_vnd between 1 and 1000000000000),
-  version integer not null check (version > 0),
-  idempotency_key uuid not null unique,
-  created_at timestamptz not null default statement_timestamp(),
-  unique(case_id,version)
-);
-
-create table public.workforce_payroll_adjustments (
-  id uuid primary key default gen_random_uuid(),
-  period_id text not null references public.workforce_payroll_periods(id) on delete restrict,
-  compensation_case_id uuid not null unique references public.workforce_cancellation_compensation_cases(id) on delete restrict,
-  staff_id text not null references public.business_users(id) on delete restrict,
-  operational_role text not null check (operational_role in ('host','support','technical')),
-  amount_vnd bigint not null check (amount_vnd between 1 and 1000000000000),
-  reason text not null check (char_length(btrim(reason)) between 8 and 2000),
-  confirmed_by text not null references public.business_users(id) on delete restrict,
-  created_at timestamptz not null default statement_timestamp()
-);
-create index workforce_payroll_adjustments_period_idx on public.workforce_payroll_adjustments(period_id,staff_id);
-
-alter table public.workforce_overtime_requests enable row level security;
-alter table public.workforce_overtime_request_events enable row level security;
-alter table public.workforce_cancellation_compensation_cases enable row level security;
-alter table public.workforce_cancellation_compensation_events enable row level security;
-alter table public.workforce_payroll_adjustments enable row level security;
-revoke all on public.workforce_overtime_requests,
-  public.workforce_overtime_request_events, public.workforce_cancellation_compensation_cases,
-  public.workforce_cancellation_compensation_events, public.workforce_payroll_adjustments
-  from public,anon,authenticated;
-grant select on public.workforce_overtime_requests,
-  public.workforce_overtime_request_events,public.workforce_cancellation_compensation_cases,
-  public.workforce_cancellation_compensation_events,public.workforce_payroll_adjustments to service_role;
-
-create or replace function public.rc19_c515_request_overtime(
-  p_segment_id text,p_start_at timestamptz,p_end_at timestamptz,p_day_class text,p_time_class text,
-  p_reason text,p_evidence_receipt_id text,p_idempotency_key uuid
-) returns public.workforce_overtime_requests
-language plpgsql security definer set search_path='' as $$
-declare v_actor text:=private.current_business_user_id(); v_segment public.workforce_actual_segments%rowtype;
-  v_shift public.shifts%rowtype; v_request public.workforce_overtime_requests%rowtype; v_existing public.workforce_overtime_requests%rowtype;
--- BEGIN (nested)
-  if v_actor is null or not private.current_business_user_is_active()
-    or private.current_system_permission() not in ('leader','admin') then
-    raise exception 'C515_OT_ACTOR_FORBIDDEN' using errcode='42501'; end if;
-  if p_idempotency_key is null or p_start_at is null or p_end_at<=p_start_at
-    or p_day_class not in ('weekday','weekend','holiday') or p_time_class not in ('day','night')
-    or char_length(btrim(coalesce(p_reason,''))) not between 8 and 2000
-    or char_length(btrim(coalesce(p_evidence_receipt_id,''))) not between 1 and 200 then
-    raise exception 'C515_OT_REQUEST_INVALID'; end if;
-  select * into v_segment from public.workforce_actual_segments where id=p_segment_id for update;
-  if not found or v_segment.event_kind<>'worked' or v_segment.review_status<>'approved'
-    or v_segment.actual_start_at is null or v_segment.actual_end_at is null
-    or p_start_at<v_segment.actual_start_at or p_end_at>v_segment.actual_end_at then
-    raise exception 'C515_OT_INTERVAL_NOT_APPROVED'; end if;
-  select * into v_shift from public.shifts where id=v_segment.shift_id and deleted_at is null;
-  if not found then raise exception 'C515_OT_SHIFT_NOT_FOUND'; end if;
-  if private.current_system_permission()='leader' and not private.rc19_has_any_leader_brand_scope(
-    v_shift.brand_id,array['staff.manage','workforce.read']) then
-    raise exception 'C515_OT_BRAND_SCOPE_DENIED' using errcode='42501'; end if;
-  if v_actor=v_segment.staff_id then raise exception 'C515_OT_SELF_REVIEW_BLOCKED' using errcode='42501'; end if;
-  if not exists(select 1 from public.operational_files f where f.id=btrim(p_evidence_receipt_id)
-    and f.shift_id=v_shift.id and f.brand_id=v_shift.brand_id and f.platform_id=v_shift.platform_id
-    and f.integrity_status='sha256_verified' and f.checksum_sha256 ~ '^[a-f0-9]{64}$'
-    and nullif(btrim(f.external_file_id),'') is not null and nullif(btrim(f.external_parent_id),'') is not null
-    and f.deleted_at is null) then raise exception 'C515_OT_EVIDENCE_RECEIPT_UNVERIFIED'; end if;
-  perform pg_advisory_xact_lock(hashtextextended('c515_ot:'||p_idempotency_key::text,0));
-  select * into v_existing from public.workforce_overtime_requests where idempotency_key=p_idempotency_key;
-  if found then
-    if (v_existing.segment_id,v_existing.overtime_start_at,v_existing.overtime_end_at,v_existing.day_class,
-      v_existing.time_class,v_existing.reason,v_existing.evidence_receipt_id)
-      is distinct from (p_segment_id,p_start_at,p_end_at,p_day_class,p_time_class,btrim(p_reason),btrim(p_evidence_receipt_id)) then
-      raise exception 'C515_OT_IDEMPOTENCY_CONFLICT' using errcode='23505'; end if;
-    return v_existing;
-  end if;
-  if exists(select 1 from public.workforce_overtime_requests where segment_id=p_segment_id) then
-    raise exception 'C515_OT_SEGMENT_ALREADY_HAS_REQUEST' using errcode='23505'; end if;
-  insert into public.workforce_overtime_requests(segment_id,overtime_start_at,overtime_end_at,day_class,time_class,
-    reason,evidence_receipt_id,requested_by,leader_preapproved_by,state,idempotency_key)
-  values(p_segment_id,p_start_at,p_end_at,p_day_class,p_time_class,btrim(p_reason),btrim(p_evidence_receipt_id),
-    v_actor,case when private.current_system_permission()='leader' then v_actor else null end,
-    'pending_admin_confirmation',p_idempotency_key) returning * into v_request;
-  insert into public.workforce_overtime_request_events(request_id,actor_id,action,from_state,to_state,reason,version,idempotency_key)
-  values(v_request.id,v_actor,case when private.current_system_permission()='leader' then 'leader_preapproved' else 'requested' end,
-    null,v_request.state,btrim(p_reason),1,gen_random_uuid());
-  return v_request;
-end $$;
-alter function public.rc19_c515_request_overtime(text,timestamptz,timestamptz,text,text,text,text,uuid) owner to postgres;
-revoke all on function public.rc19_c515_request_overtime(text,timestamptz,timestamptz,text,text,text,text,uuid) from public,anon,authenticated,service_role;
-grant execute on function public.rc19_c515_request_overtime(text,timestamptz,timestamptz,text,text,text,text,uuid) to authenticated;
-
-create or replace function public.rc19_c515_decide_overtime_request(
-  p_request_id uuid,p_expected_version integer,p_action text,p_reason text,p_idempotency_key uuid
-) returns public.workforce_overtime_requests
-language plpgsql security definer set search_path='' as $$
-declare v_actor text:=private.current_business_user_id(); v_request public.workforce_overtime_requests%rowtype;
-  v_segment public.workforce_actual_segments%rowtype; v_shift public.shifts%rowtype;
-  v_rate public.workforce_rate_cards%rowtype; v_count integer; v_next text; v_action text; v_replay public.workforce_overtime_request_events%rowtype;
--- BEGIN (nested)
-  if v_actor is null or not private.current_business_user_is_active()
-    or private.current_system_permission() not in ('leader','admin') then
-    raise exception 'C515_OT_ACTOR_FORBIDDEN' using errcode='42501'; end if;
-  if p_idempotency_key is null or p_expected_version<1 or p_action not in ('leader_preapprove','admin_confirm','reject')
-    or char_length(btrim(coalesce(p_reason,''))) not between 8 and 2000 then raise exception 'C515_OT_DECISION_INVALID'; end if;
-  perform pg_advisory_xact_lock(hashtextextended('c515_ot_decide:'||p_idempotency_key::text,0));
-  select * into v_replay from public.workforce_overtime_request_events where idempotency_key=p_idempotency_key;
-  if found then
-    if v_replay.request_id<>p_request_id
-      or v_replay.action is distinct from (case p_action when 'admin_confirm' then 'admin_confirmed'
-        when 'reject' then 'rejected' else p_action end)
-      or v_replay.reason<>btrim(p_reason) then
-      raise exception 'C515_OT_IDEMPOTENCY_CONFLICT' using errcode='23505'; end if;
-    select * into v_request from public.workforce_overtime_requests where id=p_request_id;
-    return v_request;
-  end if;
-  select * into v_request from public.workforce_overtime_requests where id=p_request_id for update;
-  if not found or v_request.version<>p_expected_version then raise exception 'C515_OT_STALE_REQUEST' using errcode='40001'; end if;
-  select * into v_segment from public.workforce_actual_segments where id=v_request.segment_id for share;
-  select * into v_shift from public.shifts where id=v_segment.shift_id and deleted_at is null;
-  if not found or v_segment.review_status<>'approved' or v_segment.event_kind<>'worked'
-    or v_request.overtime_start_at<v_segment.actual_start_at or v_request.overtime_end_at>v_segment.actual_end_at then
-    raise exception 'C515_OT_ACTUAL_CHANGED'; end if;
-  if private.current_system_permission()='leader' then
-    if not private.rc19_has_any_leader_brand_scope(v_shift.brand_id,array['staff.manage','workforce.read'])
-      then raise exception 'C515_OT_BRAND_SCOPE_DENIED' using errcode='42501'; end if;
-    if p_action<>'leader_preapprove' or v_request.state<>'pending_admin_confirmation'
-      or v_actor=v_segment.staff_id or v_request.leader_preapproved_by is not null then
-      raise exception 'C515_OT_ADMIN_CONFIRM_REQUIRED' using errcode='42501'; end if;
-    update public.workforce_overtime_requests set leader_preapproved_by=v_actor,
-      version=version+1,updated_at=statement_timestamp() where id=p_request_id returning * into v_request;
-    insert into public.workforce_overtime_request_events(request_id,actor_id,action,from_state,to_state,reason,version,idempotency_key)
-    values(v_request.id,v_actor,'leader_preapproved','pending_admin_confirmation','pending_admin_confirmation',
-      btrim(p_reason),v_request.version,p_idempotency_key);
-    return v_request;
-  end if;
-  if p_action='leader_preapprove' then raise exception 'C515_OT_LEADER_REQUIRED'; end if;
-  if v_actor=v_segment.staff_id or (v_actor=v_request.requested_by
-      and not (private.current_system_permission()='admin' and v_request.leader_preapproved_by is null)) then
-    raise exception 'C515_OT_SELF_CONFIRM_BLOCKED' using errcode='42501'; end if;
-  if p_action='reject' then
-    v_next:='rejected'; v_action:='rejected';
-  else
-    if v_request.state<>'pending_admin_confirmation' then raise exception 'C515_OT_INVALID_TRANSITION'; end if;
-    select count(*) into v_count from public.workforce_rate_cards r where r.operational_role=v_segment.operational_role
-      and r.approved_by is not null and r.approved_at is not null
-      and (r.staff_id=v_segment.staff_id or r.staff_id is null)
-      and r.effective_from<=v_shift.date and (r.effective_through is null or r.effective_through>=v_shift.date)
-      and (r.staff_id=v_segment.staff_id or not exists(select 1 from public.workforce_rate_cards specific
-        where specific.staff_id=v_segment.staff_id and specific.operational_role=v_segment.operational_role
-          and specific.approved_by is not null and specific.approved_at is not null
-          and specific.effective_from<=v_shift.date and (specific.effective_through is null or specific.effective_through>=v_shift.date)));
-    if v_count<>1 then raise exception 'C515_OT_RATE_NOT_CONFIGURED'; end if;
-    select r.* into v_rate from public.workforce_rate_cards r where r.operational_role=v_segment.operational_role
-      and r.approved_by is not null and r.approved_at is not null
-      and (r.staff_id=v_segment.staff_id or r.staff_id is null)
-      and r.effective_from<=v_shift.date and (r.effective_through is null or r.effective_through>=v_shift.date)
-      and (r.staff_id=v_segment.staff_id or not exists(select 1 from public.workforce_rate_cards specific
-        where specific.staff_id=v_segment.staff_id and specific.operational_role=v_segment.operational_role
-          and specific.approved_by is not null and specific.approved_at is not null
-          and specific.effective_from<=v_shift.date and (specific.effective_through is null or specific.effective_through>=v_shift.date)));
-    v_next:='admin_confirmed'; v_action:='admin_confirmed';
-  end if;
-  update public.workforce_overtime_requests set state=v_next,admin_confirmed_by=case when v_next='admin_confirmed' then v_actor else null end,
-    rate_card_id=case when v_next='admin_confirmed' then v_rate.id else null end,
-    multiplier_basis_points=case when v_next='admin_confirmed' then v_rate.overtime_multiplier_basis_points else null end,
-    version=version+1,updated_at=statement_timestamp() where id=p_request_id returning * into v_request;
-  insert into public.workforce_overtime_request_events(request_id,actor_id,action,from_state,to_state,reason,version,idempotency_key)
-  values(v_request.id,v_actor,v_action,'pending_admin_confirmation',v_next,btrim(p_reason),v_request.version,p_idempotency_key);
-  return v_request;
-end $$;
-alter function public.rc19_c515_decide_overtime_request(uuid,integer,text,text,uuid) owner to postgres;
-revoke all on function public.rc19_c515_decide_overtime_request(uuid,integer,text,text,uuid) from public,anon,authenticated,service_role;
-grant execute on function public.rc19_c515_decide_overtime_request(uuid,integer,text,text,uuid) to authenticated;
-
-create or replace function private.rc19_c515_overtime_line_guard()
-returns trigger language plpgsql security definer set search_path='' as $$
-declare v_request public.workforce_overtime_requests%rowtype;
-  v_segment public.workforce_actual_segments%rowtype; v_shift_date date;
--- BEGIN (nested)
-  if tg_op='DELETE' then return old; end if;
-  if tg_op='INSERT' then
-    select * into v_segment from public.workforce_actual_segments where id=new.segment_id;
-    if found then select date into v_shift_date from public.shifts where id=v_segment.shift_id; end if;
-    if found and v_shift_date>=date '2026-11-10' then
-      select * into v_request from public.workforce_overtime_requests
-        where segment_id=new.segment_id and state='admin_confirmed';
-      if found then
-        if v_request.rate_card_id is null or v_request.multiplier_basis_points is null
-          or v_request.overtime_seconds<=0 then raise exception 'C515_OT_APPROVAL_REQUIRED' using errcode='42501'; end if;
-        new.overtime_request_id:=v_request.id;
-        new.overtime_day_class:=v_request.day_class;
-        new.overtime_time_class:=v_request.time_class;
-        new.overtime_seconds:=v_request.overtime_seconds;
-        new.actual_seconds:=extract(epoch from (date_trunc('second',v_segment.actual_end_at)-date_trunc('second',v_segment.actual_start_at)))::integer;
-        new.payable_seconds:=new.actual_seconds;
-        new.rate_card_id:=v_request.rate_card_id;
-        select r.vnd_per_hour,r.overtime_multiplier_basis_points into new.rate_vnd_per_hour,new.overtime_multiplier_basis_points
-          from public.workforce_rate_cards r where r.id=v_request.rate_card_id
-            and r.approved_by is not null and r.approved_at is not null;
-        if not found then raise exception 'C515_OT_RATE_NOT_CONFIGURED'; end if;
-      end if;
-    end if;
-  end if;
-  if new.actual_seconds is not null and coalesce(new.overtime_seconds,0)>0 then
-    select * into v_request from public.workforce_overtime_requests where id=new.overtime_request_id;
-    if not found or v_request.state<>'admin_confirmed' or v_request.segment_id<>new.segment_id
-      or v_request.overtime_seconds<>new.overtime_seconds
-      or v_request.day_class is distinct from new.overtime_day_class
-      or v_request.time_class is distinct from new.overtime_time_class
-      or v_request.rate_card_id is null
-      or v_request.multiplier_basis_points is distinct from new.overtime_multiplier_basis_points then
-      raise exception 'C515_OT_APPROVAL_REQUIRED' using errcode='42501'; end if;
-  elsif new.overtime_request_id is not null then
-    raise exception 'C515_OT_SECONDS_REQUIRED';
-  end if;
-  return new;
-end $$;
-alter function private.rc19_c515_overtime_line_guard() owner to postgres;
-revoke all on function private.rc19_c515_overtime_line_guard() from public,anon,authenticated,service_role;
-create trigger workforce_00_c515_overtime_line_guard before insert or update or delete on public.workforce_payroll_lines
-  for each row execute function private.rc19_c515_overtime_line_guard();
-
-create or replace function private.rc19_c515_payroll_adjustment_guard()
-returns trigger language plpgsql security definer set search_path='' as $$
-declare v_case public.workforce_cancellation_compensation_cases%rowtype;
--- BEGIN (nested)
-  if tg_op<>'INSERT' then raise exception 'C515_PAYROLL_ADJUSTMENT_IMMUTABLE' using errcode='42501'; end if;
-  select * into v_case from public.workforce_cancellation_compensation_cases where id=new.compensation_case_id;
-  if not found or v_case.state<>'admin_confirmed' or v_case.period_id<>new.period_id
-    or v_case.staff_id<>new.staff_id or v_case.operational_role<>new.operational_role
-    or v_case.proposed_amount_vnd<>new.amount_vnd or v_case.admin_confirmed_by<>new.confirmed_by
-    or not exists(select 1 from public.workforce_payroll_periods p where p.id=new.period_id and p.status='draft') then
-    raise exception 'C515_PAYROLL_ADJUSTMENT_SCOPE_INVALID' using errcode='42501'; end if;
-  return new;
-end $$;
-alter function private.rc19_c515_payroll_adjustment_guard() owner to postgres;
-revoke all on function private.rc19_c515_payroll_adjustment_guard() from public,anon,authenticated,service_role;
-create trigger workforce_c515_payroll_adjustment_guard before insert or update or delete on public.workforce_payroll_adjustments
-  for each row execute function private.rc19_c515_payroll_adjustment_guard();
-
-create or replace function public.rc19_c515_propose_cancellation_compensation(
-  p_shift_id text,p_staff_id text,p_operational_role text,p_actual_segment_id text,p_registration_id text,
-  p_period_id text,p_cancellation_reason text,p_reason text,p_evidence_receipt_id text,
-  p_proposed_amount_vnd bigint,p_idempotency_key uuid
-) returns jsonb language plpgsql security definer set search_path='' as $$
-declare v_actor text:=private.current_business_user_id(); v_role text:=private.current_system_permission();
-  v_shift public.shifts%rowtype; v_period public.workforce_payroll_periods%rowtype;
-  v_segment public.workforce_actual_segments%rowtype; v_registration public.shift_registrations%rowtype;
-  v_case public.workforce_cancellation_compensation_cases%rowtype; v_adjustment public.workforce_payroll_adjustments%rowtype;
-  v_actual_seconds integer:=0; v_earnings bigint;
--- BEGIN (nested)
-  if v_actor is null or not private.current_business_user_is_active() or v_role not in ('admin','leader') then
-    raise exception 'C515_COMPENSATION_ACTOR_FORBIDDEN' using errcode='42501'; end if;
-  if p_idempotency_key is null or p_proposed_amount_vnd not between 1 and 1000000000000
-    or p_operational_role not in ('host','support','technical')
-    or char_length(btrim(coalesce(p_reason,''))) not between 8 and 2000
-    or char_length(btrim(coalesce(p_cancellation_reason,''))) not between 8 and 2000 then
-    raise exception 'C515_COMPENSATION_REQUEST_INVALID'; end if;
-  if (p_actual_segment_id is null)=(p_registration_id is null) then
-    raise exception 'C515_COMPENSATION_ASSIGNMENT_REQUIRED'; end if;
-  select * into v_shift from public.shifts where id=p_shift_id and deleted_at is null for share;
-  select * into v_period from public.workforce_payroll_periods where id=p_period_id for share;
-  if not found or v_shift.id is null or v_shift.status<>'cancelled'
-    or v_period.status<>'draft' or v_shift.date<v_period.period_start or v_shift.date>v_period.period_end then
-    raise exception 'C515_COMPENSATION_SHIFT_OR_PERIOD_INVALID'; end if;
-  if v_role='leader' and not private.rc19_has_any_leader_brand_scope(v_shift.brand_id,array['staff.manage']) then
-    raise exception 'C515_COMPENSATION_BRAND_SCOPE_DENIED' using errcode='42501'; end if;
-  if v_actor=p_staff_id then raise exception 'C515_COMPENSATION_SELF_APPROVAL_BLOCKED' using errcode='42501'; end if;
-  if not exists(select 1 from public.audit_logs a where a.entity_type='shifts' and a.entity_id=v_shift.id
-    and a.actor_role in ('admin','leader') and a.actor_business_user_id is not null
-    and a.before_data->>'status' is distinct from 'cancelled' and a.after_data->>'status'='cancelled'
-    and a.after_data->>'id'=v_shift.id) then raise exception 'C515_COMPENSATION_CANCELLATION_UNVERIFIED'; end if;
-  if not exists(select 1 from public.operational_files f where f.id=btrim(p_evidence_receipt_id)
-    and f.shift_id=v_shift.id and f.brand_id=v_shift.brand_id and f.platform_id=v_shift.platform_id
-    and f.integrity_status='sha256_verified' and f.checksum_sha256 ~ '^[a-f0-9]{64}$'
-    and nullif(btrim(f.external_file_id),'') is not null and nullif(btrim(f.external_parent_id),'') is not null
-    and f.deleted_at is null) then raise exception 'C515_COMPENSATION_EVIDENCE_UNVERIFIED'; end if;
-  if p_actual_segment_id is not null then
-    select * into v_segment from public.workforce_actual_segments where id=p_actual_segment_id for share;
-    if not found or v_segment.shift_id<>v_shift.id or v_segment.staff_id<>p_staff_id
-      or v_segment.operational_role<>p_operational_role or v_segment.event_kind<>'worked'
-      or v_segment.review_status<>'approved' or v_segment.actual_start_at is null or v_segment.actual_end_at is null then
-      raise exception 'C515_COMPENSATION_ACTUAL_SCOPE_INVALID'; end if;
-    v_actual_seconds:=extract(epoch from date_trunc('second',v_segment.actual_end_at)-date_trunc('second',v_segment.actual_start_at))::integer;
-    select l.gross_vnd into v_earnings from public.workforce_payroll_lines l
-      where l.segment_id=v_segment.id and l.voided_at is null;
-  else
-    select * into v_registration from public.shift_registrations where id=p_registration_id for share;
-    if not found or v_registration.shift_id<>v_shift.id or v_registration.user_id<>p_staff_id
-      or v_registration.operational_role<>p_operational_role or v_registration.status<>'cancelled'
-      or not exists(select 1 from public.audit_logs a where a.entity_type='shift registrations'
-        and a.entity_id=v_registration.id and a.before_data->>'status' in ('approved','manually_assigned')
-        and a.after_data->>'status'='cancelled' and a.after_data->>'shift_id'=v_shift.id) then
-      raise exception 'C515_COMPENSATION_REGISTRATION_SCOPE_INVALID'; end if;
-  end if;
-  perform pg_advisory_xact_lock(hashtextextended('c515_comp:'||p_idempotency_key::text,0));
-  select * into v_case from public.workforce_cancellation_compensation_cases where idempotency_key=p_idempotency_key;
-  if found then
-    if (v_case.shift_id,v_case.staff_id,v_case.operational_role,v_case.actual_segment_id,v_case.registration_id,
-      v_case.period_id,v_case.cancellation_reason,v_case.reason,v_case.evidence_receipt_id,v_case.proposed_amount_vnd)
-      is distinct from (p_shift_id,p_staff_id,p_operational_role,p_actual_segment_id,p_registration_id,
-      p_period_id,btrim(p_cancellation_reason),btrim(p_reason),btrim(p_evidence_receipt_id),p_proposed_amount_vnd) then
-      raise exception 'C515_COMPENSATION_IDEMPOTENCY_CONFLICT' using errcode='23505'; end if;
-    select * into v_adjustment from public.workforce_payroll_adjustments where compensation_case_id=v_case.id;
-    return jsonb_build_object('case',to_jsonb(v_case),'adjustment',case when found then to_jsonb(v_adjustment) else null end,'replayed',true);
-  end if;
-  insert into public.workforce_cancellation_compensation_cases(
-    shift_id,staff_id,operational_role,actual_seconds,actual_earnings_vnd,actual_segment_id,registration_id,
-    cancellation_source,cancellation_reason,reason,evidence_receipt_id,proposed_amount_vnd,proposed_by,
-    leader_preapproved_by,admin_confirmed_by,period_id,state,idempotency_key)
-  values(p_shift_id,p_staff_id,p_operational_role,v_actual_seconds,v_earnings,p_actual_segment_id,p_registration_id,
-    'brand_ada',btrim(p_cancellation_reason),btrim(p_reason),btrim(p_evidence_receipt_id),p_proposed_amount_vnd,
-    v_actor,case when v_role='leader' then v_actor else null end,
-    case when v_role='admin' then v_actor else null end,p_period_id,
-    case when v_role='admin' then 'admin_confirmed' else 'pending_admin_confirmation' end,p_idempotency_key)
-  returning * into v_case;
-  insert into public.workforce_cancellation_compensation_events(case_id,actor_id,action,from_state,to_state,reason,amount_vnd,version,idempotency_key)
-  values(v_case.id,v_actor,case when v_role='admin' then 'admin_confirmed' else 'proposed' end,null,v_case.state,
-    btrim(p_reason),p_proposed_amount_vnd,1,p_idempotency_key);
-  if v_role='admin' then
-    insert into public.workforce_payroll_adjustments(period_id,compensation_case_id,staff_id,operational_role,amount_vnd,reason,confirmed_by)
-    values(v_case.period_id,v_case.id,v_case.staff_id,v_case.operational_role,v_case.proposed_amount_vnd,v_case.reason,v_actor)
-    returning * into v_adjustment;
-  end if;
-  return jsonb_build_object('case',to_jsonb(v_case),'adjustment',case when v_adjustment.id is null then null else to_jsonb(v_adjustment) end,'replayed',false);
-end $$;
-alter function public.rc19_c515_propose_cancellation_compensation(text,text,text,text,text,text,text,text,text,bigint,uuid) owner to postgres;
-revoke all on function public.rc19_c515_propose_cancellation_compensation(text,text,text,text,text,text,text,text,text,bigint,uuid) from public,anon,authenticated,service_role;
-grant execute on function public.rc19_c515_propose_cancellation_compensation(text,text,text,text,text,text,text,text,text,bigint,uuid) to authenticated;
-
-create or replace function public.rc19_c515_decide_cancellation_compensation(
-  p_case_id uuid,p_expected_version integer,p_action text,p_reason text,p_new_amount_vnd bigint,p_idempotency_key uuid
-) returns jsonb language plpgsql security definer set search_path='' as $$
-declare v_actor text:=private.current_business_user_id(); v_role text:=private.current_system_permission();
-  v_case public.workforce_cancellation_compensation_cases%rowtype; v_event public.workforce_cancellation_compensation_events%rowtype;
-  v_adjustment public.workforce_payroll_adjustments%rowtype; v_shift public.shifts%rowtype; v_period public.workforce_payroll_periods%rowtype;
-  v_next text; v_event_action text;
--- BEGIN (nested)
-  if v_actor is null or not private.current_business_user_is_active() or v_role not in ('admin','leader') then
-    raise exception 'C515_COMPENSATION_ACTOR_FORBIDDEN' using errcode='42501'; end if;
-  if p_idempotency_key is null or p_expected_version<1 or p_action not in ('edit','admin_confirm','reject')
-    or char_length(btrim(coalesce(p_reason,''))) not between 8 and 2000
-    or (p_action='edit' and p_new_amount_vnd not between 1 and 1000000000000) then
-    raise exception 'C515_COMPENSATION_DECISION_INVALID'; end if;
-  perform pg_advisory_xact_lock(hashtextextended('c515_comp_decide:'||p_idempotency_key::text,0));
-  select * into v_event from public.workforce_cancellation_compensation_events where idempotency_key=p_idempotency_key;
-  if found then
-    if v_event.case_id<>p_case_id
-      or v_event.action is distinct from (case p_action when 'admin_confirm' then 'admin_confirmed'
-        when 'reject' then 'rejected' else 'edited' end)
-      or v_event.reason<>btrim(p_reason)
-      or (p_action='edit' and v_event.amount_vnd is distinct from p_new_amount_vnd) then
-      raise exception 'C515_COMPENSATION_IDEMPOTENCY_CONFLICT' using errcode='23505'; end if;
-    select * into v_case from public.workforce_cancellation_compensation_cases where id=p_case_id;
-    select * into v_adjustment from public.workforce_payroll_adjustments where compensation_case_id=p_case_id;
-    return jsonb_build_object('case',to_jsonb(v_case),'adjustment',case when found then to_jsonb(v_adjustment) else null end,'replayed',true);
-  end if;
-  select * into v_case from public.workforce_cancellation_compensation_cases where id=p_case_id for update;
-  if not found or v_case.version<>p_expected_version or v_case.state<>'pending_admin_confirmation' then
-    raise exception 'C515_COMPENSATION_STALE_OR_CLOSED' using errcode='40001'; end if;
-  select * into v_shift from public.shifts where id=v_case.shift_id and status='cancelled' and deleted_at is null for share;
-  select * into v_period from public.workforce_payroll_periods where id=v_case.period_id for update;
-  if not found or v_shift.id is null or v_period.status<>'draft' then
-    raise exception 'C515_COMPENSATION_PERIOD_LOCKED_OR_SHIFT_CHANGED' using errcode='42501'; end if;
-  if v_role='leader' then
-    if p_action<>'edit' or not private.rc19_has_any_leader_brand_scope(v_shift.brand_id,array['staff.manage'])
-      or v_actor=v_case.staff_id then raise exception 'C515_COMPENSATION_BRAND_SCOPE_DENIED' using errcode='42501'; end if;
-    update public.workforce_cancellation_compensation_cases set proposed_amount_vnd=p_new_amount_vnd,
-      reason=btrim(p_reason),version=version+1,updated_at=statement_timestamp() where id=p_case_id returning * into v_case;
-    v_next:='pending_admin_confirmation'; v_event_action:='edited';
-  else
-    if p_action='edit' then raise exception 'C515_COMPENSATION_LEADER_EDIT_REQUIRED'; end if;
-    if p_action='admin_confirm' then
-      if v_actor=v_case.staff_id or v_actor=v_case.proposed_by or v_actor=v_case.leader_preapproved_by then
-        raise exception 'C515_COMPENSATION_SELF_CONFIRM_BLOCKED' using errcode='42501'; end if;
-      update public.workforce_cancellation_compensation_cases set state='admin_confirmed',admin_confirmed_by=v_actor,
-        version=version+1,updated_at=statement_timestamp() where id=p_case_id returning * into v_case;
-      insert into public.workforce_payroll_adjustments(period_id,compensation_case_id,staff_id,operational_role,amount_vnd,reason,confirmed_by)
-      values(v_case.period_id,v_case.id,v_case.staff_id,v_case.operational_role,v_case.proposed_amount_vnd,v_case.reason,v_actor)
-      returning * into v_adjustment;
-      v_next:='admin_confirmed'; v_event_action:='admin_confirmed';
-    else
-      update public.workforce_cancellation_compensation_cases set state='rejected',version=version+1,
-        updated_at=statement_timestamp() where id=p_case_id returning * into v_case;
-      v_next:='rejected'; v_event_action:='rejected';
-    end if;
-  end if;
-  insert into public.workforce_cancellation_compensation_events(case_id,actor_id,action,from_state,to_state,reason,amount_vnd,version,idempotency_key)
-  values(v_case.id,v_actor,v_event_action,'pending_admin_confirmation',v_next,btrim(p_reason),v_case.proposed_amount_vnd,v_case.version,p_idempotency_key);
-  return jsonb_build_object('case',to_jsonb(v_case),'adjustment',case when v_adjustment.id is null then null else to_jsonb(v_adjustment) end,'replayed',false);
-end $$;
-alter function public.rc19_c515_decide_cancellation_compensation(uuid,integer,text,text,bigint,uuid) owner to postgres;
-revoke all on function public.rc19_c515_decide_cancellation_compensation(uuid,integer,text,text,bigint,uuid) from public,anon,authenticated,service_role;
-grant execute on function public.rc19_c515_decide_cancellation_compensation(uuid,integer,text,text,bigint,uuid) to authenticated;
--- COMMIT (nested)
-
--- Record migration receipt
-INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261110140000') ON CONFLICT (version) DO NOTHING;
-
-/*******************************************************************************
- * Migration: 20261111000000_rc19_c515_live_cancellation_transition.sql
- * Version:   20261111000000
- *******************************************************************************/
--- BEGIN (nested)
--- Refuse to replace a drifted function body; this forward migration is based on the C4 source contract.
-do $preflight$
-declare v_definition text;
--- BEGIN (nested)
-  select pg_get_functiondef('public.update_shift(text,jsonb,boolean,integer)'::regprocedure)
-    into v_definition;
-  if v_definition is null
-    or position('private.require_shift_actor(true)' in v_definition) = 0
-    or position('private.assert_expected_version' in v_definition) = 0
-    or position('SHIFT_STATUS_TRANSITION_NOT_ALLOWED' in v_definition) = 0
-    or position('existing_shift.status = ''live''' in v_definition) = 0 then
-    raise exception 'C515_SHIFT_RPC_DEFINITION_DRIFT';
-  end if;
-end
-$preflight$;
-
-do $preflight$
-declare v_definition text;
--- BEGIN (nested)
-  select pg_get_functiondef('public.workforce_rc16_immutable_approved_segment()'::regprocedure)
-    into v_definition;
-  if v_definition is null
-    or position('WORKFORCE_APPROVED_STAFF_OVERLAP' in v_definition) = 0
-    or position('WORKFORCE_APPROVED_NO_SHOW_CONFLICT' in v_definition) = 0
-    or position('WORKFORCE_SHIFT_NOT_COMPLETED' in v_definition) = 0 then
-    raise exception 'C515_WORKFORCE_TRIGGER_DEFINITION_DRIFT';
-  end if;
-end
-$preflight$;
-
-CREATE OR REPLACE FUNCTION public.update_shift(p_shift_id text, p_patch jsonb, p_confirm_impact boolean, p_expected_version integer)
- RETURNS shifts
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
-declare
-  actor_id text;
-  actor_permission text;
-  existing_shift public.shifts;
-  updated_shift public.shifts;
-  input_key text;
-  requested_status text;
-  effective_agency text;
-  effective_source text;
--- BEGIN (nested)
-  actor_id := private.require_shift_actor(true);
-  actor_permission := private.current_system_permission();
-  if p_patch is null or jsonb_typeof(p_patch) <> 'object' then
-    raise exception using errcode = '22023', message = 'SHIFT_PAYLOAD_INVALID';
-  end if;
-  if p_patch ?| array['host_id', 'support_id', 'technical_id'] then
-    raise exception using errcode = '22023', message = 'STAFFING_FIELDS_USE_STAFFING_RPC';
-  end if;
-  for input_key in select jsonb_object_keys(p_patch)
-  loop
-    if input_key <> all (array[
-      'date', 'start_time', 'end_time', 'brand_id', 'platform_id', 'campaign_id',
-      'title', 'studio', 'required_host_count', 'required_support_count',
-      'required_technical_count', 'status', 'live_link', 'product_notes',
-      'registration_cutoff_at', 'allow_multi_role', 'execution_source', 'agency_code', 'supplemental_fields'
-    ]::text[]) then
-      raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';
-    end if;
-    if actor_permission = 'leader'
-      and input_key in ('registration_cutoff_at', 'allow_multi_role')
-    then
-      raise exception using errcode = '42501', message = 'OPERATION_NOT_ALLOWED';
-    end if;
-  end loop;
-  if (p_patch ? 'execution_source' and p_patch->>'execution_source' is not null
-    and p_patch->>'execution_source' not in ('internal', 'agency')) then
-    raise exception using errcode = '22023', message = 'SHIFT_EXECUTION_SOURCE_INVALID';
-  end if;
-  if (p_patch ? 'agency_code' and p_patch->>'agency_code' is not null
-    and p_patch->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
-    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
-  end if;
-  if p_patch ? 'supplemental_fields' and not private.is_valid_shift_supplemental_fields(p_patch->'supplemental_fields') then
-    raise exception using errcode = '22023', message = 'SHIFT_SUPPLEMENTAL_FIELDS_INVALID';
-  end if;
-
-  select * into existing_shift
-  from public.shifts
-  where id = p_shift_id and deleted_at is null and archived_at is null
-  for update;
-  if existing_shift.id is null then
-    raise exception using errcode = 'P0001', message = 'SHIFT_NOT_FOUND';
-  end if;
-
-  perform private.assert_expected_version('Shift', p_expected_version, existing_shift.version);
-
-  effective_agency := case
-    when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
-    else existing_shift.agency_code
-  end;
-  effective_source := case
-    when p_patch ? 'execution_source' then nullif(p_patch->>'execution_source', '')
-    when p_patch ? 'agency_code' and effective_agency is not null then
-      case effective_agency when 'ada' then 'internal' else 'agency' end
-    else existing_shift.execution_source
-  end;
-  if (effective_agency is not null and effective_source is distinct from
-    case effective_agency when 'ada' then 'internal' else 'agency' end) then
-    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
-  end if;
-
-  requested_status := coalesce(nullif(p_patch->>'status', ''), existing_shift.status);
-  if actor_permission in ('leader', 'admin')
-    and requested_status <> existing_shift.status and not (
-      (existing_shift.status = 'scheduled' and requested_status in ('scheduled', 'preparing', 'cancelled'))
-      or (existing_shift.status = 'preparing' and requested_status in ('scheduled', 'preparing', 'live', 'paused', 'cancelled'))
-      or (existing_shift.status = 'live' and requested_status in ('live', 'paused', 'completed', 'cancelled'))
-      or (existing_shift.status = 'paused' and requested_status in ('live', 'paused', 'completed'))
-      or (existing_shift.status = 'completed' and existing_shift.status_mode = 'auto'
-        and requested_status in ('scheduled', 'preparing', 'live', 'paused', 'completed'))
-      or (existing_shift.status = 'completed' and existing_shift.status_mode = 'manual' and requested_status = 'completed')
-      or (existing_shift.status = 'cancelled' and requested_status = 'cancelled')
-    ) then
-    raise exception using errcode = '42501', message = 'SHIFT_STATUS_TRANSITION_NOT_ALLOWED';
-  end if;
-  if existing_shift.status = 'live' and p_patch ?| array['date', 'start_time', 'platform_id'] then
-    raise exception using errcode = 'P0001', message = 'LIVE_SHIFT_FIELD_LOCKED';
-  end if;
-  if existing_shift.status = 'completed'
-    and p_patch ?| array['date', 'start_time', 'end_time', 'platform_id', 'campaign_id']
-    and not p_confirm_impact
-  then
-    raise exception using errcode = 'P0001', message = 'COMPLETED_SHIFT_IMPACT_CONFIRMATION_REQUIRED';
-  end if;
-  update public.shifts as shift
-  set
-    date = case when p_patch ? 'date' then (p_patch->>'date')::date else shift.date end,
-    start_time = case when p_patch ? 'start_time' then (p_patch->>'start_time')::time else shift.start_time end,
-    end_time = case when p_patch ? 'end_time' then (p_patch->>'end_time')::time else shift.end_time end,
-    brand_id = case when p_patch ? 'brand_id' then nullif(p_patch->>'brand_id', '') else shift.brand_id end,
-    platform_id = case when p_patch ? 'platform_id' then nullif(p_patch->>'platform_id', '') else shift.platform_id end,
-    campaign_id = case when p_patch ? 'campaign_id' then nullif(p_patch->>'campaign_id', '') else shift.campaign_id end,
-    title = case when p_patch ? 'title' then nullif(p_patch->>'title', '') else shift.title end,
-    studio = case when p_patch ? 'studio' then nullif(p_patch->>'studio', '') else shift.studio end,
-    required_host_count = case when p_patch ? 'required_host_count' then private.normalize_shift_capacity(p_patch->>'required_host_count', 1::smallint) else shift.required_host_count end,
-    required_support_count = case when p_patch ? 'required_support_count' then private.normalize_shift_capacity(p_patch->>'required_support_count', 1::smallint) else shift.required_support_count end,
-    required_technical_count = case when p_patch ? 'required_technical_count' then private.normalize_shift_capacity(p_patch->>'required_technical_count', 1::smallint) else shift.required_technical_count end,
-    registration_cutoff_at = case when p_patch ? 'registration_cutoff_at' then nullif(p_patch->>'registration_cutoff_at', '')::timestamptz else shift.registration_cutoff_at end,
-    allow_multi_role = case when p_patch ? 'allow_multi_role' then (p_patch->>'allow_multi_role')::boolean else shift.allow_multi_role end,
-    status = requested_status,
-    live_link = case when p_patch ? 'live_link' then nullif(p_patch->>'live_link', '') else shift.live_link end,
-    product_notes = case when p_patch ? 'product_notes' then nullif(p_patch->>'product_notes', '') else shift.product_notes end,
-    supplemental_fields = case when p_patch ? 'supplemental_fields' then p_patch->'supplemental_fields' else shift.supplemental_fields end,
-    execution_source = case
-      when p_patch ? 'execution_source' then p_patch->>'execution_source'
-      when p_patch ? 'agency_code' and nullif(p_patch->>'agency_code', '') is not null then
-        case nullif(p_patch->>'agency_code', '') when 'ada' then 'internal' else 'agency' end
-      else shift.execution_source end,
-    agency_code = case
-      when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
-      else shift.agency_code end,
-    updated_by = actor_id
-  where shift.id = p_shift_id
-  returning * into updated_shift;
-  perform private.assert_shift_staffing_consistent(updated_shift);
-  return updated_shift;
-end;
-$function$;
-
-create or replace function public.workforce_rc16_immutable_approved_segment()
-returns trigger language plpgsql set search_path='' as $$
--- BEGIN (nested)
-  if tg_op='INSERT' then
-    if new.review_status <> 'draft' or new.reviewed_by is not null
-      or new.reviewed_at is not null or new.review_note is not null then
-      raise exception 'WORKFORCE_SEGMENT_MUST_START_DRAFT';
-    end if;
-    return new;
-  end if;
-  if tg_op='DELETE' and old.review_status in ('approved','rejected') then
-    raise exception 'WORKFORCE_REVIEWED_SEGMENT_IMMUTABLE';
-  end if;
-  if tg_op='UPDATE' and old.review_status in ('approved','rejected') then
-    raise exception 'WORKFORCE_REVIEWED_SEGMENT_IMMUTABLE';
-  end if;
-  if tg_op='UPDATE' and new.version <> old.version + 1 then
-    raise exception 'WORKFORCE_ACTUAL_STALE_VERSION';
-  end if;
-  if new.review_status='approved' then
-    if not exists (
-      select 1 from public.shifts s
-      where s.id=new.shift_id and s.deleted_at is null
-        and (
-          s.status='completed'
-          or (s.status='cancelled' and new.event_kind='worked' and exists (
-            select 1 from public.audit_logs a
-            where a.entity_type='shifts' and a.entity_id=new.shift_id
-              and a.actor_role in ('admin','leader') and a.actor_business_user_id is not null
-              and a.before_data->>'status' is distinct from 'cancelled'
-              and a.after_data->>'status'='cancelled'
-              and a.after_data->>'id'=new.shift_id
-              and new.actual_end_at<=a.created_at
-          ))
-        )
-    ) then
-      raise exception 'WORKFORCE_SHIFT_NOT_COMPLETED';
-    end if;
-    perform pg_advisory_xact_lock(hashtextextended('staff-attendance:'||new.staff_id,0));
-    if new.event_kind='worked' and exists (
-      select 1 from public.workforce_actual_segments existing
-      where existing.staff_id=new.staff_id and existing.id<>new.id
-        and existing.review_status='approved' and existing.event_kind='worked'
-        and tstzrange(existing.actual_start_at,existing.actual_end_at,'[)')
-          && tstzrange(new.actual_start_at,new.actual_end_at,'[)')
-    ) then
-      raise exception 'WORKFORCE_APPROVED_STAFF_OVERLAP';
-    end if;
-    if exists (
-      select 1 from public.workforce_actual_segments existing
-      where existing.shift_id=new.shift_id and existing.staff_id=new.staff_id
-        and existing.operational_role=new.operational_role
-        and existing.id<>new.id and existing.review_status='approved'
-        and existing.event_kind<>new.event_kind
-    ) then
-      raise exception 'WORKFORCE_APPROVED_NO_SHOW_CONFLICT';
-    end if;
-  end if;
-  return case when tg_op='DELETE' then old else new end;
-end $$;
-
-alter function public.update_shift(text, jsonb, boolean, integer) owner to postgres;
-revoke all on function public.update_shift(text, jsonb, boolean, integer) from public, anon, authenticated;
-grant execute on function public.update_shift(text, jsonb, boolean, integer) to authenticated;
-alter function public.workforce_rc16_immutable_approved_segment() owner to postgres;
-revoke all on function public.workforce_rc16_immutable_approved_segment() from public, anon, authenticated;
--- COMMIT (nested)
-
--- Record migration receipt
-INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261111000000') ON CONFLICT (version) DO NOTHING;
 
 /*******************************************************************************
  * Migration: 20261112000000_rc19_c2_calendar_overlap_range.sql
  * Version:   20261112000000
  *******************************************************************************/
--- BEGIN (nested)
+-- begin; (outer transaction wrapper)
+
 -- Calendar date windows use half-open timestamp overlap while other list consumers keep start-date semantics.
 do $guard$
--- BEGIN (nested)
+begin
   if to_regclass('public.shifts') is null
     or to_regclass('public.shift_staffing_segments') is null
     or to_regprocedure('private.current_business_user_id()') is null
@@ -772,7 +35,7 @@ declare
   roles text[];
   reg_statuses text[];
   search_text text;
--- BEGIN (nested)
+begin
   if actor is null then raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED'; end if;
   if p_scope not in ('all', 'open', 'mine') or jsonb_typeof(p_filters) is distinct from 'object'
     or octet_length(p_filters::text) > 16384 then raise exception using errcode = '22023', message = 'LIST_FILTER_INVALID'; end if;
@@ -915,7 +178,9 @@ $$;
 
 revoke all on function private.filtered_shift_ids(text, jsonb) from public, anon, service_role;
 grant execute on function private.filtered_shift_ids(text, jsonb) to authenticated;
--- COMMIT (nested)
+
+-- commit; (outer transaction wrapper)
+
 
 -- Record migration receipt
 INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261112000000') ON CONFLICT (version) DO NOTHING;
@@ -933,7 +198,7 @@ DO $$
 DECLARE
   v_policy_qual text;
   v_permission_is_stable boolean;
--- BEGIN (nested)
+BEGIN
   SELECT qual INTO v_policy_qual FROM pg_catalog.pg_policies
   WHERE schemaname = 'public' AND tablename = 'audit_logs' AND policyname = 'audit_logs_read'
     AND cmd = 'SELECT' AND roles = ARRAY['authenticated']::name[] AND permissive = 'PERMISSIVE';
@@ -981,7 +246,7 @@ DECLARE
   v_has_more boolean;
   v_key text;
   v_query text;
--- BEGIN (nested)
+BEGIN
   IF jsonb_typeof(p_filters) IS DISTINCT FROM 'object'
     OR octet_length(p_filters::text) > 16384
     OR p_page_size IS NULL OR p_page_size NOT IN (10, 20, 50)
@@ -1010,7 +275,8 @@ DECLARE
     OR length(coalesce(p_filters->>'query', '')) > 160 THEN
     RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'AUDIT_FILTER_INVALID';
   END IF;
--- BEGIN (nested)
+
+  BEGIN
     v_to := coalesce(nullif(p_filters->>'to', '')::date, (statement_timestamp() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date);
     v_from := coalesce(nullif(p_filters->>'from', '')::date, v_to - 29);
   EXCEPTION WHEN datetime_field_overflow OR invalid_datetime_format THEN
@@ -1112,7 +378,7 @@ as $$
 declare
   changed text[] := '{}'::text[];
   field_name text;
--- BEGIN (nested)
+begin
   for field_name in
     select key
     from jsonb_object_keys(coalesce(p_previous, '{}'::jsonb) || coalesce(p_current, '{}'::jsonb)) as fields(key)
@@ -1196,7 +462,7 @@ declare
   failure text;
   requested_outcome text;
   result jsonb;
--- BEGIN (nested)
+begin
   if p_row_number is null or p_row_number < 1 then
     raise exception using errcode = '22023', message = 'IMPORT_ROW_NUMBER_INVALID';
   end if;
@@ -1413,9 +679,10 @@ INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261112130
  * Migration: 20261113083000_rc19_c4_audit_dependency.sql
  * Version:   20261113083000
  *******************************************************************************/
--- BEGIN (nested)
+-- BEGIN; (outer transaction wrapper)
+
 DO $migration$
--- BEGIN (nested)
+BEGIN
   IF to_regprocedure('private.log_shift_audit(text,text,text,text,text,jsonb,text[])') IS NULL THEN
     EXECUTE $definition$
       CREATE FUNCTION private.log_shift_audit(
@@ -1428,7 +695,7 @@ DO $migration$
         v_actor_id text := private.current_business_user_id();
         v_actor_name text;
         v_actor_role text := private.current_system_permission();
--- BEGIN (nested)
+      BEGIN
         SELECT full_name INTO v_actor_name FROM public.business_users WHERE id = v_actor_id;
         INSERT INTO public.audit_logs (
           actor_auth_user_id, actor_business_user_id, actor_name, actor_role,
@@ -1449,7 +716,9 @@ DO $migration$
   END IF;
 END;
 $migration$;
--- COMMIT (nested)
+
+-- COMMIT; (outer transaction wrapper)
+
 
 -- Record migration receipt
 INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261113083000') ON CONFLICT (version) DO NOTHING;
@@ -1458,9 +727,10 @@ INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261113083
  * Migration: 20261113084154_rc19_c4_atomic_staffing_replacement.sql
  * Version:   20261113084154
  *******************************************************************************/
--- BEGIN (nested)
+-- BEGIN; (outer transaction wrapper)
+
 DO $guard$
--- BEGIN (nested)
+BEGIN
   IF to_regclass('public.shifts') IS NULL
     OR to_regclass('public.shift_registrations') IS NULL
     OR to_regclass('public.shift_staffing_segments') IS NULL
@@ -1553,7 +823,7 @@ DECLARE
   v_active_count integer;
   v_roster jsonb;
   v_replayed boolean := false;
--- BEGIN (nested)
+BEGIN
   v_actor_id := private.require_shift_actor(true);
   v_permission := private.current_system_permission();
 
@@ -1829,7 +1099,9 @@ COMMENT ON FUNCTION public.replace_shift_assignment(
   text, text, text, text, text, integer, integer, timestamptz, text, boolean, uuid
 ) IS
   'Atomically replaces one active staffing-segment registration; derives actor and scope from the authenticated request.';
--- COMMIT (nested)
+
+-- COMMIT; (outer transaction wrapper)
+
 
 -- Record migration receipt
 INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261113084154') ON CONFLICT (version) DO NOTHING;
@@ -1838,9 +1110,10 @@ INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261113084
  * Migration: 20261115120000_rc19_w4_legacy_segment_compatibility.sql
  * Version:   20261115120000
  *******************************************************************************/
--- BEGIN (nested)
+-- BEGIN; (outer transaction wrapper)
+
 DO $guard$
--- BEGIN (nested)
+BEGIN
   IF to_regclass('public.shift_registrations') IS NULL
     OR to_regclass('public.shift_staffing_segments') IS NULL
     OR to_regprocedure('private.c511_guard_segment_registration()') IS NULL
@@ -1863,7 +1136,7 @@ DECLARE
   v_role_segment_count integer;
   v_filled integer;
   v_capacity smallint;
--- BEGIN (nested)
+BEGIN
   IF NEW.status IN ('approved', 'manually_assigned')
     AND private.current_system_permission() = 'leader'
     AND NOT private.rc19_has_any_leader_brand_scope(
@@ -1991,7 +1264,7 @@ DECLARE
   v_active_count integer;
   v_roster jsonb;
   v_replayed boolean := false;
--- BEGIN (nested)
+BEGIN
   v_actor_id := private.require_shift_actor(true);
   v_permission := private.current_system_permission();
 
@@ -2271,7 +1544,9 @@ GRANT EXECUTE ON FUNCTION public.replace_shift_assignment(
 COMMENT ON FUNCTION public.replace_shift_assignment(
   text, text, text, text, text, integer, integer, timestamptz, text, boolean, uuid
 ) IS 'Atomically replaces segment-linked assignments and permits an authorized explicit segment choice for legacy parent-level assignments without rewriting the original row.';
--- COMMIT (nested)
+
+-- COMMIT; (outer transaction wrapper)
+
 
 -- Record migration receipt
 INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261115120000') ON CONFLICT (version) DO NOTHING;
@@ -2280,9 +1555,10 @@ INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261115120
  * Migration: 20261115130000_rc19_w4_segmented_manual_assignment.sql
  * Version:   20261115130000
  *******************************************************************************/
--- BEGIN (nested)
+-- BEGIN; (outer transaction wrapper)
+
 DO $guard$
--- BEGIN (nested)
+BEGIN
   IF to_regclass('public.shifts') IS NULL
     OR to_regclass('public.shift_registrations') IS NULL
     OR to_regclass('public.shift_staffing_segments') IS NULL
@@ -2314,7 +1590,7 @@ AS $$
 DECLARE
   target_shift public.shifts;
   created_registration public.shift_registrations;
--- BEGIN (nested)
+BEGIN
   SELECT * INTO target_shift
   FROM public.shifts
   WHERE id = p_shift_id AND deleted_at IS NULL AND archived_at IS NULL
@@ -2363,7 +1639,7 @@ DECLARE
   actor_id text;
   target_shift public.shifts;
   current_version integer;
--- BEGIN (nested)
+BEGIN
   actor_id := private.require_shift_actor(true);
   IF NOT private.current_business_user_is_active()
     OR NOT public.rbac01_effective_permission('shifts.assign_staff') THEN
@@ -2402,7 +1678,9 @@ GRANT EXECUTE ON FUNCTION public.manual_assign_shift_staff_to_segment(text,text,
   TO authenticated;
 COMMENT ON FUNCTION public.manual_assign_shift_staff_to_segment(text,text,text,text,integer,text) IS
   'Assigns staff to an explicitly selected persisted staffing segment with actor, permission, Brand, version, qualification, availability and segment-capacity checks.';
--- COMMIT (nested)
+
+-- COMMIT; (outer transaction wrapper)
+
 
 -- Record migration receipt
 INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261115130000') ON CONFLICT (version) DO NOTHING;
@@ -2411,9 +1689,9 @@ INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261115130
  * Migration: 20261115140000_rc19_w4_pass_swap_segment_preservation.sql
  * Version:   20261115140000
  *******************************************************************************/
--- BEGIN (nested)
+-- BEGIN; (outer transaction wrapper)
 DO $guard$
--- BEGIN (nested)
+BEGIN
   IF to_regclass('public.shift_registrations') IS NULL
     OR to_regclass('public.shift_staffing_segments') IS NULL
     OR to_regprocedure('public.approve_shift_swap_request(text,text)') IS NULL THEN
@@ -2442,7 +1720,7 @@ declare
   new_target_reg_id text := gen_random_uuid()::text;
   new_source_reg_id text := gen_random_uuid()::text;
   new_replacement_reg_id text := gen_random_uuid()::text;
--- BEGIN (nested)
+begin
   actor_id := private.require_shift_actor(true);
   select * into request_row from public.swap_requests where id = p_request_id for update;
   if request_row.id is null then raise exception using errcode = 'P0001', message = 'SWAP_NOT_FOUND'; end if;
@@ -2652,7 +1930,9 @@ $$;
 ALTER FUNCTION public.approve_shift_swap_request(text,text) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.approve_shift_swap_request(text,text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.approve_shift_swap_request(text,text) TO authenticated;
--- COMMIT (nested)
+
+-- COMMIT; (outer transaction wrapper)
+
 
 -- Record migration receipt
 INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261115140000') ON CONFLICT (version) DO NOTHING;
@@ -2661,9 +1941,10 @@ INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261115140
  * Migration: 20261115174231_rc19_w4_retire_unguarded_swap_approval.sql
  * Version:   20261115174231
  *******************************************************************************/
--- BEGIN (nested)
+-- BEGIN; (outer transaction wrapper)
+
 DO $guard$
--- BEGIN (nested)
+BEGIN
   IF to_regprocedure('public.approve_shift_swap_request(text,text)') IS NULL
     OR to_regprocedure('public.approve_shift_swap_request(text,text,integer)') IS NULL
     OR to_regprocedure('private.assert_expected_version(text,integer,integer)') IS NULL THEN
@@ -2684,7 +1965,7 @@ SET search_path = ''
 AS $$
 DECLARE
   current_version integer;
--- BEGIN (nested)
+BEGIN
   SELECT version INTO current_version
   FROM public.swap_requests
   WHERE id = p_request_id
@@ -2705,7 +1986,7 @@ GRANT EXECUTE ON FUNCTION public.approve_shift_swap_request(text, text, integer)
 REVOKE ALL ON FUNCTION public.approve_shift_swap_request(text, text) FROM PUBLIC, anon, authenticated, service_role;
 
 DO $verify$
--- BEGIN (nested)
+BEGIN
   IF NOT has_function_privilege('authenticated', 'public.approve_shift_swap_request(text,text,integer)', 'EXECUTE')
     OR has_function_privilege('anon', 'public.approve_shift_swap_request(text,text,integer)', 'EXECUTE')
     OR has_function_privilege('authenticated', 'public.approve_shift_swap_request(text,text)', 'EXECUTE')
@@ -2714,7 +1995,9 @@ DO $verify$
   END IF;
 END;
 $verify$;
--- COMMIT (nested)
+
+-- COMMIT; (outer transaction wrapper)
+
 
 -- Record migration receipt
 INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261115174231') ON CONFLICT (version) DO NOTHING;
@@ -2723,9 +2006,10 @@ INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261115174
  * Migration: 20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql
  * Version:   20261116120000
  *******************************************************************************/
--- BEGIN (nested)
+-- BEGIN; (outer transaction wrapper)
+
 DO $guard$
--- BEGIN (nested)
+BEGIN
   IF to_regclass('public.shifts') IS NULL
     OR to_regclass('public.shift_registrations') IS NULL
     OR to_regclass('public.shift_staffing_segments') IS NULL
@@ -2752,7 +2036,7 @@ DECLARE
   segment public.shift_staffing_segments%ROWTYPE;
   capacity integer;
   active_count integer;
--- BEGIN (nested)
+BEGIN
   IF NEW.status NOT IN ('approved', 'manually_assigned') OR NEW.staffing_segment_id IS NULL THEN
     RETURN NEW;
   END IF;
@@ -2816,10 +2100,10 @@ AS $$
 DECLARE
   target_shift public.shifts;
   error_message text;
--- BEGIN (nested)
+BEGIN
   SELECT * INTO target_shift FROM public.shifts WHERE id = p_shift_id;
   IF target_shift.id IS NULL THEN RETURN true; END IF;
--- BEGIN (nested)
+  BEGIN
     PERFORM private.assert_no_shift_registration_conflict(p_user_id, target_shift, p_role, p_exclude_registration_id);
     RETURN false;
   EXCEPTION
@@ -2857,7 +2141,7 @@ DECLARE
   source_capacity integer;
   target_capacity integer;
   active_count integer;
--- BEGIN (nested)
+BEGIN
   IF p_source_registration_id IS NULL OR p_mode IS NULL OR p_mode NOT IN ('replacement', 'exchange') THEN
     RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'SWAP_PREFLIGHT_PAYLOAD_INVALID';
   END IF;
@@ -2979,7 +2263,7 @@ REVOKE ALL ON FUNCTION public.check_shift_swap_conflict(text, text, text, text, 
 GRANT EXECUTE ON FUNCTION public.check_shift_swap_conflict(text, text, text, text, text) TO authenticated;
 
 DO $verify$
--- BEGIN (nested)
+BEGIN
   IF has_function_privilege('anon', 'public.check_shift_swap_conflict(text,text,text,text,text)', 'EXECUTE')
     OR NOT has_function_privilege('authenticated', 'public.check_shift_swap_conflict(text,text,text,text,text)', 'EXECUTE')
     OR has_function_privilege('authenticated', 'private.enforce_staffing_segment_capacity()', 'EXECUTE') THEN
@@ -2987,7 +2271,9 @@ DO $verify$
   END IF;
 END;
 $verify$;
--- COMMIT (nested)
+
+-- COMMIT; (outer transaction wrapper)
+
 
 -- Record migration receipt
 INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261116120000') ON CONFLICT (version) DO NOTHING;
@@ -2996,9 +2282,10 @@ INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261116120
  * Migration: 20261117160000_rc19_w4_pass_recipient_visibility.sql
  * Version:   20261117160000
  *******************************************************************************/
--- BEGIN (nested)
+-- BEGIN; (outer transaction wrapper)
+
 DO $guard$
--- BEGIN (nested)
+BEGIN
   IF to_regclass('public.swap_requests') IS NULL
     OR to_regclass('public.shifts') IS NULL
     OR to_regprocedure('private.can_read_shift(text)') IS NULL
@@ -3100,7 +2387,7 @@ DECLARE
   actor text := private.current_business_user_id();
   result jsonb;
   search_text text;
--- BEGIN (nested)
+BEGIN
   IF actor IS NULL THEN RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'AUTHENTICATION_REQUIRED'; END IF;
   IF p_page IS NULL OR p_page < 1 OR p_page > 100000 OR p_page_size IS NULL OR p_page_size NOT IN (10, 20, 50)
     OR jsonb_typeof(p_filters) IS DISTINCT FROM 'object' OR octet_length(p_filters::text) > 16384
@@ -3173,7 +2460,9 @@ $$;
 ALTER FUNCTION public.get_swap_list_page(integer, integer, jsonb) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.get_swap_list_page(integer, integer, jsonb) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.get_swap_list_page(integer, integer, jsonb) TO authenticated;
--- COMMIT (nested)
+
+-- COMMIT; (outer transaction wrapper)
+
 
 -- Record migration receipt
 INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20261117160000') ON CONFLICT (version) DO NOTHING;
