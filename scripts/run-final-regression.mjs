@@ -7,8 +7,20 @@ const manifest = JSON.parse(readFileSync('tests/final-release-test-manifest.json
 const inventory = readdirSync('tests').filter(name => /\.test\.(ts|tsx)$/.test(name))
   .sort().map(name => `tests/${name}`)
 assert.deepEqual([...manifest.node_test_files].sort(), inventory, 'Release manifest must include every TS/TSX test file')
+const persistedE2e = 'tests/rc19-c511-persisted-e2e.test.ts'
+const isolatedRuntimeEnv = [
+  'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_URL', 'SUPABASE_SECRET_KEY',
+  'C511_BASE_URL', 'C511_ANON_KEY', 'C511_SERVICE_ROLE_KEY', 'C511_TEST_PASSWORD', 'C511_DATABASE',
+  'C511_LOCAL_JWT_SECRET',
+  'C511_AUTH_USERS_BEFORE', 'C511_STORAGE_OBJECTS_BEFORE',
+  'C511_EVIDENCE_DIR', 'C511_POSTGRES_VERSION', 'C511_AUTH_PORT', 'C511_REST_PORT', 'C511_MIGRATION_SHA256', 'C512_MIGRATION_SHA256',
+  'C515_SECONDS_MIGRATION_SHA256', 'C515_APPROVAL_MIGRATION_SHA256',
+  'C515_OT_CANCELLATION_MIGRATION_SHA256', 'C515_LIVE_CANCELLATION_MIGRATION_SHA256',
+  'C511_SOURCE_SHA', 'FEATURE_SELF_ATTENDANCE_PHOTO', 'FILE_STORAGE_ENABLED', 'FEATURE_SELF_ATTENDANCE_REVIEW',
+]
+const runtimeReady = isolatedRuntimeEnv.every(key => Boolean(process.env[key]))
 const selectedInventory = process.argv.includes('--exclude-postgres17')
-  ? inventory.filter(file => !file.toLowerCase().includes('postgres17'))
+  ? inventory.filter(file => !file.toLowerCase().includes('postgres17') && (runtimeReady || file !== persistedE2e))
   : inventory
 const concurrencyArg = process.argv.find(argument => /^--test-concurrency=\d+$/.test(argument))
 const testConcurrency = Number(concurrencyArg?.split('=')[1] ?? 4)
@@ -24,17 +36,6 @@ const optionalStagingChecks = new Set([
   'existing Auth identity provisions one linked member Staff row without FK failure',
   'real staging API enforces Member privacy and preserves privileged reads/revision history',
 ])
-const persistedE2e = 'tests/rc19-c511-persisted-e2e.test.ts'
-const isolatedRuntimeEnv = [
-  'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_URL', 'SUPABASE_SECRET_KEY',
-  'C511_BASE_URL', 'C511_ANON_KEY', 'C511_SERVICE_ROLE_KEY', 'C511_TEST_PASSWORD', 'C511_DATABASE',
-  'C511_LOCAL_JWT_SECRET',
-  'C511_AUTH_USERS_BEFORE', 'C511_STORAGE_OBJECTS_BEFORE',
-  'C511_EVIDENCE_DIR', 'C511_POSTGRES_VERSION', 'C511_AUTH_PORT', 'C511_REST_PORT', 'C511_MIGRATION_SHA256', 'C512_MIGRATION_SHA256',
-  'C515_SECONDS_MIGRATION_SHA256', 'C515_APPROVAL_MIGRATION_SHA256',
-  'C515_OT_CANCELLATION_MIGRATION_SHA256', 'C515_LIVE_CANCELLATION_MIGRATION_SHA256',
-  'C511_SOURCE_SHA', 'FEATURE_SELF_ATTENDANCE_PHOTO', 'FILE_STORAGE_ENABLED', 'FEATURE_SELF_ATTENDANCE_REVIEW',
-]
 const hasSkippedTests = output => {
   const skipped = [...output.matchAll(/^ok \d+ - (.*?) # SKIP(.*)$/gm)]
   const count = Number(output.match(/^# skipped (\d+)$/m)?.[1] || 0)
@@ -51,7 +52,6 @@ const stripReactServerCondition = value => (value || '')
   .replace(/(?:^|\s)--conditions(?:=|\s+)react-server(?=\s|$)/g, ' ')
   .replace(/\s+/g, ' ').trim()
 const addReactServerCondition = value => [stripReactServerCondition(value), '--conditions=react-server'].filter(Boolean).join(' ')
-const runtimeReady = isolatedRuntimeEnv.every(key => Boolean(process.env[key]))
 const freshRuntimeKeys = env => {
   const secret = env.C511_LOCAL_JWT_SECRET
   if (!secret) throw new Error('C511_LOCAL_JWT_SECRET_REQUIRED_FOR_FRESH_RUNTIME_KEYS')

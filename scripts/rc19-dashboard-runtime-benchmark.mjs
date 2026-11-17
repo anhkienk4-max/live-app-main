@@ -1,6 +1,6 @@
 /**
  * RC19 G1 Runtime Benchmark: Dashboard Overview Loading Performance
- * 
+ *
  * Measures actual runtime performance:
  * 1. Cold boot critical pass (references + upcoming shifts page 1)
  * 2. Background pass non-blocking completion

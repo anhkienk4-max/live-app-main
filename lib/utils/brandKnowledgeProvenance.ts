@@ -1,6 +1,6 @@
 /**
  * Brand Knowledge Base Provenance, Source Priority & Conflict Resolution
- * 
+ *
  * Issue #99 Specification:
  * - Priority #1: Notion (Primary Source)
  * - Supplementary Sources: Google Drive & APP OPS (Priority #2)
@@ -143,7 +143,7 @@ export function areContentsEqual(a: unknown, b: unknown): boolean {
 
 /**
  * Detect conflict between an existing brand knowledge record and incoming data.
- * 
+ *
  * Rules:
  * 1. If both are from the same source: not a cross-source conflict (standard version update).
  * 2. If from different sources, but contents are identical: no conflict.
@@ -192,7 +192,7 @@ export function detectBrandKnowledgeConflict(
 
 /**
  * Ingest Brand Knowledge with strict provenance, conflict detection, and approved data protection.
- * 
+ *
  * Invariants:
  * - Approved data (`is_approved = true` or `status = 'approved'`) MUST NEVER be automatically overwritten.
  * - Divergent sources MUST trigger `NEEDS_OWNER_CONFIRMATION`.

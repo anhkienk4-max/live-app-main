@@ -1,9 +1,9 @@
 # RC19 C5.9 — Release Readiness
 
-**Captured:** 2026-11-09 08:40 UTC  
-**Repository:** `anhkienk4-max/live-app-main`  
-**Branch / baseline / final local HEAD:** `release/rc19-c5.4-candidate` / `2780719ec318495c757e3c722a6e354d59f395e1`  
-**Production:** `ops5729.top`, Supabase project `egdjnpmoasarrttvhgds`  
+**Captured:** 2026-11-09 08:40 UTC<br />
+**Repository:** `anhkienk4-max/live-app-main`<br />
+**Branch / baseline / final local HEAD:** `release/rc19-c5.4-candidate` / `2780719ec318495c757e3c722a6e354d59f395e1`<br />
+**Production:** `ops5729.top`, Supabase project `egdjnpmoasarrttvhgds`
 **Decision:** `READY_FOR_OWNER_RELEASE_REVIEW: NO`; `PRODUCTION_GO: NO`
 
 ## Scope and safety
@@ -143,7 +143,7 @@ No application source fix was made: the only immediate source-level enhancement 
 - `scripts/rc19-c4-migration-rehearsal/evidence/RC19_C5_9_RELEASE_READINESS.md`
 - `scripts/rc19-c4-migration-rehearsal/evidence/RC19_C5_9_RELEASE_READINESS.json`
 
-**`READY_FOR_OWNER_RELEASE_REVIEW: NO`** — P0 evidence is incomplete.  
+**`READY_FOR_OWNER_RELEASE_REVIEW: NO`** — P0 evidence is incomplete.
 **`PRODUCTION_GO: NO`** — no migration, deployment, role UAT, or Drive gate is authorized/ready.
 
 ## Evidence references
@@ -161,9 +161,9 @@ No application source fix was made: the only immediate source-level enhancement 
 
 ## C5.10 execution addendum — 2026-11-09
 
-**Source baseline:** C5.9 HEAD `2780719ec318495c757e3c722a6e354d59f395e1`  
-**Final local source HEAD:** `fc3202cfe146cd823c8f9aa0406bda01a4be6848` (`fix(rc19): scope workforce capabilities and attest release builds`)  
-**Branch:** `release/rc19-c5.4-candidate`  
+**Source baseline:** C5.9 HEAD `2780719ec318495c757e3c722a6e354d59f395e1`<br />
+**Final local source HEAD:** `fc3202cfe146cd823c8f9aa0406bda01a4be6848` (`fix(rc19): scope workforce capabilities and attest release builds`)<br />
+**Branch:** `release/rc19-c5.4-candidate`
 **Production mutation/deployment:** none.
 
 ### Source changes

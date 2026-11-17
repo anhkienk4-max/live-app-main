@@ -595,7 +595,7 @@ export function ShiftFormDialog({
             const segDuration = calculateDuration(seg.start_time, seg.end_time)
 
             // Find assigned registrations for this segment
-            const segAssigned = currentShiftRegistrations.filter(r => 
+            const segAssigned = currentShiftRegistrations.filter(r =>
               (r.status === 'approved' || r.status === 'manually_assigned') &&
               (r.staffing_segment_id === `segment-${seg.segment_index}` || r.staffing_segment_id === String(seg.segment_index))
             )
