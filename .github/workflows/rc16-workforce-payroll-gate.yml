@@ -8,7 +8,7 @@ on:
   pull_request:
     branches:
       - fix/rc14-data-report-export-fidelity
-      - main
+      - integration/rc14-rc15-rc16-prod
     paths:
       - 'components/features/search/**'
       - 'app/api/operations/**'
