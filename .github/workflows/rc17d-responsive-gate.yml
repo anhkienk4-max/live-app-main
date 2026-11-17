@@ -3,7 +3,7 @@ on:
   push:
     branches: [integration/rc19-c4-candidate]
   pull_request:
-    branches: [main]
+    branches: [integration/rc19-c4-candidate]
   workflow_dispatch:
 permissions:
   contents: read

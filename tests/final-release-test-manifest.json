@@ -250,6 +250,7 @@
     "tests/rc19-unified-import-postgres17.test.ts",
     "tests/rc19-w4-legacy-segment-compatibility.test.ts",
     "tests/rc19-w4-staffing-conflict-api.test.ts",
+    "tests/rc19-w4-swap-brand-security-postgres17.test.ts",
     "tests/rc19-w4-swap-brand-security.test.ts",
     "tests/rc19-wave3-verification.test.ts",
     "tests/rc19-workforce-authority.test.ts",

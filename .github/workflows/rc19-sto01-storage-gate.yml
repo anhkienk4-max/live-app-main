@@ -128,10 +128,7 @@ jobs:
             tests/rc19-sto02-resource-validation.test.ts
 
       - name: Run full Node regression suite
-        shell: bash
-        run: |
-          mapfile -t TEST_FILES < <(find tests -maxdepth 1 -type f \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.mjs' \) ! -name '*postgres17*' -print)
-          node --import ./tests/typescript-alias-loader.mjs --test "${TEST_FILES[@]}"
+        run: node scripts/run-final-regression.mjs --exclude-postgres17
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
