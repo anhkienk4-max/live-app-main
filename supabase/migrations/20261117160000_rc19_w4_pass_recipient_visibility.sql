@@ -22,7 +22,16 @@ CREATE POLICY swap_requests_select ON public.swap_requests FOR SELECT TO authent
     OR new_host_id = (SELECT private.current_business_user_id())
     OR new_support_id = (SELECT private.current_business_user_id())
     OR new_technical_id = (SELECT private.current_business_user_id())
-    OR (SELECT private.is_leader_or_admin())
+    OR ((SELECT private.current_system_permission()) = 'admin')
+    OR (
+      (SELECT private.current_system_permission()) = 'leader'
+      AND EXISTS (
+        SELECT 1 FROM public.shifts s
+        WHERE (s.id = coalesce(nullif(swap_requests.shift_id, ''), swap_requests.source_shift_id)
+               OR s.id = swap_requests.target_shift_id)
+          AND private.can_read_shift(s.id)
+      )
+    )
     OR EXISTS (
       SELECT 1 FROM public.shift_registrations sr
       WHERE sr.shift_id = source_shift_id

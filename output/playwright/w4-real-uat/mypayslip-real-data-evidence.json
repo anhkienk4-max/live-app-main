@@ -1,0 +1,26 @@
+{
+  "verifiedAt": "2026-11-17T09:03:53.890Z",
+  "hostOne": {
+    "email": "hostone_c511_1794886705715_5f2238403c0c40@c511.invalid",
+    "status": 200,
+    "periodCount": 1,
+    "linesCount": 1,
+    "totalNetVnd": 35000,
+    "domRows": 1,
+    "domHeading": "Phiếu lương của tôi",
+    "domPeriod": "Kỳ 2026-11-17 đến 2026-11-17",
+    "domMoneyText": "35.000 đ",
+    "screenshot": "output/playwright/w4-real-uat/mypayslip-complete-data.png"
+  },
+  "antiTamper": {
+    "url": "http://127.0.0.1:3102/api/workforce/my-payslip?year=2026&staff_id=HostTwo_c511_1794886705715_a73a0921852248",
+    "status": 400,
+    "errorCode": "MY_PAYSLIP_QUERY_NOT_ALLOWED",
+    "rejected": true
+  },
+  "crossMemberIsolation": {
+    "hostTwoEmail": "hosttwo_c511_1794886705715_a73a0921852248@c511.invalid",
+    "hostTwoTotalNetVnd": 30000,
+    "isolated": true
+  }
+}

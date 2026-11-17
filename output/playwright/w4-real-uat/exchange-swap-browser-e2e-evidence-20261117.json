@@ -1,0 +1,62 @@
+{
+  "verifiedAt": "2026-11-17T09:22:34.468Z",
+  "scenarios": {
+    "scenario1": {
+      "requestId": "01ce00d2-8766-4585-8165-b2e4c7e2ad43",
+      "mode": "exchange",
+      "status": "completed",
+      "version": 5,
+      "sourceShiftId": "31518ff5-dbe5-4ed9-92c9-bed2cdb73c6e",
+      "targetShiftId": "315d51b9-d9c8-4164-90be-4132e5b0a554",
+      "swappedAssignmentsVerified": true,
+      "ok": true
+    },
+    "scenario2": {
+      "requestId": "33876375-62c1-4394-934a-5be8fd6602b5",
+      "mode": "exchange",
+      "status": "rejected",
+      "version": 3,
+      "ok": true
+    },
+    "scenario3": {
+      "requestId": "aa5f2271-8f06-4f1c-aa25-75795af78170",
+      "mode": "exchange",
+      "status": "cancelled",
+      "version": 3,
+      "ok": true
+    }
+  },
+  "baselines": {
+    "payrollBefore": {
+      "periodCount": 3,
+      "lineCount": 6,
+      "sha256": "ea468279670ee91917a88d7c030f3799a201ca8f9e6a12ab416452b0b6b93cae"
+    },
+    "payrollAfter": {
+      "periodCount": 3,
+      "lineCount": 6,
+      "sha256": "ea468279670ee91917a88d7c030f3799a201ca8f9e6a12ab416452b0b6b93cae"
+    },
+    "payrollUnchanged": true,
+    "attendanceBefore": {
+      "eventCount": 8,
+      "sha256": "3c9a77e3a448573d6399e3d658d3c7024c7e3c177573135e6bc387bf5a1f1484"
+    },
+    "attendanceAfter": {
+      "eventCount": 8,
+      "sha256": "3c9a77e3a448573d6399e3d658d3c7024c7e3c177573135e6bc387bf5a1f1484"
+    },
+    "attendanceUnchanged": true,
+    "actualBefore": {
+      "segmentCount": 7,
+      "decisionCount": 6,
+      "sha256": "be13f9da929c7546718282ea7f7b089b921e57e4216b4df354e8d6368537206f"
+    },
+    "actualAfter": {
+      "segmentCount": 7,
+      "decisionCount": 6,
+      "sha256": "be13f9da929c7546718282ea7f7b089b921e57e4216b4df354e8d6368537206f"
+    },
+    "actualUnchanged": true
+  }
+}
