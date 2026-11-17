@@ -1,5 +1,8 @@
 # OPS Livestream — Post-Go-Live Roadmap V1.1 (W0–W10; 122 traceable tasks)
 
+> **OWNER RELEASE PRIORITY (2026-11-17):** Current task is **RC19 direct PRODUCTION Go-live**; no Staging. The **Drive-first full business-data architecture** is explicitly **DEFERRED TO POST-GO-LIVE**. Do not change RC19 FULL PASS behavior, split source-of-truth, or build DFS-01..08 before RC19 release. Future work is documented at [Drive-first target (DEFERRED)](OPS_DRIVE_FIRST_FULL_DATA_ARCHITECTURE_20261117.md).  
+> **Not deferred:** pre-release Google Drive physical readback for *existing required files*, confidentiality/ACL gate and safe Production database migration & recovery. The 122 baseline PG task IDs remain unchanged; DFS work packages are future planning references, not 8 new implementation tasks today.  
+
 > **V1.1 change note:** The original 112 PG tasks are preserved verbatim below. Ten additional tasks (PG-113…PG-122), the wave execution sequence and the 14-gap reconciliation are appended at the end. The first 112 IDs were **not renumbered**, and not all 122 imply coding work. See the V1.1 section for the canonical order.  
 > **Repository research:** [11 GitHub references](OPS_LIVESTREAM_OPEN_SOURCE_REFERENCE_REPOS_20261117.md).
 
