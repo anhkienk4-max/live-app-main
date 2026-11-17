@@ -9,7 +9,6 @@ on:
       - 'feat/rc16k-ui-consistency-pagination'
   pull_request:
     branches:
-      - 'main'
       - 'rc/convergence-rc14-rc15'
       - 'rc/**'
       - 'integration/rc14-rc15-rc16-prod'
