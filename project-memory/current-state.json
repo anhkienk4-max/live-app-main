@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "00288c4de38437c69d1e001970e692e92c4d1d39",
+    "head": "ca9e22fc9bd95abd454756afc016ef836a0848a1",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -125,9 +125,9 @@
         "lib": 292,
         "scripts": 172,
         "supabase": 158,
-        "tests": 389
+        "tests": 391
       },
-      "total": 1302
+      "total": 1304
     },
     "tests": {
       "files": [
@@ -310,12 +310,14 @@
         "tests/rc19-c511-persisted-e2e.test.ts",
         "tests/rc19-c511-segmented-staffing.test.ts",
         "tests/rc19-c515-compensation-ui-contract.test.ts",
+        "tests/rc19-c515-overtime-approval-sync.test.ts",
         "tests/rc19-c515-payroll-approval-handler.test.ts",
         "tests/rc19-c515-payroll-migration-contract.test.ts",
         "tests/rc19-c6-issue184-import.test.ts",
         "tests/rc19-calendar-overlap-range.test.ts",
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
+        "tests/rc19-compensation-only-payslip.test.ts",
         "tests/rc19-destination-integrity.test.ts",
         "tests/rc19-dynamic-rbac-server-guard.test.ts",
         "tests/rc19-effective-permission.test.ts",
@@ -446,7 +448,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 314
+      "count": 316
     },
     "migrations": {
       "files": [
@@ -595,5 +597,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-17T23:18:13+07:00"
+  "synced_at": "2026-11-18T11:24:32+07:00"
 }
