@@ -1,9 +1,9 @@
 # RC19 W4 — Production Migration Ledger Reconciliation & Semantic Equivalence
 
-**Date:** 2026-11-18  
-**Repository:** `anhkienk4-max/live-app-main`  
-**Target Environment:** Supabase Production (`egdjnpmoasarrttvhgds`, PostgreSQL 17.6)  
-**Status:** FULL EQUIVALENCE PROVEN — ZERO DDL LOSS — FAIL-CLOSED PRECHECK VERIFIED  
+**Date:** 2026-11-18
+**Repository:** `anhkienk4-max/live-app-main`
+**Target Environment:** Supabase Production (`egdjnpmoasarrttvhgds`, PostgreSQL 17.6)
+**Status:** FULL EQUIVALENCE PROVEN — ZERO DDL LOSS — FAIL-CLOSED PRECHECK VERIFIED
 
 ---
 
@@ -14,7 +14,7 @@ An independent audit identified a discrepancy between:
 - **Local repository candidate migrations:** 130 files
 - **Common versions:** 98 versions
 - **Local-only versions:** 32 versions (21 historical aliases + 11 unapplied release candidate migrations)
-- **Production-only versions:** 19 versions (19 historical UAT/hotfix aliases)
+- **Production-only versions:** 19 versions (18 historical UAT/hotfix aliases + 1 empty receipt `20261111200000`)
 
 This document proves the exact 1-to-1 semantic and schema equivalence for all 32 local-only and 19 Production-only versions, confirms that no DDL/RLS changes are lost, and documents the fail-closed pre-execution check implemented in `scripts/rc19-c4-migration-rehearsal/rc19-w4-production-manifest-11.sql`.
 
@@ -32,19 +32,23 @@ The 32 local-only versions partition into:
 1. **21 Historical Aliases/Replaced Versions:** Already applied to Production under alternate timestamps during prior UAT and release cycles.
 2. **11 Release Candidate Migrations (`20261112000000` through `20261117160000`):** The verified unapplied migrations consolidated into `rc19-w4-production-manifest-11.sql`.
 
+The 19 Production-only versions partition into:
+1. **18 Historical UAT/Hotfix/Proposal Migrations:** Applied to Production with deployment-specific timestamps during Reports UAT (October 24), STO02 / Brand01 proposals, and RC16K / RC17C / RC18A cutovers.
+2. **1 Empty Marker Receipt (`20261111200000`):** Present in Production `schema_migrations`; its stored SQL statements payload was empty. Provenance is recorded as a historical no-op checkpoint during C5 cutover. Catalog inspection confirms all expected schema objects exist and no DDL was lost.
+
 ---
 
-## 3. Detailed Semantic & Schema Equivalence Mapping
+## 3. Detailed Semantic & Schema Equivalence Mapping (All 19 Production-Only & 32 Local-Only Entries)
 
 | # | Local Migration File | Production Version | Production Name / Context | Semantic & Schema Equivalence Proof |
 |---|---|---|---|---|
 | 1 | `20260919074349_rc12_report_file_provider.sql` | N/A (Replaced) | Replaced by RC15 `20261011091925` | RC12 prototype was superseded by RC15 forward migration `20261011091925_rc15_storage_route_prerequisites` and `20261011092051_rc15_operational_files`. Replaying RC12 is strictly halted per `PHASE_H_AUDIT_CORRECTION.md`. |
 | 2 | `20260924000000_rc13a_execution_source_storage_routes.sql` | N/A (Replaced) | Replaced by RC15 `20261011092015` | Superseded by `20261011092015_rc15_shift_rpc_compatibility` which enforces safe MD5 checks and execution_source allowlists. |
-| 3 | `20261012171503_rc16k_bounded_shift_lists.sql` | `20261014173408` | `20261012171503_rc16k_bounded_shift_lists` | Exact SQL source match. Applied with timestamp prefix in name. |
-| 4 | `20261020164351_rc18a_publish_shifts_realtime.sql` | `20261021100941` | `rc18a_publish_shifts_realtime_production` | Exact SQL source match. Production alias applied during RC18A cutover. |
-| 5 | `20261021000000_rc17c_attendance_import_foundation.sql` | `20261021101021` | `rc17c_attendance_import_foundation_production` | Exact SQL source match. Applied during RC17C cutover. |
-| 6 | `20261021034515_shift_automatic_status_scheduling_and_read_safety.sql` | `20261021101104` | `shift_automatic_status_scheduling_and_read_safety_production` | Exact SQL source match. Applied during RC17C cutover. |
-| 7 | `20261021064611_media_viewer_acl_exact_shift_v1.sql` | `20261021101725` | `media_viewer_acl_exact_shift_v1` | Exact SQL source match. Applied during Media Viewer gate. |
+| 3 | `20261012171503_rc16k_bounded_shift_lists.sql` | `20261014173408` | `20261012171503_rc16k_bounded_shift_lists` | Exact SQL source match. Applied with timestamp prefix in name. Verified in `VERCEL_CURRENT_PROD_1609DB_SHA1_20261028.json`. |
+| 4 | `20261020164351_rc18a_publish_shifts_realtime.sql` | `20261021100941` | `rc18a_publish_shifts_realtime_production` | Exact SQL source match. Production alias applied during RC18A cutover. Verified in publication contract suite. |
+| 5 | `20261021000000_rc17c_attendance_import_foundation.sql` | `20261021101021` | `rc17c_attendance_import_foundation_production` | Exact SQL source match. Applied during RC17C cutover. Catalog functions verified. |
+| 6 | `20261021034515_shift_automatic_status_scheduling_and_read_safety.sql` | `20261021101104` | `shift_automatic_status_scheduling_and_read_safety_production` | Exact SQL source match. Applied during RC17C cutover. Verified in scheduler tests. |
+| 7 | `20261021064611_media_viewer_acl_exact_shift_v1.sql` | `20261021101725` | `media_viewer_acl_exact_shift_v1` | Exact SQL source match. Applied during Media Viewer gate. Verified in `media-viewer-grants.yml`. |
 | 8 | `20261021120000_global_report_obligation_page.sql` | `20261021100953` | `global_report_obligation_page_production` | Documented in `RC19_REPORT_OBLIGATION_SCHEMA_PARITY_GATE.md`. Function `get_report_obligation_page` body matches canonical after whitespace normalization. |
 | 9 | `20261021190000_global_report_notification_transition_keys.sql` | `20261021101030` | `global_report_notification_transition_keys_production` | Exact SQL source match. Applied during notification hardening. |
 | 10 | `20261022165004_rc19_1b2_staffing_candidate_availability.sql` | N/A (Absorbed) | Covered by C3/C5 candidate models | Superseded by `20261108135226_rc19_staffing_candidate_brand_scope.sql` which enforces brand scoping on candidate availability. |
@@ -61,6 +65,7 @@ The 32 local-only versions partition into:
 | 21 | `20261029120000_rc19_staffing_role_scoped_gap_filter.sql` | `20261031164529` | `rc19_staffing_role_scoped_gap_filter` | Exact SQL source match. Applied with timestamp prefix in Production ledger. |
 | — | Proposal: `rc19-sto02-resource-registry` | `20261101073720` | `20261101073643_rc19_sto02_resource_registry` | Applied directly from proposals during storage route migration. |
 | — | Proposal: `rc19-brand01` | `20261101073742` | `20261101073646_rc19_brand01_catalog` | Applied directly from proposals during brand catalog migration. |
+| — | N/A (Historical Empty Receipt) | `20261111200000` | `20261111200000` (Empty statements) | Recorded in Production `schema_migrations`; its stored SQL statements payload was empty. Provenance is recorded as a historical no-op checkpoint during C5 cutover. Catalog inspection confirms all expected schema objects exist and no DDL was lost. |
 
 ---
 
@@ -114,7 +119,7 @@ BEGIN
 
   -- 4. Assert NONE of the 11 candidate versions are already applied (fail-closed against replay)
   IF EXISTS (
-    SELECT 1 FROM supabase_migrations.schema_migrations 
+    SELECT 1 FROM supabase_migrations.schema_migrations
     WHERE version IN (
       '20261112000000', '20261112120000', '20261112130000',
       '20261113083000', '20261113084154', '20261115120000',

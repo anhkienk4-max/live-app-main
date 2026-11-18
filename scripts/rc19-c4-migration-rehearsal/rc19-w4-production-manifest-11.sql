@@ -1,6 +1,6 @@
 -- RC19 W4 PRODUCTION CONSOLIDATED MIGRATION MANIFEST (11 Verified Unapplied Migrations)
 -- Target: Supabase Production (egdjnpmoasarrttvhgds)
--- Generated at: 2026-11-18T04:09:45.376Z
+-- Generated at: 2026-11-18T04:54:10.860Z
 -- Reconciled: Excludes already-applied 20261110140000 and 20261111000000
 
 BEGIN;
@@ -33,7 +33,7 @@ BEGIN
 
   -- 4. Assert NONE of the 11 candidate versions are already applied (fail-closed against replay)
   IF EXISTS (
-    SELECT 1 FROM supabase_migrations.schema_migrations 
+    SELECT 1 FROM supabase_migrations.schema_migrations
     WHERE version IN (
       '20261112000000', '20261112120000', '20261112130000',
       '20261113083000', '20261113084154', '20261115120000',

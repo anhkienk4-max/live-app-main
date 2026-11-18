@@ -123,6 +123,8 @@ test('P1 Overtime sync: decide_overtime admin_confirm immediately updates existi
   assert.equal(lineUpdate.values.overtime_time_class, 'night')
   assert.equal(lineUpdate.values.overtime_multiplier_basis_points, 20000)
   assert.equal(lineUpdate.values.rate_card_id, 'rate-card-ot-custom')
+  assert.equal(lineUpdate.values.gross_vnd, 250000, 'Gross VND must be recalculated with overtime premium (1.5h regular + 0.5h 2.0x OT = 250,000)')
+  assert.equal(lineUpdate.values.net_vnd, 250000, 'Net VND must match recalculated Gross VND')
   assert.equal(lineUpdate.values.version, 4, 'Version must be incremented from 3 to 4')
 })
 
@@ -135,6 +137,14 @@ test('P1 Overtime sync: decide_overtime rejected resets overtime fields on exist
     segment_id: 'seg-ot-2',
     overtime_request_id: REQ_ID_2,
     version: 2,
+    actual_seconds: 7200,
+    payable_seconds: 7200,
+    actual_minutes: 120,
+    payable_minutes: 120,
+    rate_vnd_per_hour: 100000,
+    overtime_multiplier_basis_points: 15000,
+    adjustment_vnd: 0,
+    adjustment_reason: null,
     period: { status: 'draft' },
   }
 
@@ -213,6 +223,8 @@ test('P1 Overtime sync: decide_overtime rejected resets overtime fields on exist
   assert.equal(updates[0].values.overtime_request_id, null)
   assert.equal(updates[0].values.overtime_day_class, null)
   assert.equal(updates[0].values.overtime_time_class, null)
+  assert.equal(updates[0].values.gross_vnd, 200000, 'Gross VND must be recalculated without overtime (2h * 100,000 = 200,000)')
+  assert.equal(updates[0].values.net_vnd, 200000, 'Net VND must match recalculated Gross VND')
   assert.equal(updates[0].values.version, 3)
 })
 

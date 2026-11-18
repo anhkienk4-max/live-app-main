@@ -7,7 +7,7 @@ import { authorizationErrorResponse, isAuthorizationError, requirePermission,
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { autoCalculatePeriodLines, calculatePayrollAmounts, calculatePayrollLine,
-  calculateRecalculationDiffs, calculateSecondPrecisionPayrollLine, selectApprovedRate,
+  calculatePayrollAmountsFromSeconds, calculateRecalculationDiffs, calculateSecondPrecisionPayrollLine, selectApprovedRate,
   PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM, WorkforceCalculationError,
   type ActualStaffingEvidence, type ApprovedPayrollRate, type ExistingPayrollLineForRecalc,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
@@ -644,6 +644,30 @@ export function createWorkforcePayrollHandler(options:Options={}) {
                 .maybeSingle()
               const curVersion = currentLineRes.data?.version ?? line.version
 
+              let grossVnd = line.gross_vnd
+              let netVnd = line.net_vnd
+              if (line.actual_seconds !== null && line.payable_seconds !== null) {
+                const amounts = calculatePayrollAmountsFromSeconds({
+                  actualSeconds: line.actual_seconds as number,
+                  payableSeconds: line.payable_seconds as number,
+                  overtimeSeconds: approvedOt.overtimeSeconds,
+                  rateVndPerHour: line.rate_vnd_per_hour as number,
+                  overtimeMultiplierBasisPoints: approvedOt.multiplierBasisPoints,
+                  adjustmentVnd: (line.adjustment_vnd as number | null) ?? 0,
+                  adjustmentReason: (line.adjustment_reason as string | null) ?? null,
+                })
+                grossVnd = amounts.grossVnd
+                netVnd = amounts.netVnd
+              } else if (line.payable_minutes !== null) {
+                const otMins = Math.floor(approvedOt.overtimeSeconds / 60)
+                const regularMinutes = (line.payable_minutes as number) - otMins
+                const denominator = 600_000n
+                const numerator = BigInt(line.rate_vnd_per_hour as number)
+                  * (BigInt(regularMinutes) * 10_000n + BigInt(otMins) * BigInt(approvedOt.multiplierBasisPoints))
+                grossVnd = Number((numerator + denominator / 2n) / denominator)
+                netVnd = grossVnd + ((line.adjustment_vnd as number | null) ?? 0)
+              }
+
               const { data: updatedLine, error: updateErr } = await db.from('workforce_payroll_lines')
                 .update({
                   overtime_seconds: approvedOt.overtimeSeconds,
@@ -653,6 +677,8 @@ export function createWorkforcePayrollHandler(options:Options={}) {
                   overtime_time_class: approvedOt.timeClass,
                   overtime_multiplier_basis_points: approvedOt.multiplierBasisPoints,
                   rate_card_id: approvedOt.rateCardId ?? line.rate_card_id,
+                  gross_vnd: grossVnd,
+                  net_vnd: netVnd,
                   version: (curVersion as number) + 1,
                   updated_at: new Date().toISOString(),
                 })
@@ -897,6 +923,30 @@ export function createWorkforcePayrollHandler(options:Options={}) {
                 .maybeSingle()
               const curVersion = currentLineRes.data?.version ?? line.version
 
+              let grossVnd = line.gross_vnd
+              let netVnd = line.net_vnd
+              if (line.actual_seconds !== null && line.payable_seconds !== null) {
+                const amounts = calculatePayrollAmountsFromSeconds({
+                  actualSeconds: line.actual_seconds as number,
+                  payableSeconds: line.payable_seconds as number,
+                  overtimeSeconds: approvedOt.overtimeSeconds,
+                  rateVndPerHour: line.rate_vnd_per_hour as number,
+                  overtimeMultiplierBasisPoints: approvedOt.multiplierBasisPoints,
+                  adjustmentVnd: (line.adjustment_vnd as number | null) ?? 0,
+                  adjustmentReason: (line.adjustment_reason as string | null) ?? null,
+                })
+                grossVnd = amounts.grossVnd
+                netVnd = amounts.netVnd
+              } else if (line.payable_minutes !== null) {
+                const otMins = Math.floor(approvedOt.overtimeSeconds / 60)
+                const regularMinutes = (line.payable_minutes as number) - otMins
+                const denominator = 600_000n
+                const numerator = BigInt(line.rate_vnd_per_hour as number)
+                  * (BigInt(regularMinutes) * 10_000n + BigInt(otMins) * BigInt(approvedOt.multiplierBasisPoints))
+                grossVnd = Number((numerator + denominator / 2n) / denominator)
+                netVnd = grossVnd + ((line.adjustment_vnd as number | null) ?? 0)
+              }
+
               const { data: updatedLine, error: updateErr } = await db.from('workforce_payroll_lines')
                 .update({
                   overtime_seconds: approvedOt.overtimeSeconds,
@@ -906,6 +956,8 @@ export function createWorkforcePayrollHandler(options:Options={}) {
                   overtime_time_class: approvedOt.timeClass,
                   overtime_multiplier_basis_points: approvedOt.multiplierBasisPoints,
                   rate_card_id: approvedOt.rateCardId ?? line.rate_card_id,
+                  gross_vnd: grossVnd,
+                  net_vnd: netVnd,
                   version: (curVersion as number) + 1,
                   updated_at: new Date().toISOString(),
                 })
