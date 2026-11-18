@@ -32,6 +32,8 @@ POST_20261111_MIGRATIONS = [
         ("20261115174231", ROOT / "supabase/migrations/20261115174231_rc19_w4_retire_unguarded_swap_approval.sql", "rc19_w4_retire_unguarded_swap_approval"),
         ("20261116120000", ROOT / "supabase/migrations/20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql", "rc19_w4_swap_preflight_and_segment_capacity"),
         ("20261117160000", ROOT / "supabase/migrations/20261117160000_rc19_w4_pass_recipient_visibility.sql", "rc19_w4_pass_recipient_visibility"),
+    ("20261118140000", ROOT / "supabase/migrations/20261118140000_rc19_w4_atomic_overtime_payroll_sync.sql", "rc19_w4_atomic_overtime_payroll_sync"),
+    ("20261118150000", ROOT / "supabase/migrations/20261118150000_rc19_w4_overtime_payroll_defect_fixes.sql", "rc19_w4_overtime_payroll_defect_fixes"),
 ]
 MIGRATIONS_C515 = [
     ("20261110115529", ROOT / "supabase/migrations/20261110115529_rc19_c515_payroll_second_precision.sql", "rc19_c515_payroll_second_precision"),

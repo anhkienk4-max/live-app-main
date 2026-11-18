@@ -732,10 +732,10 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
     approved_at: new Date().toISOString(), approval_note: 'C6 synthetic immutable Payroll fixture rate',
   }).select('id').single(), 'C6 synthetic approved rate fixture')
   const existingPeriods = requireOk(await service.from('workforce_payroll_periods').select('revision')
-    .eq('period_start', '2026-11-01').eq('period_end', '2026-11-30'), 'C6 existing synthetic Payroll revisions') as Array<{ revision: number }>
+    .eq('period_start', '2026-11-01').eq('period_end', '2026-11-01'), 'C6 existing synthetic Payroll revisions') as Array<{ revision: number }>
   const revision = existingPeriods.reduce((latest, item) => Math.max(latest, Number(item.revision) || 0), 0) + 1
   const period = requireOk(await service.from('workforce_payroll_periods').insert({
-    period_start: '2026-11-01', period_end: '2026-11-30', revision, status: 'draft', created_by: payrollAdmin.businessId,
+    period_start: '2026-11-01', period_end: '2026-11-01', revision, status: 'draft', created_by: payrollAdmin.businessId,
   }).select('id').single(), 'C6 synthetic Payroll period fixture')
   reconciliationPayrollPeriodId = String(period.id)
   requireOk(await service.from('workforce_payroll_lines').insert({
@@ -1402,6 +1402,12 @@ async function runPersistedScenario(run: number) {
   assert.equal(confirmedOvertime.state, 'admin_confirmed')
   assert.equal(confirmedOvertime.multiplier_basis_points, 15000)
   assert.equal(confirmedOvertime.rate_card_id, rateBody.rate.id)
+  const postConfirmReject = await apiPost(scopedActualHandler, '/api/workforce/actual', reviewerAuth.token, {
+    action: 'decide_overtime', request_id: otRequest.id, expected_version: otRequest.version + 1,
+    decision: 'reject', reason: 'Terminal admin_confirmed OT cannot be rejected', idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(postConfirmReject.status, 409)
+  assert.equal((await postConfirmReject.json() as { error: { code: string } }).error.code, 'C515_OT_INVALID_TRANSITION')
   const periodResponse = await payrollPost(adminAuth.token, {
     action: 'create_period', period_start: (completed as { date: string }).date, period_end: (completed as { date: string }).date,
   })
@@ -1645,6 +1651,31 @@ async function runPersistedScenario(run: number) {
     new_amount_vnd: null, idempotency_key: crypto.randomUUID(),
   })
   assert.equal(lockedCompensationConfirm.status, 403)
+  const otReceipt2Hash = createHash('sha256').update(`C5.15 synthetic locked OT evidence ${run}`).digest('hex')
+  const otReceipt2 = requireOk(await service.from('operational_files').insert({
+    scope_key: `shift:${shift.id}`, category: 'staffing_document', brand_id: brandA, platform_id: platformId,
+    shift_id: shift.id, period_date: completed.date, execution_source: 'internal', provider: 'google_drive',
+    external_file_id: `c511-local-ot2-${run}`, external_parent_id: `c511-local-ot2-parent-${run}`,
+    provider_metadata: { test_fixture: true }, folder_path: `c511-local/${shift.id}/overtime-locked`,
+    file_name: `c511-overtime-locked-${run}.txt`, mime_type: 'text/plain', size_bytes: 1,
+    checksum_sha256: otReceipt2Hash, integrity_status: 'sha256_verified', artifact_key: `c511-ot2-${otReceipt2Hash}`,
+    uploaded_by: admin.businessId,
+  }).select('id').single(), 'seed synthetic locked OT evidence receipt') as { id: string }
+  const lockedOtReqResponse = await apiPost(scopedActualHandler, '/api/workforce/actual', leaderAuth.token, {
+    action: 'request_overtime', segment_id: actual2.id,
+    overtime_start_at: actualStart, overtime_end_at: persistedStart(completed, 5),
+    day_class: otDayClass, time_class: otTimeClass,
+    reason: 'Locked period overtime confirmation fail-closed check', evidence_receipt_id: otReceipt2.id,
+    idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(lockedOtReqResponse.status, 201, await lockedOtReqResponse.clone().text())
+  const lockedOtReq = (await lockedOtReqResponse.json() as { overtime: { id: string; version: number } }).overtime
+  const lockedOtConfirm = await apiPost(scopedActualHandler, '/api/workforce/actual', reviewerAuth.token, {
+    action: 'decide_overtime', request_id: lockedOtReq.id, expected_version: lockedOtReq.version,
+    decision: 'admin_confirm', reason: 'Locked payroll period must reject late OT confirm', idempotency_key: crypto.randomUUID(),
+  })
+  assert.equal(lockedOtConfirm.status, 409)
+  assert.equal((await lockedOtConfirm.json() as { error: { code: string } }).error.code, 'C515_OT_PAYROLL_PERIOD_LOCKED')
   const payslipHandler = createMyPayslipHandler({ createClient: () => service, resolveUser, isEnabled: () => true })
   const ownPayslip = await payslipHandler.GET(apiRequest('/api/workforce/my-payslip', host1Auth.token))
   assert.equal(ownPayslip.status, 200, await ownPayslip.clone().text())

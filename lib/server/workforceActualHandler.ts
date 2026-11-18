@@ -611,7 +611,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           if(error){
             const message=error.message||'C515_OT_OPERATION_FAILED'
             const status=/FORBIDDEN|SCOPE_DENIED|SELF_CONFIRM|SELF_REVIEW/iu.test(message)?403
-              :/NOT_FOUND/iu.test(message)?404:/INVALID|REQUIRED|NOT_CONFIGURED|OVERLAP|STALE|ALREADY|EVIDENCE/iu.test(message)?409:503
+              :/NOT_FOUND/iu.test(message)?404:/INVALID|REQUIRED|NOT_CONFIGURED|OVERLAP|STALE|ALREADY|EVIDENCE|LOCKED|VOIDED|TRANSITION|EXCEEDS|CHANGED/iu.test(message)?409:503
             return fail(message,status)
           }
 

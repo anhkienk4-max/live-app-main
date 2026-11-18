@@ -7,7 +7,7 @@ import { authorizationErrorResponse, isAuthorizationError, requirePermission,
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { autoCalculatePeriodLines, calculatePayrollAmounts, calculatePayrollLine,
-  calculatePayrollAmountsFromSeconds, calculateRecalculationDiffs, calculateSecondPrecisionPayrollLine, selectApprovedRate,
+  calculateRecalculationDiffs, calculateSecondPrecisionPayrollLine, selectApprovedRate,
   PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM, WorkforceCalculationError,
   type ActualStaffingEvidence, type ApprovedPayrollRate, type ExistingPayrollLineForRecalc,
   type WorkforceRole } from '@/lib/workforce/payrollCalculation'
@@ -621,80 +621,6 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             }
           }
 
-          // Synchronize approved overtime changes on active lines in draft period
-          const overtimeRows = await fetchAllAdminConfirmedOvertime(db, segments.map(row => row.id))
-          const approvedOvertimeBySegment = new Map(overtimeRows.map(row => [row.segment_id, {
-            id: row.id,
-            overtimeSeconds: row.overtime_seconds,
-            dayClass: row.day_class as 'weekday' | 'weekend' | 'holiday',
-            timeClass: row.time_class as 'day' | 'night',
-            multiplierBasisPoints: row.multiplier_basis_points,
-            rateCardId: row.rate_card_id,
-          }]))
-
-          for (const line of activeLines) {
-            const approvedOt = approvedOvertimeBySegment.get(line.segment_id as string)
-            const currentOtId = (line.overtime_request_id as string | null) ?? null
-            const currentOtSecs = (line.overtime_seconds as number | null) ?? 0
-
-            if (approvedOt && (currentOtId !== approvedOt.id || currentOtSecs !== approvedOt.overtimeSeconds)) {
-              const currentLineRes = await db.from('workforce_payroll_lines')
-                .select('id,version')
-                .eq('id', line.id)
-                .maybeSingle()
-              const curVersion = currentLineRes.data?.version ?? line.version
-
-              let grossVnd = line.gross_vnd
-              let netVnd = line.net_vnd
-              if (line.actual_seconds !== null && line.payable_seconds !== null) {
-                const amounts = calculatePayrollAmountsFromSeconds({
-                  actualSeconds: line.actual_seconds as number,
-                  payableSeconds: line.payable_seconds as number,
-                  overtimeSeconds: approvedOt.overtimeSeconds,
-                  rateVndPerHour: line.rate_vnd_per_hour as number,
-                  overtimeMultiplierBasisPoints: approvedOt.multiplierBasisPoints,
-                  adjustmentVnd: (line.adjustment_vnd as number | null) ?? 0,
-                  adjustmentReason: (line.adjustment_reason as string | null) ?? null,
-                })
-                grossVnd = amounts.grossVnd
-                netVnd = amounts.netVnd
-              } else if (line.payable_minutes !== null) {
-                const otMins = Math.floor(approvedOt.overtimeSeconds / 60)
-                const regularMinutes = (line.payable_minutes as number) - otMins
-                const denominator = 600_000n
-                const numerator = BigInt(line.rate_vnd_per_hour as number)
-                  * (BigInt(regularMinutes) * 10_000n + BigInt(otMins) * BigInt(approvedOt.multiplierBasisPoints))
-                grossVnd = Number((numerator + denominator / 2n) / denominator)
-                netVnd = grossVnd + ((line.adjustment_vnd as number | null) ?? 0)
-              }
-
-              const { data: updatedLine, error: updateErr } = await db.from('workforce_payroll_lines')
-                .update({
-                  overtime_seconds: approvedOt.overtimeSeconds,
-                  overtime_minutes: Math.floor(approvedOt.overtimeSeconds / 60),
-                  overtime_request_id: approvedOt.id,
-                  overtime_day_class: approvedOt.dayClass,
-                  overtime_time_class: approvedOt.timeClass,
-                  overtime_multiplier_basis_points: approvedOt.multiplierBasisPoints,
-                  rate_card_id: approvedOt.rateCardId ?? line.rate_card_id,
-                  gross_vnd: grossVnd,
-                  net_vnd: netVnd,
-                  version: (curVersion as number) + 1,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', line.id)
-                .eq('version', curVersion)
-                .select()
-                .maybeSingle()
-
-              if (!updateErr && updatedLine) {
-                const idx = recalculatedLines.findIndex(r => r.id === line.id)
-                if (idx !== -1) recalculatedLines[idx] = updatedLine
-                else recalculatedLines.push(updatedLine)
-              }
-            }
-          }
-
           return Response.json({
             ok: true,
             recalculated_count: recalculatedLines.length,
@@ -906,71 +832,6 @@ export function createWorkforcePayrollHandler(options:Options={}) {
               }
               insertedLines = res.inserted_lines ?? []
               recalculatedLines = res.recalculated_lines ?? []
-            }
-          }
-
-          // Synchronize approved overtime changes on active existing draft lines
-          for (const line of existingLines) {
-            if (line.voided_at) continue
-            const approvedOt = approvedOvertimeBySegment.get(line.segment_id as string)
-            const currentOtId = (line.overtime_request_id as string | null) ?? null
-            const currentOtSecs = (line.overtime_seconds as number | null) ?? 0
-
-            if (approvedOt && (currentOtId !== approvedOt.id || currentOtSecs !== approvedOt.overtimeSeconds)) {
-              const currentLineRes = await db.from('workforce_payroll_lines')
-                .select('id,version')
-                .eq('id', line.id)
-                .maybeSingle()
-              const curVersion = currentLineRes.data?.version ?? line.version
-
-              let grossVnd = line.gross_vnd
-              let netVnd = line.net_vnd
-              if (line.actual_seconds !== null && line.payable_seconds !== null) {
-                const amounts = calculatePayrollAmountsFromSeconds({
-                  actualSeconds: line.actual_seconds as number,
-                  payableSeconds: line.payable_seconds as number,
-                  overtimeSeconds: approvedOt.overtimeSeconds,
-                  rateVndPerHour: line.rate_vnd_per_hour as number,
-                  overtimeMultiplierBasisPoints: approvedOt.multiplierBasisPoints,
-                  adjustmentVnd: (line.adjustment_vnd as number | null) ?? 0,
-                  adjustmentReason: (line.adjustment_reason as string | null) ?? null,
-                })
-                grossVnd = amounts.grossVnd
-                netVnd = amounts.netVnd
-              } else if (line.payable_minutes !== null) {
-                const otMins = Math.floor(approvedOt.overtimeSeconds / 60)
-                const regularMinutes = (line.payable_minutes as number) - otMins
-                const denominator = 600_000n
-                const numerator = BigInt(line.rate_vnd_per_hour as number)
-                  * (BigInt(regularMinutes) * 10_000n + BigInt(otMins) * BigInt(approvedOt.multiplierBasisPoints))
-                grossVnd = Number((numerator + denominator / 2n) / denominator)
-                netVnd = grossVnd + ((line.adjustment_vnd as number | null) ?? 0)
-              }
-
-              const { data: updatedLine, error: updateErr } = await db.from('workforce_payroll_lines')
-                .update({
-                  overtime_seconds: approvedOt.overtimeSeconds,
-                  overtime_minutes: Math.floor(approvedOt.overtimeSeconds / 60),
-                  overtime_request_id: approvedOt.id,
-                  overtime_day_class: approvedOt.dayClass,
-                  overtime_time_class: approvedOt.timeClass,
-                  overtime_multiplier_basis_points: approvedOt.multiplierBasisPoints,
-                  rate_card_id: approvedOt.rateCardId ?? line.rate_card_id,
-                  gross_vnd: grossVnd,
-                  net_vnd: netVnd,
-                  version: (curVersion as number) + 1,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', line.id)
-                .eq('version', curVersion)
-                .select()
-                .maybeSingle()
-
-              if (!updateErr && updatedLine) {
-                const idx = recalculatedLines.findIndex(r => r.id === line.id)
-                if (idx !== -1) recalculatedLines[idx] = updatedLine
-                else recalculatedLines.push(updatedLine)
-              }
             }
           }
 

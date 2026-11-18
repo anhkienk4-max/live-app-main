@@ -73,7 +73,7 @@ def configure_roles() -> str:
       EXCEPTION WHEN duplicate_object THEN NULL;
     END $$;
     """)
-    psql("postgres", f"ALTER ROLE supabase_auth_admin LOGIN PASSWORD '{password}'; ALTER ROLE supabase_auth_admin SET search_path TO auth, public; ALTER ROLE authenticator LOGIN PASSWORD '{password}'; GRANT anon, authenticated, service_role TO authenticator; GRANT ALL ON DATABASE postgres TO supabase_auth_admin; CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin; GRANT ALL ON SCHEMA auth TO supabase_auth_admin; COMMENT ON DATABASE postgres IS '{MARKER}';")
+    psql("postgres", f"ALTER ROLE supabase_auth_admin LOGIN PASSWORD '{password}'; ALTER ROLE supabase_auth_admin SET search_path TO auth, public; ALTER ROLE authenticator LOGIN PASSWORD '{password}'; ALTER ROLE postgres LOGIN PASSWORD '{password}'; ALTER ROLE supabase_admin LOGIN PASSWORD '{password}'; GRANT anon, authenticated, service_role TO authenticator; GRANT ALL ON DATABASE postgres TO supabase_auth_admin; CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin; GRANT ALL ON SCHEMA auth TO supabase_auth_admin; COMMENT ON DATABASE postgres IS '{MARKER}';")
     return password
 
 

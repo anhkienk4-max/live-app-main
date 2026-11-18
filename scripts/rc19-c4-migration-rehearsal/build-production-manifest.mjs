@@ -19,6 +19,7 @@ const UNAPPLIED_VERSIONS = [
   '20261116120000', // w4_swap_preflight_and_segment_capacity
   '20261117160000', // w4_pass_recipient_visibility
   '20261118140000', // rc19_w4_atomic_overtime_payroll_sync
+  '20261118150000', // rc19_w4_overtime_payroll_defect_fixes
 ]
 
 const files = fs.readdirSync(migrationsDir)
@@ -55,7 +56,7 @@ function stripOuterTransaction(content) {
   return lines.join('\n')
 }
 
-let sql = '-- RC19 W4 PRODUCTION CONSOLIDATED MIGRATION MANIFEST (12 Verified Unapplied Migrations)\n'
+let sql = '-- RC19 W4 PRODUCTION CONSOLIDATED MIGRATION MANIFEST (13 Verified Unapplied Migrations)\n'
 sql += '-- Target: Supabase Production (egdjnpmoasarrttvhgds)\n'
 sql += `-- Generated at: ${new Date().toISOString()}\n`
 sql += '-- Reconciled: Excludes already-applied 20261110140000 and 20261111000000\n\n'
@@ -84,14 +85,15 @@ sql += `  END IF;\n`
 sql += `  IF to_regclass('public.workforce_cancellation_compensation_cases') IS NULL THEN\n`
 sql += `    RAISE EXCEPTION 'PRECHECK_FAILED: Table public.workforce_cancellation_compensation_cases must already exist';\n`
 sql += `  END IF;\n\n`
-sql += `  -- 4. Assert NONE of the 12 candidate versions are already applied (fail-closed against replay)\n`
+sql += `  -- 4. Assert NONE of the 13 candidate versions are already applied (fail-closed against replay)\n`
 sql += `  IF EXISTS (\n`
 sql += `    SELECT 1 FROM supabase_migrations.schema_migrations\n`
 sql += `    WHERE version IN (\n`
 sql += `      '20261112000000', '20261112120000', '20261112130000',\n`
 sql += `      '20261113083000', '20261113084154', '20261115120000',\n`
 sql += `      '20261115130000', '20261115140000', '20261115174231',\n`
-sql += `      '20261116120000', '20261117160000', '20261118140000'\n`
+sql += `      '20261116120000', '20261117160000', '20261118140000',\n`
+sql += `      '20261118150000'\n`
 sql += `    )\n`
 sql += `  ) THEN\n`
 sql += `    RAISE EXCEPTION 'PRECHECK_FAILED: One or more RC19 W4 candidate migrations already exist in schema_migrations (refusing replay)';\n`
@@ -105,23 +107,22 @@ sql += `END $precheck$;\n\n`
 for (const f of files) {
   const version = f.split('_')[0]
   const name = f.slice(version.length + 1).replace(/\.sql$/, '')
-  let content = fs.readFileSync(path.join(migrationsDir, f), 'utf8')
-  content = stripOuterTransaction(content)
+  const rawContent = fs.readFileSync(path.join(migrationsDir, f), 'utf8').replace(/\r\n/g, '\n')
+  const content = stripOuterTransaction(rawContent)
   sql += `/*******************************************************************************\n`
   sql += ` * Migration: ${f}\n`
   sql += ` * Version:   ${version}\n`
   sql += ` *******************************************************************************/\n`
   sql += content + '\n\n'
-  const escapedStatements = "'" + content.replaceAll("'", "''") + "'"
+  const escapedStatements = "'" + rawContent.replaceAll("'", "''") + "'"
   const escapedName = "'" + name.replaceAll("'", "''") + "'"
-  sql += `-- Record migration receipt (Supabase-compliant with version, name, and statements)\n`
+  sql += `-- Record canonical Supabase migration receipt (fail-closed insert; never overwrites history)\n`
   sql += `INSERT INTO supabase_migrations.schema_migrations (version, name, statements)\n`
-  sql += `  VALUES ('${version}', ${escapedName}, ARRAY[${escapedStatements}])\n`
-  sql += `  ON CONFLICT (version) DO UPDATE SET name = EXCLUDED.name, statements = EXCLUDED.statements;\n\n`
+  sql += `  VALUES ('${version}', ${escapedName}, ARRAY[${escapedStatements}]);\n\n`
 }
 
 sql += 'COMMIT;\n'
 
-const outPath = 'scripts/rc19-c4-migration-rehearsal/rc19-w4-production-manifest-12.sql'
+const outPath = 'scripts/rc19-c4-migration-rehearsal/rc19-w4-production-manifest-13-reconciled.sql'
 fs.writeFileSync(outPath, sql, 'utf8')
 console.log(`Manifest written: ${outPath} (${Buffer.byteLength(sql, 'utf8')} bytes)`)
