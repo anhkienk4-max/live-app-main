@@ -1,0 +1,55 @@
+﻿{
+    "status":  "HEALTHY",
+    "timestamp_utc":  "2026-11-18T11:16:34.8252842Z",
+    "git_head":  "aad7da7d0feac2bcd3001e4d31e4acb0b9fe04c1",
+    "postgres":  {
+                     "host":  "127.0.0.1",
+                     "port":  55439,
+                     "database":  "rc19_c511_e2e_20261118084955",
+                     "database_marker":  "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+                     "identity":  "170011|rc19_c511_e2e_20261118084955|CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY"
+                 },
+    "services":  {
+                     "gotrue":  "http://127.0.0.1:15544/health",
+                     "postgrest":  "http://127.0.0.1:15545/",
+                     "cors_proxy":  "http://127.0.0.1:15546/health",
+                     "next_app":  "http://127.0.0.1:3102/login"
+                 },
+    "pids":  {
+                 "cors_proxy_pid":  1412,
+                 "next_app_pid":  14908
+             },
+    "seeded_uat_users":  [
+                             {
+                                 "id":  "w4_admin_uat",
+                                 "email":  "w4.admin@c511.invalid",
+                                 "role":  "admin",
+                                 "system_permission":  "admin"
+                             },
+                             {
+                                 "id":  "w4_reviewer_uat",
+                                 "email":  "w4.reviewer@c511.invalid",
+                                 "role":  "admin",
+                                 "system_permission":  "admin"
+                             },
+                             {
+                                 "id":  "w4_leader_uat",
+                                 "email":  "w4.leader@c511.invalid",
+                                 "role":  "leader",
+                                 "system_permission":  "leader"
+                             },
+                             {
+                                 "id":  "w4_member_host_uat",
+                                 "email":  "w4.member.host@c511.invalid",
+                                 "role":  "staff",
+                                 "system_permission":  "member"
+                             },
+                             {
+                                 "id":  "w4_member_support_uat",
+                                 "email":  "w4.member.support@c511.invalid",
+                                 "role":  "staff",
+                                 "system_permission":  "member"
+                             }
+                         ],
+    "credentials_note":  "Passwords and local JWT secret reside strictly in WSL runtime.json (chmod 0600); never stored in repository."
+}

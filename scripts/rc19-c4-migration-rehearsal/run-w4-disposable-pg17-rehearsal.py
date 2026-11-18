@@ -21,8 +21,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 EVIDENCE_DIR = ROOT / "scripts/rc19-c4-migration-rehearsal/evidence/w4-final-integration-20261118"
 BASELINE_SQL = ROOT / "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-pg176-20261108T191556Z/schema-after-20.sql"
+LEDGER_89_MANIFEST = ROOT / "scripts/rc19-c4-migration-rehearsal/evidence/production-ledger-replay-manifest.json"
+FORWARD_20_MANIFEST = ROOT / "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-migration-manifest.json"
+AUDIT_DEP_SQL = ROOT / "supabase/migrations/20261113083000_rc19_c4_audit_dependency.sql"
 RBAC_SEED_SQL = ROOT / "supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql"
 CONSOLIDATED_MANIFEST = ROOT / "scripts/rc19-c4-migration-rehearsal/rc19-w4-production-manifest-13-reconciled.sql"
+SUPABASE_CLI_BIN = Path("/home/anhkienk4/.npm/_npx/b96a6bd565c470ce/node_modules/@supabase/cli-linux-x64/bin/supabase")
+EMPTY_STATEMENT_VERSIONS = {
+    "20261008160638",
+    "20261008160645",
+    "20261011221500",
+    "20261012000000",
+    "20261012000001",
+    "20261022185140",
+    "20261023144000",
+    "20261025180000",
+    "20261111200000",
+}
 
 PRE_W4_MIGRATIONS = [
     ("20261109100000", ROOT / "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql", "rc19_c511_persisted_staffing_segments"),
@@ -187,7 +202,36 @@ def main() -> int:
         assert m, "RBAC seed INSERT not found"
         psql("rc19_w4_baseline", m.group(0))
 
-        # Apply pre-W4 migrations cleanly and record receipts (incl. 20261110140000, 20261111000000, 20261111200000)
+        # Seed complete 117-version Production ledger baseline:
+        # 89 (through 20261101073742) + 20 (C5.3 through 20261108135226) + 7 (pre-W4 through 20261111000000) + 1 (20261111200000)
+        ledger89 = json.loads(LEDGER_89_MANIFEST.read_text(encoding="utf-8"))
+        forward20 = json.loads(FORWARD_20_MANIFEST.read_text(encoding="utf-8"))
+        seed_receipts_sql: list[str] = []
+        for entry in ledger89["entries"]:
+            ver = entry["production_version"]
+            prod_name = entry.get("production_name")
+            name_sql = q(prod_name) if prod_name is not None else "NULL"
+            if ver in EMPTY_STATEMENT_VERSIONS:
+                stmts_sql = "'{}'::text[]"
+            else:
+                src_raw = (ROOT / entry["source_file"]).read_text(encoding="utf-8").replace("\r\n", "\n")
+                stmts_sql = f"ARRAY[{q(src_raw)}]"
+            seed_receipts_sql.append(
+                f"INSERT INTO supabase_migrations.schema_migrations (version, name, statements) "
+                f"VALUES ({q(ver)}, {name_sql}, {stmts_sql});"
+            )
+        for entry in forward20["entries"]:
+            ver = entry["version"]
+            src_path = ROOT / entry["file"]
+            name = src_path.stem[len(ver) + 1:]
+            src_raw = src_path.read_text(encoding="utf-8").replace("\r\n", "\n")
+            seed_receipts_sql.append(
+                f"INSERT INTO supabase_migrations.schema_migrations (version, name, statements) "
+                f"VALUES ({q(ver)}, {q(name)}, ARRAY[{q(src_raw)}]);"
+            )
+        psql("rc19_w4_baseline", "\n".join(seed_receipts_sql))
+
+        # Apply 7 pre-W4 migrations cleanly and record receipts (20261109100000..20261111000000)
         for ver, path, name in PRE_W4_MIGRATIONS:
             raw = path.read_text(encoding="utf-8").replace("\r\n", "\n")
             psql("rc19_w4_baseline", raw, tuples_only=False)
@@ -196,12 +240,22 @@ def main() -> int:
                 f"INSERT INTO supabase_migrations.schema_migrations (version, name, statements) "
                 f"VALUES ({q(ver)}, {q(name)}, ARRAY[{q(raw)}]);"
             )
-        # Historical empty marker receipt present in Production
-        psql("rc19_w4_baseline", "INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('20261111200000', '20261111200000');")
+        # Historical empty-statement receipt present in Production ledger (see commit d431a6c8 / PR #183; no invented SQL)
+        psql("rc19_w4_baseline", "INSERT INTO supabase_migrations.schema_migrations (version, name, statements) VALUES ('20261111200000', '20261111200000', '{}'::text[]);")
 
-        # 1. Stepwise migration application vs consolidated manifest application
-        run_cmd([str(PG_BIN / "createdb"), "-h", PGHOST, "-p", PGPORT, "-U", PGUSER, "-T", "rc19_w4_baseline", "rc19_w4_stepwise"])
-        run_cmd([str(PG_BIN / "createdb"), "-h", PGHOST, "-p", PGPORT, "-U", PGUSER, "-T", "rc19_w4_baseline", "rc19_w4_manifest"])
+        baseline_count = int(psql("rc19_w4_baseline", "SELECT count(*) FROM supabase_migrations.schema_migrations;").stdout.strip())
+        assert baseline_count == 117, f"Expected 117 baseline Production receipts, got {baseline_count}"
+        ledger_117_q = (
+            "SELECT version || '|' || coalesce(name, '<NULL>') || '|' || "
+            "coalesce(md5(array_to_string(statements, E'\\n')), '<NULL>') "
+            "FROM supabase_migrations.schema_migrations "
+            "WHERE version <= '20261111200000' ORDER BY version;"
+        )
+        baseline_117_sha256 = hashlib.sha256(psql("rc19_w4_baseline", ledger_117_q).stdout.strip().encode("utf-8")).hexdigest()
+
+        # 1. Stepwise vs Consolidated Manifest vs Preexisting-Audit Manifest vs Canonical Supabase CLI
+        for target_db in ("rc19_w4_stepwise", "rc19_w4_manifest", "rc19_w4_preexisting_audit", "rc19_w4_supabase_cli"):
+            run_cmd([str(PG_BIN / "createdb"), "-h", PGHOST, "-p", PGPORT, "-U", PGUSER, "-T", "rc19_w4_baseline", target_db])
 
         for ver, path in CANDIDATE_MIGRATIONS:
             name = path.stem[len(ver) + 1:]
@@ -225,23 +279,109 @@ def main() -> int:
         replay_proc = psql("rc19_w4_manifest", CONSOLIDATED_MANIFEST.read_text(encoding="utf-8"), expect=None)
         assert replay_proc.returncode != 0 and "PRECHECK_FAILED" in replay_proc.stdout, f"Expected PRECHECK_FAILED on replay: {replay_proc.stdout}"
 
-        # Compare schemas & migration ledgers between stepwise and manifest databases
-        # Strip pg_dump 17.11's per-invocation random \restrict / \unrestrict meta-commands before hashing
+        # Simulate Production state where 20261111200000 already installed private.log_shift_audit prior to manifest 20261113083000
+        psql("rc19_w4_preexisting_audit", AUDIT_DEP_SQL.read_text(encoding="utf-8"), tuples_only=False)
+        psql("rc19_w4_preexisting_audit", CONSOLIDATED_MANIFEST.read_text(encoding="utf-8"), tuples_only=False)
+
+        # Verify Supabase CLI behavior against raw repository vs ledger-aligned workdir
+        supabase_bin = str(SUPABASE_CLI_BIN) if SUPABASE_CLI_BIN.exists() else (shutil.which("supabase") or "supabase")
+        cli_db_url = f"postgresql://{PGUSER}:{PGPASS}@{PGHOST}:{PGPORT}/rc19_w4_supabase_cli"
+        raw_cli_dryrun = subprocess.run(
+            [supabase_bin, "db", "push", "--workdir", str(ROOT), "--dry-run", "--skip-vault", f"--remote={cli_db_url}"],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False,
+        )
+        raw_cli_out = (raw_cli_dryrun.stdout + "\n" + raw_cli_dryrun.stderr).strip()
+        raw_cli_blocked_on_aliases = raw_cli_dryrun.returncode != 0
+        assert raw_cli_blocked_on_aliases, f"Expected raw supabase db push --dry-run to refuse unaligned 117/132 ledger: {raw_cli_out}"
+        raw_cli_err_line = next((ln.strip() for ln in reversed(raw_cli_out.splitlines()) if "Remote migration" in ln or "ERROR" in ln or "--include-all" in ln), raw_cli_out.splitlines()[-1] if raw_cli_out else "")
+
+        cli_workdir = Path("/tmp/rc19-w4-supabase-cli-workdir")
+        if cli_workdir.exists():
+            shutil.rmtree(cli_workdir)
+        (cli_workdir / "supabase/migrations").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / "supabase/config.toml", cli_workdir / "supabase/config.toml")
+        rows_117 = psql("rc19_w4_supabase_cli", "SELECT version || '|' || coalesce(name, version) FROM supabase_migrations.schema_migrations ORDER BY version;").stdout.strip().splitlines()
+        for row in rows_117:
+            ver, nm = row.split("|", 1)
+            safe_nm = "".join(ch if ch.isalnum() or ch in ("_", "-") else "_" for ch in nm)
+            (cli_workdir / "supabase/migrations" / f"{ver}_{safe_nm}.sql").write_text("-- already applied on baseline\n", encoding="utf-8")
+        for _, path in CANDIDATE_MIGRATIONS:
+            shutil.copy2(path, cli_workdir / "supabase/migrations" / path.name)
+
+        cli_push_proc = subprocess.run(
+            [supabase_bin, "db", "push", "--workdir", str(cli_workdir), "--skip-vault", "--yes", f"--remote={cli_db_url}"],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False,
+        )
+        assert cli_push_proc.returncode == 0, f"Supabase CLI db push failed:\n{cli_push_proc.stdout}\n{cli_push_proc.stderr}"
+
+        # Compare schema dump, catalog objects (tables/cols, constraints, indexes, functions, policies, grants, triggers) & preserved receipts
         import re as _re
         def normalize_dump(text: str) -> str:
             return "\n".join(line for line in text.splitlines() if not _re.match(r"^\\(?:restrict|unrestrict)\s+", line))
 
         dump_args_base = [str(PG_BIN / "pg_dump"), "-h", PGHOST, "-p", PGPORT, "-U", PGUSER, "--schema-only", "--no-owner", "--no-privileges", "-n", "public", "-n", "private", "-n", "auth", "-n", "storage", "-n", "supabase_migrations"]
-        dump_stepwise = normalize_dump(run_cmd([*dump_args_base, "rc19_w4_stepwise"]).stdout)
-        dump_manifest = normalize_dump(run_cmd([*dump_args_base, "rc19_w4_manifest"]).stdout)
-        sha_stepwise = hashlib.sha256(dump_stepwise.encode("utf-8")).hexdigest()
-        sha_manifest = hashlib.sha256(dump_manifest.encode("utf-8")).hexdigest()
-        assert sha_stepwise == sha_manifest, f"Schema parity mismatch! stepwise={sha_stepwise} manifest={sha_manifest}"
+        catalog_queries = {
+            "tables_and_columns": (
+                "SELECT table_schema || '.' || table_name || '|' || ordinal_position::text || '|' || column_name || '|' || data_type || '|' || is_nullable || '|' || coalesce(column_default, '') "
+                "FROM information_schema.columns WHERE table_schema IN ('public', 'private') ORDER BY 1;"
+            ),
+            "constraints": (
+                "SELECT n.nspname || '.' || coalesce(r.relname, '<DOMAIN>') || '|' || c.conname || '|' || c.contype::text || '|' || pg_get_constraintdef(c.oid, true) "
+                "FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace LEFT JOIN pg_class r ON r.oid = c.conrelid "
+                "WHERE n.nspname IN ('public', 'private') ORDER BY 1;"
+            ),
+            "indexes": (
+                "SELECT schemaname || '.' || tablename || '|' || indexname || '|' || indexdef "
+                "FROM pg_indexes WHERE schemaname IN ('public', 'private') ORDER BY 1;"
+            ),
+            "functions": (
+                "SELECT n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')|secdef=' || p.prosecdef::text || '|cfg=' || coalesce(array_to_string(p.proconfig, ','), '') || '|sha=' || md5(pg_get_functiondef(p.oid)) "
+                "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+                "WHERE n.nspname IN ('public', 'private') AND p.prokind IN ('f', 'p') ORDER BY 1;"
+            ),
+            "policies": (
+                "SELECT schemaname || '.' || tablename || '|' || policyname || '|' || permissive || '|' || coalesce(array_to_string(roles, ','), '') || '|' || cmd || '|' || coalesce(qual, '') || '|' || coalesce(with_check, '') "
+                "FROM pg_policies WHERE schemaname IN ('public', 'private', 'storage') ORDER BY 1;"
+            ),
+            "grants": (
+                "SELECT 'tbl|' || table_schema || '.' || table_name || '|' || grantee || '|' || privilege_type || '|' || is_grantable::text "
+                "FROM information_schema.role_table_grants WHERE table_schema IN ('public', 'private') AND grantee IN ('anon', 'authenticated', 'service_role') "
+                "UNION ALL "
+                "SELECT 'rtn|' || n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')|' || coalesce(p.proacl::text, '<DEFAULT>') "
+                "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+                "WHERE n.nspname IN ('public', 'private') AND p.prokind IN ('f', 'p') "
+                "ORDER BY 1;"
+            ),
+            "triggers": (
+                "SELECT n.nspname || '.' || c.relname || '|' || t.tgname || '|' || pg_get_triggerdef(t.oid, true) "
+                "FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE NOT t.tgisinternal AND n.nspname IN ('public', 'private') ORDER BY 1;"
+            ),
+            "preserved_117_receipts": ledger_117_q,
+        }
+        receipts_130_q = "SELECT version || '|' || coalesce(name, '<NULL>') || '|' || coalesce(md5(array_to_string(statements, E'\\n')), '<NULL>') FROM supabase_migrations.schema_migrations ORDER BY version;"
 
-        ledger_q = "SELECT version || '|' || coalesce(name, '') || '|' || coalesce(md5(array_to_string(statements, E'\\n')), 'NULL') FROM supabase_migrations.schema_migrations ORDER BY version;"
-        ledger_stepwise = psql("rc19_w4_stepwise", ledger_q).stdout.strip()
-        ledger_manifest = psql("rc19_w4_manifest", ledger_q).stdout.strip()
-        assert ledger_stepwise == ledger_manifest, "Ledger checksum mismatch between stepwise and manifest!"
+        parity_dbs = ("rc19_w4_stepwise", "rc19_w4_manifest", "rc19_w4_preexisting_audit", "rc19_w4_supabase_cli")
+        parity_report: dict[str, dict[str, str]] = {}
+        for db in parity_dbs:
+            dump_sha = hashlib.sha256(normalize_dump(run_cmd([*dump_args_base, db]).stdout).encode("utf-8")).hexdigest()
+            total_receipts = int(psql(db, "SELECT count(*) FROM supabase_migrations.schema_migrations;").stdout.strip())
+            assert total_receipts == 130, f"{db}: expected 130 total receipts (117+13), got {total_receipts}"
+            db_hashes: dict[str, str] = {"schema_dump": dump_sha}
+            for key, sql_q in catalog_queries.items():
+                db_hashes[key] = hashlib.sha256(psql(db, sql_q).stdout.strip().encode("utf-8")).hexdigest()
+            db_hashes["receipts_130"] = hashlib.sha256(psql(db, receipts_130_q).stdout.strip().encode("utf-8")).hexdigest()
+            assert db_hashes["preserved_117_receipts"] == baseline_117_sha256, f"{db}: pre-existing 117 Production receipts altered!"
+            parity_report[db] = db_hashes
+
+        for key in ("schema_dump", *catalog_queries.keys()):
+            vals = {db: parity_report[db][key] for db in parity_dbs}
+            assert len(set(vals.values())) == 1, f"Catalog parity mismatch for {key}: {vals}"
+        for db in ("rc19_w4_manifest", "rc19_w4_preexisting_audit"):
+            assert parity_report[db]["receipts_130"] == parity_report["rc19_w4_stepwise"]["receipts_130"], f"Ledger checksum mismatch on {db}"
+
+        sha_stepwise = parity_report["rc19_w4_stepwise"]["schema_dump"]
+        sha_manifest = parity_report["rc19_w4_manifest"]["schema_dump"]
 
         # 2. Functional, Security, Rollback, Rounding & Real Multi-Connection Concurrency Tests
         run_cmd([str(PG_BIN / "createdb"), "-h", PGHOST, "-p", PGPORT, "-U", PGUSER, "-T", "rc19_w4_manifest", "rc19_w4_test_runtime"])
@@ -705,10 +845,19 @@ def main() -> int:
             "postgres_server_version_num": version_num,
             "endpoint": f"{PGHOST}:{PGPORT}",
             "database_marker": DB_MARKER,
+            "baseline_production_receipt_count": baseline_count,
+            "baseline_117_receipts_sha256": baseline_117_sha256,
+            "total_receipts_after_cutover": 130,
             "stepwise_schema_dump_sha256": sha_stepwise,
             "manifest_schema_dump_sha256": sha_manifest,
             "schema_parity_match": sha_stepwise == sha_manifest,
-            "ledger_parity_match": ledger_stepwise == ledger_manifest,
+            "ledger_parity_match": parity_report["rc19_w4_stepwise"]["receipts_130"] == parity_report["rc19_w4_manifest"]["receipts_130"] == parity_report["rc19_w4_preexisting_audit"]["receipts_130"],
+            "preserved_117_receipts_untouched": True,
+            "raw_supabase_cli_dryrun_blocked_on_unaligned_ledger": raw_cli_blocked_on_aliases,
+            "raw_supabase_cli_dryrun_error": raw_cli_err_line,
+            "reconciled_supabase_cli_db_push_passed": cli_push_proc.returncode == 0,
+            "preexisting_log_shift_audit_idempotent_passed": True,
+            "catalog_parity_across_stepwise_manifest_preexisting_cli": parity_report,
             "candidate_migration_count": len(CANDIDATE_MIGRATIONS),
             "checks": {
                 "duplicate_receipt_fail_closed": True,
