@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "962a0d77d66864f5c88a5658f8011614c32705c5",
+    "head": "49b35b97fdd820118309d8630f6798f1fb2e1ea6",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -123,11 +123,11 @@
         "app": 96,
         "components": 195,
         "lib": 292,
-        "scripts": 172,
-        "supabase": 159,
+        "scripts": 176,
+        "supabase": 160,
         "tests": 392
       },
-      "total": 1306
+      "total": 1311
     },
     "tests": {
       "files": [
@@ -583,9 +583,10 @@
         "supabase/migrations/20261115174231_rc19_w4_retire_unguarded_swap_approval.sql",
         "supabase/migrations/20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql",
         "supabase/migrations/20261117160000_rc19_w4_pass_recipient_visibility.sql",
-        "supabase/migrations/20261118140000_rc19_w4_atomic_overtime_payroll_sync.sql"
+        "supabase/migrations/20261118140000_rc19_w4_atomic_overtime_payroll_sync.sql",
+        "supabase/migrations/20261118150000_rc19_w4_overtime_payroll_defect_fixes.sql"
       ],
-      "count": 131
+      "count": 132
     }
   },
   "verification": {
@@ -599,5 +600,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-18T14:20:51+07:00"
+  "synced_at": "2026-11-18T15:52:24+07:00"
 }
