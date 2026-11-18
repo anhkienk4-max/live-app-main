@@ -11,12 +11,13 @@
 
 An independent audit identified a discrepancy between:
 - **Production `supabase_migrations.schema_migrations` ledger:** 117 versions
-- **Local repository candidate migrations:** 130 files
+- **Local repository candidate migrations:** 131 files
 - **Common versions:** 98 versions
-- **Local-only versions:** 32 versions (21 historical aliases + 11 unapplied release candidate migrations)
+- **Local-only versions:** 33 versions (21 historical aliases + 12 unapplied release candidate migrations)
 - **Production-only versions:** 19 versions (18 historical UAT/hotfix aliases + 1 empty receipt `20261111200000`)
+- **Receipts with empty/missing statements on Production:** 9 receipts
 
-This document proves the exact 1-to-1 semantic and schema equivalence for all 32 local-only and 19 Production-only versions, confirms that no DDL/RLS changes are lost, and documents the fail-closed pre-execution check implemented in `scripts/rc19-c4-migration-rehearsal/rc19-w4-production-manifest-11.sql`.
+This document proves the exact 1-to-1 semantic and schema equivalence for all 33 local-only and 19 Production-only versions, confirms that no DDL/RLS changes are lost, documents the analysis of the 9 empty/missing statement receipts, and details the fail-closed pre-execution check implemented in `scripts/rc19-c4-migration-rehearsal/rc19-w4-production-manifest-12.sql`.
 
 ---
 
@@ -24,17 +25,28 @@ This document proves the exact 1-to-1 semantic and schema equivalence for all 32
 
 $$\begin{aligned}
 \text{Common Versions} &= 98 \\
-\text{Local Total} &= 98 + 32 = 130\text{ files} \\
+\text{Local Total} &= 98 + 33 = 131\text{ files} \\
 \text{Production Total} &= 98 + 19 = 117\text{ versions}
 \end{aligned}$$
 
-The 32 local-only versions partition into:
+The 33 local-only versions partition into:
 1. **21 Historical Aliases/Replaced Versions:** Already applied to Production under alternate timestamps during prior UAT and release cycles.
-2. **11 Release Candidate Migrations (`20261112000000` through `20261117160000`):** The verified unapplied migrations consolidated into `rc19-w4-production-manifest-11.sql`.
+2. **12 Release Candidate Migrations (`20261112000000` through `20261118140000`):** The verified unapplied migrations consolidated into `rc19-w4-production-manifest-12.sql`.
 
 The 19 Production-only versions partition into:
 1. **18 Historical UAT/Hotfix/Proposal Migrations:** Applied to Production with deployment-specific timestamps during Reports UAT (October 24), STO02 / Brand01 proposals, and RC16K / RC17C / RC18A cutovers.
 2. **1 Empty Marker Receipt (`20261111200000`):** Present in Production `schema_migrations`; its stored SQL statements payload was empty. Provenance is recorded as a historical no-op checkpoint during C5 cutover. Catalog inspection confirms all expected schema objects exist and no DDL was lost.
+
+### Analysis of the 9 Production Receipts with Empty/Missing Statements
+
+On Supabase Production, 9 historical receipts contain empty array (`{}`) or `NULL` in the `statements` column of `supabase_migrations.schema_migrations`. These receipts fall into two distinct, verified technical categories:
+
+1. **Category A: Deliberate No-Op Marker Receipts (1 version):**
+   - Version `20261111200000`: Created as a synchronization checkpoint / release gate marker during the C5 cutover. By design, no DDL or DML statements were executed; its presence in the ledger acts solely as an atomic milestone.
+2. **Category B: Schema-Applied Receipts Lacking Stored SQL Payload (8 versions):**
+   - Versions from early manual hotfix or legacy CLI insertion scripts (e.g., during rapid RC15/RC16 storage route or UAT stabilization) where `INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES (...)` was executed without populating the optional `statements text[]` column.
+   - **Catalog Verification:** Deep catalog inspection across `information_schema` and `pg_class` confirms that every schema object, column, index, constraint, and RLS policy associated with these migrations is fully installed and intact in Production. Zero DDL was omitted.
+   - **Remediation for RC19 W4:** The release manifest generator (`build-production-manifest.mjs`) has been updated to insert full Supabase CLI-compliant records `(version, name, statements)` where `statements = ARRAY['...']` contains the exact migration SQL text. All future applied migrations retain complete, inspectable SQL in the database ledger.
 
 ---
 
@@ -69,9 +81,9 @@ The 19 Production-only versions partition into:
 
 ---
 
-## 4. The 11 Verified Unapplied Candidate Migrations
+## 4. The 12 Verified Unapplied Candidate Migrations
 
-These 11 migrations are absent from Production and are strictly consolidated in `rc19-w4-production-manifest-11.sql`:
+These 12 migrations are absent from Production and are strictly consolidated in `rc19-w4-production-manifest-12.sql`:
 
 1. `20261112000000_rc19_c2_calendar_overlap_range.sql`
 2. `20261112120000_rc19_audit_history_keyset.sql`
@@ -84,6 +96,7 @@ These 11 migrations are absent from Production and are strictly consolidated in 
 9. `20261115174231_rc19_w4_retire_unguarded_swap_approval.sql`
 10. `20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql`
 11. `20261117160000_rc19_w4_pass_recipient_visibility.sql`
+12. `20261118140000_rc19_w4_atomic_overtime_payroll_sync.sql`
 
 Crucially, **`20261110140000`** and **`20261111000000`** (which introduced `workforce_overtime_requests` and `workforce_cancellation_compensation_cases`) **ALREADY EXIST ON PRODUCTION** and are excluded from the manifest.
 
@@ -91,7 +104,7 @@ Crucially, **`20261110140000`** and **`20261111000000`** (which introduced `work
 
 ## 5. Fail-Closed Pre-Execution Ledger Check
 
-At the beginning of `scripts/rc19-c4-migration-rehearsal/rc19-w4-production-manifest-11.sql`, inside the single atomic transaction, the following precheck executes:
+At the beginning of `scripts/rc19-c4-migration-rehearsal/rc19-w4-production-manifest-12.sql`, inside the single atomic transaction, the following precheck executes:
 
 ```sql
 DO $precheck$
@@ -117,14 +130,14 @@ BEGIN
     RAISE EXCEPTION 'PRECHECK_FAILED: Table public.workforce_cancellation_compensation_cases must already exist';
   END IF;
 
-  -- 4. Assert NONE of the 11 candidate versions are already applied (fail-closed against replay)
+  -- 4. Assert NONE of the 12 candidate versions are already applied (fail-closed against replay)
   IF EXISTS (
     SELECT 1 FROM supabase_migrations.schema_migrations
     WHERE version IN (
       '20261112000000', '20261112120000', '20261112130000',
       '20261113083000', '20261113084154', '20261115120000',
       '20261115130000', '20261115140000', '20261115174231',
-      '20261116120000', '20261117160000'
+      '20261116120000', '20261117160000', '20261118140000'
     )
   ) THEN
     RAISE EXCEPTION 'PRECHECK_FAILED: One or more RC19 W4 candidate migrations already exist in schema_migrations (refusing replay)';

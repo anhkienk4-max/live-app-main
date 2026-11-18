@@ -8,7 +8,6 @@ import { authorizationErrorResponse, isAuthorizationError,
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
-import { calculatePayrollAmountsFromSeconds } from '@/lib/workforce/payrollCalculation'
 
 const id = z.string().trim().min(1).max(120)
 const time = z.string().datetime({ offset: true })
@@ -614,119 +613,6 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             const status=/FORBIDDEN|SCOPE_DENIED|SELF_CONFIRM|SELF_REVIEW/iu.test(message)?403
               :/NOT_FOUND/iu.test(message)?404:/INVALID|REQUIRED|NOT_CONFIGURED|OVERLAP|STALE|ALREADY|EVIDENCE/iu.test(message)?409:503
             return fail(message,status)
-          }
-
-          if (action.action === 'decide_overtime' && data) {
-            const otRecord = data as {
-              id: string
-              segment_id: string
-              state: string
-              overtime_seconds: number
-              day_class: 'weekday' | 'weekend' | 'holiday'
-              time_class: 'day' | 'night'
-              rate_card_id: string | null
-              multiplier_basis_points: number | null
-            }
-            if (otRecord.state === 'admin_confirmed') {
-              const existingLineRes = await client.from('workforce_payroll_lines')
-                .select('id,period_id,version,actual_seconds,payable_seconds,actual_minutes,payable_minutes,rate_card_id,rate_vnd_per_hour,overtime_multiplier_basis_points,adjustment_vnd,adjustment_reason,period:workforce_payroll_periods!inner(status)')
-                .eq('segment_id', otRecord.segment_id)
-                .is('voided_at', null)
-                .maybeSingle()
-
-              if (existingLineRes.data && (existingLineRes.data.period as { status?: string })?.status === 'draft') {
-                const line = existingLineRes.data
-                const otSecs = otRecord.overtime_seconds
-                const otMins = Math.floor(otSecs / 60)
-                const rateCardId = otRecord.rate_card_id ?? line.rate_card_id
-                const multiplierBps = otRecord.multiplier_basis_points ?? line.overtime_multiplier_basis_points
-
-                let grossVnd = (line.rate_vnd_per_hour as number) * (line.payable_minutes as number) / 60
-                let netVnd = grossVnd
-                if (line.actual_seconds !== null && line.payable_seconds !== null) {
-                  const amounts = calculatePayrollAmountsFromSeconds({
-                    actualSeconds: line.actual_seconds as number,
-                    payableSeconds: line.payable_seconds as number,
-                    overtimeSeconds: otSecs,
-                    rateVndPerHour: line.rate_vnd_per_hour as number,
-                    overtimeMultiplierBasisPoints: multiplierBps as number,
-                    adjustmentVnd: (line.adjustment_vnd as number | null) ?? 0,
-                    adjustmentReason: (line.adjustment_reason as string | null) ?? null,
-                  })
-                  grossVnd = amounts.grossVnd
-                  netVnd = amounts.netVnd
-                } else if (line.payable_minutes !== null) {
-                  const regularMinutes = (line.payable_minutes as number) - otMins
-                  const denominator = 600_000n
-                  const numerator = BigInt(line.rate_vnd_per_hour as number)
-                    * (BigInt(regularMinutes) * 10_000n + BigInt(otMins) * BigInt(multiplierBps as number))
-                  grossVnd = Number((numerator + denominator / 2n) / denominator)
-                  netVnd = grossVnd + ((line.adjustment_vnd as number | null) ?? 0)
-                }
-
-                await client.from('workforce_payroll_lines')
-                  .update({
-                    overtime_seconds: otSecs,
-                    overtime_minutes: otMins,
-                    overtime_request_id: otRecord.id,
-                    overtime_day_class: otRecord.day_class,
-                    overtime_time_class: otRecord.time_class,
-                    overtime_multiplier_basis_points: multiplierBps,
-                    rate_card_id: rateCardId,
-                    gross_vnd: grossVnd,
-                    net_vnd: netVnd,
-                    version: line.version + 1,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', line.id)
-                  .eq('version', line.version)
-              }
-            } else if (otRecord.state === 'rejected') {
-              const existingLineRes = await client.from('workforce_payroll_lines')
-                .select('id,period_id,version,actual_seconds,payable_seconds,actual_minutes,payable_minutes,rate_card_id,rate_vnd_per_hour,overtime_multiplier_basis_points,adjustment_vnd,adjustment_reason,period:workforce_payroll_periods!inner(status)')
-                .eq('overtime_request_id', otRecord.id)
-                .is('voided_at', null)
-                .maybeSingle()
-
-              if (existingLineRes.data && (existingLineRes.data.period as { status?: string })?.status === 'draft') {
-                const line = existingLineRes.data
-                let grossVnd = (line.rate_vnd_per_hour as number) * (line.payable_minutes as number) / 60
-                let netVnd = grossVnd
-                if (line.actual_seconds !== null && line.payable_seconds !== null) {
-                  const amounts = calculatePayrollAmountsFromSeconds({
-                    actualSeconds: line.actual_seconds as number,
-                    payableSeconds: line.payable_seconds as number,
-                    overtimeSeconds: 0,
-                    rateVndPerHour: line.rate_vnd_per_hour as number,
-                    overtimeMultiplierBasisPoints: (line.overtime_multiplier_basis_points as number) ?? 10000,
-                    adjustmentVnd: (line.adjustment_vnd as number | null) ?? 0,
-                    adjustmentReason: (line.adjustment_reason as string | null) ?? null,
-                  })
-                  grossVnd = amounts.grossVnd
-                  netVnd = amounts.netVnd
-                } else if (line.payable_minutes !== null) {
-                  const denominator = 600_000n
-                  const numerator = BigInt(line.rate_vnd_per_hour as number) * BigInt(line.payable_minutes as number) * 10_000n
-                  grossVnd = Number((numerator + denominator / 2n) / denominator)
-                  netVnd = grossVnd + ((line.adjustment_vnd as number | null) ?? 0)
-                }
-
-                await client.from('workforce_payroll_lines')
-                  .update({
-                    overtime_seconds: 0,
-                    overtime_minutes: 0,
-                    overtime_request_id: null,
-                    overtime_day_class: null,
-                    overtime_time_class: null,
-                    gross_vnd: grossVnd,
-                    net_vnd: netVnd,
-                    version: line.version + 1,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', line.id)
-                  .eq('version', line.version)
-              }
-            }
           }
 
           return Response.json({ok:true,overtime:data},{status:action.action==='request_overtime'?201:200,headers:noStore})

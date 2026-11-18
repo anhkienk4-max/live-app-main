@@ -16,56 +16,23 @@ const REQ_ID_1 = 'a0000000-0000-4000-8000-000000000001'
 const REQ_ID_2 = 'a0000000-0000-4000-8000-000000000002'
 const REQ_ID_LOCKED = 'a0000000-0000-4000-8000-000000000003'
 
-test('P1 Overtime sync: decide_overtime admin_confirm immediately updates existing draft payroll line', async () => {
-  const updates: Array<{ table: string; values: Record<string, unknown>; filters: Array<{ field: string; value: unknown }> }> = []
-
-  const mockLine = {
-    id: 'line-ot-1',
-    period_id: 'period-draft-1',
-    segment_id: 'seg-ot-1',
-    version: 3,
-    actual_seconds: 7200,
-    payable_seconds: 7200,
-    actual_minutes: 120,
-    payable_minutes: 120,
-    rate_card_id: 'rate-card-default',
-    rate_vnd_per_hour: 100000,
-    overtime_multiplier_basis_points: 15000,
-    period: { status: 'draft' },
-  }
+test('P1 Overtime sync: decide_overtime delegates atomically to rc19_c515_decide_overtime_request without secondary client writes', async () => {
+  const rpcCalls: Array<{ name: string; params: unknown }> = []
+  const updates: Array<{ table: string; values: Record<string, unknown> }> = []
 
   const dbClient = {
     from(table: string) {
-      const filters: Array<{ field: string; value: unknown }> = []
       let updateValues: Record<string, unknown> | null = null
-
       const builder = {
-        select() {
-          return builder
-        },
-        eq(field: string, value: unknown) {
-          filters.push({ field, value })
-          return builder
-        },
-        is(field: string, value: unknown) {
-          filters.push({ field, value })
-          return builder
-        },
         update(values: Record<string, unknown>) {
           updateValues = values
           return builder
         },
-        async maybeSingle() {
-          if (table === 'workforce_payroll_lines') {
-            return { data: mockLine, error: null }
-          }
-          return { data: null, error: null }
-        },
         then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
           if (updateValues) {
-            updates.push({ table, values: updateValues, filters: [...filters] })
+            updates.push({ table, values: updateValues })
           }
-          return Promise.resolve({ data: mockLine, error: null }).then(resolve, reject)
+          return Promise.resolve({ data: null, error: null }).then(resolve, reject)
         },
       }
       return builder
@@ -88,7 +55,8 @@ test('P1 Overtime sync: decide_overtime admin_confirm immediately updates existi
     client: () => dbClient as never,
     resolveUser: admin,
     createScopeClient: () => ({
-      rpc: async (name: string) => {
+      rpc: async (name: string, params: unknown) => {
+        rpcCalls.push({ name, params })
         if (name === 'rc19_c515_decide_overtime_request') {
           return { data: confirmedOtRecord, error: null }
         }
@@ -112,70 +80,40 @@ test('P1 Overtime sync: decide_overtime admin_confirm immediately updates existi
   )
 
   assert.equal(response.status, 200)
-  assert.equal(updates.length, 1, 'Draft payroll line must be updated on Admin overtime confirmation')
+  const body = await response.json()
+  assert.equal(body.ok, true)
+  assert.equal(body.overtime.id, REQ_ID_1)
+  assert.equal(body.overtime.state, 'admin_confirmed')
 
-  const lineUpdate = updates[0]
-  assert.equal(lineUpdate.table, 'workforce_payroll_lines')
-  assert.equal(lineUpdate.values.overtime_seconds, 1800)
-  assert.equal(lineUpdate.values.overtime_minutes, 30)
-  assert.equal(lineUpdate.values.overtime_request_id, REQ_ID_1)
-  assert.equal(lineUpdate.values.overtime_day_class, 'weekday')
-  assert.equal(lineUpdate.values.overtime_time_class, 'night')
-  assert.equal(lineUpdate.values.overtime_multiplier_basis_points, 20000)
-  assert.equal(lineUpdate.values.rate_card_id, 'rate-card-ot-custom')
-  assert.equal(lineUpdate.values.gross_vnd, 250000, 'Gross VND must be recalculated with overtime premium (1.5h regular + 0.5h 2.0x OT = 250,000)')
-  assert.equal(lineUpdate.values.net_vnd, 250000, 'Net VND must match recalculated Gross VND')
-  assert.equal(lineUpdate.values.version, 4, 'Version must be incremented from 3 to 4')
+  assert.equal(rpcCalls.length, 1)
+  assert.equal(rpcCalls[0].name, 'rc19_c515_decide_overtime_request')
+  assert.deepEqual(rpcCalls[0].params, {
+    p_request_id: REQ_ID_1,
+    p_expected_version: 1,
+    p_action: 'admin_confirm',
+    p_reason: 'Confirmed by Admin for late shift finish',
+    p_idempotency_key: '10000000-0000-4000-8000-000000000021',
+  })
+  assert.equal(updates.length, 0, 'No secondary Node.js writes: payroll sync is atomic inside PostgreSQL RPC')
 })
 
-test('P1 Overtime sync: decide_overtime rejected resets overtime fields on existing draft payroll line', async () => {
+test('P1 Overtime sync: decide_overtime reject delegates atomically to rc19_c515_decide_overtime_request without secondary client writes', async () => {
+  const rpcCalls: Array<{ name: string; params: unknown }> = []
   const updates: Array<{ table: string; values: Record<string, unknown> }> = []
-
-  const mockLineWithOt = {
-    id: 'line-ot-2',
-    period_id: 'period-draft-1',
-    segment_id: 'seg-ot-2',
-    overtime_request_id: REQ_ID_2,
-    version: 2,
-    actual_seconds: 7200,
-    payable_seconds: 7200,
-    actual_minutes: 120,
-    payable_minutes: 120,
-    rate_vnd_per_hour: 100000,
-    overtime_multiplier_basis_points: 15000,
-    adjustment_vnd: 0,
-    adjustment_reason: null,
-    period: { status: 'draft' },
-  }
 
   const dbClient = {
     from(table: string) {
       let updateValues: Record<string, unknown> | null = null
       const builder = {
-        select() {
-          return builder
-        },
-        eq() {
-          return builder
-        },
-        is() {
-          return builder
-        },
         update(values: Record<string, unknown>) {
           updateValues = values
           return builder
-        },
-        async maybeSingle() {
-          if (table === 'workforce_payroll_lines') {
-            return { data: mockLineWithOt, error: null }
-          }
-          return { data: null, error: null }
         },
         then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
           if (updateValues) {
             updates.push({ table, values: updateValues })
           }
-          return Promise.resolve({ data: mockLineWithOt, error: null }).then(resolve, reject)
+          return Promise.resolve({ data: null, error: null }).then(resolve, reject)
         },
       }
       return builder
@@ -193,7 +131,8 @@ test('P1 Overtime sync: decide_overtime rejected resets overtime fields on exist
     client: () => dbClient as never,
     resolveUser: admin,
     createScopeClient: () => ({
-      rpc: async (name: string) => {
+      rpc: async (name: string, params: unknown) => {
+        rpcCalls.push({ name, params })
         if (name === 'rc19_c515_decide_overtime_request') {
           return { data: rejectedOtRecord, error: null }
         }
@@ -217,68 +156,36 @@ test('P1 Overtime sync: decide_overtime rejected resets overtime fields on exist
   )
 
   assert.equal(response.status, 200)
-  assert.equal(updates.length, 1)
-  assert.equal(updates[0].values.overtime_seconds, 0)
-  assert.equal(updates[0].values.overtime_minutes, 0)
-  assert.equal(updates[0].values.overtime_request_id, null)
-  assert.equal(updates[0].values.overtime_day_class, null)
-  assert.equal(updates[0].values.overtime_time_class, null)
-  assert.equal(updates[0].values.gross_vnd, 200000, 'Gross VND must be recalculated without overtime (2h * 100,000 = 200,000)')
-  assert.equal(updates[0].values.net_vnd, 200000, 'Net VND must match recalculated Gross VND')
-  assert.equal(updates[0].values.version, 3)
+  const body = await response.json()
+  assert.equal(body.ok, true)
+  assert.equal(body.overtime.id, REQ_ID_2)
+  assert.equal(body.overtime.state, 'rejected')
+
+  assert.equal(rpcCalls.length, 1)
+  assert.equal(rpcCalls[0].name, 'rc19_c515_decide_overtime_request')
+  assert.equal(updates.length, 0, 'No secondary Node.js writes on rejection')
 })
 
-test('P1 Overtime sync: decide_overtime admin_confirm NEVER mutates locked payroll period', async () => {
+test('P1 Overtime sync: decide_overtime error propagation from RPC without secondary client writes', async () => {
   const updates: Array<{ table: string; values: Record<string, unknown> }> = []
-
-  const mockLockedLine = {
-    id: 'line-locked-1',
-    period_id: 'period-locked-1',
-    segment_id: 'seg-locked-1',
-    version: 5,
-    period: { status: 'locked' }, // Locked period
-  }
 
   const dbClient = {
     from(table: string) {
       let updateValues: Record<string, unknown> | null = null
       const builder = {
-        select() {
-          return builder
-        },
-        eq() {
-          return builder
-        },
-        is() {
-          return builder
-        },
         update(values: Record<string, unknown>) {
           updateValues = values
           return builder
-        },
-        async maybeSingle() {
-          return { data: mockLockedLine, error: null }
         },
         then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
           if (updateValues) {
             updates.push({ table, values: updateValues })
           }
-          return Promise.resolve({ data: mockLockedLine, error: null }).then(resolve, reject)
+          return Promise.resolve({ data: null, error: null }).then(resolve, reject)
         },
       }
       return builder
     },
-  }
-
-  const confirmedOtRecord = {
-    id: REQ_ID_LOCKED,
-    segment_id: 'seg-locked-1',
-    state: 'admin_confirmed',
-    overtime_seconds: 3600,
-    day_class: 'weekday' as const,
-    time_class: 'day' as const,
-    rate_card_id: null,
-    multiplier_basis_points: 15000,
   }
 
   const handler = createWorkforceActualHandler({
@@ -286,7 +193,7 @@ test('P1 Overtime sync: decide_overtime admin_confirm NEVER mutates locked payro
     client: () => dbClient as never,
     resolveUser: admin,
     createScopeClient: () => ({
-      rpc: async () => ({ data: confirmedOtRecord, error: null }),
+      rpc: async () => ({ data: null, error: { message: 'C515_OT_STALE_REQUEST' } }),
     }) as never,
   })
 
@@ -304,8 +211,8 @@ test('P1 Overtime sync: decide_overtime admin_confirm NEVER mutates locked payro
     })
   )
 
-  assert.equal(response.status, 200)
-  assert.equal(updates.length, 0, 'Locked period lines must NEVER be updated by overtime confirmation')
+  assert.equal(response.status, 409)
+  assert.equal(updates.length, 0, 'No client writes on RPC failure')
 })
 
 test('P1 Overtime calculation: autoCalculatePeriodLines correctly accounts for approved overtime before preparation', () => {

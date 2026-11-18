@@ -178,6 +178,7 @@
     "tests/rc19-c4.4-rbac-behavior.test.ts",
     "tests/rc19-c511-persisted-e2e.test.ts",
     "tests/rc19-c511-segmented-staffing.test.ts",
+    "tests/rc19-c515-atomic-overtime-payroll.test.ts",
     "tests/rc19-c515-compensation-ui-contract.test.ts",
     "tests/rc19-c515-overtime-approval-sync.test.ts",
     "tests/rc19-c515-payroll-approval-handler.test.ts",
