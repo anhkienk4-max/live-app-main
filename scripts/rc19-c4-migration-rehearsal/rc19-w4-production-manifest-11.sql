@@ -1,9 +1,54 @@
 -- RC19 W4 PRODUCTION CONSOLIDATED MIGRATION MANIFEST (11 Verified Unapplied Migrations)
 -- Target: Supabase Production (egdjnpmoasarrttvhgds)
--- Generated at: 2026-11-17T16:11:30.214Z
+-- Generated at: 2026-11-18T04:09:45.376Z
 -- Reconciled: Excludes already-applied 20261110140000 and 20261111000000
 
 BEGIN;
+
+-- =============================================================================
+-- FAIL-CLOSED PRE-EXECUTION LEDGER AND SCHEMA SANITY CHECKS
+-- =============================================================================
+DO $precheck$
+BEGIN
+  -- 1. Assert schema_migrations table exists
+  IF to_regclass('supabase_migrations.schema_migrations') IS NULL THEN
+    RAISE EXCEPTION 'PRECHECK_FAILED: supabase_migrations.schema_migrations table does not exist';
+  END IF;
+
+  -- 2. Assert already-applied baseline migrations 20261110140000 and 20261111000000 are present
+  IF NOT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '20261110140000') THEN
+    RAISE EXCEPTION 'PRECHECK_FAILED: Expected baseline migration 20261110140000 is missing from schema_migrations';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '20261111000000') THEN
+    RAISE EXCEPTION 'PRECHECK_FAILED: Expected baseline migration 20261111000000 is missing from schema_migrations';
+  END IF;
+
+  -- 3. Assert baseline tables workforce_overtime_requests and workforce_cancellation_compensation_cases exist
+  IF to_regclass('public.workforce_overtime_requests') IS NULL THEN
+    RAISE EXCEPTION 'PRECHECK_FAILED: Table public.workforce_overtime_requests must already exist';
+  END IF;
+  IF to_regclass('public.workforce_cancellation_compensation_cases') IS NULL THEN
+    RAISE EXCEPTION 'PRECHECK_FAILED: Table public.workforce_cancellation_compensation_cases must already exist';
+  END IF;
+
+  -- 4. Assert NONE of the 11 candidate versions are already applied (fail-closed against replay)
+  IF EXISTS (
+    SELECT 1 FROM supabase_migrations.schema_migrations 
+    WHERE version IN (
+      '20261112000000', '20261112120000', '20261112130000',
+      '20261113083000', '20261113084154', '20261115120000',
+      '20261115130000', '20261115140000', '20261115174231',
+      '20261116120000', '20261117160000'
+    )
+  ) THEN
+    RAISE EXCEPTION 'PRECHECK_FAILED: One or more RC19 W4 candidate migrations already exist in schema_migrations (refusing replay)';
+  END IF;
+
+  -- 5. Assert candidate-introduced relation rc19_shift_assignment_replacements does NOT already exist
+  IF to_regclass('public.rc19_shift_assignment_replacements') IS NOT NULL THEN
+    RAISE EXCEPTION 'PRECHECK_FAILED: Table public.rc19_shift_assignment_replacements already exists prior to running manifest';
+  END IF;
+END $precheck$;
 
 /*******************************************************************************
  * Migration: 20261112000000_rc19_c2_calendar_overlap_range.sql

@@ -165,7 +165,7 @@ async function fetchAllAdminConfirmedOvertime(db: SupabaseClient, segmentIds: st
   if (!segmentIds.length) return []
   return readWorkforceRowsForShifts(segmentIds,
     (chunk,from,to)=>db.from('workforce_overtime_requests')
-      .select('id,segment_id,overtime_seconds,day_class,time_class,multiplier_basis_points',{count:'exact'})
+      .select('id,segment_id,overtime_seconds,day_class,time_class,multiplier_basis_points,rate_card_id',{count:'exact'})
       .in('segment_id',chunk).eq('state','admin_confirmed')
       .order('segment_id',{ascending:true}).range(from,to),
     'C515_OT_APPROVAL_READ_FAILED')
@@ -174,7 +174,7 @@ async function fetchAllAdminConfirmedOvertime(db: SupabaseClient, segmentIds: st
 async function fetchAllPeriodLines(db: SupabaseClient, periodId: string) {
   return readCompleteWorkforceRows(
     (from,to)=>db.from('workforce_payroll_lines')
-      .select('id,period_id,segment_id,rate_card_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,actual_seconds,payable_seconds,overtime_seconds,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,calculation_version,version,voided_at',{count:'exact'})
+      .select('id,period_id,segment_id,rate_card_id,staff_id,operational_role,actual_minutes,payable_minutes,overtime_minutes,actual_seconds,payable_seconds,overtime_seconds,overtime_request_id,rate_vnd_per_hour,overtime_multiplier_basis_points,gross_vnd,adjustment_vnd,net_vnd,adjustment_reason,calculation_version,version,voided_at',{count:'exact'})
       .eq('period_id',periodId)
       .order('id',{ascending:true}).range(from,to),
     'WORKFORCE_PAYROLL_READ_FAILED',
@@ -621,6 +621,54 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             }
           }
 
+          // Synchronize approved overtime changes on active lines in draft period
+          const overtimeRows = await fetchAllAdminConfirmedOvertime(db, segments.map(row => row.id))
+          const approvedOvertimeBySegment = new Map(overtimeRows.map(row => [row.segment_id, {
+            id: row.id,
+            overtimeSeconds: row.overtime_seconds,
+            dayClass: row.day_class as 'weekday' | 'weekend' | 'holiday',
+            timeClass: row.time_class as 'day' | 'night',
+            multiplierBasisPoints: row.multiplier_basis_points,
+            rateCardId: row.rate_card_id,
+          }]))
+
+          for (const line of activeLines) {
+            const approvedOt = approvedOvertimeBySegment.get(line.segment_id as string)
+            const currentOtId = (line.overtime_request_id as string | null) ?? null
+            const currentOtSecs = (line.overtime_seconds as number | null) ?? 0
+
+            if (approvedOt && (currentOtId !== approvedOt.id || currentOtSecs !== approvedOt.overtimeSeconds)) {
+              const currentLineRes = await db.from('workforce_payroll_lines')
+                .select('id,version')
+                .eq('id', line.id)
+                .maybeSingle()
+              const curVersion = currentLineRes.data?.version ?? line.version
+
+              const { data: updatedLine, error: updateErr } = await db.from('workforce_payroll_lines')
+                .update({
+                  overtime_seconds: approvedOt.overtimeSeconds,
+                  overtime_minutes: Math.floor(approvedOt.overtimeSeconds / 60),
+                  overtime_request_id: approvedOt.id,
+                  overtime_day_class: approvedOt.dayClass,
+                  overtime_time_class: approvedOt.timeClass,
+                  overtime_multiplier_basis_points: approvedOt.multiplierBasisPoints,
+                  rate_card_id: approvedOt.rateCardId ?? line.rate_card_id,
+                  version: (curVersion as number) + 1,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', line.id)
+                .eq('version', curVersion)
+                .select()
+                .maybeSingle()
+
+              if (!updateErr && updatedLine) {
+                const idx = recalculatedLines.findIndex(r => r.id === line.id)
+                if (idx !== -1) recalculatedLines[idx] = updatedLine
+                else recalculatedLines.push(updatedLine)
+              }
+            }
+          }
+
           return Response.json({
             ok: true,
             recalculated_count: recalculatedLines.length,
@@ -677,6 +725,7 @@ export function createWorkforcePayrollHandler(options:Options={}) {
             dayClass:row.day_class as 'weekday'|'weekend'|'holiday',
             timeClass:row.time_class as 'day'|'night',
             multiplierBasisPoints:row.multiplier_basis_points,
+            rateCardId:row.rate_card_id,
           }]))
           const modernSegmentIds = segmentRows
             .filter(segment => (shiftDateMap.get(segment.shift_id) ?? '') >= PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM)
@@ -831,6 +880,45 @@ export function createWorkforcePayrollHandler(options:Options={}) {
               }
               insertedLines = res.inserted_lines ?? []
               recalculatedLines = res.recalculated_lines ?? []
+            }
+          }
+
+          // Synchronize approved overtime changes on active existing draft lines
+          for (const line of existingLines) {
+            if (line.voided_at) continue
+            const approvedOt = approvedOvertimeBySegment.get(line.segment_id as string)
+            const currentOtId = (line.overtime_request_id as string | null) ?? null
+            const currentOtSecs = (line.overtime_seconds as number | null) ?? 0
+
+            if (approvedOt && (currentOtId !== approvedOt.id || currentOtSecs !== approvedOt.overtimeSeconds)) {
+              const currentLineRes = await db.from('workforce_payroll_lines')
+                .select('id,version')
+                .eq('id', line.id)
+                .maybeSingle()
+              const curVersion = currentLineRes.data?.version ?? line.version
+
+              const { data: updatedLine, error: updateErr } = await db.from('workforce_payroll_lines')
+                .update({
+                  overtime_seconds: approvedOt.overtimeSeconds,
+                  overtime_minutes: Math.floor(approvedOt.overtimeSeconds / 60),
+                  overtime_request_id: approvedOt.id,
+                  overtime_day_class: approvedOt.dayClass,
+                  overtime_time_class: approvedOt.timeClass,
+                  overtime_multiplier_basis_points: approvedOt.multiplierBasisPoints,
+                  rate_card_id: approvedOt.rateCardId ?? line.rate_card_id,
+                  version: (curVersion as number) + 1,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', line.id)
+                .eq('version', curVersion)
+                .select()
+                .maybeSingle()
+
+              if (!updateErr && updatedLine) {
+                const idx = recalculatedLines.findIndex(r => r.id === line.id)
+                if (idx !== -1) recalculatedLines[idx] = updatedLine
+                else recalculatedLines.push(updatedLine)
+              }
             }
           }
 

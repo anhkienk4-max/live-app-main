@@ -60,6 +60,47 @@ sql += `-- Generated at: ${new Date().toISOString()}\n`
 sql += '-- Reconciled: Excludes already-applied 20261110140000 and 20261111000000\n\n'
 sql += 'BEGIN;\n\n'
 
+sql += `-- =============================================================================\n`
+sql += `-- FAIL-CLOSED PRE-EXECUTION LEDGER AND SCHEMA SANITY CHECKS\n`
+sql += `-- =============================================================================\n`
+sql += `DO $precheck$\n`
+sql += `BEGIN\n`
+sql += `  -- 1. Assert schema_migrations table exists\n`
+sql += `  IF to_regclass('supabase_migrations.schema_migrations') IS NULL THEN\n`
+sql += `    RAISE EXCEPTION 'PRECHECK_FAILED: supabase_migrations.schema_migrations table does not exist';\n`
+sql += `  END IF;\n\n`
+sql += `  -- 2. Assert already-applied baseline migrations 20261110140000 and 20261111000000 are present\n`
+sql += `  IF NOT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '20261110140000') THEN\n`
+sql += `    RAISE EXCEPTION 'PRECHECK_FAILED: Expected baseline migration 20261110140000 is missing from schema_migrations';\n`
+sql += `  END IF;\n`
+sql += `  IF NOT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '20261111000000') THEN\n`
+sql += `    RAISE EXCEPTION 'PRECHECK_FAILED: Expected baseline migration 20261111000000 is missing from schema_migrations';\n`
+sql += `  END IF;\n\n`
+sql += `  -- 3. Assert baseline tables workforce_overtime_requests and workforce_cancellation_compensation_cases exist\n`
+sql += `  IF to_regclass('public.workforce_overtime_requests') IS NULL THEN\n`
+sql += `    RAISE EXCEPTION 'PRECHECK_FAILED: Table public.workforce_overtime_requests must already exist';\n`
+sql += `  END IF;\n`
+sql += `  IF to_regclass('public.workforce_cancellation_compensation_cases') IS NULL THEN\n`
+sql += `    RAISE EXCEPTION 'PRECHECK_FAILED: Table public.workforce_cancellation_compensation_cases must already exist';\n`
+sql += `  END IF;\n\n`
+sql += `  -- 4. Assert NONE of the 11 candidate versions are already applied (fail-closed against replay)\n`
+sql += `  IF EXISTS (\n`
+sql += `    SELECT 1 FROM supabase_migrations.schema_migrations \n`
+sql += `    WHERE version IN (\n`
+sql += `      '20261112000000', '20261112120000', '20261112130000',\n`
+sql += `      '20261113083000', '20261113084154', '20261115120000',\n`
+sql += `      '20261115130000', '20261115140000', '20261115174231',\n`
+sql += `      '20261116120000', '20261117160000'\n`
+sql += `    )\n`
+sql += `  ) THEN\n`
+sql += `    RAISE EXCEPTION 'PRECHECK_FAILED: One or more RC19 W4 candidate migrations already exist in schema_migrations (refusing replay)';\n`
+sql += `  END IF;\n\n`
+sql += `  -- 5. Assert candidate-introduced relation rc19_shift_assignment_replacements does NOT already exist\n`
+sql += `  IF to_regclass('public.rc19_shift_assignment_replacements') IS NOT NULL THEN\n`
+sql += `    RAISE EXCEPTION 'PRECHECK_FAILED: Table public.rc19_shift_assignment_replacements already exists prior to running manifest';\n`
+sql += `  END IF;\n`
+sql += `END $precheck$;\n\n`
+
 for (const f of files) {
   const version = f.split('_')[0]
   let content = fs.readFileSync(path.join(migrationsDir, f), 'utf8')

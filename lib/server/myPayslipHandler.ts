@@ -108,7 +108,7 @@ export function createMyPayslipHandler(deps: Dependencies = {}) {
             return failed('MY_PAYSLIP_ADJUSTMENT_INTEGRITY',409)
           if(adjustments.length){
             const caseRes=await client.from('workforce_cancellation_compensation_cases')
-              .select('id,period_id,staff_id,operational_role,proposed_amount_vnd,admin_confirmed_by,state,reason')
+              .select('id,period_id,shift_id,staff_id,operational_role,proposed_amount_vnd,admin_confirmed_by,state,reason')
               .eq('staff_id',actor.businessUserId).eq('state','admin_confirmed')
               .in('id',adjustments.map(a=>a.compensation_case_id)).limit(201)
             if(caseRes.error)return failed('MY_PAYSLIP_COMPENSATION_CASE_READ_FAILED',503)
@@ -145,7 +145,7 @@ export function createMyPayslipHandler(deps: Dependencies = {}) {
           if(!Number.isSafeInteger(total))throw new Error('MY_PAYSLIP_TOTAL_UNSAFE')
           return {period_id:p.id,period_start:p.period_start,period_end:p.period_end,status:'locked',
             locked_at:p.locked_at,lines:details,compensation_adjustments:cancellationAdjustments,total_net_vnd:total}
-        }).filter(p=>p.lines.length>0)
+        }).filter(p=>p.lines.length>0 || p.compensation_adjustments.length>0)
         return Response.json({ok:true,scope:'own_locked_only',limited_to:12,compensation_available:compensationAvailable,statements},{headers:noStore})
       }catch(error){
         if(isAuthorizationError(error))return authorizationErrorResponse(error)

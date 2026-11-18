@@ -614,6 +614,72 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
               :/NOT_FOUND/iu.test(message)?404:/INVALID|REQUIRED|NOT_CONFIGURED|OVERLAP|STALE|ALREADY|EVIDENCE/iu.test(message)?409:503
             return fail(message,status)
           }
+
+          if (action.action === 'decide_overtime' && data) {
+            const otRecord = data as {
+              id: string
+              segment_id: string
+              state: string
+              overtime_seconds: number
+              day_class: 'weekday' | 'weekend' | 'holiday'
+              time_class: 'day' | 'night'
+              rate_card_id: string | null
+              multiplier_basis_points: number | null
+            }
+            if (otRecord.state === 'admin_confirmed') {
+              const existingLineRes = await client.from('workforce_payroll_lines')
+                .select('id,period_id,version,actual_seconds,payable_seconds,actual_minutes,payable_minutes,rate_card_id,rate_vnd_per_hour,overtime_multiplier_basis_points,period:workforce_payroll_periods!inner(status)')
+                .eq('segment_id', otRecord.segment_id)
+                .is('voided_at', null)
+                .maybeSingle()
+
+              if (existingLineRes.data && (existingLineRes.data.period as { status?: string })?.status === 'draft') {
+                const line = existingLineRes.data
+                const otSecs = otRecord.overtime_seconds
+                const otMins = Math.floor(otSecs / 60)
+                const rateCardId = otRecord.rate_card_id ?? line.rate_card_id
+                const multiplierBps = otRecord.multiplier_basis_points ?? line.overtime_multiplier_basis_points
+
+                await client.from('workforce_payroll_lines')
+                  .update({
+                    overtime_seconds: otSecs,
+                    overtime_minutes: otMins,
+                    overtime_request_id: otRecord.id,
+                    overtime_day_class: otRecord.day_class,
+                    overtime_time_class: otRecord.time_class,
+                    overtime_multiplier_basis_points: multiplierBps,
+                    rate_card_id: rateCardId,
+                    version: line.version + 1,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', line.id)
+                  .eq('version', line.version)
+              }
+            } else if (otRecord.state === 'rejected') {
+              const existingLineRes = await client.from('workforce_payroll_lines')
+                .select('id,period_id,version,period:workforce_payroll_periods!inner(status)')
+                .eq('overtime_request_id', otRecord.id)
+                .is('voided_at', null)
+                .maybeSingle()
+
+              if (existingLineRes.data && (existingLineRes.data.period as { status?: string })?.status === 'draft') {
+                const line = existingLineRes.data
+                await client.from('workforce_payroll_lines')
+                  .update({
+                    overtime_seconds: 0,
+                    overtime_minutes: 0,
+                    overtime_request_id: null,
+                    overtime_day_class: null,
+                    overtime_time_class: null,
+                    version: line.version + 1,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', line.id)
+                  .eq('version', line.version)
+              }
+            }
+          }
+
           return Response.json({ok:true,overtime:data},{status:action.action==='request_overtime'?201:200,headers:noStore})
         }
 
