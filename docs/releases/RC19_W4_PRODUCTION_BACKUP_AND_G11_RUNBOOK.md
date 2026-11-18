@@ -1,7 +1,7 @@
 # RC19 W4 Production Backup, Restore Drill & Google Drive G11 Owner Runbook
 
-**Target Environment:** Supabase Production `egdjnpmoasarrttvhgds` / Vercel `livestream-ops-demo` (`https://ops5729.top`)  
-**Scope:** Pre-cutover Production safety gates requiring owner credentials (`SUPABASE_ACCESS_TOKEN` / Production DB URI + Google Drive OAuth secrets).  
+**Target Environment:** Supabase Production `egdjnpmoasarrttvhgds` / Vercel `livestream-ops-demo` (`https://ops5729.top`)
+**Scope:** Pre-cutover Production safety gates requiring owner credentials (`SUPABASE_ACCESS_TOKEN` / Production DB URI + Google Drive OAuth secrets).
 **Status from Non-Production Implementation Lane:** **OWNER-REQUIRED (`BLOCKED` in local sandbox without Production credentials)** — do **NOT** extrapolate local PostgreSQL 17 dumps as Production off-site backup proof.
 
 ---
