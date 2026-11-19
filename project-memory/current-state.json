@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "a9d75ac6e59b10b373c73017f5d95d2a512d826b",
+    "head": "40580ca8be3b5e69fea6611a3beefb2e984e5d54",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -123,11 +123,11 @@
         "app": 96,
         "components": 195,
         "lib": 292,
-        "scripts": 181,
+        "scripts": 182,
         "supabase": 160,
-        "tests": 392
+        "tests": 393
       },
-      "total": 1316
+      "total": 1318
     },
     "tests": {
       "files": [
@@ -382,6 +382,7 @@
         "tests/rc19-u15-ux-quality.test.ts",
         "tests/rc19-ui-functional-integration.test.tsx",
         "tests/rc19-unified-import-postgres17.test.ts",
+        "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
         "tests/rc19-w4-legacy-segment-compatibility.test.ts",
         "tests/rc19-w4-staffing-conflict-api.test.ts",
         "tests/rc19-w4-swap-brand-security-postgres17.test.ts",
@@ -449,7 +450,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 317
+      "count": 318
     },
     "migrations": {
       "files": [
@@ -600,5 +601,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-18T23:22:18+07:00"
+  "synced_at": "2026-11-19T16:58:21+07:00"
 }
