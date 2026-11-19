@@ -21,10 +21,10 @@
 | Step | Execution Mode | Status in Sandbox | Owner Action Required |
 |---|---|---|---|
 | Runbook & pre-cutover backup/restore commands | Documented CLI (`supabase`, `pg_dump`, `gpg`, `node` `googleapis`, `psql`) | Syntax-verified locally | Export Production credentials and run from an Owner terminal |
-| Supabase Dashboard Cloud Backups / PITR inspection | **Manual UI / Owner CLI** (`npx supabase backups list --remote=egdjnpmoasarrttvhgds`) | **BLOCKED** (no `SUPABASE_ACCESS_TOKEN`) | Inspect latest completed cloud backup & PITR window; reuse if already valid |
-| Encrypted DB backup creation + Drive upload + readback | **Automated once Owner exports credentials** (Node `googleapis` + `pg_dump` + `gpg` below) | **BLOCKED** (no Prod DB URI / Drive OAuth) | Provide `DRIVE_BACKUP_FOLDER_ID`, Drive OAuth env vars, `SUPABASE_DB_URL`, and run only if no verified backup exists |
-| Scratch PG 17 restore verification of Drive readback | **Semi-automated Owner terminal drill** | **BLOCKED** (requires encrypted Prod export) | Decrypt `$READBACK_FILE` into isolated scratch DB `rc19_w4_prod_restore_drill`, verify counts/roles, then drop DB |
-| Google Drive G11 self-attendance photo check | **Automated script** (`verify-production-drive-g11.mjs`) | **Verified Fail-Closed (`BLOCKED` / exit `2`)** | Run `node scripts/rc19-c4-migration-rehearsal/verify-production-drive-g11.mjs` with Production OAuth secrets |
+| Supabase Dashboard Cloud Backups / PITR inspection | **Manual UI / Owner CLI** (`supabase backups list --project-ref egdjnpmoasarrttvhgds`) | **BLOCKED** (no `SUPABASE_ACCESS_TOKEN`) | Inspect latest completed cloud backup & PITR window; reuse if already valid |
+| Encrypted DB backup creation + Drive upload + readback | **Automated once Owner exports credentials** (Node `googleapis` + `pg_dump` + `gpg` below) | **BLOCKED** (no Prod DB URI / backup Drive ACL) | Provide `DRIVE_BACKUP_FOLDER_ID` (`05_DATA_EXPORT_BACKUPS`), `SUPABASE_DB_URL`, and run only if no verified backup exists |
+| Scratch PG 17 restore verification of Drive readback | **Semi-automated Owner terminal drill** | **BLOCKED** (requires encrypted Prod export) | Decrypt `$READBACK_FILE` into isolated scratch DB `rc19_w4_prod_restore_drill`, verify counts/roles/grants/default ACL, then drop DB |
+| Google Drive G11 self-attendance photo check | **Production Admin Diagnostics + Cutover Canary Gate** (`1ucgT3BkHtKOqDqkKY5i7Gd5s6akTPH1P`) | **BLOCKED (`NO_GO_HOLD`)** | Run Admin diagnostics/preflight + effective ACL check pre-cutover; run single approved cutover canary `POST /api/internal/storage-drive-probe` post-deploy (never export long-lived refresh token) |
 | Vercel deployment retention check | **Manual UI / Owner CLI** (`vercel ls --prod`) | **Owner-Verified Required** | Confirm previous Production deployment remains available for rollback |
 
 ---
@@ -40,7 +40,7 @@
 1. **Check Supabase Automated Backups / PITR (Owner Console & CLI):**
    ```bash
    # Requires Owner SUPABASE_ACCESS_TOKEN exported in shell
-   npx supabase backups list --remote=egdjnpmoasarrttvhgds
+   supabase backups list --project-ref egdjnpmoasarrttvhgds
    ```
    Also inspect **Supabase Dashboard -> Project `egdjnpmoasarrttvhgds` -> Database -> Backups** to verify the latest completed cloud backup timestamp and PITR window.
 2. **Check Existing Encrypted Backups in `DRIVE_BACKUP_FOLDER_ID`:**
@@ -134,8 +134,6 @@ test "$MIG_COUNT" -eq 117
 
 npx supabase db dump --remote="$SUPABASE_DB_URL" --role-only --file "$ROLES_SQL"
 pg_dump "$SUPABASE_DB_URL" \
-  --no-owner \
-  --no-privileges \
   --schema=public \
   --schema=private \
   --schema=storage \
@@ -223,11 +221,13 @@ SQL
 
 # Apply exported roles.sql (existing built-in cluster roles emit harmless "already exists" notices)
 psql -h 127.0.0.1 -p 55449 -U postgres -d rc19_w4_prod_restore_drill -f "$RESTORE_DIR/roles.sql" 2>&1 | grep -v 'already exists' || true
-# Restore full schema + table data + auth + supabase_migrations ledger cleanly:
+# Restore full schema + table data + auth + roles/grants/default ACL + supabase_migrations ledger cleanly:
 psql -h 127.0.0.1 -p 55449 -U postgres -d rc19_w4_prod_restore_drill -v ON_ERROR_STOP=1 -f "$RESTORE_DIR/database.sql"
 
 psql -h 127.0.0.1 -p 55449 -U postgres -d rc19_w4_prod_restore_drill -Atc "
   SELECT 'roles_present', count(*) FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role','supabase_auth_admin')
+  UNION ALL SELECT 'role_memberships', count(*) FROM pg_auth_members
+  UNION ALL SELECT 'default_acl_entries', count(*) FROM pg_default_acl
   UNION ALL SELECT 'schema_migrations', count(*) FROM supabase_migrations.schema_migrations
   UNION ALL SELECT 'auth_users', count(*) FROM auth.users
   UNION ALL SELECT 'business_users', count(*) FROM public.business_users
@@ -242,7 +242,13 @@ dropdb -h 127.0.0.1 -p 55449 -U postgres rc19_w4_prod_restore_drill
 
 When the shell exits, `cleanup` shreds and removes `$TMP_BACKUP_DIR` automatically (`zero` persistent dump/decrypt files on `C:\`, WSL, or `$HOME`). Gate status remains **`BLOCKED`** unless:
 1. Pre-existing or newly uploaded encrypted Drive backup ID + ACL check + readback `ENC_SHA256` verification succeed, **and**
-2. Scratch restore from the Drive readback archive succeeds cleanly (`ON_ERROR_STOP=1`, `schema_migrations = 117`, `auth.users` + core public tables + roles verified).
+2. Scratch restore from the Drive readback archive succeeds cleanly (`ON_ERROR_STOP=1`, `schema_migrations = 117`, `auth.users`, `pg_auth_members`, `pg_default_acl`, core public tables & roles verified).
+
+### 3.4 Sanitized Zero-PII Schema-Only Production Baseline for Codex Verification
+
+When Codex requires a Production-faithful isolated PostgreSQL `17.6` baseline for full 117 -> 130 migration parity verification (without any secrets or personal/employee rows), the Owner runs `export-sanitized-prod-117-schema-baseline-for-codex.mjs` against read-only `egdjnpmoasarrttvhgds`:
+- Exports **only**: sanitized cluster roles (password hashes stripped), `pg_auth_members`, `pg_default_acl`, `--schema-only` definitions (`public`, `private`, `storage`, `auth`, `supabase_migrations`, extensions, 7 event triggers, owners, grants, RLS policies, complete function bodies), and `--data-only --table=supabase_migrations.schema_migrations` (exact 117 receipts, preserving the 9 empty-statement receipts without fabrication).
+- Automatically scans output for secrets and business/PII data (`hits=0`) and emits SHA-256 checksums for isolated local PG `17.6` restore only.
 
 ---
 
@@ -252,42 +258,25 @@ When the shell exits, `cleanup` shreds and removes `$TMP_BACKUP_DIR` automatical
    - Keep all **93 agreed Google Drive operational folders** unchanged (no moves, renames, folder deletions, or public `anyone` ACLs).
    - Operational assets and attendance photos stay synchronized with Supabase metadata tables (`stored_files`, `operational_files`, `self_attendance_photo_evidence`).
 2. **Vercel Application Rollback (`livestream-ops-demo`):**
-   - Retain all prior immutable Production deployments in Vercel (`vercel ls --prod` or Vercel Project Deployments UI) serving `https://ops5729.top`.
+   - Retain all prior immutable Production deployments in Vercel (`vercel ls --prod` or Vercel Project Deployments UI) serving `https://ops5729.top` (primary anchor: `dpl_GHPSqMNBQ1yMVwGGGkZn1ygd8N3E`).
    - For application regressions that do not require reverting database state, execute Vercel Instant Rollback (`vercel rollback <previous-deployment-url>`). Do **not** alter the 93 Drive folders or Supabase backup archives during an app-only rollback.
 
 ---
 
-## 5. Gate G11: Google Drive Self-Attendance Photo Scope & Verification
+## 5. Gate G11: Google Drive Self-Attendance Photo Scope & Production-Only Canary Gate
 
-### 5.1 Is G11 Required for RC19 W4 Go-Live?
+### 5.1 Hard Constraints (Production-Only, Zero Separate Probe Deployments)
 
-Classification from source and schema:
+While Production Vercel runs with `FEATURE_SELF_ATTENDANCE_PHOTO=true` and database triggers `self_attendance_checkin_photo_required` and `rc19_c515_required_payroll_evidence` active, **G11 is mandatory for RC19 Production Go-Live**:
 
-- **Application layer** (`lib/server/selfAttendancePhotoHandler.ts`): When `FEATURE_SELF_ATTENDANCE_PHOTO !== 'true'`, photo upload / review endpoints return HTTP `503` without affecting legacy report or operational file uploads.
-- **Database trigger layer** (`supabase/migrations/20261023144000_rc19_p2_04b_drive_photo_checkin.sql` + C5.15 payroll gates):
-  - Trigger `self_attendance_checkin_photo_required` rejects any `public.self_attendance_record` `'check_in'` insert unless a corresponding `self_attendance_photo_evidence` row (`provider = 'google_drive'`) exists.
-  - Trigger/guard `rc19_c515_required_payroll_evidence` checks self-attendance photo & review evidence before post-cutover Host/Support payroll approval.
-- **Go-Live Decision:** While Production Vercel runs with `FEATURE_SELF_ATTENDANCE_PHOTO=true` and these DB triggers active, **G11 is REQUIRED for full RC19 Production Go-Live** (`BLOCKED` until executed with Production Vercel OAuth credentials).
-
-### 5.2 Owner-Executable Real G11 Verification Command
-
-Export Production Vercel `livestream-ops-demo` Google Drive variables in an interactive owner shell (never commit credentials to Git):
-
-```bash
-export GOOGLE_DRIVE_AUTH_MODE="oauth_refresh_token"
-export GOOGLE_DRIVE_ROOT_FOLDER_ID="<PRODUCTION_ROOT_FOLDER_ID>"
-export GOOGLE_DRIVE_CLIENT_ID="<PRODUCTION_CLIENT_ID>"
-export GOOGLE_DRIVE_CLIENT_SECRET="<PRODUCTION_CLIENT_SECRET>"
-export GOOGLE_DRIVE_REFRESH_TOKEN="<PRODUCTION_REFRESH_TOKEN>"
-export FEATURE_SELF_ATTENDANCE_PHOTO="true"
-export FILE_STORAGE_ENABLED="true"
-
-node scripts/rc19-c4-migration-rehearsal/verify-production-drive-g11.mjs
-```
-
-### 5.3 What `verify-production-drive-g11.mjs` Verifies (Fail-Closed, Zero Structural Mutation)
-
-1. Fails closed (`exit 2`, `ATTENDANCE_DRIVE_NOT_CONFIGURED`) if any required Drive env var is missing.
-2. Authenticates via `oauth_refresh_token` (or `service_account`) and validates root folder metadata (`mimeType = application/vnd.google-apps.folder`, not trashed, `capabilities.canAddChildren = true`).
-3. Inspects Google Drive folder ACLs (`drive.permissions.list`) and **fails if any `type = 'anyone'` public link permission exists**.
-4. Uploads an isolated ephemeral 1x1 PNG probe without altering the 93-folder structure, reads metadata and bytes back (`alt=media`), verifies MD5/SHA-256 checksum match, and trashes the synthetic probe (`cleanup_trashed = true`).
+1. **Use existing Production Vercel configuration (`prj_YSrsxfYK7skM17D3KtiXUGeim2kr`):** Never ask the Owner to reinstall Google OAuth or export long-lived refresh tokens to local files, and never count a personal Google Drive connector run as app OAuth proof.
+2. **No Preview, No Staging, No Probe-Only Production Redeploy:** If current Production runtime (`dpl_GHPSqMNBQ1yMVwGGGkZn1ygd8N3E`) has `RC19_STORAGE_DRIVE_PROBE_ENABLED` unset (`404 STORAGE_PROBE_DISABLED`), do **NOT** create a separate temporary Production deployment just to probe.
+3. **Separate `PRE-CUTOVER READY` vs `POST-DEPLOY G11 PASS`:**
+   - **`PRE-CUTOVER READY` (Required Before Cutover):**
+     1. Authenticated Production Admin session calls `GET https://ops5729.top/api/internal/file-provider-diagnostics` and `GET https://ops5729.top/api/workforce/self-attendance-photo/preflight` (read-only; confirms runtime OAuth configuration, `root_readable=true`, `root_can_add_children=true`, and ACL state on Check-in & Check-out folders without mutating ACLs or 93 folders).
+     2. Effective Drive ACL & Limited Access verification (`inheritedPermissionsDisabled`, `view`, `permissionDetails`, direct/inherited grants, child file readability across `00_ADA_OPS_PLATFORM -> 08_HR_RESTRICTED_PENDING_ACCESS -> 01_ATTENDANCE_PRIVATE_EVIDENCE -> 01_CHECKIN_PHOTOS & 02_CHECKOUT_PHOTOS`) passes without public content exposure.
+     3. Migration Gate (semantic parity + PG17 CLI proof + CI) and Recovery Gate (`egdjnpmoasarrttvhgds` Cloud Backup/PITR + restore proof covering all 117 receipts) both `PASS`.
+   - **`POST-DEPLOY G11 PASS` (Single Approved Cutover Window Canary):**
+     1. Executed **once** during the Owner-approved Production cutover on `https://ops5729.top` against existing isolated test folder `1ucgT3BkHtKOqDqkKY5i7Gd5s6akTPH1P` (`POST /api/internal/storage-drive-probe {"mode":"upload_readback"}` or coordinated app-identity probe).
+     2. Captures all 6 proofs: runtime Drive identity, synthetic upload, provider file ID + parent ID (`1ucgT3BkHtKOqDqkKY5i7Gd5s6akTPH1P`), readback byte-for-byte SHA-256, trash cleanup (`cleanup_status='trashed'`), and Supabase audit receipt (`operational_storage_drive_probe_runs`).
+     3. Immediately disable/unset `RC19_STORAGE_DRIVE_PROBE_ENABLED` after canary verification (never leave permanent debug probe enabled). On canary failure, immediately roll back `ops5729.top` to `dpl_GHPSqMNBQ1yMVwGGGkZn1ygd8N3E`.
