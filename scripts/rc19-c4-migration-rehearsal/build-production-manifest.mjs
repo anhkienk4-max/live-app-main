@@ -1,6 +1,20 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+// DEPRECATED FOR PRODUCTION CUTOVER:
+// Manual `INSERT INTO supabase_migrations.schema_migrations` skips Supabase CLI
+// statement splitting and canonical receipt encoding. Production migrations must
+// execute via `scripts/rc19-c4-migration-rehearsal/run-production-supabase-cli-migrations.mjs`.
+if (!process.argv.includes('--legacy-rehearsal-only')) {
+  console.error(JSON.stringify({
+    ok: false,
+    code: 'MANUAL_RECEIPT_INSERT_DEPRECATED_USE_CANONICAL_SUPABASE_CLI_RUNNER',
+    replacement: 'scripts/rc19-c4-migration-rehearsal/run-production-supabase-cli-migrations.mjs',
+    legacy_override_flag: '--legacy-rehearsal-only',
+  }))
+  process.exit(2)
+}
+
 const migrationsDir = 'supabase/migrations'
 
 // Explicit verified unapplied RC19 W4 release migration versions.

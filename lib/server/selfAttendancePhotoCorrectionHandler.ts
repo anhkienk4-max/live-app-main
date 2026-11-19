@@ -105,7 +105,7 @@ export async function POST(request:Request) {
       else if(committed.error)console.error('ATTENDANCE_CORRECTION_ORPHAN_STATE_UNKNOWN')
     }catch{console.error('ATTENDANCE_CORRECTION_ORPHAN_CLEANUP_FAILED')}
     if(isAuthorizationError(error))return authorizationErrorResponse(error)
-    if(error instanceof AttendanceDriveAclError)return fail(error.code,409)
+    if(error instanceof AttendanceDriveAclError)return fail(error.code,503)
     if(error instanceof OperationalStoragePlacementError)return fail(error.code,503)
     if(error instanceof Error&&error.message.startsWith('ATTENDANCE_DRIVE_'))return fail(error.message,503)
     if(error instanceof RequestBodyError)return fail(error.code,error.status)

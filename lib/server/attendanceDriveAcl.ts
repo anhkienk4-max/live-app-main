@@ -2,14 +2,38 @@ import 'server-only'
 
 import { google } from 'googleapis'
 import { createGoogleDriveAuth, type GoogleDriveEnvironment } from '@/lib/server/googleDriveAuth'
-import { inspectAttendanceDrivePermissions, AttendanceDriveAclError,
-  type AttendanceDrivePermission, type AttendanceDriveAclStatus } from '@/lib/utils/attendanceDriveAcl'
+import {
+  inspectAttendanceDrivePermissions,
+  assertPrivateAttendanceDriveAcl,
+  AttendanceDriveAclError,
+  type AttendanceDrivePermission,
+  type AttendanceDriveAclStatus,
+} from '@/lib/utils/attendanceDriveAcl'
 
 type PermissionPage = {
   permissions?: AttendanceDrivePermission[] | null
   nextPageToken?: string | null
 }
-type DrivePermissionsClient = {
+type DriveFileAclMetadata = {
+  id?: string | null
+  mimeType?: string | null
+  trashed?: boolean | null
+  driveId?: string | null
+  inheritedPermissionsDisabled?: boolean | null
+  capabilities?: {
+    canListChildren?: boolean | null
+    canAddChildren?: boolean | null
+    canDisableInheritedPermissions?: boolean | null
+  } | null
+}
+export type DrivePermissionsClient = {
+  files?: {
+    get(options: {
+      fileId: string
+      fields: string
+      supportsAllDrives: boolean
+    }): Promise<{ data?: DriveFileAclMetadata | null }>
+  }
   permissions: {
     list(options:{
       fileId:string
@@ -33,6 +57,26 @@ export async function inspectAttendanceDriveRoot(
     version:'v3',
     auth:createGoogleDriveAuth(env).auth as Parameters<typeof google.drive>[0]['auth'],
   }) as unknown as DrivePermissionsClient)
+
+  let fileInheritedPermissionsDisabled: boolean | null = null
+  if (drive.files?.get) {
+    try {
+      const fileResponse = await drive.files.get({
+        fileId: rootId,
+        fields: 'id,mimeType,trashed,driveId,inheritedPermissionsDisabled,capabilities(canListChildren,canAddChildren,canDisableInheritedPermissions)',
+        supportsAllDrives: true,
+      })
+      const meta = fileResponse?.data
+      if (!meta || meta.trashed === true) {
+        throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
+      }
+      fileInheritedPermissionsDisabled = meta.inheritedPermissionsDisabled ?? null
+    } catch (error) {
+      if (error instanceof AttendanceDriveAclError) throw error
+      throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
+    }
+  }
+
   const all:AttendanceDrivePermission[]=[]
   let pageToken:string|undefined
   const visited=new Set<string>()
@@ -41,7 +85,8 @@ export async function inspectAttendanceDriveRoot(
     let data:PermissionPage
     try {
       const response=await drive.permissions.list({
-        fileId:rootId,fields:'nextPageToken,permissions(type,role)',
+        fileId:rootId,
+        fields:'nextPageToken,permissions(type,role,view,inheritedPermissionsDisabled,permissionDetails(permissionType,role,inherited,inheritedFrom))',
         pageSize:100,pageToken,supportsAllDrives:true,
       })
       data=response.data
@@ -57,5 +102,18 @@ export async function inspectAttendanceDriveRoot(
     visited.add(data.nextPageToken)
     pageToken=data.nextPageToken
   }
-  return inspectAttendanceDrivePermissions(all,complete)
+  return inspectAttendanceDrivePermissions(all, complete, {
+    inheritedPermissionsDisabled: fileInheritedPermissionsDisabled,
+  })
+}
+
+/** Enforces fail-closed private Drive ACL verification before sensitive Attendance writes. */
+export async function verifyAttendanceDriveWriteAcl(
+  rootId: string,
+  env: GoogleDriveEnvironment = process.env,
+  client?: DrivePermissionsClient,
+): Promise<AttendanceDriveAclStatus> {
+  const status = await inspectAttendanceDriveRoot(rootId, env, client)
+  assertPrivateAttendanceDriveAcl(status)
+  return status
 }

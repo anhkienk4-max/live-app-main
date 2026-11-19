@@ -256,6 +256,7 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
           actorBusinessUserId:actor.businessUserId,
         })
       } catch(error) {
+        if(error instanceof AttendanceDriveAclError)return failed(error.code,503)
         if(error instanceof OperationalStoragePlacementError)return failed(error.code,503)
         if(error instanceof Error&&error.message.startsWith('ATTENDANCE_DRIVE_'))return failed(error.message,503)
         throw error
@@ -487,46 +488,56 @@ export async function GET_PREFLIGHT(request:Request) {
     const active=await session.rpc('get_my_self_attendance',{p_shift_id:null,p_limit:1})
     if(active.error)return failed('PERMISSION_DENIED',403)
 
-    let drive:ReturnType<typeof createAttendancePhotoDrive>['drive']
-    let root:string
+    const targets: Array<{
+      drive: ReturnType<typeof createAttendancePhotoDrive>['drive']
+      root: string
+      kind: 'check_in' | 'check_out'
+    }> = []
     try {
       const routes=createOperationalStorageDomainRouteRepository({client:createSupabaseAdminClient()})
       const checkIn=await routes.resolveAttendancePhotoBasePlacement('check_in','preflight.jpg')
       const checkOut=await routes.resolveAttendancePhotoBasePlacement('check_out','preflight.jpg')
       if(checkIn.baseFolderId===checkOut.baseFolderId)return failed('STORAGE_ROUTE_CONFIG_INVALID',503)
-      const configured=createAttendancePhotoDrive(checkIn.baseFolderId)
-      root=configured.root
-      drive=configured.drive
+      for(const [kind,baseFolderId] of [['check_in',checkIn.baseFolderId],['check_out',checkOut.baseFolderId]] as const) {
+        const configured=createAttendancePhotoDrive(baseFolderId)
+        targets.push({kind,root:configured.root,drive:configured.drive})
+      }
     } catch (error) {
       if (error instanceof OperationalStoragePlacementError) return failed(error.code,503)
       return failed('ATTENDANCE_DRIVE_NOT_CONFIGURED',503)
     }
 
-    try {
-      const health=await drive.healthCheck()
-      if(health.provider!=='google_drive'||health.root_readable!==true||
-        health.root_can_add_children!==true||health.ok!==true)
+    const aclByKind: Record<'check_in' | 'check_out', boolean> = { check_in: false, check_out: false }
+    for (const target of targets) {
+      const { root, drive, kind } = target
+      try {
+        const health=await drive.healthCheck()
+        if(health.provider!=='google_drive'||health.root_readable!==true||
+          health.root_can_add_children!==true||health.ok!==true)
+          return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
+      } catch {
         return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
-    } catch {
-      return failed('ATTENDANCE_DRIVE_PERMISSION_DENIED',503)
+      }
+      try {
+        const acl=await inspectAttendanceDriveRoot(root,{
+          ...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root,
+        })
+        aclByKind[kind]=acl.publicAccess
+      } catch(error) {
+        if(error instanceof AttendanceDriveAclError)
+          return failed(error.code,503)
+        return failed('ATTENDANCE_DRIVE_ACL_UNVERIFIED',503)
+      }
     }
-    let publicAccess=false
-    try {
-      const acl=await inspectAttendanceDriveRoot(root,{
-        ...process.env,GOOGLE_DRIVE_ROOT_FOLDER_ID:root,
-      })
-      publicAccess=acl.publicAccess
-    } catch(error) {
-      if(error instanceof AttendanceDriveAclError)
-        return failed(error.code,503)
-      return failed('ATTENDANCE_DRIVE_ACL_UNVERIFIED',503)
-    }
+    const publicAccess=aclByKind.check_in||aclByKind.check_out
     return Response.json({
       ok:true,
       provider:'google_drive',
       root_readable:true,
       root_can_add_children:true,
       public_access:publicAccess,
+      checkin_public_access:aclByKind.check_in,
+      checkout_public_access:aclByKind.check_out,
       feature_enabled:process.env.FEATURE_SELF_ATTENDANCE_PHOTO==='true',
     },{headers:ERROR_HEADERS})
   }catch(error) {

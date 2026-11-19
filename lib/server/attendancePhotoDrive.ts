@@ -13,6 +13,7 @@ import type { PhotoRole } from '@/lib/utils/attendancePhotoNaming'
 import { createFileStorageService } from '@/lib/services/fileStorageService'
 import { createGoogleDriveFileProvider } from '@/lib/server/googleDriveFileProvider'
 import { resolveGoogleDriveAuthMode } from '@/lib/server/googleDriveAuth'
+import { verifyAttendanceDriveWriteAcl } from '@/lib/server/attendanceDriveAcl'
 import { createOperationalStorageFolderMaterializer } from '@/lib/server/operationalStorageFolderMaterializer'
 import { createOperationalStorageDomainRouteRepository } from '@/lib/server/operationalStorageRouteRepository'
 
@@ -64,15 +65,30 @@ export function createAttendancePhotoDrive(root: string) {
   return { root, drive: createGoogleDriveFileProvider({ env }) }
 }
 
-async function createWritableDestination(client: SupabaseClient, placement: OperationalStoragePlacement): Promise<AttendancePhotoDestination> {
+type AttendanceDestinationDependencies = {
+  verifyWriteAcl?: typeof verifyAttendanceDriveWriteAcl
+  createDrive?: typeof createAttendancePhotoDrive
+}
+
+async function createWritableDestination(
+  client: SupabaseClient,
+  placement: OperationalStoragePlacement,
+  dependencies: AttendanceDestinationDependencies = {},
+): Promise<AttendancePhotoDestination> {
   if (!canWriteOperationalStoragePlacement(placement.accessClassification ?? '', placement.sensitive ?? false)) {
     throw new Error('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
   }
-  const { drive } = createAttendancePhotoDrive(placement.baseFolderId)
+  const createDrive = dependencies.createDrive ?? createAttendancePhotoDrive
+  const verifyWriteAcl = dependencies.verifyWriteAcl ?? verifyAttendanceDriveWriteAcl
+  const { drive } = createDrive(placement.baseFolderId)
   const health = await drive.healthCheck()
   if (!health.ok || health.root_readable !== true || health.root_can_add_children !== true) {
     throw new Error('ATTENDANCE_DRIVE_PERMISSION_DENIED')
   }
+  await verifyWriteAcl(placement.baseFolderId, {
+    ...process.env,
+    GOOGLE_DRIVE_ROOT_FOLDER_ID: placement.baseFolderId,
+  })
   const storage = createFileStorageService({ provider: drive })
   return {
     drive,
@@ -117,6 +133,7 @@ export async function prepareAttendancePhotoDestination(
     fileName: string
     actorBusinessUserId: string
   },
+  dependencies: AttendanceDestinationDependencies = {},
 ) {
   const routes = createOperationalStorageDomainRouteRepository({ client })
   const placement = await routes.resolveAttendancePhotoPlacement({
@@ -126,7 +143,7 @@ export async function prepareAttendancePhotoDestination(
     eventKind: input.eventKind,
     fileName: input.fileName,
   })
-  const destination = await createWritableDestination(client, placement)
+  const destination = await createWritableDestination(client, placement, dependencies)
   const parentId = await destination.materialize(placement, folder => persistAttendancePhotoFolder(client, {
     shiftId: input.shiftId, eventKind: input.eventKind, role: input.role,
     actorBusinessUserId: input.actorBusinessUserId,
@@ -137,6 +154,7 @@ export async function prepareAttendancePhotoDestination(
 export async function materializeAttendancePhotoFolders(
   client: SupabaseClient,
   input: { shiftId: string; shiftDate: string; actorBusinessUserId: string },
+  dependencies: AttendanceDestinationDependencies = {},
 ) {
   const routes = createOperationalStorageDomainRouteRepository({ client })
   const destinations = new Map<string, AttendancePhotoDestination>()
@@ -151,7 +169,7 @@ export async function materializeAttendancePhotoFolders(
       })
       let destination = destinations.get(placement.baseFolderId)
       if (!destination) {
-        destination = await createWritableDestination(client, placement)
+        destination = await createWritableDestination(client, placement, dependencies)
         destinations.set(placement.baseFolderId, destination)
       }
       await destination.materialize(placement, folder => persistAttendancePhotoFolder(client, {
@@ -165,7 +183,7 @@ export async function materializeAttendancePhotoFolders(
     })
     let destination = destinations.get(placement.baseFolderId)
     if (!destination) {
-      destination = await createWritableDestination(client, placement)
+      destination = await createWritableDestination(client, placement, dependencies)
       destinations.set(placement.baseFolderId, destination)
     }
     await destination.materialize(placement)
