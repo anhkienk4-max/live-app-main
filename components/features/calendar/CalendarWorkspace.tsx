@@ -17,6 +17,16 @@ import { Button } from "@/components/ui/button";
 import { resolveSystemPermission } from "@/lib/permissions";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
+const VALID_CALENDAR_TABS = [
+  "calendar",
+  "open",
+  "mine",
+  "attendance",
+  "notes",
+  "import",
+  "history",
+];
+
 export function CalendarWorkspace() {
   const { currentUser } = useCurrentUser();
   const identity = currentUser ? currentUser.id + ':' + resolveSystemPermission(currentUser) + ':' + currentUser.updated_at : '';
@@ -25,7 +35,8 @@ export function CalendarWorkspace() {
 }
 
 function CalendarIdentityWorkspace() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const en = language === 'en';
   const { currentUser } = useCurrentUser();
   const router = useRouter();
   const pathname = usePathname();
@@ -35,7 +46,7 @@ function CalendarIdentityWorkspace() {
   const defaultTab = currentUser?.role === 'staff' ? 'mine' : 'calendar';
   const [tab, setTab] = React.useState(
     initialTab &&
-      ["calendar", "open", "mine", "import", "history"].includes(initialTab)
+      VALID_CALENDAR_TABS.includes(initialTab)
       ? initialTab
       : defaultTab,
   );
@@ -43,6 +54,18 @@ function CalendarIdentityWorkspace() {
   const [visitedTabs, setVisitedTabs] = React.useState(() => new Set([tab]));
   const tabScroll = React.useRef<Record<string, number>>({});
   const workspace = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const currentTab = params.get("tab");
+      const nextTab = currentTab && VALID_CALENDAR_TABS.includes(currentTab) ? currentTab : defaultTab;
+      setTab(nextTab);
+      setVisitedTabs(current => current.has(nextTab) ? current : new Set(current).add(nextTab));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [defaultTab]);
 
   React.useEffect(() => {
     const root = workspace.current;
@@ -87,7 +110,7 @@ function CalendarIdentityWorkspace() {
 
       if (
         currentTab &&
-        ["calendar", "open", "mine", "import", "history"].includes(currentTab)
+        VALID_CALENDAR_TABS.includes(currentTab)
       ) {
         nextTab = currentTab;
       }
@@ -131,11 +154,14 @@ function CalendarIdentityWorkspace() {
           <p className="text-sm text-muted-foreground">{t("calendarSubtitle")}</p>
         </PageHeaderContent>
       </PageHeader>
-      <div className="min-w-0 max-w-full overflow-x-auto" data-testid="calendar-stable-tabs">
-        <TabsList aria-label={t("calendar")} className="h-auto w-max min-w-full flex-nowrap justify-start sm:min-w-0">
+      <div className="min-w-0 max-w-full overflow-x-auto overflow-y-hidden" data-testid="calendar-stable-tabs">
+        <TabsList aria-label={t("calendar")} className="!flex !h-auto !w-max !min-w-max !flex-nowrap justify-start sm:!min-w-0">
           <TabsTrigger className="!flex-none px-3 py-2" value="calendar">{t("shiftCalendar")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="open">{t("openShifts")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="mine">{t("myShifts")}</TabsTrigger>
+          <TabsTrigger className="!flex-none px-3 py-2" value="attendance" data-testid="calendar-tab-attendance">{t("attendance")}</TabsTrigger>
+          {/* G6: Shift Notes belong to a shift (Shift Detail > Notes). Trigger hidden; value kept so legacy ?tab=notes links stay valid. */}
+          <TabsTrigger className="hidden" value="notes" data-testid="calendar-tab-notes" aria-hidden="true" tabIndex={-1}>{t("shiftNotes")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="import">{t("importSchedule")}</TabsTrigger>
           <TabsTrigger className="!flex-none px-3 py-2" value="history">{t("importHistory")}</TabsTrigger>
         </TabsList>
@@ -151,6 +177,33 @@ function CalendarIdentityWorkspace() {
       </TabsContent>
       <TabsContent className="min-w-0 w-full" value="mine">
         {visitedTabs.has("mine") && <ShiftRegistrationBoard mode="mine" />}
+      </TabsContent>
+      <TabsContent className="min-w-0 w-full" value="attendance">
+        {visitedTabs.has("attendance") && (
+          <>
+            <p className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600" data-testid="attendance-scope-hint">
+              {en
+                ? 'Pick one of your shifts to check in / check out and track evidence. Registration, PASS/Swap and shift management stay in My Shifts.'
+                : 'Chọn ca của bạn để Check-in / Check-out và theo dõi minh chứng. Đăng ký, PASS/Đổi ca và quản lý ca nằm ở mục Ca của tôi.'}{' '}
+              <button type="button" className="font-medium text-indigo-700 underline" data-testid="attendance-scope-hint-link" onClick={() => handleTabChange("mine")}>
+                {en ? 'Open My Shifts' : 'Mở Ca của tôi'}
+              </button>
+            </p>
+            <ShiftRegistrationBoard mode="mine" defaultDetailTab="attendance" />
+          </>
+        )}
+      </TabsContent>
+      <TabsContent className="min-w-0 w-full" value="notes">
+        {visitedTabs.has("notes") && (
+          <>
+            <p className="mb-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900" data-testid="notes-moved-hint">
+              {en
+                ? 'Operational notes now live inside each shift. Open a shift below and use its Notes tab; history, category and author are preserved.'
+                : 'Ghi chú vận hành nay nằm trong từng ca. Mở một ca bên dưới và dùng tab Ghi chú; lịch sử, phân loại và người ghi được giữ nguyên.'}
+            </p>
+            <ShiftRegistrationBoard mode={currentUser?.role === 'staff' ? 'mine' : 'open'} defaultDetailTab="notes" />
+          </>
+        )}
       </TabsContent>
       <TabsContent className="min-w-0 w-full" value="import">
         <ScheduleImportPanel />

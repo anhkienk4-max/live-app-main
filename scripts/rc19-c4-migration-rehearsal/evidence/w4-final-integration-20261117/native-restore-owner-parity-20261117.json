@@ -1,0 +1,64 @@
+{
+  "cluster_role_membership_match": true,
+  "database_owner_acl_semantic_match": true,
+  "differences": {
+    "catalogs": {
+      "database_owner_acl": {
+        "restore_count": 1,
+        "source_count": 1
+      }
+    },
+    "identity_marker_expected_to_differ": [
+      "RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE",
+      "RC19_RESTORE_W4_OWNER_DISPOSABLE_20261117"
+    ],
+    "table_rows": {}
+  },
+  "exact_catalogs_match": false,
+  "exact_row_fingerprints_match": true,
+  "restore": {
+    "catalog_sha256": {
+      "columns": "c5a5d415a4db9bf0490c4d40162c745910d3b8688fdc1420e3d59e8952f57f08",
+      "constraints": "a427af6c9c3e698aacc75809a3a226d21c5373e0e60e2ab9406a1cfd2d7cb3b3",
+      "database_owner_acl": "084fcf9878e3a9ffd6106fcbb90c116e81e2f56171d3252b6372d0084c5eb177",
+      "function_owners_acl": "b61451abdac62628cbe8f11a9bda50b8c6296142d6d031fadcaf957edac19430",
+      "functions": "edd29240d06560e415bdbd419d002a99324e8dd768547b1315bba2f9907e1fe6",
+      "indexes": "21c5c6226cdcc58e28fd137fa1ff48226fbdbfd4f17a89c15c799d31d2276103",
+      "policies": "fec6c870afd9de32f6df9b4ce8015443048edb047e8d79bf89ac08087ef9840c",
+      "relation_owners_acl": "4d08d05e4878a3a7498d60e73274b23453dd440cb0ba92a4653209a353832f29",
+      "role_membership": "b5b97ec72d3f7a99cceaf97f8a3931b6f42c30adcf3cb18a6e0c704e3a2c86ed",
+      "schema_owners_acl": "74ab224036fc4ec49c88fd5e629f986730ddc3a07c208fbcc735bf7de07d7fab",
+      "triggers": "efc940118aaf6c4aca2771645b213d142bcbf30849f6910d12cb84d4c26a703a"
+    },
+    "identity": {
+      "database": "rc19_restore_w4_owner_20261117",
+      "marker": "RC19_RESTORE_W4_OWNER_DISPOSABLE_20261117",
+      "session_user": "postgres",
+      "version": "170011"
+    },
+    "tables": 13
+  },
+  "schema_relation_function_owner_acl_match": true,
+  "source": {
+    "catalog_sha256": {
+      "columns": "c5a5d415a4db9bf0490c4d40162c745910d3b8688fdc1420e3d59e8952f57f08",
+      "constraints": "a427af6c9c3e698aacc75809a3a226d21c5373e0e60e2ab9406a1cfd2d7cb3b3",
+      "database_owner_acl": "9ce08fde25baad4ae0a552c9dca25e35f74cd331820b09ff9d5dfd8f6da446f9",
+      "function_owners_acl": "b61451abdac62628cbe8f11a9bda50b8c6296142d6d031fadcaf957edac19430",
+      "functions": "edd29240d06560e415bdbd419d002a99324e8dd768547b1315bba2f9907e1fe6",
+      "indexes": "21c5c6226cdcc58e28fd137fa1ff48226fbdbfd4f17a89c15c799d31d2276103",
+      "policies": "fec6c870afd9de32f6df9b4ce8015443048edb047e8d79bf89ac08087ef9840c",
+      "relation_owners_acl": "4d08d05e4878a3a7498d60e73274b23453dd440cb0ba92a4653209a353832f29",
+      "role_membership": "b5b97ec72d3f7a99cceaf97f8a3931b6f42c30adcf3cb18a6e0c704e3a2c86ed",
+      "schema_owners_acl": "74ab224036fc4ec49c88fd5e629f986730ddc3a07c208fbcc735bf7de07d7fab",
+      "triggers": "efc940118aaf6c4aca2771645b213d142bcbf30849f6910d12cb84d4c26a703a"
+    },
+    "identity": {
+      "database": "rc19_sto01_migrations_disposable",
+      "marker": "RC19_STO01_MIGRATIONS_DISPOSABLE_TEST_DATABASE",
+      "session_user": "postgres",
+      "version": "170011"
+    },
+    "tables": 13
+  }
+}

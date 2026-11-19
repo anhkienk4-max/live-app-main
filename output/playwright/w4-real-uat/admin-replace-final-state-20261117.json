@@ -1,0 +1,33 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "fixture_shift": "d5e4caee-99a0-417b-83b2-16d99519f64f",
+  "previously_assigned": "UiReplacement W4 synthetic",
+  "target": "HostOne C5.11 synthetic",
+  "ui_status": "COMMITTED_UNVERIFIED_WARNING",
+  "fresh_readback": "PASS",
+  "errors": [],
+  "ui_warning": "Máy chủ đã trả receipt nhưng chưa xác minh đủ dữ liệu. Nút gửi bị khóa để tránh tạo thao tác thứ hai.",
+  "route": {
+    "status": 200,
+    "ok": true,
+    "error": null
+  },
+  "confirm_before": true,
+  "roster": [
+    {
+      "id": "7a719611-7576-49df-b231-4ac60a9ffe73",
+      "user_id": "UiReplacement_ui_1794890074612_22ec09ce",
+      "status": "removed",
+      "staffing_segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+      "operational_role": "host"
+    },
+    {
+      "id": "1083c32a-6dd3-4365-84d0-9564a522e366",
+      "user_id": "HostOne_c511_1794886705715_5f2238403c0c40",
+      "status": "manually_assigned",
+      "staffing_segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+      "operational_role": "host"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+name: Analytics P0 identity contract and CDP harness (NOT authenticated UAT)
+
+on:
+  push:
+    branches:
+      - fix/p0-analytics-auth-cdp-regression-20261022
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-and-unit-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: CDP authenticated gate syntax (execution requires owner's local Edge session)
+        run: node --check scripts/uat_analytics_hard_reload_gate.mjs
+      - name: TypeScript check
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Focused ESLint
+        run: pnpm exec eslint lib/auth/operationsActorKey.ts lib/hooks/usePagedList.ts components/features/analytics/DashboardAnalytics.tsx playwright.rc18-analytics.config.ts e2e/rc18-analytics-browser.spec.ts lib/server/operationsResponseOwnerKey.ts lib/server/operationsCollectionHandler.ts lib/server/analyticsSnapshotHandler.ts lib/server/calendarExportHandler.ts lib/services/operationsPageService.ts tests/analytics-actor-key.test.ts tests/rc18-owner-contract-server.test.ts tests/rc18-browser-owner-contract.test.ts
+      - name: Actor isolation and page cache tests
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/analytics-actor-key.test.ts tests/operations-page-cache.test.ts tests/auth-identity-bridge.test.tsx tests/rc18-owner-contract-server.test.ts tests/rc16k-pagination.test.ts tests/report-null-semantics-consumers.test.ts
+      - name: Full isolated source regression inventory
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Install Chromium for isolated RC18 browser smoke
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Analytics Chromium render/reload/filter/mobile smoke (mock-only)
+        run: pnpm exec playwright test --config playwright.rc18-analytics.config.ts --reporter=line
+      - name: Production-equivalent build without DB writes
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+
+# A green workflow is NOT a replacement for 20x F5 / 20x route-cycle Admin
+# browser evidence, nor for Member/Leader RLS, Media, Payroll and full UAT.

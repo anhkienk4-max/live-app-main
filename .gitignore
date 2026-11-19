@@ -83,3 +83,5 @@ Thumbs.db
 
 # Playwright generated traces and screenshots
 /test-results/
+/artifacts/brand01/
+/artifacts/admin02/

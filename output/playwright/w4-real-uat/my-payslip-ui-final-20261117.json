@@ -1,0 +1,57 @@
+{
+  "db": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "pg": "170011",
+  "cases": [
+    {
+      "case": "member-own",
+      "actorId": "HostOne_c511_1794886705715_5f2238403c0c40",
+      "shellVisible": true,
+      "route": "/payroll?tab=personal",
+      "body": "n\nCài đặt\nHC\nHostOne C5.11 1794886705715\nMember\nTìm kiếm...\n⌘K\nEN\nHC\nHostOne C5.11 1794886705715\nMember\nPhiếu lương của tôi\n\nChỉ hiển thị kỳ đã khóa và số liệu của chính tài khoản đang đăng nhập. Chấm công chờ duyệt không được tính thành lương.\n\nNăm\nTải lại\nKỳ lương\n2026-11-17 — 2026-11-17\nKỳ 2026-11-17 đến 2026-11-17\n\nĐã khóa, dữ liệu chính thức theo kỳ\n\n35.000 đ\n\nNgày / ca\tVai trò\tGiờ thực tế / phút tính lương\tĐơn giá giờ\tTăng ca\tTiền ca\tĐiều chỉnh\tThành tiền\n2026-11-17 · C5.11 persisted E2E run 1794886705715\tHost\t17/11/2026 · 12:09:00 – 12:24:00\n0 giờ 15 phút 0 giây thực tế / 0 giờ 15 phút 0 giây tính lương\t120.000 đ\t0 giờ 5 phút 0 giây\t35.000 đ\t0 đ\t35.000 đ\nOT weekday/day\n\nChỉ hiển thị tối đa 12 kỳ lương đã khóa gần nhất. Mọi điều chỉnh phải có lý do và được xử lý theo quy trình duyệt độc lập. Không có cơ chế trừ phạt tự động tại đây.",
+      "loading": false,
+      "empty": false,
+      "api": [
+        {
+          "status": 200,
+          "body": {
+            "ok": true,
+            "scope": "own_locked_only",
+            "statementCount": 1,
+            "lineCount": 1,
+            "lineIds": [
+              "5ebbeedc-3979-4a37-bbae-332daabc0bda"
+            ],
+            "totals": [
+              35000
+            ]
+          }
+        }
+      ],
+      "screenshot": "C:\\Users\\KienNguyen\\Downloads\\KIEN ADA code\\OPS LIVESTREAM PLATFORM\\rc19-w4-final-integration\\output\\playwright\\w4-real-uat/member-own-payslip-final.png"
+    },
+    {
+      "case": "member-other",
+      "actorId": "C6UnauthorizedMember_c511_1794886779647_855a8743f0ad42",
+      "shellVisible": false,
+      "route": "/payroll?tab=personal",
+      "body": "\nDỮ LIỆU & BÁO CÁO\nBáo cáo\nPhân tích\nKho file\nDanh mục sản phẩm\nHiệu suất nhân sự\nChất lượng dữ liệu\nNHÂN SỰ & TÀI CHÍNH\nDanh bạ nhân sự\nBảng lương\nPhiếu lương cá nhân\nQUẢN TRỊ HỆ THỐNG\nKhông gian quản trị\nThương hiệu\nNền tảng\nChiến dịch\nLịch sử kiểm toán\nCài đặt\nCC\nC6UnauthorizedMember C5.11 1794886779647\nMember\nTìm kiếm...\n⌘K\nEN\nCC\nC6UnauthorizedMember C5.11 1794886779647\nMember\nPhiếu lương của tôi\n\nChỉ hiển thị kỳ đã khóa và số liệu của chính tài khoản đang đăng nhập. Chấm công chờ duyệt không được tính thành lương.\n\nNăm\nTải lại\n\nChưa có phiếu lương được phát hành cho năm này. Chưa có kỳ lương đã khóa; điều này không đồng nghĩa chưa phát sinh giờ làm hoặc mức lương bằng 0.\n\nChỉ hiển thị tối đa 12 kỳ lương đã khóa gần nhất. Mọi điều chỉnh phải có lý do và được xử lý theo quy trình duyệt độc lập. Không có cơ chế trừ phạt tự động tại đây.",
+      "loading": false,
+      "empty": true,
+      "api": [
+        {
+          "status": 200,
+          "body": {
+            "ok": true,
+            "scope": "own_locked_only",
+            "statementCount": 0,
+            "lineCount": 0,
+            "lineIds": [],
+            "totals": []
+          }
+        }
+      ],
+      "screenshot": "C:\\Users\\KienNguyen\\Downloads\\KIEN ADA code\\OPS LIVESTREAM PLATFORM\\rc19-w4-final-integration\\output\\playwright\\w4-real-uat/member-other-payslip-final.png"
+    }
+  ]
+}

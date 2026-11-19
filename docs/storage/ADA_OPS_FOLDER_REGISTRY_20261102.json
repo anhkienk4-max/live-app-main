@@ -1,0 +1,1376 @@
+{
+  "created_utc": "2026-11-02T11:38:56.198572+00:00",
+  "source": "Live Google Drive connector, folder create/list/metadata readback in user chat",
+  "root_folder_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+  "app_root_folder_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+  "folder_count_baseline": 93,
+  "folder_count_additional": 55,
+  "folder_count_registered_static": 148,
+  "access_warning": "Shared root has anyone:writer. Inherited child folders also have anyone:writer. Do not put confidential HR, attendance photos, payroll, contracts, personal records or tokens here until a verified restricted storage destination is configured.",
+  "do_not_assume_live_app_routing": "These folders exist in Drive; no storage route registry entries, Vercel variables, migrations or application identity OAuth permissions have been changed.",
+  "routing_policy": {
+    "database": "Google Drive is the primary file-byte and recoverable raw/snapshot store; Supabase stores file metadata and minimal transactional application state for shift, staffing, audit and payroll consistency, not binary file payloads.",
+    "operational_assets": "All NEW app file bytes and datasets go into 00_ADA_OPS_PLATFORM domain-first folders, by exact verified folder ID. No parallel Brand/Platform root tree outside the approved new app root.",
+    "report_assets": "All NEW app-generated report assets must be written under 00_ADA_OPS_PLATFORM/03_LIVE_REPORTS, dynamically organized by Brand ID, Platform ID, YYYY/MM, stable parent shift UUID and nine evidence subfolders. Older Brand LS Report folders under LIVESTREAM REPORT are LEGACY READ-ONLY sources for prior assets; do not silently reuse them for new writes.",
+    "do_not_write_into_template": true,
+    "private_data": "HR and Finance directories have been created, but inherit anyone:writer and are not private; use for structure only until approved restricted root or reviewed ACL policy supports sensitive data.",
+    "idempotency": "Resolve by actual parent folder ID plus exact name, verify provider metadata; do not create duplicates by loose name match.",
+    "no_secrets": "Do not write bearer tokens, refresh tokens, service-role keys, payroll details or authentication cookies into shared root.",
+    "supersedes_prior_report_roots": "Owner 2026-11-02: all NEW app files to 00_ADA_OPS_PLATFORM, not historical Brand LS Report folders. Historical files remain readable."
+  },
+  "folders": [
+    {
+      "path": "00_ADA_OPS_PLATFORM",
+      "id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "parent_id": "1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm",
+      "url": "https://drive.google.com/drive/folders/1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/01_SCHEDULE_IMPORT_EXPORT",
+      "id": "1rCczpADR3I3WSGfwnBjDlbtLCDhD_m_9",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1rCczpADR3I3WSGfwnBjDlbtLCDhD_m_9",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/01_SCHEDULE_IMPORT_EXPORT/01_RAW_XLSX_CSV",
+      "id": "1vikkWOtthV4ZebZxr3JZF5NkchrNaV15",
+      "parent_id": "1rCczpADR3I3WSGfwnBjDlbtLCDhD_m_9",
+      "url": "https://drive.google.com/drive/folders/1vikkWOtthV4ZebZxr3JZF5NkchrNaV15",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/01_SCHEDULE_IMPORT_EXPORT/02_NORMALIZED_SNAPSHOTS",
+      "id": "1ydCV8n11ikxWc982kvxhgBIjeSaNNg-x",
+      "parent_id": "1rCczpADR3I3WSGfwnBjDlbtLCDhD_m_9",
+      "url": "https://drive.google.com/drive/folders/1ydCV8n11ikxWc982kvxhgBIjeSaNNg-x",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/01_SCHEDULE_IMPORT_EXPORT/03_SCHEDULE_EXPORTS",
+      "id": "1MlmQBAY3PKfYmDLdn8E1V8xDilcWrWVo",
+      "parent_id": "1rCczpADR3I3WSGfwnBjDlbtLCDhD_m_9",
+      "url": "https://drive.google.com/drive/folders/1MlmQBAY3PKfYmDLdn8E1V8xDilcWrWVo",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/01_SCHEDULE_IMPORT_EXPORT/04_IMPORT_TEMPLATES",
+      "id": "10Dd7EXwlc_1SyLlBQTkrvAOJv9bvyJF5",
+      "parent_id": "1rCczpADR3I3WSGfwnBjDlbtLCDhD_m_9",
+      "url": "https://drive.google.com/drive/folders/10Dd7EXwlc_1SyLlBQTkrvAOJv9bvyJF5",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/01_SCHEDULE_IMPORT_EXPORT/05_IMPORT_AUDIT_LOGS",
+      "id": "1YSihS1fyHE_7CwcQhPC82ApCb05GvM1X",
+      "parent_id": "1rCczpADR3I3WSGfwnBjDlbtLCDhD_m_9",
+      "url": "https://drive.google.com/drive/folders/1YSihS1fyHE_7CwcQhPC82ApCb05GvM1X",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/01_SCHEDULE_IMPORT_EXPORT/06_DUPLICATE_RECONCILIATION",
+      "id": "1Onqqr8wp-czIzdWXS9rmIn9lAN37ZPfm",
+      "parent_id": "1rCczpADR3I3WSGfwnBjDlbtLCDhD_m_9",
+      "url": "https://drive.google.com/drive/folders/1Onqqr8wp-czIzdWXS9rmIn9lAN37ZPfm",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/02_SHIFT_STAFFING",
+      "id": "1txzaulVB0BJMuAn-6lWzEDp5-bpJUwLx",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1txzaulVB0BJMuAn-6lWzEDp5-bpJUwLx",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/02_SHIFT_STAFFING/01_SHIFT_MANIFESTS",
+      "id": "1P5_HClbESXe1uOVB28zV0hriUCcvhhJV",
+      "parent_id": "1txzaulVB0BJMuAn-6lWzEDp5-bpJUwLx",
+      "url": "https://drive.google.com/drive/folders/1P5_HClbESXe1uOVB28zV0hriUCcvhhJV",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/02_SHIFT_STAFFING/02_STAFFING_SEGMENTS",
+      "id": "14JyOe3lBZ17XBY3AiUmFRvW8V6cfruOW",
+      "parent_id": "1txzaulVB0BJMuAn-6lWzEDp5-bpJUwLx",
+      "url": "https://drive.google.com/drive/folders/14JyOe3lBZ17XBY3AiUmFRvW8V6cfruOW",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/02_SHIFT_STAFFING/03_REGISTRATION_APPROVAL",
+      "id": "1RcZQOH75-SyIYuBKIYlfr-fsKkOLPK3D",
+      "parent_id": "1txzaulVB0BJMuAn-6lWzEDp5-bpJUwLx",
+      "url": "https://drive.google.com/drive/folders/1RcZQOH75-SyIYuBKIYlfr-fsKkOLPK3D",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/02_SHIFT_STAFFING/04_PASS_SWAP_HANDOFF",
+      "id": "1XMGfJ1krBOyCUXlU1vHMaDJWxxZfQHRt",
+      "parent_id": "1txzaulVB0BJMuAn-6lWzEDp5-bpJUwLx",
+      "url": "https://drive.google.com/drive/folders/1XMGfJ1krBOyCUXlU1vHMaDJWxxZfQHRt",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/02_SHIFT_STAFFING/05_STAFFING_EXPORTS",
+      "id": "1ya58ltFDDzSg5-jtN2C6LeP8ETqMJpCz",
+      "parent_id": "1txzaulVB0BJMuAn-6lWzEDp5-bpJUwLx",
+      "url": "https://drive.google.com/drive/folders/1ya58ltFDDzSg5-jtN2C6LeP8ETqMJpCz",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS",
+      "id": "19t3RguHpduM9GXBFquCRvUKU4MXmXgtA",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/19t3RguHpduM9GXBFquCRvUKU4MXmXgtA",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE",
+      "id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "parent_id": "19t3RguHpduM9GXBFquCRvUKU4MXmXgtA",
+      "url": "https://drive.google.com/drive/folders/1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/01_UNROUTED_ARTIFACTS_HOLD",
+      "id": "12sYCUG3R0HLpFifKB5JqQrvuJ5GC3Ta_",
+      "parent_id": "19t3RguHpduM9GXBFquCRvUKU4MXmXgtA",
+      "url": "https://drive.google.com/drive/folders/12sYCUG3R0HLpFifKB5JqQrvuJ5GC3Ta_",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/02_PERIODIC_REPORT_EXPORTS",
+      "id": "1gcNO9AZiLJUmsty5UIyLnLBlcN6RbE1I",
+      "parent_id": "19t3RguHpduM9GXBFquCRvUKU4MXmXgtA",
+      "url": "https://drive.google.com/drive/folders/1gcNO9AZiLJUmsty5UIyLnLBlcN6RbE1I",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/03_REPORT_FILE_MANIFESTS",
+      "id": "1wTICICrE4-FDXsUrSTTL0A9rjaAd7Ae1",
+      "parent_id": "19t3RguHpduM9GXBFquCRvUKU4MXmXgtA",
+      "url": "https://drive.google.com/drive/folders/1wTICICrE4-FDXsUrSTTL0A9rjaAd7Ae1",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/04_BACKFILL_RECONCILIATION",
+      "id": "1MOBORV1btZ6sKMOAqIHxdPIZeIlP-JNa",
+      "parent_id": "19t3RguHpduM9GXBFquCRvUKU4MXmXgtA",
+      "url": "https://drive.google.com/drive/folders/1MOBORV1btZ6sKMOAqIHxdPIZeIlP-JNa",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS",
+      "id": "10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/01_BRAND_LOGOS_GUIDELINES",
+      "id": "1EcE8q2RZi33pQbO4_kWurmu3h81z6Hly",
+      "parent_id": "10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "url": "https://drive.google.com/drive/folders/1EcE8q2RZi33pQbO4_kWurmu3h81z6Hly",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/02_KEY_VISUAL_ASSETS",
+      "id": "1igGLxhfjtUiAxk0KMdT2Z8FTVyNkHxhy",
+      "parent_id": "10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "url": "https://drive.google.com/drive/folders/1igGLxhfjtUiAxk0KMdT2Z8FTVyNkHxhy",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/03_PRODUCT_PACKSHOTS",
+      "id": "1IslTBDUfqGyjDE0mm-BVjD9l749RFqh8",
+      "parent_id": "10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "url": "https://drive.google.com/drive/folders/1IslTBDUfqGyjDE0mm-BVjD9l749RFqh8",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/04_CAMPAIGN_ASSETS",
+      "id": "1sV1boY0-bZl7fchdujSpTMl8tj3ilb7b",
+      "parent_id": "10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "url": "https://drive.google.com/drive/folders/1sV1boY0-bZl7fchdujSpTMl8tj3ilb7b",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/05_LIVECUT_TEASERS",
+      "id": "1drCcEN3ruH8iWiEnlPWJt4mFUWLedhgZ",
+      "parent_id": "10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "url": "https://drive.google.com/drive/folders/1drCcEN3ruH8iWiEnlPWJt4mFUWLedhgZ",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/06_THUMBNAILS",
+      "id": "1dqOorntrmqgVRhMH0Iy1a1_KXAdv21ag",
+      "parent_id": "10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "url": "https://drive.google.com/drive/folders/1dqOorntrmqgVRhMH0Iy1a1_KXAdv21ag",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/07_VIDEO_OUTPUTS",
+      "id": "11NXPwLhCGo0S7eavOaztoJ2iRrDTUDkB",
+      "parent_id": "10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "url": "https://drive.google.com/drive/folders/11NXPwLhCGo0S7eavOaztoJ2iRrDTUDkB",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/04_MEDIA_ASSETS/08_SCRIPT_BRIEFS",
+      "id": "1hLlt4LUBlGLl2m10hynxH2kCyjmHPyBg",
+      "parent_id": "10aHHBbHG-7cbqtM61nm4Gn7bMYOJPmWc",
+      "url": "https://drive.google.com/drive/folders/1hLlt4LUBlGLl2m10hynxH2kCyjmHPyBg",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/05_BRAND_CATALOG",
+      "id": "1afOcAufbaf1Kv8q0CfGzUamohF62RWUz",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1afOcAufbaf1Kv8q0CfGzUamohF62RWUz",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/05_BRAND_CATALOG/01_BRAND_MASTER",
+      "id": "1VAB_nh6RshtOFegJZTacXW34yOi7DAqU",
+      "parent_id": "1afOcAufbaf1Kv8q0CfGzUamohF62RWUz",
+      "url": "https://drive.google.com/drive/folders/1VAB_nh6RshtOFegJZTacXW34yOi7DAqU",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/05_BRAND_CATALOG/02_PRODUCT_SKU_MASTER",
+      "id": "1TsUNt2bLnmb8GIBbfHJiYZQR3JBnD_OI",
+      "parent_id": "1afOcAufbaf1Kv8q0CfGzUamohF62RWUz",
+      "url": "https://drive.google.com/drive/folders/1TsUNt2bLnmb8GIBbfHJiYZQR3JBnD_OI",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/05_BRAND_CATALOG/03_VARIANTS_ATTRIBUTES",
+      "id": "1cMrZuM5Ee8XF69bcUoEkp7BnqmeGvg4o",
+      "parent_id": "1afOcAufbaf1Kv8q0CfGzUamohF62RWUz",
+      "url": "https://drive.google.com/drive/folders/1cMrZuM5Ee8XF69bcUoEkp7BnqmeGvg4o",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/05_BRAND_CATALOG/04_APPROVED_CLAIMS",
+      "id": "1ZB5qkAmOgOXT6IgO0ZBl1yOJbaD1QFYy",
+      "parent_id": "1afOcAufbaf1Kv8q0CfGzUamohF62RWUz",
+      "url": "https://drive.google.com/drive/folders/1ZB5qkAmOgOXT6IgO0ZBl1yOJbaD1QFYy",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/05_BRAND_CATALOG/05_CATALOG_EXPORTS",
+      "id": "1X44_Qrr9sR5X34B7_PQiQ2NZu5Q1aw9c",
+      "parent_id": "1afOcAufbaf1Kv8q0CfGzUamohF62RWUz",
+      "url": "https://drive.google.com/drive/folders/1X44_Qrr9sR5X34B7_PQiQ2NZu5Q1aw9c",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/06_ECOMMERCE_INGESTION",
+      "id": "1vAHGx-CZ8fpVp3afLORzA5P0ecGEHNOq",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1vAHGx-CZ8fpVp3afLORzA5P0ecGEHNOq",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/06_ECOMMERCE_INGESTION/01_TIKTOK_SHOP_RAW",
+      "id": "1Z10VxtGTTse1Bt3feMbH-EtFItppt5iF",
+      "parent_id": "1vAHGx-CZ8fpVp3afLORzA5P0ecGEHNOq",
+      "url": "https://drive.google.com/drive/folders/1Z10VxtGTTse1Bt3feMbH-EtFItppt5iF",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/06_ECOMMERCE_INGESTION/02_SHOPEE_RAW",
+      "id": "1TCQu2_wJv-l1av7CMw3K8Ku8sueTFzh-",
+      "parent_id": "1vAHGx-CZ8fpVp3afLORzA5P0ecGEHNOq",
+      "url": "https://drive.google.com/drive/folders/1TCQu2_wJv-l1av7CMw3K8Ku8sueTFzh-",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/06_ECOMMERCE_INGESTION/03_NORMALIZED_DATA",
+      "id": "1dkWx5OA644tOFld6F25-yIDmMYkPtMK9",
+      "parent_id": "1vAHGx-CZ8fpVp3afLORzA5P0ecGEHNOq",
+      "url": "https://drive.google.com/drive/folders/1dkWx5OA644tOFld6F25-yIDmMYkPtMK9",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/06_ECOMMERCE_INGESTION/04_OCR_INPUTS",
+      "id": "1Qdipe-pTLPmwv4LSV8uRxCEl02ibFLle",
+      "parent_id": "1vAHGx-CZ8fpVp3afLORzA5P0ecGEHNOq",
+      "url": "https://drive.google.com/drive/folders/1Qdipe-pTLPmwv4LSV8uRxCEl02ibFLle",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/06_ECOMMERCE_INGESTION/05_DATA_QUALITY",
+      "id": "1J8Yi0ejOfgGxPvWI9uLC8p8hW1HCpXdG",
+      "parent_id": "1vAHGx-CZ8fpVp3afLORzA5P0ecGEHNOq",
+      "url": "https://drive.google.com/drive/folders/1J8Yi0ejOfgGxPvWI9uLC8p8hW1HCpXdG",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/07_ANALYTICS_BI",
+      "id": "1coUaRS-LSXq2xfm3imclH663EpPrtbfo",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1coUaRS-LSXq2xfm3imclH663EpPrtbfo",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/07_ANALYTICS_BI/01_SHIFT_PERFORMANCE_METRICS",
+      "id": "1Haub-HOODGdvlaexDwTpL43eN_09SaHe",
+      "parent_id": "1coUaRS-LSXq2xfm3imclH663EpPrtbfo",
+      "url": "https://drive.google.com/drive/folders/1Haub-HOODGdvlaexDwTpL43eN_09SaHe",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/07_ANALYTICS_BI/02_BRAND_PERIOD_REPORTS",
+      "id": "18R8T7fSAnAWEnmbywvA5FhKg55zM4s4e",
+      "parent_id": "1coUaRS-LSXq2xfm3imclH663EpPrtbfo",
+      "url": "https://drive.google.com/drive/folders/18R8T7fSAnAWEnmbywvA5FhKg55zM4s4e",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/07_ANALYTICS_BI/03_WORKFORCE_PERFORMANCE_AGGREGATES",
+      "id": "17deEVr6oxybpixDRWyVe5Z51AemZXe4x",
+      "parent_id": "1coUaRS-LSXq2xfm3imclH663EpPrtbfo",
+      "url": "https://drive.google.com/drive/folders/17deEVr6oxybpixDRWyVe5Z51AemZXe4x",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/07_ANALYTICS_BI/04_BI_DASHBOARD_EXPORTS",
+      "id": "1dUf2c-FBnhOkkGu9yJ8k7IIbP89JIL_W",
+      "parent_id": "1coUaRS-LSXq2xfm3imclH663EpPrtbfo",
+      "url": "https://drive.google.com/drive/folders/1dUf2c-FBnhOkkGu9yJ8k7IIbP89JIL_W",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/07_ANALYTICS_BI/05_COST_ACTUAL_VS_PLAN",
+      "id": "1_BXvqXmFb2OYa9x6eE7Nt2jw5cihxpiG",
+      "parent_id": "1coUaRS-LSXq2xfm3imclH663EpPrtbfo",
+      "url": "https://drive.google.com/drive/folders/1_BXvqXmFb2OYa9x6eE7Nt2jw5cihxpiG",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS",
+      "id": "1OUgQGcZsC3ZIEI5u8x57A1hUQJkidbwN",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1OUgQGcZsC3ZIEI5u8x57A1hUQJkidbwN",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE",
+      "id": "1w1Ip1M6BoJgzbdoqO6o8HJPM0deaxgkG",
+      "parent_id": "1OUgQGcZsC3ZIEI5u8x57A1hUQJkidbwN",
+      "url": "https://drive.google.com/drive/folders/1w1Ip1M6BoJgzbdoqO6o8HJPM0deaxgkG",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS",
+      "id": "1ssFPVQnGcdj9KTgRFoXTm1tf1uiHgKA7",
+      "parent_id": "1OUgQGcZsC3ZIEI5u8x57A1hUQJkidbwN",
+      "url": "https://drive.google.com/drive/folders/1ssFPVQnGcdj9KTgRFoXTm1tf1uiHgKA7",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS",
+      "id": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "parent_id": "1OUgQGcZsC3ZIEI5u8x57A1hUQJkidbwN",
+      "url": "https://drive.google.com/drive/folders/1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/04_RATE_CARDS",
+      "id": "1uHn3hJIKnzgo4r_YBB_jvSwdAYqBJGyY",
+      "parent_id": "1OUgQGcZsC3ZIEI5u8x57A1hUQJkidbwN",
+      "url": "https://drive.google.com/drive/folders/1uHn3hJIKnzgo4r_YBB_jvSwdAYqBJGyY",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/05_PERSONNEL_RECORDS",
+      "id": "1A6QgDPZ6mxaDWWIT4hwsFZzXzbDW0aMM",
+      "parent_id": "1OUgQGcZsC3ZIEI5u8x57A1hUQJkidbwN",
+      "url": "https://drive.google.com/drive/folders/1A6QgDPZ6mxaDWWIT4hwsFZzXzbDW0aMM",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/06_ACCESS_AUDIT",
+      "id": "1Ole-hOkRoAS4jrIFzE_XZcaLf-bDbNjE",
+      "parent_id": "1OUgQGcZsC3ZIEI5u8x57A1hUQJkidbwN",
+      "url": "https://drive.google.com/drive/folders/1Ole-hOkRoAS4jrIFzE_XZcaLf-bDbNjE",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS",
+      "id": "11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS/01_STORAGE_ROUTE_REGISTRY",
+      "id": "1bef3yLtPZsU0HNXgYfkDx5y3MVrG5wUx",
+      "parent_id": "11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "url": "https://drive.google.com/drive/folders/1bef3yLtPZsU0HNXgYfkDx5y3MVrG5wUx",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS/02_SCHEMA_MIGRATION_DOCS",
+      "id": "1O8kz7pco0MQGfQMppYUWdCzQ_mmaJFBq",
+      "parent_id": "11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "url": "https://drive.google.com/drive/folders/1O8kz7pco0MQGfQMppYUWdCzQ_mmaJFBq",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS/03_RECOVERY_RECONCILIATION",
+      "id": "1PZBbX_jmo4xEneC8_1yfCNb6fg859iNA",
+      "parent_id": "11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "url": "https://drive.google.com/drive/folders/1PZBbX_jmo4xEneC8_1yfCNb6fg859iNA",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS/04_INTEGRATION_DIAGNOSTICS",
+      "id": "18bQH4hIewmYe1ul-NRMA5l_a1G1W_0ps",
+      "parent_id": "11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "url": "https://drive.google.com/drive/folders/18bQH4hIewmYe1ul-NRMA5l_a1G1W_0ps",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS/05_DATA_EXPORT_BACKUPS",
+      "id": "1hRc_c9T9z5N1NN2vtN1Vnt64x6Jklmqg",
+      "parent_id": "11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "url": "https://drive.google.com/drive/folders/1hRc_c9T9z5N1NN2vtN1Vnt64x6Jklmqg",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS/06_RETENTION_POLICIES",
+      "id": "1XRMBqVBEbq0CAWl6Rrb_LNzf66npJpvL",
+      "parent_id": "11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "url": "https://drive.google.com/drive/folders/1XRMBqVBEbq0CAWl6Rrb_LNzf66npJpvL",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS/07_RELEASE_UAT_EVIDENCE",
+      "id": "177g-GBHRY06rHx9ID8rpQOqR-uve9-kj",
+      "parent_id": "11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "url": "https://drive.google.com/drive/folders/177g-GBHRY06rHx9ID8rpQOqR-uve9-kj",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/09_SYSTEM_OPERATIONS/08_DATA_DICTIONARY",
+      "id": "1zT5M87qDu6KI2XaZqyyU7qOG_Sc3D4jA",
+      "parent_id": "11HNEzJTu5yiK2kQN4vy9TZqAMj7sl0YC",
+      "url": "https://drive.google.com/drive/folders/1zT5M87qDu6KI2XaZqyyU7qOG_Sc3D4jA",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/10_AI_AUTOMATION_KNOWLEDGE",
+      "id": "1ZAH0CTbYbBlYaRMshFmQBGNo3C5fLBvT",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1ZAH0CTbYbBlYaRMshFmQBGNo3C5fLBvT",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/10_AI_AUTOMATION_KNOWLEDGE/01_CONTENT_RESEARCH",
+      "id": "1EdhNSgPdqUJhjRHx3EPcaC4uXuQWV7z4",
+      "parent_id": "1ZAH0CTbYbBlYaRMshFmQBGNo3C5fLBvT",
+      "url": "https://drive.google.com/drive/folders/1EdhNSgPdqUJhjRHx3EPcaC4uXuQWV7z4",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/10_AI_AUTOMATION_KNOWLEDGE/02_CONTENT_SCRIPTS",
+      "id": "1ooA44422iqWYOoIRlYx4duPB8g8oXwRz",
+      "parent_id": "1ZAH0CTbYbBlYaRMshFmQBGNo3C5fLBvT",
+      "url": "https://drive.google.com/drive/folders/1ooA44422iqWYOoIRlYx4duPB8g8oXwRz",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/10_AI_AUTOMATION_KNOWLEDGE/03_MARKET_RESEARCH",
+      "id": "1gaDe8-ubDCq9MkbRbBaMPaqdhdyWN68n",
+      "parent_id": "1ZAH0CTbYbBlYaRMshFmQBGNo3C5fLBvT",
+      "url": "https://drive.google.com/drive/folders/1gaDe8-ubDCq9MkbRbBaMPaqdhdyWN68n",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/10_AI_AUTOMATION_KNOWLEDGE/04_AGENT_OUTPUTS",
+      "id": "1TvP2RSI86jps1Fb-O3tFz4_1hI--nIso",
+      "parent_id": "1ZAH0CTbYbBlYaRMshFmQBGNo3C5fLBvT",
+      "url": "https://drive.google.com/drive/folders/1TvP2RSI86jps1Fb-O3tFz4_1hI--nIso",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/10_AI_AUTOMATION_KNOWLEDGE/05_PROMPT_TEMPLATES",
+      "id": "1NhWNle235MU8w2N232LRNbXiCRiXjwwe",
+      "parent_id": "1ZAH0CTbYbBlYaRMshFmQBGNo3C5fLBvT",
+      "url": "https://drive.google.com/drive/folders/1NhWNle235MU8w2N232LRNbXiCRiXjwwe",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/10_AI_AUTOMATION_KNOWLEDGE/06_MEDIA_AUTOMATION",
+      "id": "18GI0al5vqRz_1rhJbVX3M_93kI3guiSD",
+      "parent_id": "1ZAH0CTbYbBlYaRMshFmQBGNo3C5fLBvT",
+      "url": "https://drive.google.com/drive/folders/18GI0al5vqRz_1rhJbVX3M_93kI3guiSD",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/11_CONTRACTS_FINANCE_RESTRICTED",
+      "id": "1yKWTOb_fWcKG4OJgYG3Zp-E4yzfxC5vQ",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1yKWTOb_fWcKG4OJgYG3Zp-E4yzfxC5vQ",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/11_CONTRACTS_FINANCE_RESTRICTED/01_CONTRACTS_SOW",
+      "id": "1jSRkH_VRA9Gf_5uLE_fu0EDMGuY3fwhB",
+      "parent_id": "1yKWTOb_fWcKG4OJgYG3Zp-E4yzfxC5vQ",
+      "url": "https://drive.google.com/drive/folders/1jSRkH_VRA9Gf_5uLE_fu0EDMGuY3fwhB",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/11_CONTRACTS_FINANCE_RESTRICTED/02_ACCEPTANCE_BBNT",
+      "id": "1V-m1bFCnB9PrvYVvuurrOd25A1BIUFGE",
+      "parent_id": "1yKWTOb_fWcKG4OJgYG3Zp-E4yzfxC5vQ",
+      "url": "https://drive.google.com/drive/folders/1V-m1bFCnB9PrvYVvuurrOd25A1BIUFGE",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/11_CONTRACTS_FINANCE_RESTRICTED/03_INVOICES_PAYMENTS",
+      "id": "17MtKcYJkccBwa1A78NwH5PZaT92D1BXR",
+      "parent_id": "1yKWTOb_fWcKG4OJgYG3Zp-E4yzfxC5vQ",
+      "url": "https://drive.google.com/drive/folders/17MtKcYJkccBwa1A78NwH5PZaT92D1BXR",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/11_CONTRACTS_FINANCE_RESTRICTED/04_FINANCE_TRACKERS",
+      "id": "1iGJtAcCwMj2YBmys2-jZpTGMCSZH7yfC",
+      "parent_id": "1yKWTOb_fWcKG4OJgYG3Zp-E4yzfxC5vQ",
+      "url": "https://drive.google.com/drive/folders/1iGJtAcCwMj2YBmys2-jZpTGMCSZH7yfC",
+      "access_classification": "pending_restriction_no_sensitive_upload",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/12_ARCHIVE_IMPORT_LEGACY",
+      "id": "1bFSEPaeY0qCtno_KHfWBezsVBYq4Y1db",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1bFSEPaeY0qCtno_KHfWBezsVBYq4Y1db",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/12_ARCHIVE_IMPORT_LEGACY/01_LEGACY_FOLDER_INDEX",
+      "id": "1jsnhqSMnLomnidWjO9Dbf8YODU-KOP8-",
+      "parent_id": "1bFSEPaeY0qCtno_KHfWBezsVBYq4Y1db",
+      "url": "https://drive.google.com/drive/folders/1jsnhqSMnLomnidWjO9Dbf8YODU-KOP8-",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/12_ARCHIVE_IMPORT_LEGACY/02_MIGRATION_RECONCILIATION",
+      "id": "1CRbfRN5H6bt3Uk9krd0RXMuz4QNUbCUK",
+      "parent_id": "1bFSEPaeY0qCtno_KHfWBezsVBYq4Y1db",
+      "url": "https://drive.google.com/drive/folders/1CRbfRN5H6bt3Uk9krd0RXMuz4QNUbCUK",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/12_ARCHIVE_IMPORT_LEGACY/03_RETIRED_EXPORTS",
+      "id": "1XO02WIgJ9BHyen0CKdUmDGjJJ17Ty3n1",
+      "parent_id": "1bFSEPaeY0qCtno_KHfWBezsVBYq4Y1db",
+      "url": "https://drive.google.com/drive/folders/1XO02WIgJ9BHyen0CKdUmDGjJJ17Ty3n1",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/13_OPERATIONS_SUPPORT",
+      "id": "1vlVzyo4FE2S_PINVBXx9nDQT20zMNLVZ",
+      "parent_id": "1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh",
+      "url": "https://drive.google.com/drive/folders/1vlVzyo4FE2S_PINVBXx9nDQT20zMNLVZ",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/13_OPERATIONS_SUPPORT/01_TASK_TRACKERS",
+      "id": "1riyV0OKp6FLuEik2KLutaSjGxUPmJIqB",
+      "parent_id": "1vlVzyo4FE2S_PINVBXx9nDQT20zMNLVZ",
+      "url": "https://drive.google.com/drive/folders/1riyV0OKp6FLuEik2KLutaSjGxUPmJIqB",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/13_OPERATIONS_SUPPORT/02_STANDARD_OPERATING_PROCEDURES",
+      "id": "16C-fjr62MSC0N1K9poU0a6vnlorc0lUS",
+      "parent_id": "1vlVzyo4FE2S_PINVBXx9nDQT20zMNLVZ",
+      "url": "https://drive.google.com/drive/folders/16C-fjr62MSC0N1K9poU0a6vnlorc0lUS",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/13_OPERATIONS_SUPPORT/03_UI_UX_REFERENCE_SCREENSHOTS",
+      "id": "1F-4xI_s-dKfeV7JUBnssaPl6n_bGQj3q",
+      "parent_id": "1vlVzyo4FE2S_PINVBXx9nDQT20zMNLVZ",
+      "url": "https://drive.google.com/drive/folders/1F-4xI_s-dKfeV7JUBnssaPl6n_bGQj3q",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/13_OPERATIONS_SUPPORT/04_ONBOARDING_KNOWLEDGE_BASE",
+      "id": "1WEaJ41ZtJ-DK_8tvcY3jb3raTMdkCDn3",
+      "parent_id": "1vlVzyo4FE2S_PINVBXx9nDQT20zMNLVZ",
+      "url": "https://drive.google.com/drive/folders/1WEaJ41ZtJ-DK_8tvcY3jb3raTMdkCDn3",
+      "access_classification": "shared",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE/01_KV_BEFORE_LIVE",
+      "id": "1s99VtJ1Ln_5PXyCm5CdmPftcIr6vmBju",
+      "parent_id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "url": "https://drive.google.com/drive/folders/1s99VtJ1Ln_5PXyCm5CdmPftcIr6vmBju",
+      "access_classification": "shared_schema_template_only",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE/02_KV_AFTER_LIVE",
+      "id": "1e05QmP_mjF1uMz4LI2mHge9tYx2a0IH0",
+      "parent_id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "url": "https://drive.google.com/drive/folders/1e05QmP_mjF1uMz4LI2mHge9tYx2a0IH0",
+      "access_classification": "shared_schema_template_only",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE/03_DASHBOARD_SUMMARY",
+      "id": "1YO61dHPf_YOKvBbGG4KnZOwrGitl5mZz",
+      "parent_id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "url": "https://drive.google.com/drive/folders/1YO61dHPf_YOKvBbGG4KnZOwrGitl5mZz",
+      "access_classification": "shared_schema_template_only",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE/04_DASHBOARD_30MIN",
+      "id": "1ZooEGViKANQG6HyAPDEg2o-wFs8C28KD",
+      "parent_id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "url": "https://drive.google.com/drive/folders/1ZooEGViKANQG6HyAPDEg2o-wFs8C28KD",
+      "access_classification": "shared_schema_template_only",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE/05_LIVE_SESSION_PHOTOS",
+      "id": "1C35IMZtWRh1sGnxqFFWHwyTbEg56lorg",
+      "parent_id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "url": "https://drive.google.com/drive/folders/1C35IMZtWRh1sGnxqFFWHwyTbEg56lorg",
+      "access_classification": "shared_schema_template_only",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE/06_OTHER_EVIDENCE",
+      "id": "1kg41d6QleIam2KhF52mwycjZSH-M-duP",
+      "parent_id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "url": "https://drive.google.com/drive/folders/1kg41d6QleIam2KhF52mwycjZSH-M-duP",
+      "access_classification": "shared_schema_template_only",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE/07_FINAL_REPORT_AND_INSIGHTS",
+      "id": "1uZyj_B0hXQJfnouQEkkEef0pa9W6be9n",
+      "parent_id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "url": "https://drive.google.com/drive/folders/1uZyj_B0hXQJfnouQEkkEef0pa9W6be9n",
+      "access_classification": "shared_schema_template_only",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE/08_METRICS_DATA_SNAPSHOTS",
+      "id": "151jA6sN5ivLyRCMkj9MQXrrxxaL6SOha",
+      "parent_id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "url": "https://drive.google.com/drive/folders/151jA6sN5ivLyRCMkj9MQXrrxxaL6SOha",
+      "access_classification": "shared_schema_template_only",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/03_LIVE_REPORTS/00_SHIFT_FOLDER_TEMPLATE/09_FILE_MANIFEST_CHECKSUMS",
+      "id": "1-m6q6pkOe5lvUqjUVme9mK7zkQkNasJs",
+      "parent_id": "1pJ7LM6wQcGyczza5oWLrRxiyuST1rYyi",
+      "url": "https://drive.google.com/drive/folders/1-m6q6pkOe5lvUqjUVme9mK7zkQkNasJs",
+      "access_classification": "shared_schema_template_only",
+      "verified_created": true
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/01_CHECKIN_PHOTOS",
+      "id": "1-CdyoEbNj0eFuwVd72sJPoqBxla4cF4m",
+      "parent_id": "1w1Ip1M6BoJgzbdoqO6o8HJPM0deaxgkG",
+      "url": "https://drive.google.com/drive/folders/1-CdyoEbNj0eFuwVd72sJPoqBxla4cF4m",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/02_CHECKOUT_PHOTOS",
+      "id": "14UbygcI5M5GYEjfkkoxR91tWxyLSqYwd",
+      "parent_id": "1w1Ip1M6BoJgzbdoqO6o8HJPM0deaxgkG",
+      "url": "https://drive.google.com/drive/folders/14UbygcI5M5GYEjfkkoxR91tWxyLSqYwd",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/03_LATE_NO_SHOW_EVIDENCE",
+      "id": "1Md4kTjCr2uBSyb8qMMkoHTFeEG1wr7H6",
+      "parent_id": "1w1Ip1M6BoJgzbdoqO6o8HJPM0deaxgkG",
+      "url": "https://drive.google.com/drive/folders/1Md4kTjCr2uBSyb8qMMkoHTFeEG1wr7H6",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/04_REVIEW_AND_CORRECTIONS",
+      "id": "1iwvU_BTNEEAK2WtBqU2iMc87CPhaktJR",
+      "parent_id": "1w1Ip1M6BoJgzbdoqO6o8HJPM0deaxgkG",
+      "url": "https://drive.google.com/drive/folders/1iwvU_BTNEEAK2WtBqU2iMc87CPhaktJR",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/01_ATTENDANCE_PRIVATE_EVIDENCE/05_FILE_MANIFESTS_CHECKSUMS",
+      "id": "1eWmTddA2Kboak6LHXgnojkSP1JzkKyq3",
+      "parent_id": "1w1Ip1M6BoJgzbdoqO6o8HJPM0deaxgkG",
+      "url": "https://drive.google.com/drive/folders/1eWmTddA2Kboak6LHXgnojkSP1JzkKyq3",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/01_CHECKIN_EVENT_SNAPSHOTS",
+      "id": "1V4G06V5dTcDtXPTa4TYHE5sxZ-HYtTqx",
+      "parent_id": "1ssFPVQnGcdj9KTgRFoXTm1tf1uiHgKA7",
+      "url": "https://drive.google.com/drive/folders/1V4G06V5dTcDtXPTa4TYHE5sxZ-HYtTqx",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/02_CHECKOUT_EVENT_SNAPSHOTS",
+      "id": "1RxpMbQSpJiLB7HD_t4gho2ccf9FuHbhd",
+      "parent_id": "1ssFPVQnGcdj9KTgRFoXTm1tf1uiHgKA7",
+      "url": "https://drive.google.com/drive/folders/1RxpMbQSpJiLB7HD_t4gho2ccf9FuHbhd",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/03_REVIEW_DECISION_SNAPSHOTS",
+      "id": "1y2HJHAozyEP7AWNSW8Ka_uaESOPmxXM3",
+      "parent_id": "1ssFPVQnGcdj9KTgRFoXTm1tf1uiHgKA7",
+      "url": "https://drive.google.com/drive/folders/1y2HJHAozyEP7AWNSW8Ka_uaESOPmxXM3",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/04_APPROVED_ACTUAL_HOURS_SNAPSHOTS",
+      "id": "1RGFh8qM0DJATFUNIkxtFvM5rN-CL-fQo",
+      "parent_id": "1ssFPVQnGcdj9KTgRFoXTm1tf1uiHgKA7",
+      "url": "https://drive.google.com/drive/folders/1RGFh8qM0DJATFUNIkxtFvM5rN-CL-fQo",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/05_RECONCILIATION_AUDIT",
+      "id": "1XjsybCzv5vyKqxu00L2l4Nq7coARGrrO",
+      "parent_id": "1ssFPVQnGcdj9KTgRFoXTm1tf1uiHgKA7",
+      "url": "https://drive.google.com/drive/folders/1XjsybCzv5vyKqxu00L2l4Nq7coARGrrO",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/02_CHECKIN_CHECKOUT_EVENTS/06_EXPORTS",
+      "id": "1PZeeFukjyvGVQz-IEfsIxUW1aUnQFrAq",
+      "parent_id": "1ssFPVQnGcdj9KTgRFoXTm1tf1uiHgKA7",
+      "url": "https://drive.google.com/drive/folders/1PZeeFukjyvGVQz-IEfsIxUW1aUnQFrAq",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/01_DRAFT_CALCULATIONS",
+      "id": "1_cxIezRWXmlQeupGx8DeZXgQovwtm_N1",
+      "parent_id": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "url": "https://drive.google.com/drive/folders/1_cxIezRWXmlQeupGx8DeZXgQovwtm_N1",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/02_REVIEW_APPROVALS",
+      "id": "1M7TAy0NgNfa17pZC_-NNr43u3425_jlu",
+      "parent_id": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "url": "https://drive.google.com/drive/folders/1M7TAy0NgNfa17pZC_-NNr43u3425_jlu",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/03_LOCKED_PUBLISHED_STATEMENTS",
+      "id": "1is7hTY1rM1KQF09ce2hA3pAQ1hr74i_m",
+      "parent_id": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "url": "https://drive.google.com/drive/folders/1is7hTY1rM1KQF09ce2hA3pAQ1hr74i_m",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/04_PERSONAL_PAYSLIPS",
+      "id": "1wGruAoc2SiGlOhyPB73_RQP6eVa8DyqC",
+      "parent_id": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "url": "https://drive.google.com/drive/folders/1wGruAoc2SiGlOhyPB73_RQP6eVa8DyqC",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/05_ADJUSTMENTS_CORRECTIONS",
+      "id": "163BtV3erjzNMAYt57wlL5oDb72yhlPed",
+      "parent_id": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "url": "https://drive.google.com/drive/folders/163BtV3erjzNMAYt57wlL5oDb72yhlPed",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/06_RECONCILIATION",
+      "id": "1481hW5yuEntTyx9NCHDPUxUHasSdypDO",
+      "parent_id": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "url": "https://drive.google.com/drive/folders/1481hW5yuEntTyx9NCHDPUxUHasSdypDO",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/07_EXPORTS_BACKUPS",
+      "id": "12x4mOCgmmYFDnvuNo1ogPU8hEIygeG9o",
+      "parent_id": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "url": "https://drive.google.com/drive/folders/12x4mOCgmmYFDnvuNo1ogPU8hEIygeG9o",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/08_VERSION_MANIFESTS",
+      "id": "1TlxdE_zSMYgxlW_rOM92-wpFpctDDM5N",
+      "parent_id": "1q8yOdOKH9aNN3Kja8qX9bI05_NP1vIna",
+      "url": "https://drive.google.com/drive/folders/1TlxdE_zSMYgxlW_rOM92-wpFpctDDM5N",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/04_RATE_CARDS/01_ACTIVE_APPROVED_RATES",
+      "id": "1z1C-I-KsqcGiqBlHZh9c33W_ebnVyDVE",
+      "parent_id": "1uHn3hJIKnzgo4r_YBB_jvSwdAYqBJGyY",
+      "url": "https://drive.google.com/drive/folders/1z1C-I-KsqcGiqBlHZh9c33W_ebnVyDVE",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/04_RATE_CARDS/02_HISTORICAL_RATE_VERSIONS",
+      "id": "1x4wqaosSSZxpLXLC-6pnK9Hra2d0a2c6",
+      "parent_id": "1uHn3hJIKnzgo4r_YBB_jvSwdAYqBJGyY",
+      "url": "https://drive.google.com/drive/folders/1x4wqaosSSZxpLXLC-6pnK9Hra2d0a2c6",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/04_RATE_CARDS/03_RATE_REVIEW_APPROVALS",
+      "id": "11NfWSNfWV4hNYK7QvAWn5XHmsAHqYYEI",
+      "parent_id": "1uHn3hJIKnzgo4r_YBB_jvSwdAYqBJGyY",
+      "url": "https://drive.google.com/drive/folders/11NfWSNfWV4hNYK7QvAWn5XHmsAHqYYEI",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/04_RATE_CARDS/04_RATE_CHANGE_AUDIT",
+      "id": "1nTv-y1oRHwMgU4VIHo_RKGP3D3J8L37f",
+      "parent_id": "1uHn3hJIKnzgo4r_YBB_jvSwdAYqBJGyY",
+      "url": "https://drive.google.com/drive/folders/1nTv-y1oRHwMgU4VIHo_RKGP3D3J8L37f",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/05_PERSONNEL_RECORDS/01_STAFF_PROFILE_SNAPSHOTS",
+      "id": "1chy-Q0wrvWJxBossy-pHdSCpBPgdNNmL",
+      "parent_id": "1A6QgDPZ6mxaDWWIT4hwsFZzXzbDW0aMM",
+      "url": "https://drive.google.com/drive/folders/1chy-Q0wrvWJxBossy-pHdSCpBPgdNNmL",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/05_PERSONNEL_RECORDS/02_ROLE_ASSIGNMENT_HISTORY",
+      "id": "1O8sB_MSErYdxuyPCUhR-uS-bG9CYWnyy",
+      "parent_id": "1A6QgDPZ6mxaDWWIT4hwsFZzXzbDW0aMM",
+      "url": "https://drive.google.com/drive/folders/1O8sB_MSErYdxuyPCUhR-uS-bG9CYWnyy",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/05_PERSONNEL_RECORDS/03_CONTRACT_REFERENCES",
+      "id": "1EmsF9hpGXuRpDOwbqHKJhVHXymskk4gL",
+      "parent_id": "1A6QgDPZ6mxaDWWIT4hwsFZzXzbDW0aMM",
+      "url": "https://drive.google.com/drive/folders/1EmsF9hpGXuRpDOwbqHKJhVHXymskk4gL",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/05_PERSONNEL_RECORDS/04_ONBOARDING_OFFBOARDING",
+      "id": "1ePfpauUVTJEmvAZ-IjyI4EaDiQ0pUz_h",
+      "parent_id": "1A6QgDPZ6mxaDWWIT4hwsFZzXzbDW0aMM",
+      "url": "https://drive.google.com/drive/folders/1ePfpauUVTJEmvAZ-IjyI4EaDiQ0pUz_h",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/06_ACCESS_AUDIT/01_FILE_ACCESS_EVENTS",
+      "id": "1dgoG7AJdoHA_BC7zw7qsmHBUEqoe8G39",
+      "parent_id": "1Ole-hOkRoAS4jrIFzE_XZcaLf-bDbNjE",
+      "url": "https://drive.google.com/drive/folders/1dgoG7AJdoHA_BC7zw7qsmHBUEqoe8G39",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/06_ACCESS_AUDIT/02_DATA_OBJECT_CHANGE_AUDIT",
+      "id": "1h3Kou3v99PS8D0cmawC4KSLRnMlLbuQs",
+      "parent_id": "1Ole-hOkRoAS4jrIFzE_XZcaLf-bDbNjE",
+      "url": "https://drive.google.com/drive/folders/1h3Kou3v99PS8D0cmawC4KSLRnMlLbuQs",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/06_ACCESS_AUDIT/03_ROLE_PERMISSION_CHANGE_AUDIT",
+      "id": "1gc76L-q7Reinok4-3gQVVZ_nUTqvEMcm",
+      "parent_id": "1Ole-hOkRoAS4jrIFzE_XZcaLf-bDbNjE",
+      "url": "https://drive.google.com/drive/folders/1gc76L-q7Reinok4-3gQVVZ_nUTqvEMcm",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/06_ACCESS_AUDIT/04_RETENTION_AND_RECOVERY_AUDIT",
+      "id": "11wQoX-NxmZmsWUhlmDy3RdZN60fl0YaC",
+      "parent_id": "1Ole-hOkRoAS4jrIFzE_XZcaLf-bDbNjE",
+      "url": "https://drive.google.com/drive/folders/11wQoX-NxmZmsWUhlmDy3RdZN60fl0YaC",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/01_DRAFT_CALCULATIONS/2026",
+      "id": "1jtUrYvWrPBBRd6sriYaf7tSv42aXjWI1",
+      "parent_id": "1_cxIezRWXmlQeupGx8DeZXgQovwtm_N1",
+      "url": "https://drive.google.com/drive/folders/1jtUrYvWrPBBRd6sriYaf7tSv42aXjWI1",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/02_REVIEW_APPROVALS/2026",
+      "id": "1h69Epo9VrRXyifc5tpPOhNjtDVNztc-5",
+      "parent_id": "1M7TAy0NgNfa17pZC_-NNr43u3425_jlu",
+      "url": "https://drive.google.com/drive/folders/1h69Epo9VrRXyifc5tpPOhNjtDVNztc-5",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/03_LOCKED_PUBLISHED_STATEMENTS/2026",
+      "id": "1C9UcMOhE7iiBXI3IgTe-GWr47x6Pge9g",
+      "parent_id": "1is7hTY1rM1KQF09ce2hA3pAQ1hr74i_m",
+      "url": "https://drive.google.com/drive/folders/1C9UcMOhE7iiBXI3IgTe-GWr47x6Pge9g",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/04_PERSONAL_PAYSLIPS/2026",
+      "id": "13qjQ0hrQRBqJqbwO6NSox663BDGdibf-",
+      "parent_id": "1wGruAoc2SiGlOhyPB73_RQP6eVa8DyqC",
+      "url": "https://drive.google.com/drive/folders/13qjQ0hrQRBqJqbwO6NSox663BDGdibf-",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/05_ADJUSTMENTS_CORRECTIONS/2026",
+      "id": "1VpAWI-stZCUBWWt1GGYOdfl3c5nPMAQE",
+      "parent_id": "163BtV3erjzNMAYt57wlL5oDb72yhlPed",
+      "url": "https://drive.google.com/drive/folders/1VpAWI-stZCUBWWt1GGYOdfl3c5nPMAQE",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/06_RECONCILIATION/2026",
+      "id": "17dYa053vzDrO3rLr4F2Qvbf45hheVdRK",
+      "parent_id": "1481hW5yuEntTyx9NCHDPUxUHasSdypDO",
+      "url": "https://drive.google.com/drive/folders/17dYa053vzDrO3rLr4F2Qvbf45hheVdRK",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/07_EXPORTS_BACKUPS/2026",
+      "id": "1HJw_YRjcv9bnjyhQ8IGW_eWgAcgu8Quv",
+      "parent_id": "12x4mOCgmmYFDnvuNo1ogPU8hEIygeG9o",
+      "url": "https://drive.google.com/drive/folders/1HJw_YRjcv9bnjyhQ8IGW_eWgAcgu8Quv",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/08_VERSION_MANIFESTS/2026",
+      "id": "1CiIZ3pAcBcJ_lKRmlawxh3rnTujTsxEg",
+      "parent_id": "1TlxdE_zSMYgxlW_rOM92-wpFpctDDM5N",
+      "url": "https://drive.google.com/drive/folders/1CiIZ3pAcBcJ_lKRmlawxh3rnTujTsxEg",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/01_DRAFT_CALCULATIONS/2026/THÁNG 10",
+      "id": "1tSIouQQl7Fm9tF3oGB56YVUBhAf81zh-",
+      "parent_id": "1jtUrYvWrPBBRd6sriYaf7tSv42aXjWI1",
+      "url": "https://drive.google.com/drive/folders/1tSIouQQl7Fm9tF3oGB56YVUBhAf81zh-",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/01_DRAFT_CALCULATIONS/2026/THÁNG 11",
+      "id": "1muA5AV1P9Ofop15Z6uY9aLsMvqlepnYV",
+      "parent_id": "1jtUrYvWrPBBRd6sriYaf7tSv42aXjWI1",
+      "url": "https://drive.google.com/drive/folders/1muA5AV1P9Ofop15Z6uY9aLsMvqlepnYV",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/02_REVIEW_APPROVALS/2026/THÁNG 10",
+      "id": "1TDcbocRB1eCUCUKQrL3poxNmACeEM7k6",
+      "parent_id": "1h69Epo9VrRXyifc5tpPOhNjtDVNztc-5",
+      "url": "https://drive.google.com/drive/folders/1TDcbocRB1eCUCUKQrL3poxNmACeEM7k6",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/02_REVIEW_APPROVALS/2026/THÁNG 11",
+      "id": "1edLF9xIRLYapkK6xAhOBqup_Q_vXlShe",
+      "parent_id": "1h69Epo9VrRXyifc5tpPOhNjtDVNztc-5",
+      "url": "https://drive.google.com/drive/folders/1edLF9xIRLYapkK6xAhOBqup_Q_vXlShe",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/03_LOCKED_PUBLISHED_STATEMENTS/2026/THÁNG 10",
+      "id": "191Xd8TsZr1cb2OCda_DyTvTmH2jwUZ_0",
+      "parent_id": "1C9UcMOhE7iiBXI3IgTe-GWr47x6Pge9g",
+      "url": "https://drive.google.com/drive/folders/191Xd8TsZr1cb2OCda_DyTvTmH2jwUZ_0",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/03_LOCKED_PUBLISHED_STATEMENTS/2026/THÁNG 11",
+      "id": "12qi7fna33MOeSZ2vsdpnVLpiVzQod5Hl",
+      "parent_id": "1C9UcMOhE7iiBXI3IgTe-GWr47x6Pge9g",
+      "url": "https://drive.google.com/drive/folders/12qi7fna33MOeSZ2vsdpnVLpiVzQod5Hl",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/04_PERSONAL_PAYSLIPS/2026/THÁNG 10",
+      "id": "1CGYyREKBhHgoW6mMIjOiwpr9UI-CM077",
+      "parent_id": "13qjQ0hrQRBqJqbwO6NSox663BDGdibf-",
+      "url": "https://drive.google.com/drive/folders/1CGYyREKBhHgoW6mMIjOiwpr9UI-CM077",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/04_PERSONAL_PAYSLIPS/2026/THÁNG 11",
+      "id": "1VvjEeyvytUzP4qJdvUDUhp6x3oVpxJab",
+      "parent_id": "13qjQ0hrQRBqJqbwO6NSox663BDGdibf-",
+      "url": "https://drive.google.com/drive/folders/1VvjEeyvytUzP4qJdvUDUhp6x3oVpxJab",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/05_ADJUSTMENTS_CORRECTIONS/2026/THÁNG 10",
+      "id": "18TZPc5vc4yrvx_P8DoJPgBk2-F3XOl3Z",
+      "parent_id": "1VpAWI-stZCUBWWt1GGYOdfl3c5nPMAQE",
+      "url": "https://drive.google.com/drive/folders/18TZPc5vc4yrvx_P8DoJPgBk2-F3XOl3Z",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/05_ADJUSTMENTS_CORRECTIONS/2026/THÁNG 11",
+      "id": "1fkOSoL5_SKO-z_Gs5I1QKYUTskmI8_yv",
+      "parent_id": "1VpAWI-stZCUBWWt1GGYOdfl3c5nPMAQE",
+      "url": "https://drive.google.com/drive/folders/1fkOSoL5_SKO-z_Gs5I1QKYUTskmI8_yv",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/06_RECONCILIATION/2026/THÁNG 10",
+      "id": "1hHYXdT0v3qxtzJ9Qm0rys28v0KA2y3CW",
+      "parent_id": "17dYa053vzDrO3rLr4F2Qvbf45hheVdRK",
+      "url": "https://drive.google.com/drive/folders/1hHYXdT0v3qxtzJ9Qm0rys28v0KA2y3CW",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/06_RECONCILIATION/2026/THÁNG 11",
+      "id": "122SGoq9LhbwLsXG0M1UeNN0CTt8BIxxq",
+      "parent_id": "17dYa053vzDrO3rLr4F2Qvbf45hheVdRK",
+      "url": "https://drive.google.com/drive/folders/122SGoq9LhbwLsXG0M1UeNN0CTt8BIxxq",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/07_EXPORTS_BACKUPS/2026/THÁNG 10",
+      "id": "1D8Z1YahNWShSfxzQlfHOSK0Sf1lEiQCW",
+      "parent_id": "1HJw_YRjcv9bnjyhQ8IGW_eWgAcgu8Quv",
+      "url": "https://drive.google.com/drive/folders/1D8Z1YahNWShSfxzQlfHOSK0Sf1lEiQCW",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/07_EXPORTS_BACKUPS/2026/THÁNG 11",
+      "id": "1JUSizDWbok_hRR1uVL4BxmH62SsoqwCL",
+      "parent_id": "1HJw_YRjcv9bnjyhQ8IGW_eWgAcgu8Quv",
+      "url": "https://drive.google.com/drive/folders/1JUSizDWbok_hRR1uVL4BxmH62SsoqwCL",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/08_VERSION_MANIFESTS/2026/THÁNG 10",
+      "id": "1pehrcMnUwnONvR0MBLS8CqVTY3u5-A7L",
+      "parent_id": "1CiIZ3pAcBcJ_lKRmlawxh3rnTujTsxEg",
+      "url": "https://drive.google.com/drive/folders/1pehrcMnUwnONvR0MBLS8CqVTY3u5-A7L",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    },
+    {
+      "path": "00_ADA_OPS_PLATFORM/08_HR_RESTRICTED_PENDING_ACCESS/03_PAYROLL_STATEMENTS/08_VERSION_MANIFESTS/2026/THÁNG 11",
+      "id": "1C22Whj8ST4Ot3l57DArXLCbAUNINvtvj",
+      "parent_id": "1CiIZ3pAcBcJ_lKRmlawxh3rnTujTsxEg",
+      "url": "https://drive.google.com/drive/folders/1C22Whj8ST4Ot3l57DArXLCbAUNINvtvj",
+      "access_classification": "restricted_pending_app_acl_verification",
+      "verified_created": true,
+      "verified_created_date": "2026-11-02",
+      "note": "Drive physical folder only. Do not upload confidential actual data until effective permissions and app identity proven."
+    }
+  ],
+  "existing_brand_roots_preserved": [
+    {
+      "name": "Opella - LS Report",
+      "id": "1_kTuZg4Y39sgN6Ty7hBtcgYStL-x6bca",
+      "url": "https://drive.google.com/drive/folders/1_kTuZg4Y39sgN6Ty7hBtcgYStL-x6bca"
+    },
+    {
+      "name": "KAO GROUP - LS Report",
+      "id": "1tcuKmX1TdbRlMz9mfXmweII3Lmgvz9Tj",
+      "url": "https://drive.google.com/drive/folders/1tcuKmX1TdbRlMz9mfXmweII3Lmgvz9Tj"
+    },
+    {
+      "name": "Mars Wrigley - LS Report",
+      "id": "1SuQhXZsNr7eArHVwf9NMTqR1TEHYqOC5",
+      "url": "https://drive.google.com/drive/folders/1SuQhXZsNr7eArHVwf9NMTqR1TEHYqOC5"
+    },
+    {
+      "name": "MARICO - LS Report",
+      "id": "18Nn6dKXsECFHUYEho6AAXqCkQWmz5o7q",
+      "url": "https://drive.google.com/drive/folders/18Nn6dKXsECFHUYEho6AAXqCkQWmz5o7q"
+    },
+    {
+      "name": "PEPSICO - LS Report",
+      "id": "1h4j2Khtde6ugA6BUBN1Y5mqn27buJACa",
+      "url": "https://drive.google.com/drive/folders/1h4j2Khtde6ugA6BUBN1Y5mqn27buJACa"
+    },
+    {
+      "name": "Khác - TẠM KO LIVE NỮA",
+      "id": "1QM9amVcGFGBU1k8o_XtnWKqtEes9_kg2",
+      "url": "https://drive.google.com/drive/folders/1QM9amVcGFGBU1k8o_XtnWKqtEes9_kg2"
+    },
+    {
+      "name": "agency snap",
+      "id": "1MXerAY2WdViTsVCO8G92vOepS-6BxYBC",
+      "url": "https://drive.google.com/drive/folders/1MXerAY2WdViTsVCO8G92vOepS-6BxYBC"
+    },
+    {
+      "name": "Female AI livestream",
+      "id": "1b6pW8U0MGpF4Cqs-tiaQswun8z9gMRdj",
+      "url": "https://drive.google.com/drive/folders/1b6pW8U0MGpF4Cqs-tiaQswun8z9gMRdj"
+    },
+    {
+      "name": "MALE_AI_LIVESTREAM",
+      "id": "1TDwEV2W00QhLgPXAGugrmPDJ3UWgElof",
+      "url": "https://drive.google.com/drive/folders/1TDwEV2W00QhLgPXAGugrmPDJ3UWgElof"
+    },
+    {
+      "name": "ASM_AI_LIVESTREAM",
+      "id": "1SAO2on9vWQGmev5z_q9YkYKfRsA_5fYp",
+      "url": "https://drive.google.com/drive/folders/1SAO2on9vWQGmev5z_q9YkYKfRsA_5fYp"
+    }
+  ],
+  "folder_count_additional_20261102": 55,
+  "folder_count_current_verified": 148,
+  "last_physical_hierarchy_audit_date": "2026-11-02",
+  "runtime_status": "NOT PRODUCTION VERIFIED; folder existence is not upload routing readiness",
+  "hierarchy_completeness": "PARTIAL: domain classification folders exist; brand/platform/YYYY/MM/shift/staff/campaign dynamic trees not provisioned",
+  "restricted_access_note_20261102": "HR and Finance direct metadata reads showed owner-only on tested folders; inherited/anonymous effective access for app OAuth identity has not been authenticated end-to-end. Do not assume confidentiality or permission readiness.",
+  "registry_revision": "RC19-20261102-physical-registry-additive-55"
+}

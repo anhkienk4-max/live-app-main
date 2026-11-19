@@ -106,18 +106,20 @@ test('OCR-populated Shopee values remain visible through the data filter', () =>
   assert.ok(keys.main.includes('pcu'))
 })
 
-test('Final Report keeps gallery after KPI sections and notes last', () => {
+test('Final Report places dashboard evidence and gallery before KPI sections and notes last', () => {
   const source = readFileSync(
     new URL('../components/features/reports/ReportFormModal.tsx', import.meta.url),
     'utf8',
   )
+  const dashboardEvidence = source.indexOf('data-testid="report-dashboard-image-upload"')
+  const gallery = source.indexOf('<LiveReportImageEditor')
   const mainMetrics = source.indexOf('data-testid="ocr-main-metrics"')
   const supplementaryMetrics = source.indexOf('data-testid="ocr-supplementary-metrics"')
-  const gallery = source.indexOf('<LiveReportImageEditor')
   const notes = source.indexOf('data-testid="final-report-notes-section"')
 
-  assert.ok(mainMetrics >= 0)
+  assert.ok(dashboardEvidence >= 0)
+  assert.ok(gallery > dashboardEvidence)
+  assert.ok(mainMetrics > gallery)
   assert.ok(supplementaryMetrics > mainMetrics)
-  assert.ok(gallery > supplementaryMetrics)
-  assert.ok(notes > gallery)
+  assert.ok(notes > supplementaryMetrics)
 })

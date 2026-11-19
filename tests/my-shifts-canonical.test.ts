@@ -6,6 +6,7 @@ import type { Shift, ShiftRegistration } from '../lib/types/database.types'
 import { selectMyShiftEntries } from '../lib/utils/myShifts.ts'
 
 const filters = { date: '', brand: 'all', platform: 'all', campaign: 'all', role: 'all' }
+const fromSource = (path: string) => readFileSync(new URL('../' + path, import.meta.url), 'utf8')
 const makeShift = (id: string, date: string, start_time: string): Shift => ({
   id, date, start_time, end_time: start_time === '11:00' ? '14:00' : '23:00', brand_id: 'brand', platform_id: 'platform',
   status: 'scheduled', required_host_count: 1, required_support_count: 1, required_technical_count: 1,
@@ -30,6 +31,15 @@ test('My Shifts uses one canonical active shift entry per row across views', () 
     ['shift-day', ['support']], ['shift-evening', ['host']],
   ])
   assert.equal(entries.some(entry => entry.registrations.some(registration => registration.status === 'cancelled')), false)
+})
+
+test('My Shifts does not show its initial zero count as a loaded empty result', () => {
+  const source = fromSource('components/features/calendar/ShiftRegistrationBoard.tsx')
+  assert.match(source, /loadedKey === requestKey \? `\$\{total\} \$\{mode === 'mine'/)
+  assert.match(source, /aria-busy=\{loadedKey !== requestKey && !loadError\}/)
+  assert.match(source, /!!loadError && <PageLoadError/)
+  assert.match(source, /if \(!isCurrent\(loadVersion\)\) \{\s*return getLatest\(\)/)
+  assert.match(source, /\[mode \+ '_filters'\]: JSON\.stringify\(next\)/)
 })
 
 test('completed replacement ownership is reflected without importing labels as assignments', () => {

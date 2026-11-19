@@ -36,13 +36,19 @@ export interface PayrollLineSnapshot {
   actualMinutes: number
   payableMinutes: number
   overtimeMinutes: number
+  actualSeconds?: number
+  payableSeconds?: number
+  overtimeSeconds?: number
   rateVndPerHour: number
   overtimeMultiplierBasisPoints: number
   grossVnd: number
   adjustmentVnd: number
   netVnd: number
   adjustmentReason: string | null
-  calculationVersion: 'rc16-v1'
+  overtimeRequestId?: string | null
+  overtimeDayClass?: 'weekday'|'weekend'|'holiday'|null
+  overtimeTimeClass?: 'day'|'night'|null
+  calculationVersion: 'rc16-v1' | 'rc19-seconds-v1'
 }
 
 export class WorkforceCalculationError extends Error {
@@ -75,6 +81,93 @@ export function minuteDifference(start: string | null, end: string | null): numb
   const ms = Date.parse(end) - Date.parse(start)
   guard(ms > 0 && ms <= 86_400_000 && ms % 60_000 === 0, 'WORKFORCE_DURATION_INVALID')
   return ms / 60_000
+}
+
+export function secondDifference(start: string | null, end: string | null): number {
+  guard(start && end && Number.isFinite(Date.parse(start)) && Number.isFinite(Date.parse(end)),
+    'WORKFORCE_ACTUAL_TIMES_REQUIRED')
+  guard(/(?:Z|[+-]\d{2}:\d{2})$/u.test(start) && /(?:Z|[+-]\d{2}:\d{2})$/u.test(end),
+    'WORKFORCE_TIMEZONE_REQUIRED')
+  const startSecond = Math.floor(Date.parse(start)/1000)
+  const endSecond = Math.floor(Date.parse(end)/1000)
+  const seconds = endSecond-startSecond
+  guard(seconds > 0 && seconds <= 86_400, 'WORKFORCE_DURATION_INVALID')
+  return seconds
+}
+
+export function calculatePayrollAmountsFromSeconds(input: {
+  actualSeconds: number
+  payableSeconds: number
+  overtimeSeconds: number
+  rateVndPerHour: number
+  overtimeMultiplierBasisPoints: number
+  adjustmentVnd?: number
+  adjustmentReason?: string | null
+}): Pick<PayrollLineSnapshot, 'grossVnd' | 'adjustmentVnd' | 'netVnd' | 'adjustmentReason'> {
+  const validSeconds = (value:number) => Number.isSafeInteger(value) && value >= 0 && value <= 86_400
+  guard(validSeconds(input.actualSeconds), 'WORKFORCE_DURATION_INVALID')
+  guard(validSeconds(input.payableSeconds) && input.payableSeconds <= input.actualSeconds,
+    'WORKFORCE_PAYABLE_SECONDS_INVALID')
+  guard(validSeconds(input.overtimeSeconds) && input.overtimeSeconds <= input.payableSeconds,
+    'WORKFORCE_OVERTIME_SECONDS_INVALID')
+  guard(Number.isSafeInteger(input.rateVndPerHour) && input.rateVndPerHour >= 0
+    && input.rateVndPerHour <= 100_000_000, 'WORKFORCE_RATE_INVALID')
+  guard(Number.isSafeInteger(input.overtimeMultiplierBasisPoints)
+    && input.overtimeMultiplierBasisPoints >= 10_000
+    && input.overtimeMultiplierBasisPoints <= 50_000, 'WORKFORCE_OT_RATE_INVALID')
+  const regularSeconds = input.payableSeconds - input.overtimeSeconds
+  const denominator = 36_000_000n
+  const numerator = BigInt(input.rateVndPerHour)
+    * (BigInt(regularSeconds) * 10_000n
+      + BigInt(input.overtimeSeconds) * BigInt(input.overtimeMultiplierBasisPoints))
+  const gross = Number((numerator + denominator / 2n) / denominator)
+  guard(validMoney(gross), 'WORKFORCE_GROSS_OUT_OF_RANGE')
+  const adjustment = input.adjustmentVnd ?? 0
+  guard(validMoney(adjustment), 'WORKFORCE_ADJUSTMENT_INVALID')
+  const reason = input.adjustmentReason?.trim() || null
+  guard(adjustment === 0 ? reason === null : !!reason && reason.length >= 8 && reason.length <= 1000,
+    'WORKFORCE_ADJUSTMENT_REASON_REQUIRED')
+  const net = gross + adjustment
+  guard(validMoney(net) && net >= 0, 'WORKFORCE_NET_INVALID')
+  return { grossVnd:gross, adjustmentVnd:adjustment, netVnd:net, adjustmentReason:reason }
+}
+
+export function calculateSecondPrecisionPayrollLine(input: {
+  segment: ActualStaffingEvidence
+  shiftDate: string
+  rate: ApprovedPayrollRate
+  payableSeconds: number
+  overtimeSeconds: number
+  adjustmentVnd?: number
+  adjustmentReason?: string | null
+}): PayrollLineSnapshot {
+  const { segment, rate, shiftDate } = input
+  guard(segment.reviewStatus === 'approved' && segment.eventKind === 'worked',
+    'WORKFORCE_ATTENDANCE_NOT_APPROVED')
+  guard(isIsoDate(shiftDate) && shiftDate >= rate.effectiveFrom
+    && (rate.effectiveThrough === null || shiftDate <= rate.effectiveThrough),
+    'WORKFORCE_RATE_OUTSIDE_VALIDITY')
+  guard(rate.role === segment.role
+    && (rate.staffId === null || rate.staffId === segment.staffId) && Boolean(rate.approvedBy),
+    'WORKFORCE_RATE_SCOPE_MISMATCH')
+  const actualSeconds = secondDifference(segment.startAt, segment.endAt)
+  const amounts = calculatePayrollAmountsFromSeconds({
+    actualSeconds, payableSeconds:input.payableSeconds, overtimeSeconds:input.overtimeSeconds,
+    rateVndPerHour:rate.vndPerHour,
+    overtimeMultiplierBasisPoints:rate.overtimeMultiplierBasisPoints,
+    adjustmentVnd:input.adjustmentVnd, adjustmentReason:input.adjustmentReason,
+  })
+  // Legacy minute columns remain a display/backward-compatibility projection only.
+  return {
+    segmentId:segment.id, rateCardId:rate.id, staffId:segment.staffId, role:segment.role,
+    actualMinutes:Math.floor(actualSeconds/60),
+    payableMinutes:Math.floor(input.payableSeconds/60),
+    overtimeMinutes:Math.floor(input.overtimeSeconds/60),
+    actualSeconds, payableSeconds:input.payableSeconds, overtimeSeconds:input.overtimeSeconds,
+    rateVndPerHour:rate.vndPerHour,
+    overtimeMultiplierBasisPoints:rate.overtimeMultiplierBasisPoints,
+    ...amounts, calculationVersion:'rc19-seconds-v1',
+  }
 }
 
 /** Reject overlapping approved rates. A person-specific approved rate takes
@@ -302,6 +395,8 @@ export interface AutoCalculateSegmentInput {
     evidenceNote?: string | null
   }
   shiftDate: string
+  payrollEvidenceCompleteness?: 'verified_complete' | 'incomplete' | 'unverified'
+  missingEvidence?: string[]
 }
 
 export interface AutoCalculateResult {
@@ -316,24 +411,39 @@ export interface AutoCalculateResult {
     shiftDate: string
     reason: string
   }>
+  payrollHolds: Array<{
+    segmentId:string
+    shiftId:string
+    staffId:string
+    shiftDate:string
+    reason:'REQUIRED_EVIDENCE_INCOMPLETE'|'REQUIRED_EVIDENCE_COMPLETENESS_UNVERIFIED'
+    missingEvidence:string[]
+  }>
 }
+
+export const PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM = '2026-11-10'
 
 /**
  * Pure auto-calculation engine for a payroll period:
  * Scans approved worked segments, resolves approved rate cards,
  * computes exact gross and net amounts with BigInt integer rounding,
- * extracts approved overtime minutes strictly from supervisor review notes,
+ * uses persisted Admin-confirmed structured overtime for second-precision shifts,
  * and skips unapproved attendance or unapproved rates fail-closed.
  */
 export function autoCalculatePeriodLines(input: {
   period: { periodStart: string; periodEnd: string }
   segments: readonly AutoCalculateSegmentInput[]
   rates: readonly ApprovedPayrollRate[]
+  approvedOvertimeBySegment?: ReadonlyMap<string, {
+    id:string;overtimeSeconds:number;dayClass:'weekday'|'weekend'|'holiday';
+    timeClass:'day'|'night';multiplierBasisPoints:number
+  }>
   existingSegmentIds?: ReadonlySet<string>
 }): AutoCalculateResult {
   const preparedLines: PayrollLineSnapshot[] = []
   const skippedSegments: Array<{ segmentId: string; reason: string }> = []
   const unapprovedOtExceptions: Array<{ segmentId: string; staffId: string; shiftDate: string; reason: string }> = []
+  const payrollHolds: AutoCalculateResult['payrollHolds'] = []
   const existing = input.existingSegmentIds ?? new Set<string>()
 
   for (const item of input.segments) {
@@ -354,31 +464,67 @@ export function autoCalculatePeriodLines(input: {
       continue
     }
 
+    if (shiftDate >= PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM
+      && item.payrollEvidenceCompleteness !== 'verified_complete') {
+      const reason = item.payrollEvidenceCompleteness === 'incomplete'
+        ? 'REQUIRED_EVIDENCE_INCOMPLETE' : 'REQUIRED_EVIDENCE_COMPLETENESS_UNVERIFIED'
+      payrollHolds.push({segmentId:segment.id,shiftId:segment.shiftId,staffId:segment.staffId,
+        shiftDate,reason,missingEvidence:item.missingEvidence??[]})
+      skippedSegments.push({segmentId:segment.id,reason:`PAYROLL_HOLD_${reason}`})
+      continue
+    }
+
     try {
       const selectedRate = selectApprovedRate(segment, shiftDate, input.rates)
-      const actualMinutes = minuteDifference(segment.startAt, segment.endAt)
-      const otContract = evaluateApprovedOtEvidence({
-        reviewNote: segment.reviewNote,
-        evidenceNote: segment.evidenceNote,
-        actualMinutes,
-      })
-
-      if (otContract.hasUnapprovedOtClaim) {
-        unapprovedOtExceptions.push({
-          segmentId: segment.id,
-          staffId: segment.staffId,
-          shiftDate,
-          reason: otContract.unapprovedClaimReason ?? 'STAFF_CLAIMED_OT_WITHOUT_SUPERVISOR_APPROVAL',
+      let line: PayrollLineSnapshot
+      if (shiftDate >= PAYROLL_SECOND_PRECISION_EFFECTIVE_FROM) {
+        const actualSeconds = secondDifference(segment.startAt, segment.endAt)
+        const approvedOvertime = input.approvedOvertimeBySegment?.get(segment.id)
+        if (approvedOvertime && (!Number.isSafeInteger(approvedOvertime.overtimeSeconds)
+          || approvedOvertime.overtimeSeconds <= 0 || approvedOvertime.overtimeSeconds > actualSeconds
+          || !Number.isSafeInteger(approvedOvertime.multiplierBasisPoints)
+          || approvedOvertime.multiplierBasisPoints < 10000 || approvedOvertime.multiplierBasisPoints > 50000)) {
+          skippedSegments.push({segmentId:segment.id,reason:'STRUCTURED_OVERTIME_RECORD_INVALID'})
+          continue
+        }
+        const hasOtClaim = /(?:\bot\b|tăng\s+ca|tang\s+ca|overtime|làm\s+thêm|lam\s+them)/iu
+          .test(`${segment.reviewNote ?? ''} ${segment.evidenceNote ?? ''}`)
+        if (hasOtClaim && !approvedOvertime) {
+          unapprovedOtExceptions.push({
+            segmentId:segment.id, staffId:segment.staffId, shiftDate,
+            reason:'STRUCTURED_OVERTIME_APPROVAL_REQUIRED',
+          })
+        }
+        line = calculateSecondPrecisionPayrollLine({
+          segment, shiftDate,
+          rate:approvedOvertime ? {...selectedRate,overtimeMultiplierBasisPoints:approvedOvertime.multiplierBasisPoints} : selectedRate,
+          payableSeconds:actualSeconds, overtimeSeconds:approvedOvertime?.overtimeSeconds??0,
+        })
+        if(approvedOvertime){
+          line.overtimeRequestId=approvedOvertime.id
+          line.overtimeDayClass=approvedOvertime.dayClass
+          line.overtimeTimeClass=approvedOvertime.timeClass
+        }
+      } else {
+        const actualMinutes = minuteDifference(segment.startAt, segment.endAt)
+        const otContract = evaluateApprovedOtEvidence({
+          reviewNote: segment.reviewNote,
+          evidenceNote: segment.evidenceNote,
+          actualMinutes,
+        })
+        if (otContract.hasUnapprovedOtClaim) {
+          unapprovedOtExceptions.push({
+            segmentId: segment.id,
+            staffId: segment.staffId,
+            shiftDate,
+            reason: otContract.unapprovedClaimReason ?? 'STAFF_CLAIMED_OT_WITHOUT_SUPERVISOR_APPROVAL',
+          })
+        }
+        line = calculatePayrollLine({
+          segment, shiftDate, rate:selectedRate,
+          payableMinutes:actualMinutes, overtimeMinutes:otContract.approvedOvertimeMinutes,
         })
       }
-
-      const line = calculatePayrollLine({
-        segment,
-        shiftDate,
-        rate: selectedRate,
-        payableMinutes: actualMinutes,
-        overtimeMinutes: otContract.approvedOvertimeMinutes,
-      })
       preparedLines.push(line)
     } catch (err: unknown) {
       const code = err instanceof WorkforceCalculationError ? err.code : 'CALCULATION_FAILED'
@@ -386,7 +532,7 @@ export function autoCalculatePeriodLines(input: {
     }
   }
 
-  return { preparedLines, skippedSegments, unapprovedOtExceptions }
+  return { preparedLines, skippedSegments, unapprovedOtExceptions, payrollHolds }
 }
 
 export interface ExistingPayrollLineForRecalc {
@@ -401,6 +547,9 @@ export interface ExistingPayrollLineForRecalc {
   actualMinutes: number
   payableMinutes: number
   overtimeMinutes: number
+  actualSeconds?: number | null
+  payableSeconds?: number | null
+  overtimeSeconds?: number | null
   rateVndPerHour: number
   overtimeMultiplierBasisPoints: number
   grossVnd: number
@@ -545,15 +694,22 @@ export function calculateRecalculationDiffs(input: {
     }
 
     // Recompute amounts with new rate card while preserving exact adjustments
-    const amounts = calculatePayrollAmounts({
-      actualMinutes: line.actualMinutes,
-      rateVndPerHour: newRate.vndPerHour,
-      overtimeMultiplierBasisPoints: newRate.overtimeMultiplierBasisPoints,
-      payableMinutes: line.payableMinutes,
-      overtimeMinutes: line.overtimeMinutes,
-      adjustmentVnd: line.adjustmentVnd,
-      adjustmentReason: line.adjustmentReason,
-    })
+    const amounts = line.actualSeconds!=null&&line.payableSeconds!=null&&line.overtimeSeconds!=null
+      ? calculatePayrollAmountsFromSeconds({
+        actualSeconds:line.actualSeconds,payableSeconds:line.payableSeconds,
+        overtimeSeconds:line.overtimeSeconds,rateVndPerHour:newRate.vndPerHour,
+        overtimeMultiplierBasisPoints:newRate.overtimeMultiplierBasisPoints,
+        adjustmentVnd:line.adjustmentVnd,adjustmentReason:line.adjustmentReason,
+      })
+      : calculatePayrollAmounts({
+        actualMinutes: line.actualMinutes,
+        rateVndPerHour: newRate.vndPerHour,
+        overtimeMultiplierBasisPoints: newRate.overtimeMultiplierBasisPoints,
+        payableMinutes: line.payableMinutes,
+        overtimeMinutes: line.overtimeMinutes,
+        adjustmentVnd: line.adjustmentVnd,
+        adjustmentReason: line.adjustmentReason,
+      })
 
     const grossDelta = amounts.grossVnd - line.grossVnd
     const netDelta = amounts.netVnd - line.netVnd

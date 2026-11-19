@@ -4,6 +4,7 @@ import { createWorkforceActualHandler } from '@/lib/server/workforceActualHandle
 import { createWorkforcePayrollHandler } from '@/lib/server/workforcePayrollHandler'
 import { createWorkforcePerformanceHandler } from '@/lib/server/workforcePerformanceHandler'
 import { createWorkforceOverviewHandler } from '@/lib/server/workforceOverviewHandler'
+import { WORKFORCE_LATE_GRACE_MINUTES } from '@/lib/workforce/workforcePolicy'
 
 const get=(url:string)=>new Request(url)
 const post=(url:string,body:object)=>new Request(url,{
@@ -20,6 +21,10 @@ const correctionRequest={
   payable_minutes:60,overtime_minutes:30,adjustment_vnd:-1000,
   adjustment_reason:'Independent adjustment approved',
 }
+
+test('RC1.8A uses the approved 10-minute Workforce grace independently from Payroll',()=>{
+  assert.equal(WORKFORCE_LATE_GRACE_MINUTES,10)
+})
 function correctionClient(rpc: (name:string,args:Record<string,unknown>)=>unknown) {
   return ()=>({
     from(){
@@ -214,12 +219,84 @@ test('Workforce Performance has no unapproved default lateness/grace period',asy
     'WORKFORCE_GRACE_POLICY_NOT_CONFIGURED')
 })
 
+test('Workforce Performance scopes approved registrations to shifts in the selected month',async()=>{
+  const registrationShiftFilters:unknown[]=[]
+  const shiftDateFilters:Array<[string,string]>=[]
+  const rows:Record<string,unknown[]>={
+    shifts:[{id:'shift-september',date:'2026-09-12',start_at:'2026-09-12T02:00:00Z',
+      status:'completed',host_id:null,support_id:null,technical_id:null}],
+    shift_registrations:[{id:'registration-september',shift_id:'shift-september',user_id:'staff-1',
+      operational_role:'host',status:'approved'}],
+    workforce_actual_segments:[],
+  }
+  const createClient=()=>({from(name:string){
+    const query={
+      select(){return query},
+      gte(_key:string,value:string){shiftDateFilters.push(['gte',value]);return query},
+      lte(_key:string,value:string){shiftDateFilters.push(['lte',value]);return query},
+      is(){return query},
+      eq(){return query},limit(){return query},order(){return query},
+      range(first:number,last:number){const data=(rows[name]??[]).slice(first,last+1);return Promise.resolve({data,error:null,count:(rows[name]??[]).length})},
+      in(key:string,value:unknown){
+        if(name==='shift_registrations'&&key==='shift_id')registrationShiftFilters.push(value)
+        return query
+      },
+      then(resolve:(value:{data:unknown[];error:null})=>unknown){
+        return Promise.resolve({data:rows[name]??[],error:null}).then(resolve)
+      },
+    }
+    return query
+  }})
+  const handler=createWorkforcePerformanceHandler({isEnabled:()=>true,
+    createClient:createClient as never,resolveUser:admin,lateGraceMinutes:()=>5,
+  })
+  const response=await handler.GET(get(
+    'https://example.test/api/workforce/performance?staff_id=staff-1&role=host&month=2026-09',
+  ))
+  assert.equal(response.status,200)
+  assert.deepEqual(registrationShiftFilters,[['shift-september']])
+  assert.deepEqual(shiftDateFilters,[['gte','2026-09-01'],['lte','2026-09-30']])
+
+  shiftDateFilters.length=0
+  const annualResponse=await handler.GET(get(
+    'https://example.test/api/workforce/performance?staff_id=staff-1&role=host&period=2026',
+  ))
+  assert.equal(annualResponse.status,200)
+  assert.deepEqual(shiftDateFilters,[['gte','2026-01-01'],['lte','2026-12-31']])
+  assert.equal((await annualResponse.json() as {year:string}).year,'2026')
+})
+
 test('team overview requires Leader/Admin; a member cannot enumerate colleagues',async()=>{
   const handler=createWorkforceOverviewHandler({isEnabled:()=>true,
     createClient:mustNotUseDb,resolveUser:member,grace:()=>5,
   })
   const response=await handler.GET(get('https://example.test/api/workforce/overview?month=2026-09&role=host'))
   assert.equal(response.status,403)
+})
+
+test('team overview accepts a year period and queries its full business-date range',async()=>{
+  const dateFilters:Array<[string,string]>=[]
+  const createClient=()=>({from(){
+    const query={
+      select(){return query},eq(){return query},is(){return query},limit(){return query},order(){return query},
+      range(){return Promise.resolve({data:[],error:null,count:0})},
+      gte(_key:string,value:string){dateFilters.push(['gte',value]);return query},
+      lte(_key:string,value:string){dateFilters.push(['lte',value]);return query},
+      then(resolve:(value:{data:unknown[];error:null})=>unknown){
+        return Promise.resolve({data:[],error:null}).then(resolve)
+      },
+    }
+    return query
+  }})
+  const handler=createWorkforceOverviewHandler({isEnabled:()=>true,
+    createClient:createClient as never,resolveUser:admin,grace:()=>5,leaderboardMin:()=>null,
+  })
+  const response=await handler.GET(get(
+    'https://example.test/api/workforce/overview?period=2026&role=host',
+  ))
+  assert.equal(response.status,200)
+  assert.deepEqual(dateFilters,[['gte','2026-01-01'],['lte','2026-12-31']])
+  assert.equal((await response.json() as {year:string}).year,'2026')
 })
 
 

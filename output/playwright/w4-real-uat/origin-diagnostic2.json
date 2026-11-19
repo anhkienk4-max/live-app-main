@@ -1,0 +1,34 @@
+{
+  "result": "FAIL",
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "shift_id": "d5e4caee-99a0-417b-83b2-16d99519f64f",
+  "registration_id": "c77c9b79-ec21-4f3e-8a9e-e306d2280971",
+  "replace_rpc_count": 2,
+  "api_statuses": [
+    400,
+    400
+  ],
+  "fresh_session_readback": "NOT_RUN",
+  "screenshots": [
+    "admin-replace-confirm-desktop.png",
+    "admin-replace-success-desktop.png",
+    "admin-replace-failure-targeted.png"
+  ],
+  "target_option_visible": true,
+  "confirm_enabled": true,
+  "ui": "ROUTE_CAPTURED",
+  "route_request": {
+    "url": "http://127.0.0.1:3102/api/staffing/replacements",
+    "page_origin": "http://127.0.0.1:3102",
+    "origin": "http://127.0.0.1:3102",
+    "referer": "http://127.0.0.1:3102/staffing?shift_tab=staffing",
+    "sec_fetch_site": "same-origin",
+    "host": "127.0.0.1:3102"
+  },
+  "route_response": {
+    "status": 403,
+    "code": "STAFFING_REPLACEMENT_ORIGIN_INVALID"
+  },
+  "error": "The expression evaluated to a falsy value:\n\n  assert.ok(old&& !['approved','manually_assigned'].includes(old.status))\n"
+}

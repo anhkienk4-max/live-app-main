@@ -11,6 +11,7 @@ import {
   getLeaderPendingReports,
   getLeaderPendingSwaps
 } from '../lib/ui/dashboard-role-data'
+import { selectLatestDashboardItems, type DashboardRecentItem } from '../lib/ui/dashboard-recent-items'
 
 const mockShift = (id: string, date = '2026-08-30', start_time = '12:00:00'): Shift => ({
   id,
@@ -110,6 +111,22 @@ test('Member: unrelated shift/user -> not assigned', () => {
   const reg = mockRegistration('r1', 's2', 'u1', 'approved')
   const reg2 = mockRegistration('r2', 's1', 'u2', 'approved')
   assert.equal(isCanonicalAssignedShift(shift, null, 'u1', [reg, reg2]), false)
+})
+
+test('dashboard recent items are newest-first, limited to five, and skip invalid timestamps', () => {
+  const items = Array.from({ length: 7 }, (_, index): DashboardRecentItem => ({
+    id: `item-${index}`,
+    kind: 'shift',
+    title: `Item ${index}`,
+    description: 'Synthetic test item',
+    createdAt: index === 6 ? 'invalid-date' : `2026-11-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+    href: '/calendar',
+  }))
+
+  assert.deepEqual(selectLatestDashboardItems(items).map(item => item.id), [
+    'item-5', 'item-4', 'item-3', 'item-2', 'item-1',
+  ])
+  assert.deepEqual(selectLatestDashboardItems(items, 0), [])
 })
 
 test('Member: next shift ordering deterministic', () => {

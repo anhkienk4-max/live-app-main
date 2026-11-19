@@ -1,0 +1,6 @@
+git_head=240a0d51b49863167be252d94545ea7c5ab2ac9a
+postgres_database=rc19_c4_rehearsal_prodshape_20261107_gitsha
+production_project=egdjnpmoasarrttvhgds
+production_ledger=89
+candidate_migrations=17
+created_utc=20261107T114021Z

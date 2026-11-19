@@ -2,7 +2,18 @@
 
 import * as React from 'react'
 import { settingsService, shiftService } from '@/lib/services/dataService'
-import { Shift, Brand, Platform, Campaign, User, ShiftStatus, ShiftRegistration } from '@/lib/types/database.types'
+import {
+  Shift,
+  Brand,
+  Platform,
+  Campaign,
+  User,
+  ShiftStatus,
+  ShiftRegistration,
+  PlannedStaffingSegmentDraft,
+  AgencyCode,
+  SupplementalShiftFields,
+} from '@/lib/types/database.types'
 import {
   DEFAULT_SHIFT_STAFFING,
   DEFAULT_BUSINESS_TIMEZONE,
@@ -12,8 +23,10 @@ import {
   detectConflicts,
   generateRecurringShifts,
   formatDuration,
+  calculateDuration,
   normalizeCapacity,
   resolveShiftDateTime,
+  validateStaffingSegments,
 } from '@/lib/utils/shiftUtils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -23,7 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/toast'
-import { AlertCircle, Sparkles } from 'lucide-react'
+import { AlertCircle, Sparkles, Plus, Trash2, Layers, CheckCircle2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { useTranslation } from '@/lib/i18n'
 import { getAuthMode } from '@/lib/auth/authMode'
@@ -46,6 +59,8 @@ interface ShiftFormDialogProps {
 
 interface ShiftFormState {
   execution_source: '' | 'internal' | 'agency'
+  agency_code: AgencyCode | ''
+  external_code: string
   timezone: string
   title: string
   date: string
@@ -66,6 +81,7 @@ interface ShiftFormState {
   status: ShiftStatus
   live_link: string
   product_notes: string
+  supplemental_fields?: SupplementalShiftFields
 }
 
 type ShiftDraft = Omit<Shift, 'id' | 'created_at' | 'updated_at'>
@@ -88,6 +104,13 @@ export async function createRecurringShiftBatch(
   return { successCount, errors }
 }
 
+function addHourToTime(timeStr: string): string {
+  const parts = timeStr.split(':').map(Number)
+  if (parts.length < 2 || Number.isNaN(parts[0]) || Number.isNaN(parts[1])) return '12:00'
+  const nextH = (parts[0] + 1) % 24
+  return `${String(nextH).padStart(2, '0')}:${String(parts[1]).padStart(2, '0')}`
+}
+
 export function ShiftFormDialog({
   open,
   onOpenChange,
@@ -102,16 +125,20 @@ export function ShiftFormDialog({
   onSuccess
 }: ShiftFormDialogProps) {
   const [loading, setLoading] = React.useState(false)
-  const [step,setStep] = React.useState(0)
-  const [dirty,setDirty] = React.useState(false)
+  const [step, setStep] = React.useState(0)
+  const [dirty, setDirty] = React.useState(false)
   const [operationalDefaultsReady, setOperationalDefaultsReady] = React.useState(() => getAuthMode() !== 'supabase')
   const [showRecurring, setShowRecurring] = React.useState(false)
   const [conflicts, setConflicts] = React.useState<ShiftConflict[]>([])
   const [previewShifts, setPreviewShifts] = React.useState<ShiftDraft[]>([])
+  const [segments, setSegments] = React.useState<PlannedStaffingSegmentDraft[]>([])
+  const [segmentErrors, setSegmentErrors] = React.useState<Record<number, string>>({})
   const countInputsTouched = React.useRef(false)
   
   const [formData, setFormData] = React.useState<ShiftFormState>({
     execution_source: '',
+    agency_code: '',
+    external_code: '',
     timezone: DEFAULT_BUSINESS_TIMEZONE,
     title: '',
     date: '',
@@ -150,76 +177,88 @@ export function ShiftFormDialog({
     const frame = requestAnimationFrame(() => {
       const usesAuthoritativeDefaults = open && !shift && !duplicateFrom && getAuthMode() === 'supabase'
       if (shift) {
+        const rawCode = shift.supplemental_fields?.external_code?.value ?? shift.supplemental_fields?.['Mã ca']?.value ?? ''
         setFormData({
-        execution_source: shift.execution_source ?? '',
-        timezone: shift.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
-        title: shift.title || '',
-        date: shift.date,
-        start_time: shift.start_time,
-        end_time: shift.end_time,
-        brand_id: shift.brand_id,
-        platform_id: shift.platform_id,
-        campaign_id: shift.campaign_id || '',
-        studio: shift.studio || '',
-        host_id: shift.host_id || '',
-        support_id: shift.support_id || '',
-        technical_id: shift.technical_id || '',
-        required_host_count: normalizeCapacity(shift.required_host_count) ?? DEFAULT_SHIFT_STAFFING.required_host_count,
-        required_support_count: normalizeCapacity(shift.required_support_count) ?? DEFAULT_SHIFT_STAFFING.required_support_count,
-        required_technical_count: normalizeCapacity(shift.required_technical_count) ?? DEFAULT_SHIFT_STAFFING.required_technical_count,
-        registration_locked: shift.registration_locked ?? false,
-        allow_multi_role: shift.allow_multi_role ?? false,
-        status: shift.status,
-        live_link: shift.live_link || '',
-        product_notes: shift.product_notes || ''
+          execution_source: shift.execution_source ?? '',
+          agency_code: shift.agency_code ?? '',
+          external_code: String(rawCode || ''),
+          timezone: shift.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
+          title: shift.title || '',
+          date: shift.date,
+          start_time: shift.start_time,
+          end_time: shift.end_time,
+          brand_id: shift.brand_id,
+          platform_id: shift.platform_id,
+          campaign_id: shift.campaign_id || '',
+          studio: shift.studio || '',
+          host_id: shift.host_id || '',
+          support_id: shift.support_id || '',
+          technical_id: shift.technical_id || '',
+          required_host_count: normalizeCapacity(shift.required_host_count) ?? DEFAULT_SHIFT_STAFFING.required_host_count,
+          required_support_count: normalizeCapacity(shift.required_support_count) ?? DEFAULT_SHIFT_STAFFING.required_support_count,
+          required_technical_count: normalizeCapacity(shift.required_technical_count) ?? DEFAULT_SHIFT_STAFFING.required_technical_count,
+          registration_locked: shift.registration_locked ?? false,
+          allow_multi_role: shift.allow_multi_role ?? false,
+          status: shift.status,
+          live_link: shift.live_link || '',
+          product_notes: shift.product_notes || '',
+          supplemental_fields: shift.supplemental_fields,
         })
+        setSegments(shift.staffing_segments ? JSON.parse(JSON.stringify(shift.staffing_segments)) : [])
       } else if (duplicateFrom) {
         setFormData({
-        execution_source: duplicateFrom.execution_source ?? '',
-        timezone: duplicateFrom.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
-        title: duplicateFrom.title || '',
-        date: '',
-        start_time: duplicateFrom.start_time,
-        end_time: duplicateFrom.end_time,
-        brand_id: duplicateFrom.brand_id,
-        platform_id: duplicateFrom.platform_id,
-        campaign_id: duplicateFrom.campaign_id || '',
-        studio: duplicateFrom.studio || '',
-        host_id: duplicateFrom.host_id || '',
-        support_id: duplicateFrom.support_id || '',
-        technical_id: duplicateFrom.technical_id || '',
-        required_host_count: normalizeCapacity(duplicateFrom.required_host_count) ?? DEFAULT_SHIFT_STAFFING.required_host_count,
-        required_support_count: normalizeCapacity(duplicateFrom.required_support_count) ?? DEFAULT_SHIFT_STAFFING.required_support_count,
-        required_technical_count: normalizeCapacity(duplicateFrom.required_technical_count) ?? DEFAULT_SHIFT_STAFFING.required_technical_count,
-        registration_locked: false,
-        allow_multi_role: duplicateFrom.allow_multi_role ?? false,
-        status: 'scheduled',
-        live_link: '',
-        product_notes: duplicateFrom.product_notes || ''
+          execution_source: duplicateFrom.execution_source ?? '',
+          agency_code: duplicateFrom.agency_code ?? '',
+          external_code: '',
+          timezone: duplicateFrom.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
+          title: duplicateFrom.title || '',
+          date: '',
+          start_time: duplicateFrom.start_time,
+          end_time: duplicateFrom.end_time,
+          brand_id: duplicateFrom.brand_id,
+          platform_id: duplicateFrom.platform_id,
+          campaign_id: duplicateFrom.campaign_id || '',
+          studio: duplicateFrom.studio || '',
+          host_id: duplicateFrom.host_id || '',
+          support_id: duplicateFrom.support_id || '',
+          technical_id: duplicateFrom.technical_id || '',
+          required_host_count: normalizeCapacity(duplicateFrom.required_host_count) ?? DEFAULT_SHIFT_STAFFING.required_host_count,
+          required_support_count: normalizeCapacity(duplicateFrom.required_support_count) ?? DEFAULT_SHIFT_STAFFING.required_support_count,
+          required_technical_count: normalizeCapacity(duplicateFrom.required_technical_count) ?? DEFAULT_SHIFT_STAFFING.required_technical_count,
+          registration_locked: false,
+          allow_multi_role: duplicateFrom.allow_multi_role ?? false,
+          status: 'scheduled',
+          live_link: '',
+          product_notes: duplicateFrom.product_notes || '',
+          supplemental_fields: duplicateFrom.supplemental_fields,
         })
+        setSegments(duplicateFrom.staffing_segments ? JSON.parse(JSON.stringify(duplicateFrom.staffing_segments)) : [])
       } else {
         countInputsTouched.current = false
         setFormData({
-        execution_source: '',
-        timezone: DEFAULT_BUSINESS_TIMEZONE,
-        title: '',
-        date: '',
-        start_time: '09:00',
-        end_time: '13:00',
-        brand_id: '',
-        platform_id: '',
-        campaign_id: '',
-        studio: '',
-        host_id: '',
-        support_id: '',
-        technical_id: '',
-        ...DEFAULT_SHIFT_STAFFING,
-        registration_locked: false,
-        allow_multi_role: false,
-        status: 'scheduled',
-        live_link: '',
-        product_notes: ''
+          execution_source: '',
+          agency_code: '',
+          external_code: '',
+          timezone: DEFAULT_BUSINESS_TIMEZONE,
+          title: '',
+          date: '',
+          start_time: '09:00',
+          end_time: '13:00',
+          brand_id: '',
+          platform_id: '',
+          campaign_id: '',
+          studio: '',
+          host_id: '',
+          support_id: '',
+          technical_id: '',
+          ...DEFAULT_SHIFT_STAFFING,
+          registration_locked: false,
+          allow_multi_role: false,
+          status: 'scheduled',
+          live_link: '',
+          product_notes: ''
         })
+        setSegments([])
         if (usesAuthoritativeDefaults) {
           void settingsService.getOperational().then(settings => {
             if (!active) return
@@ -243,6 +282,7 @@ export function ShiftFormDialog({
       setShowRecurring(false)
       setConflicts([])
       setPreviewShifts([])
+      setSegmentErrors({})
     })
     return () => {
       active = false
@@ -253,7 +293,17 @@ export function ShiftFormDialog({
   const checkConflicts = React.useCallback(async () => {
     if (!formData.date || !formData.start_time || !formData.end_time) return
     const allShifts = await shiftService.getAll()
-    const detected = detectConflicts({ ...formData, execution_source: formData.execution_source || undefined }, allShifts, shift?.id)
+    const { external_code, ...rest } = formData
+    void external_code
+    const detected = detectConflicts(
+      {
+        ...rest,
+        execution_source: rest.execution_source || undefined,
+        agency_code: rest.agency_code || undefined,
+      },
+      allShifts,
+      shift?.id,
+    )
     setConflicts(detected)
   }, [formData, shift])
 
@@ -284,7 +334,13 @@ export function ShiftFormDialog({
 
   const generatePreview = React.useCallback(() => {
     if (recurrenceRule.frequency === 'none') return
-    const baseShift = { ...formData, execution_source: formData.execution_source || undefined }
+    const { external_code, ...rest } = formData
+    void external_code
+    const baseShift = {
+      ...rest,
+      execution_source: rest.execution_source || undefined,
+      agency_code: rest.agency_code || undefined,
+    }
     const generated = generateRecurringShifts(baseShift, recurrenceRule)
     setPreviewShifts(generated.slice(0, 10))
   }, [formData, recurrenceRule])
@@ -294,6 +350,71 @@ export function ShiftFormDialog({
     const frame = requestAnimationFrame(generatePreview)
     return () => cancelAnimationFrame(frame)
   }, [generatePreview, showRecurring])
+
+  const handleAddSegment = () => {
+    setDirty(true)
+    setSegments(prev => {
+      const nextIndex = (prev.length > 0 ? Math.max(...prev.map(s => s.segment_index)) : 0) + 1
+      let startTime = formData.start_time || '10:00'
+      let endTime = formData.end_time || '11:00'
+      if (prev.length > 0) {
+        const last = prev[prev.length - 1]
+        startTime = last.end_time
+        endTime = formData.end_time && formData.end_time > startTime ? formData.end_time : addHourToTime(startTime)
+      }
+      const newSeg: PlannedStaffingSegmentDraft = {
+        segment_index: nextIndex,
+        start_time: startTime,
+        end_time: endTime,
+        required_host_count: 1,
+        required_support_count: 1,
+        required_technical_count: 0,
+        planned_host_names: [],
+        planned_support_names: [],
+        planned_technical_names: [],
+      }
+      return [...prev, newSeg]
+    })
+  }
+
+  const handleUpdateSegment = (segmentIndex: number, patch: Partial<PlannedStaffingSegmentDraft>) => {
+    setDirty(true)
+    setSegments(prev => prev.map(s => s.segment_index === segmentIndex ? { ...s, ...patch } : s))
+    setSegmentErrors(prev => {
+      const next = { ...prev }
+      delete next[segmentIndex]
+      return next
+    })
+  }
+
+  const handleRemoveSegment = (segmentIndex: number) => {
+    setDirty(true)
+    setSegments(prev => prev.filter(s => s.segment_index !== segmentIndex))
+    setSegmentErrors(prev => {
+      const next = { ...prev }
+      delete next[segmentIndex]
+      return next
+    })
+  }
+
+  const handleSyncCapacityFromSegments = () => {
+    if (segments.length === 0) return
+    const maxHost = Math.max(1, ...segments.map(s => s.required_host_count))
+    const maxSupport = Math.max(1, ...segments.map(s => s.required_support_count))
+    const maxTech = Math.max(0, ...segments.map(s => s.required_technical_count))
+    setDirty(true)
+    setFormData(prev => ({
+      ...prev,
+      required_host_count: maxHost,
+      required_support_count: maxSupport,
+      required_technical_count: maxTech,
+    }))
+    toast({
+      title: 'Đồng bộ định biên thành công',
+      description: `Định biên ca chính đã được cập nhật: H ${maxHost} / S ${maxSupport} / T ${maxTech}`,
+      variant: 'success',
+    })
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -315,6 +436,27 @@ export function ShiftFormDialog({
       toast({ title: 'Link livestream không hợp lệ', description: 'Dán đường dẫn HTTPS chính thức của TikTok hoặc Shopee.', variant: 'destructive' })
       return
     }
+
+    // Validate segments if defined
+    if (segments.length > 0) {
+      const segmentValidation = validateStaffingSegments(
+        formData.date,
+        formData.start_time,
+        formData.end_time,
+        formData.timezone,
+        segments,
+      )
+      if (!segmentValidation.valid) {
+        setSegmentErrors(segmentValidation.errors)
+        toast({
+          title: 'Lỗi khung giờ (Segments)',
+          description: segmentValidation.generalErrors[0] || Object.values(segmentValidation.errors)[0] || 'Vui lòng kiểm tra lại thời gian các khung giờ.',
+          variant: 'destructive',
+        })
+        return
+      }
+    }
+
     if (conflicts.length > 0 && !confirm('Conflicts detected. Continue anyway?')) {
       return
     }
@@ -322,9 +464,27 @@ export function ShiftFormDialog({
     setLoading(true)
 
     try {
+      const supplementalFields: SupplementalShiftFields = {
+        ...(formData.supplemental_fields || {}),
+        ...(formData.external_code.trim() ? {
+          external_code: {
+            label: 'Mã ca',
+            type: 'text',
+            value: formData.external_code.trim(),
+          },
+        } : {}),
+      }
+
       if (showRecurring && recurrenceRule.frequency !== 'none') {
         // Recurring shifts require separate actual broadcast URLs per occurrence.
-        const baseShift = { ...formData, live_link: '', execution_source: formData.execution_source || undefined }
+        const baseShift: ShiftDraft = {
+          ...formData,
+          supplemental_fields: supplementalFields,
+          live_link: '',
+          execution_source: formData.execution_source || undefined,
+          agency_code: formData.agency_code || undefined,
+          staffing_segments: segments.length > 0 ? segments : undefined,
+        }
         const generated = generateRecurringShifts(baseShift, recurrenceRule)
         const { successCount, errors } = await createRecurringShiftBatch(generated)
         if (successCount === generated.length) {
@@ -340,12 +500,27 @@ export function ShiftFormDialog({
         }
         await onSuccess()
       } else if (shift) {
-        const updatedShift = await shiftService.update(shift.id, { ...formData, live_link: formData.live_link.trim(), execution_source: formData.execution_source || undefined, version: shift.version })
+        const updatedShift = await shiftService.update(shift.id, {
+          ...formData,
+          supplemental_fields: supplementalFields,
+          live_link: formData.live_link.trim(),
+          execution_source: formData.execution_source || undefined,
+          agency_code: formData.agency_code || undefined,
+          version: shift.version,
+          staffing_segments: segments.length > 0 ? segments : undefined,
+        })
         if (!updatedShift) throw new Error('Shift was not found.')
         toast({ title: 'Success', description: 'Shift updated', variant: 'success' })
         await onSuccess(updatedShift)
       } else {
-        const createdShift = await shiftService.create({ ...formData, live_link: formData.live_link.trim(), execution_source: formData.execution_source || undefined })
+        const createdShift = await shiftService.create({
+          ...formData,
+          supplemental_fields: supplementalFields,
+          live_link: formData.live_link.trim(),
+          execution_source: formData.execution_source || undefined,
+          agency_code: formData.agency_code || undefined,
+          staffing_segments: segments.length > 0 ? segments : undefined,
+        })
         if (!createdShift) throw new Error('Shift creation returned no persisted shift.')
         toast({ title: 'Success', description: 'Shift created', variant: 'success' })
         await onSuccess(createdShift)
@@ -361,13 +536,303 @@ export function ShiftFormDialog({
   const resolvedDateTime = resolveShiftDateTime(formData.date, formData.start_time, formData.end_time, formData.timezone)
   const duration = resolvedDateTime?.durationMinutes ?? 0
 
-  const updateFormData: typeof setFormData = next => {setDirty(true);setFormData(next)}
-  const updateRecurrence: typeof setRecurrenceRule = next => {setDirty(true);setRecurrenceRule(next)}
+  const updateFormData: typeof setFormData = next => { setDirty(true); setFormData(next) }
+  const updateRecurrence: typeof setRecurrenceRule = next => { setDirty(true); setRecurrenceRule(next) }
   const currentShiftRegistrations = shift && Array.isArray(registrations) ? registrations.filter(registration => registration.shift_id === shift.id) : []
+
+  // Component for rendering Staffing Segments editor
+  const renderStaffingSegmentsSection = () => (
+    <div className="space-y-3" data-testid="shift-segments-editor-section">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+        <div className="flex items-center gap-2">
+          <Layers className="h-4 w-4 text-indigo-600" />
+          <h3 className="text-sm font-semibold text-slate-900">
+            Khung giờ chi tiết & Phân bổ nhân sự (Staffing Segments)
+          </h3>
+          <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 text-xs">
+            {segments.length} {segments.length === 1 ? 'khung giờ' : 'khung giờ'}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-2">
+          {segments.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSyncCapacityFromSegments}
+              className="text-xs h-8 text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+              title="Tự động cập nhật định biên ca chính theo khung có nhu cầu cao nhất"
+              data-testid="sync-segment-capacity-button"
+            >
+              Đồng bộ định biên ca
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={handleAddSegment}
+            className="text-xs h-8 bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1"
+            data-testid="add-segment-button"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            + Thêm khung giờ
+          </Button>
+        </div>
+      </div>
+
+      {segments.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/70 p-4 text-center text-xs text-slate-500">
+          <p className="font-medium text-slate-700">Ca đơn (Một khung giờ toàn ca)</p>
+          <p className="mt-1">
+            Bấm <strong className="text-indigo-600 font-semibold">+ Thêm khung giờ</strong> nếu ca chia làm nhiều phiên (ví dụ K01, K02, K03) với các khung giờ và phân bổ MC/Trợ/Kỹ thuật khác nhau.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {segments.map((seg) => {
+            const segError = segmentErrors[seg.segment_index]
+            const segDuration = calculateDuration(seg.start_time, seg.end_time)
+
+            // Find assigned registrations for this segment
+            const segAssigned = currentShiftRegistrations.filter(r =>
+              (r.status === 'approved' || r.status === 'manually_assigned') &&
+              (r.staffing_segment_id === `segment-${seg.segment_index}` || r.staffing_segment_id === String(seg.segment_index))
+            )
+            const assignedHosts = segAssigned.filter(r => r.operational_role === 'host')
+            const assignedSupports = segAssigned.filter(r => r.operational_role === 'support')
+            const assignedTechs = segAssigned.filter(r => r.operational_role === 'technical')
+
+            const deficitHost = Math.max(0, seg.required_host_count - assignedHosts.length)
+            const deficitSupport = Math.max(0, seg.required_support_count - assignedSupports.length)
+            const deficitTech = Math.max(0, seg.required_technical_count - assignedTechs.length)
+            const hasDeficit = deficitHost > 0 || deficitSupport > 0 || deficitTech > 0
+
+            return (
+              <div
+                key={seg.segment_index}
+                className={`rounded-lg border p-3 text-xs space-y-3 transition-colors ${
+                  segError ? 'border-red-300 bg-red-50/30' : 'border-slate-200 bg-slate-50/40 hover:bg-slate-50'
+                }`}
+                data-testid={`segment-item-${seg.segment_index}`}
+              >
+                {/* Header: Code, Duration, Deficit & Remove */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center rounded bg-indigo-600 px-2 py-0.5 text-xs font-bold text-white shadow-xs">
+                      K0{seg.segment_index}
+                    </span>
+                    <span className="font-medium text-slate-700 text-xs">
+                      Khung {seg.segment_index} {segDuration > 0 ? `(${formatDuration(segDuration)})` : ''}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {hasDeficit ? (
+                      <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-[10px] font-medium">
+                        Thiếu: {[
+                          deficitHost > 0 ? `${deficitHost} Host` : null,
+                          deficitSupport > 0 ? `${deficitSupport} Trợ` : null,
+                          deficitTech > 0 ? `${deficitTech} Tech` : null,
+                        ].filter(Boolean).join(', ')}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 text-[10px] font-medium flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Đủ định biên
+                      </Badge>
+                    )}
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveSegment(seg.segment_index)}
+                      className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                      data-testid={`remove-segment-${seg.segment_index}`}
+                      title="Xóa khung giờ này"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Time and Capacity Inputs */}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-600 block mb-1">Giờ bắt đầu *</label>
+                    <Input
+                      required
+                      type="time"
+                      value={seg.start_time}
+                      onChange={e => handleUpdateSegment(seg.segment_index, { start_time: e.target.value })}
+                      className="h-8 text-xs bg-white"
+                      data-testid={`segment-start-${seg.segment_index}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-600 block mb-1">Giờ kết thúc *</label>
+                    <Input
+                      required
+                      type="time"
+                      value={seg.end_time}
+                      onChange={e => handleUpdateSegment(seg.segment_index, { end_time: e.target.value })}
+                      className="h-8 text-xs bg-white"
+                      data-testid={`segment-end-${seg.segment_index}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-600 block mb-1">Host cần (H)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={seg.required_host_count}
+                      onChange={e => handleUpdateSegment(seg.segment_index, { required_host_count: Math.max(0, Number(e.target.value) || 0) })}
+                      className="h-8 text-xs bg-white"
+                      data-testid={`segment-host-count-${seg.segment_index}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-600 block mb-1">Trợ cần (S)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={seg.required_support_count}
+                      onChange={e => handleUpdateSegment(seg.segment_index, { required_support_count: Math.max(0, Number(e.target.value) || 0) })}
+                      className="h-8 text-xs bg-white"
+                      data-testid={`segment-support-count-${seg.segment_index}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-600 block mb-1">Kỹ thuật (T)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={seg.required_technical_count}
+                      onChange={e => handleUpdateSegment(seg.segment_index, { required_technical_count: Math.max(0, Number(e.target.value) || 0) })}
+                      className="h-8 text-xs bg-white"
+                      data-testid={`segment-tech-count-${seg.segment_index}`}
+                    />
+                  </div>
+                </div>
+
+                {/* Planned Names Section (DISPLAY ONLY) */}
+                <div className="rounded border border-amber-200/80 bg-amber-50/50 p-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900">
+                      Nhân sự dự kiến (Import / Kế hoạch — Display Only)
+                    </span>
+                    <span className="text-[10px] text-amber-700 italic">
+                      Không tự động duyệt hoặc phân công
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <div>
+                      <label className="text-[10px] font-medium text-amber-800 block mb-0.5">Host dự kiến</label>
+                      <Input
+                        value={seg.planned_host_names?.join(', ') || ''}
+                        onChange={e => handleUpdateSegment(seg.segment_index, {
+                          planned_host_names: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                        })}
+                        placeholder="VD: Host A, Host B"
+                        className="h-7 text-xs bg-white border-amber-200"
+                        data-testid={`segment-planned-hosts-${seg.segment_index}`}
+                      />
+                      {seg.planned_host_names?.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {seg.planned_host_names.map((name, i) => (
+                            <span key={i} className="inline-flex items-center rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-medium text-amber-800 block mb-0.5">Trợ dự kiến</label>
+                      <Input
+                        value={seg.planned_support_names?.join(', ') || ''}
+                        onChange={e => handleUpdateSegment(seg.segment_index, {
+                          planned_support_names: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                        })}
+                        placeholder="VD: Support A"
+                        className="h-7 text-xs bg-white border-amber-200"
+                        data-testid={`segment-planned-supports-${seg.segment_index}`}
+                      />
+                      {seg.planned_support_names?.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {seg.planned_support_names.map((name, i) => (
+                            <span key={i} className="inline-flex items-center rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-medium text-amber-800 block mb-0.5">Kỹ thuật dự kiến</label>
+                      <Input
+                        value={seg.planned_technical_names?.join(', ') || ''}
+                        onChange={e => handleUpdateSegment(seg.segment_index, {
+                          planned_technical_names: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                        })}
+                        placeholder="VD: Tech A"
+                        className="h-7 text-xs bg-white border-amber-200"
+                        data-testid={`segment-planned-techs-${seg.segment_index}`}
+                      />
+                      {seg.planned_technical_names?.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {seg.planned_technical_names.map((name, i) => (
+                            <span key={i} className="inline-flex items-center rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Error Message for this segment */}
+                {segError && (
+                  <p className="text-xs text-red-600 flex items-center gap-1 font-medium bg-red-50 p-1.5 rounded border border-red-200">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-600" />
+                    {segError}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {getAuthMode() === 'supabase' && shift && (
+        <div className="rounded border border-blue-200 bg-blue-50/60 p-2.5 text-xs text-blue-900 flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
+          <div>
+            <p className="font-semibold">Lưu ý cập nhật khung giờ trên Supabase:</p>
+            <p className="text-blue-800 mt-0.5">
+              Trong môi trường Supabase, thông tin ca chính (giờ ca, phòng, link livestream, ghi chú...) sẽ được lưu an toàn qua update_shift. Thay đổi danh sách khung giờ trên ca đã lưu đang chờ RPC update_shift_segments từ backend Codex C3/C6; các khung giờ hiện có được bảo toàn nguyên trạng.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <Dialog open={open} onOpenChange={nextOpen => {if (!nextOpen && dirty && !confirm('Bạn có thay đổi chưa lưu. Hủy thay đổi?')) return; onOpenChange(nextOpen)}}>
-      <DialogContent size={shift ? 'xl' : 'md'} className="overflow-y-auto">
+      <DialogContent size={shift ? 'xl' : 'lg'} className="overflow-y-auto max-h-[85vh]" data-testid="shift-form-dialog">
         <DialogHeader>
           <DialogTitle>
             {shift ? t('edit') : duplicateFrom ? t('duplicate') : t('createShift')}
@@ -378,302 +843,372 @@ export function ShiftFormDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className={shift ? 'grid grid-cols-1 items-start gap-4 lg:grid-cols-12' : 'space-y-4'} onChangeCapture={() => setDirty(true)} onInvalidCapture={event => {event.preventDefault(); const field=event.target as HTMLInputElement; const section=field.closest<HTMLElement>('[data-step]'); if(section) setStep(Number(section.dataset.step)); requestAnimationFrame(()=>field.focus())}}>
-          {!shift && <nav className="col-span-full grid grid-cols-2 gap-2 border-b pb-3 sm:grid-cols-4" aria-label="Tạo ca">{['Thông tin chung','Lịch phát sóng','Nhân sự','Kiểm tra'].map((label,index)=><Button type="button" key={label} variant={step===index?'default':'ghost'} size="sm" onClick={()=>setStep(index)} aria-current={step===index?'step':undefined}>{index+1}. {label}</Button>)}</nav>}
-<section data-step="0" hidden={!shift && step !== 0} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          {/* Template Selector */}
-          {!shift && templates.length > 0 && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="h-4 w-4 text-blue-600" />
-                <span className="text-sm font-medium text-blue-900">Quick Start with Template</span>
+          {!shift && <nav className="col-span-full grid grid-cols-2 gap-2 border-b pb-3 sm:grid-cols-4" aria-label="Tạo ca">{['Thông tin chung','Lịch phát sóng','Nhân sự & Khung giờ','Kiểm tra'].map((label,index)=><Button type="button" key={label} variant={step===index?'default':'ghost'} size="sm" onClick={()=>setStep(index)} aria-current={step===index?'step':undefined}>{index+1}. {label}</Button>)}</nav>}
+
+          {/* Step 0 / Section 0: General Information */}
+          <section data-step="0" hidden={!shift && step !== 0} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>
+            {!shift && templates.length > 0 && (
+              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">Quick Start with Template</span>
+                </div>
+                <Select onValueChange={applyTemplate}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a template..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <Select onValueChange={applyTemplate}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a template..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map(t => (
-                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+            )}
 
-          {/* Basic Fields */}
-          <div>
-            <label htmlFor="shift-execution-source" className="text-sm font-medium">Execution source{!shift ? ' *' : ''}</label>
-            <Select value={formData.execution_source} onValueChange={(value) => setFormData({ ...formData, execution_source: value as 'internal' | 'agency' })}>
-              <SelectTrigger id="shift-execution-source"><SelectValue placeholder="Select Internal or Agency" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="internal">Internal</SelectItem>
-                <SelectItem value="agency">Agency</SelectItem>
-              </SelectContent>
-            </Select>
-            {shift && !shift.execution_source && !formData.execution_source && <p className="mt-1 text-xs text-muted-foreground">Historical shift is unclassified; other edits will preserve that state.</p>}
-          </div>
-          <div>
-            <label className="text-sm font-medium">Shift title *</label>
-            <Input
-              required
-              value={formData.title}
-              onChange={(event) => updateFormData({ ...formData, title: event.target.value })}
-              placeholder="Morning livestream"
-            />
-          </div>
-          {/* Brand, Platform, Campaign */}
-          <div className={shift ? 'grid min-w-0 grid-cols-2 gap-3' : 'grid min-w-0 grid-cols-3 gap-4'}>
-            <div className="min-w-0">
-              <label className="text-sm font-medium">Brand *</label>
-              <Select required value={formData.brand_id} onValueChange={(v) => updateFormData({ ...formData, brand_id: v })}>
-                <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>
-                  {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-0">
-              <label className="text-sm font-medium">Platform *</label>
-              <Select required value={formData.platform_id} onValueChange={(v) => updateFormData({ ...formData, platform_id: v })}>
-                <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>
-                  {platforms.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className={`min-w-0 ${shift ? 'col-span-2' : ''}`}>
-              <label className="text-sm font-medium">Campaign</label>
-              <Select value={formData.campaign_id} onValueChange={(v) => updateFormData({ ...formData, campaign_id: v })}>
-                <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>
-                  {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">{t('studio')}</label>
-            <Input
-              value={formData.studio}
-              onChange={(event) => updateFormData({ ...formData, studio: event.target.value })}
-              placeholder={t('studioPlaceholder')}
-            />
-          </div>
-
-</section>
-<section data-step="1" hidden={!shift && step !== 1} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium">Date *</label>
-              <Input required type="date" value={formData.date} onChange={(e) => updateFormData({ ...formData, date: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">Status</label>
-              <Badge variant="outline" className="capitalize text-sm py-1">{formData.status}</Badge>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Start Time *</label>
-              <Input required type="time" value={formData.start_time} onChange={(e) => updateFormData({ ...formData, start_time: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">End Time *</label>
-              <Input required type="time" value={formData.end_time} onChange={(e) => updateFormData({ ...formData, end_time: e.target.value })} />
-              <p className="text-xs text-gray-500 mt-1">Duration: {formatDuration(duration)}</p>
-              {resolvedDateTime?.crossesMidnight && <p className="mt-1 text-xs font-medium text-indigo-700">Ends next day: {format(resolvedDateTime.endAt, 'dd/MM/yyyy')}</p>}
-              {resolvedDateTime?.warning && <p className="mt-1 text-xs text-amber-700">{resolvedDateTime.warning}</p>}
-              {resolvedDateTime && !resolvedDateTime.valid && <p className="mt-1 text-xs text-red-700">{resolvedDateTime.error}</p>}
-            </div>
-          </div>
-
-<label className="block text-sm font-medium">{t('timezone')}<Input value={formData.timezone} onChange={event=>updateFormData({...formData,timezone:event.target.value})} required className="mt-1" /></label>
-          <div className="space-y-1.5">
-            <label htmlFor="shift-live-link" className="block text-sm font-medium">Link phiên livestream TikTok / Shopee</label>
-            <Input id="shift-live-link" type="url" inputMode="url" value={formData.live_link}
-              onChange={event=>updateFormData({...formData,live_link:event.target.value})}
-              placeholder="https://www.tiktok.com/@shop/live hoặc https://live.shopee.vn/..."
-              disabled={showRecurring && recurrenceRule.frequency !== 'none'} data-testid="shift-live-link-input" />
-            <p className="text-xs text-muted-foreground">Dán link phiên LIVE thật, sau đó mở Live Monitoring để xem. Mỗi ca phải dùng link riêng; không tự sao chép cho lịch lặp.</p>
-            {formData.live_link.trim() && !verifyLiveStreamLink(formData.live_link.trim()) && <p role="alert" className="text-xs text-destructive">Chỉ chấp nhận link HTTPS TikTok hoặc Shopee hợp lệ.</p>}
-          </div>
-          {/* Recurring Options */}
-          {!shift && (
-            <div className="border-t pt-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Checkbox checked={showRecurring} onCheckedChange={(checked) => setShowRecurring(!!checked)} />
-                <label className="text-sm font-medium">Create Recurring Shifts</label>
+            {/* Execution Source & Agency */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="shift-execution-source" className="text-sm font-medium">Execution source{!shift ? ' *' : ''}</label>
+                <Select value={formData.execution_source} onValueChange={(value) => updateFormData({ ...formData, execution_source: value as 'internal' | 'agency' })}>
+                  <SelectTrigger id="shift-execution-source"><SelectValue placeholder="Select Internal or Agency" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="internal">Internal</SelectItem>
+                    <SelectItem value="agency">Agency</SelectItem>
+                  </SelectContent>
+                </Select>
+                {shift && !shift.execution_source && !formData.execution_source && <p className="mt-1 text-xs text-muted-foreground">Historical shift is unclassified; other edits will preserve that state.</p>}
               </div>
 
-              {showRecurring && (
-                <div className="space-y-4 pl-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium">Frequency</label>
-                      <Select value={recurrenceRule.frequency} onValueChange={value => updateRecurrence({ ...recurrenceRule, frequency: value as RecurrenceRule['frequency'] })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="daily">Daily</SelectItem>
-                          <SelectItem value="weekly">Weekly</SelectItem>
-                          <SelectItem value="monthly">Monthly</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">End After</label>
-                      <Select value={recurrenceRule.endType} onValueChange={value=>updateRecurrence({...recurrenceRule,endType:value as RecurrenceRule['endType']})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="count">Theo số ca</SelectItem><SelectItem value="date">Đến ngày</SelectItem><SelectItem value="never">Tối đa 365 ca</SelectItem></SelectContent></Select>
-                      {recurrenceRule.endType==='count' && <Input required type="number" min="1" max="365" value={recurrenceRule.endCount} onChange={event=>updateRecurrence({...recurrenceRule,endCount:Number(event.target.value)})} />}
-                      {recurrenceRule.endType==='date' && <Input required type="date" min={formData.date} value={recurrenceRule.endDate || ''} onChange={event=>updateRecurrence({...recurrenceRule,endDate:event.target.value})} />}
-                    </div>
-                  </div>
-                  {recurrenceRule.frequency==='weekly' ? <div className="flex flex-wrap gap-2">{['CN','T2','T3','T4','T5','T6','T7'].map((label,day)=><Button type="button" size="sm" variant={recurrenceRule.daysOfWeek?.includes(day)?'default':'outline'} aria-pressed={recurrenceRule.daysOfWeek?.includes(day) || false} key={day} onClick={()=>updateRecurrence({...recurrenceRule,daysOfWeek:recurrenceRule.daysOfWeek?.includes(day)?recurrenceRule.daysOfWeek.filter(value=>value!==day):[...(recurrenceRule.daysOfWeek || []),day]})}>{label}</Button>)}</div> : <label className="block text-sm">Khoảng lặp<Input required type="number" min="1" max="365" value={recurrenceRule.interval || 1} onChange={event=>updateRecurrence({...recurrenceRule,interval:Number(event.target.value)})} /></label>}
-                  {previewShifts.length > 0 && (
-                    <div className="text-sm text-gray-600">
-                      Preview: {previewShifts.length} shifts will be created
-                      <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-                        {previewShifts.map((s, i) => (
-                          <div key={i} className="text-xs">• {format(new Date(s.date), 'MMM d, yyyy')}</div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              {formData.execution_source === 'agency' && (
+                <div>
+                  <label htmlFor="shift-agency-code" className="text-sm font-medium">Agency</label>
+                  <Select value={formData.agency_code} onValueChange={(val) => updateFormData({ ...formData, agency_code: val as AgencyCode })}>
+                    <SelectTrigger id="shift-agency-code"><SelectValue placeholder="Select Agency" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ada">ADA</SelectItem>
+                      <SelectItem value="snap">SNAP</SelectItem>
+                      <SelectItem value="live_ai">Live AI</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>
-          )}
 
-</section>
-<section data-step="2" hidden={!shift && step !== 2} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>          {/* Required role capacity */}
-          <div>
-            <h3 className="mb-2 text-sm font-medium">Required staffing</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm text-gray-600">Host</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  max="20"
-                  value={formData.required_host_count}
-                  onChange={(event) => {
-                    countInputsTouched.current = true
-                    const nextValue = event.target.value
-                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_host_count)
-                    updateFormData({ ...formData, required_host_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_host_count })
-                  }}
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Support</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  max="20"
-                  value={formData.required_support_count}
-                  onChange={(event) => {
-                    countInputsTouched.current = true
-                    const nextValue = event.target.value
-                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_support_count)
-                    updateFormData({ ...formData, required_support_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_support_count })
-                  }}
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Technical</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  max="20"
-                  value={formData.required_technical_count}
-                  onChange={(event) => {
-                    countInputsTouched.current = true
-                    const nextValue = event.target.value
-                    const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_technical_count)
-                    updateFormData({ ...formData, required_technical_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_technical_count })
-                  }}
-                />
-              </div>
+            {/* Title & External Code */}
+            <div>
+              <label className="text-sm font-medium">Shift title *</label>
+              <Input
+                required
+                value={formData.title}
+                onChange={(event) => updateFormData({ ...formData, title: event.target.value })}
+                placeholder="Morning livestream"
+              />
             </div>
-          </div>
 
-          {/* Staffing */}
-          {getAuthMode() === 'supabase' && shift ? (
-            <div className="rounded-lg border p-4">
-              <p className="mb-2 text-sm font-medium">Staffing</p>
-              <p className="text-sm text-muted-foreground">Nhân sự được quản lý tại tab Nhân sự (Staffing) của ca.</p>
-              <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <p className="text-xs text-muted-foreground">Host</p>
-                  <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'host', t).map(label => label.name).join(', ') || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Support Staff</p>
-                  <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'support', t).map(label => label.name).join(', ') || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Technical Staff</p>
-                  <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'technical', t).map(label => label.name).join(', ') || '—'}</p>
-                </div>
-              </div>
+            <div>
+              <label className="text-sm font-medium">Mã ca / External code</label>
+              <Input
+                value={formData.external_code}
+                onChange={(event) => updateFormData({ ...formData, external_code: event.target.value })}
+                placeholder="VD: KAO-20261101-1000-1800"
+                data-testid="shift-external-code-input"
+              />
             </div>
-          ) : (
-            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
+
+            {/* Brand, Platform, Campaign */}
+            <div className={shift ? 'grid min-w-0 grid-cols-2 gap-3' : 'grid min-w-0 grid-cols-3 gap-4'}>
               <div className="min-w-0">
-                <label className="text-sm font-medium">Host</label>
-                <Select value={formData.host_id} onValueChange={(v) => updateFormData({ ...formData, host_id: v })}>
-                  <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign host..." /></SelectTrigger>
+                <label className="text-sm font-medium">Brand *</label>
+                <Select required value={formData.brand_id} onValueChange={(v) => updateFormData({ ...formData, brand_id: v })}>
+                  <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
                   <SelectContent>
-                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('host')).map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                    ))}
+                    {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="min-w-0">
-                <label className="text-sm font-medium">Support Staff</label>
-                <Select value={formData.support_id} onValueChange={(v) => updateFormData({ ...formData, support_id: v })}>
-                  <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign support..." /></SelectTrigger>
+                <label className="text-sm font-medium">Platform *</label>
+                <Select required value={formData.platform_id} onValueChange={(v) => updateFormData({ ...formData, platform_id: v })}>
+                  <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
                   <SelectContent>
-                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('support')).map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                    ))}
+                    {platforms.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="min-w-0">
-                <label className="text-sm font-medium">Technical Staff</label>
-                <Select value={formData.technical_id} onValueChange={(v) => updateFormData({ ...formData, technical_id: v })}>
-                  <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign technical..." /></SelectTrigger>
+              <div className={`min-w-0 ${shift ? 'col-span-2' : ''}`}>
+                <label className="text-sm font-medium">Campaign</label>
+                <Select value={formData.campaign_id} onValueChange={(v) => updateFormData({ ...formData, campaign_id: v })}>
+                  <SelectTrigger className="min-w-0"><SelectValue placeholder="Select..." /></SelectTrigger>
                   <SelectContent>
-                    {users.filter(u => u.status === 'active' && u.operational_roles?.includes('technical')).map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-                    ))}
+                    {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-          )}
 
-</section>
-<section data-step="3" hidden={!shift && step !== 3} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-12' : 'space-y-4'}>          {/* Notes */}
-          <div>
-            <label className="text-sm font-medium">Product Notes</label>
-            <Textarea rows={3} value={formData.product_notes} onChange={(e) => updateFormData({ ...formData, product_notes: e.target.value })} placeholder="Focus on trending products..." />
-          </div>
-
-          {/* Conflicts */}
-          {conflicts.length > 0 && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertCircle className="h-4 w-4 text-red-600" />
-                <span className="text-sm font-medium text-red-900">Scheduling Conflicts Detected</span>
-              </div>
-              <ul className="text-sm text-red-700 space-y-1">
-                {conflicts.map((c, i) => <li key={i}>• {c.message}</li>)}
-              </ul>
+            <div>
+              <label className="text-sm font-medium">{t('studio')}</label>
+              <Input
+                value={formData.studio}
+                onChange={(event) => updateFormData({ ...formData, studio: event.target.value })}
+                placeholder={t('studioPlaceholder')}
+              />
             </div>
+          </section>
+
+          {/* Step 1 / Section 1: Broadcast Schedule */}
+          <section data-step="1" hidden={!shift && step !== 1} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Date *</label>
+                <Input required type="date" value={formData.date} onChange={(e) => updateFormData({ ...formData, date: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Status</label>
+                <Badge variant="outline" className="capitalize text-sm py-1">{formData.status}</Badge>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Start Time *</label>
+                <Input required type="time" value={formData.start_time} onChange={(e) => updateFormData({ ...formData, start_time: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">End Time *</label>
+                <Input required type="time" value={formData.end_time} onChange={(e) => updateFormData({ ...formData, end_time: e.target.value })} />
+                <p className="text-xs text-gray-500 mt-1">Duration: {formatDuration(duration)}</p>
+                {resolvedDateTime?.crossesMidnight && <p className="mt-1 text-xs font-medium text-indigo-700">Ends next day: {format(resolvedDateTime.endAt, 'dd/MM/yyyy')}</p>}
+                {resolvedDateTime?.warning && <p className="mt-1 text-xs text-amber-700">{resolvedDateTime.warning}</p>}
+                {resolvedDateTime && !resolvedDateTime.valid && <p className="mt-1 text-xs text-red-700">{resolvedDateTime.error}</p>}
+              </div>
+            </div>
+
+            <label className="block text-sm font-medium">{t('timezone')}<Input value={formData.timezone} onChange={event=>updateFormData({...formData,timezone:event.target.value})} required className="mt-1" /></label>
+            <div className="space-y-1.5">
+              <label htmlFor="shift-live-link" className="block text-sm font-medium">Link phiên livestream TikTok / Shopee</label>
+              <Input id="shift-live-link" type="url" inputMode="url" value={formData.live_link}
+                onChange={event=>updateFormData({...formData,live_link:event.target.value})}
+                placeholder="https://www.tiktok.com/@shop/live hoặc https://live.shopee.vn/..."
+                disabled={showRecurring && recurrenceRule.frequency !== 'none'} data-testid="shift-live-link-input" />
+              <p className="text-xs text-muted-foreground">Dán link phiên LIVE thật, sau đó mở Live Monitoring để xem. Mỗi ca phải dùng link riêng; không tự sao chép cho lịch lặp.</p>
+              {formData.live_link.trim() && !verifyLiveStreamLink(formData.live_link.trim()) && <p role="alert" className="text-xs text-destructive">Chỉ chấp nhận link HTTPS TikTok hoặc Shopee hợp lệ.</p>}
+            </div>
+
+            {/* Recurring Options */}
+            {!shift && (
+              <div className="border-t pt-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Checkbox checked={showRecurring} onCheckedChange={(checked) => setShowRecurring(!!checked)} />
+                  <label className="text-sm font-medium">Create Recurring Shifts</label>
+                </div>
+
+                {showRecurring && (
+                  <div className="space-y-4 pl-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium">Frequency</label>
+                        <Select value={recurrenceRule.frequency} onValueChange={value => updateRecurrence({ ...recurrenceRule, frequency: value as RecurrenceRule['frequency'] })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="daily">Daily</SelectItem>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">End After</label>
+                        <Select value={recurrenceRule.endType} onValueChange={value=>updateRecurrence({...recurrenceRule,endType:value as RecurrenceRule['endType']})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="count">Theo số ca</SelectItem><SelectItem value="date">Đến ngày</SelectItem><SelectItem value="never">Tối đa 365 ca</SelectItem></SelectContent></Select>
+                        {recurrenceRule.endType==='count' && <Input required type="number" min="1" max="365" value={recurrenceRule.endCount} onChange={event=>updateRecurrence({...recurrenceRule,endCount:Number(event.target.value)})} />}
+                        {recurrenceRule.endType==='date' && <Input required type="date" min={formData.date} value={recurrenceRule.endDate || ''} onChange={event=>updateRecurrence({...recurrenceRule,endDate:event.target.value})} />}
+                      </div>
+                    </div>
+                    {recurrenceRule.frequency==='weekly' ? <div className="flex flex-wrap gap-2">{['CN','T2','T3','T4','T5','T6','T7'].map((label,day)=><Button type="button" size="sm" variant={recurrenceRule.daysOfWeek?.includes(day)?'default':'outline'} aria-pressed={recurrenceRule.daysOfWeek?.includes(day) || false} key={day} onClick={()=>updateRecurrence({...recurrenceRule,daysOfWeek:recurrenceRule.daysOfWeek?.includes(day)?recurrenceRule.daysOfWeek.filter(value=>value!==day):[...(recurrenceRule.daysOfWeek || []),day]})}>{label}</Button>)}</div> : <label className="block text-sm">Khoảng lặp<Input required type="number" min="1" max="365" value={recurrenceRule.interval || 1} onChange={event=>updateRecurrence({...recurrenceRule,interval:Number(event.target.value)})} /></label>}
+                    {previewShifts.length > 0 && (
+                      <div className="text-sm text-gray-600">
+                        Preview: {previewShifts.length} shifts will be created
+                        <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                          {previewShifts.map((s, i) => (
+                            <div key={i} className="text-xs">• {format(new Date(s.date), 'MMM d, yyyy')}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* Step 2 / Section 2: Staffing Capacity */}
+          <section data-step="2" hidden={!shift && step !== 2} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-4' : 'space-y-4'}>
+            <div>
+              <h3 className="mb-2 text-sm font-medium">Required staffing (Ca chính)</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-sm text-gray-600">Host</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    max="20"
+                    value={formData.required_host_count}
+                    onChange={(event) => {
+                      countInputsTouched.current = true
+                      const nextValue = event.target.value
+                      const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_host_count)
+                      updateFormData({ ...formData, required_host_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_host_count })
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">Support</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    max="20"
+                    value={formData.required_support_count}
+                    onChange={(event) => {
+                      countInputsTouched.current = true
+                      const nextValue = event.target.value
+                      const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_support_count)
+                      updateFormData({ ...formData, required_support_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_support_count })
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">Technical</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    max="20"
+                    value={formData.required_technical_count}
+                    onChange={(event) => {
+                      countInputsTouched.current = true
+                      const nextValue = event.target.value
+                      const normalized = normalizeCapacity(nextValue === '' ? undefined : nextValue, DEFAULT_SHIFT_STAFFING.required_technical_count)
+                      updateFormData({ ...formData, required_technical_count: normalized ?? DEFAULT_SHIFT_STAFFING.required_technical_count })
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Staffing Overview / Manual Assignment */}
+            {getAuthMode() === 'supabase' && shift ? (
+              <div className="rounded-lg border p-4">
+                <p className="mb-2 text-sm font-medium">Staffing</p>
+                <p className="text-sm text-muted-foreground">Nhân sự được quản lý tại tab Nhân sự (Staffing) của ca.</p>
+                <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Host</p>
+                    <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'host', t).map(label => label.name).join(', ') || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Support Staff</p>
+                    <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'support', t).map(label => label.name).join(', ') || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Technical Staff</p>
+                    <p className="font-medium">{resolveStaffingLabelsForRole(shift, currentShiftRegistrations, users, 'technical', t).map(label => label.name).join(', ') || '—'}</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="min-w-0">
+                  <label className="text-sm font-medium">Host</label>
+                  <Select value={formData.host_id} onValueChange={(v) => updateFormData({ ...formData, host_id: v })}>
+                    <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign host..." /></SelectTrigger>
+                    <SelectContent>
+                      {users.filter(u => u.status === 'active' && u.operational_roles?.includes('host')).map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="min-w-0">
+                  <label className="text-sm font-medium">Support Staff</label>
+                  <Select value={formData.support_id} onValueChange={(v) => updateFormData({ ...formData, support_id: v })}>
+                    <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign support..." /></SelectTrigger>
+                    <SelectContent>
+                      {users.filter(u => u.status === 'active' && u.operational_roles?.includes('support')).map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="min-w-0">
+                  <label className="text-sm font-medium">Technical Staff</label>
+                  <Select value={formData.technical_id} onValueChange={(v) => updateFormData({ ...formData, technical_id: v })}>
+                    <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Assign technical..." /></SelectTrigger>
+                    <SelectContent>
+                      {users.filter(u => u.status === 'active' && u.operational_roles?.includes('technical')).map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {/* In Create Mode, render Staffing Segments directly in Step 2 */}
+            {!shift && (
+              <div className="mt-4 border-t pt-4">
+                {renderStaffingSegmentsSection()}
+              </div>
+            )}
+          </section>
+
+          {/* In Edit Mode, render Staffing Segments as a prominent full-width card */}
+          {shift && (
+            <section className="space-y-4 rounded-lg border bg-white p-4 lg:col-span-12">
+              {renderStaffingSegmentsSection()}
+            </section>
           )}
 
-<dl className="grid gap-3 rounded-lg border bg-slate-50 p-4 text-xs sm:grid-cols-2">{[['Tên ca',formData.title],['Ngày',formData.date],['Thời gian',formData.start_time+' – '+formData.end_time],['Múi giờ',formData.timezone],['Thương hiệu',brands.find(item=>item.id===formData.brand_id)?.name],['Nền tảng',platforms.find(item=>item.id===formData.platform_id)?.name],['Studio',formData.studio],['Host / Support / Technical',formData.required_host_count+' / '+formData.required_support_count+' / '+formData.required_technical_count]].map(([label,value])=><div key={label}><dt className="text-slate-500">{label}</dt><dd className="mt-1 font-medium">{value||'—'}</dd></div>)}</dl></section>
+          {/* Step 3 / Section 3: Notes & Review */}
+          <section data-step="3" hidden={!shift && step !== 3} className={shift ? 'space-y-3 rounded-lg border bg-white p-4 lg:col-span-12' : 'space-y-4'}>
+            <div>
+              <label className="text-sm font-medium">Product Notes</label>
+              <Textarea rows={3} value={formData.product_notes} onChange={(e) => updateFormData({ ...formData, product_notes: e.target.value })} placeholder="Focus on trending products..." />
+            </div>
+
+            {/* Conflicts */}
+            {conflicts.length > 0 && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <span className="text-sm font-medium text-red-900">Scheduling Conflicts Detected</span>
+                </div>
+                <ul className="text-sm text-red-700 space-y-1">
+                  {conflicts.map((c, i) => <li key={i}>• {c.message}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <dl className="grid gap-3 rounded-lg border bg-slate-50 p-4 text-xs sm:grid-cols-2">
+              {[
+                ['Tên ca', formData.title],
+                ['Mã ca / External code', formData.external_code || '—'],
+                ['Ngày', formData.date],
+                ['Thời gian', formData.start_time + ' – ' + formData.end_time],
+                ['Múi giờ', formData.timezone],
+                ['Thương hiệu', brands.find(item => item.id === formData.brand_id)?.name],
+                ['Nền tảng', platforms.find(item => item.id === formData.platform_id)?.name],
+                ['Studio', formData.studio],
+                ['Host / Support / Technical (Ca chính)', formData.required_host_count + ' / ' + formData.required_support_count + ' / ' + formData.required_technical_count],
+                ['Khung giờ chi tiết (Segments)', segments.length > 0 ? `${segments.length} khung (${segments.map(s => `K0${s.segment_index}: ${s.start_time}-${s.end_time}`).join(', ')})` : 'Ca đơn (1 khung toàn ca)'],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-slate-500">{label}</dt>
+                  <dd className="mt-1 font-medium">{value || '—'}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+
           <DialogFooter className={shift ? 'col-span-full w-full' : undefined}>
             <Button type="button" variant="outline" onClick={() => {if (!dirty || confirm('Bạn có thay đổi chưa lưu. Hủy thay đổi?')) onOpenChange(false)}} disabled={loading}>{t('cancel')}</Button>
             {!shift && step > 0 && <Button type="button" variant="outline" onClick={()=>setStep(step-1)}>Quay lại</Button>}

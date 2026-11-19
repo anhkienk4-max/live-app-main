@@ -5,6 +5,7 @@ export type AccountStatus = 'pending_email_verification' | 'pending_approval' | 
 
 export type ShiftStatus = 'scheduled' | 'preparing' | 'live' | 'paused' | 'completed' | 'cancelled'
 export type ExecutionSource = 'internal' | 'agency'
+export type AgencyCode = 'ada' | 'snap' | 'live_ai'
 export type ShiftStatusMode = 'auto' | 'manual'
 export type RegistrationStatus =
   | 'available'
@@ -266,10 +267,47 @@ export interface SwapExchangeCandidate {
   full_name: string
 }
 
+export type SupplementalShiftFieldType = 'text' | 'number' | 'boolean' | 'date' | 'time'
+
+export interface SupplementalShiftField {
+  label: string
+  type: SupplementalShiftFieldType
+  value: string | number | boolean
+}
+
+export interface PlannedStaffingSegmentDraft {
+  segment_index: number
+  start_time: string
+  end_time: string
+  required_host_count: number
+  required_support_count: number
+  required_technical_count: number
+  planned_host_names: string[]
+  planned_support_names: string[]
+  planned_technical_names: string[]
+}
+
+export interface PersistedStaffingSegment {
+  id: string
+  shift_id: string
+  segment_index: number
+  start_at: string
+  end_at: string
+  required_host_count: number
+  required_support_count: number
+  required_technical_count: number
+  planned_host_names: string[]
+  planned_support_names: string[]
+  planned_technical_names: string[]
+}
+
+export type SupplementalShiftFields = Record<string, SupplementalShiftField>
+
 export interface Shift extends LifecycleMetadata {
   registration_conflict?: boolean
   id: string
   execution_source?: ExecutionSource | null
+  agency_code?: AgencyCode | null
   date: string
   start_time: string
   end_time: string
@@ -291,6 +329,10 @@ export interface Shift extends LifecycleMetadata {
   host_names?: string[]
   assistant_names?: string[]
   technical_names?: string[]
+  /** Import-only planned schedule; persisted by the authenticated create RPC. */
+  staffing_segments?: PlannedStaffingSegmentDraft[]
+  /** Authorized read projection for persisted segment-aware calendar events. */
+  persisted_staffing_segments?: PersistedStaffingSegment[]
   /** Authorized read projection; never persisted as shift metadata. */
   staffing_summary?: ShiftStaffingSummary[]
   required_host_count?: number
@@ -304,6 +346,7 @@ export interface Shift extends LifecycleMetadata {
   status_mode?: ShiftStatusMode
   live_link?: string
   product_notes?: string
+  supplemental_fields?: SupplementalShiftFields
   updated_by?: string
   created_at: string
   updated_at: string
@@ -327,6 +370,7 @@ export interface DashboardUpdate extends LifecycleMetadata {
   shares?: number
   screenshot_url?: string
   screenshot_storage_path?: string
+  screenshot_file_id?: string | null
   dashboard_platform?: ReportDashboardPlatform
   normalized_metrics?: Partial<Record<ReportMetricKey, ReportMetricValue>>
   ocr_review?: OcrReviewData
@@ -421,6 +465,8 @@ export interface ReportImage extends LifecycleMetadata {
   mime_type?: string
   size_bytes?: number
   image_type: ReportImageCategory
+  external_parent_id?: string | null
+  checksum_sha256?: string | null
   uploaded_by?: string
   created_at: string
 }
@@ -444,6 +490,8 @@ export interface LiveReportImage {
   file_name: string
   storage_file_name?: string | null
   storage_idempotency_key?: string | null
+  external_parent_id?: string | null
+  checksum_sha256?: string | null
   mime_type: string
   size_bytes: number
   sort_order: number
@@ -801,6 +849,15 @@ export interface OcrImageRecognition {
   runtime_diagnostics?: OcrRuntimeDiagnostics
 }
 
+export type SwapConflictCheckStatus = 'VERIFIED_CLEAR' | 'CONFLICT' | 'UNKNOWN'
+export type SwapConflictCheckInput = {
+  sourceRegistrationId: string
+  mode: 'replacement' | 'exchange'
+  replacementStaffId?: string | null
+  targetShiftId?: string | null
+  counterpartRegistrationId?: string | null
+}
+
 export interface SwapRequest extends LifecycleMetadata {
   id: string
   // Legacy single-shift field kept for compatibility; mirrors source_shift_id for replacement/move
@@ -863,6 +920,7 @@ export interface Settings {
 export interface ShiftRegistration {
   id: string
   shift_id: string
+  staffing_segment_id?: string
   user_id: string
   operational_role: OperationalRole
   status: RegistrationStatus
@@ -902,6 +960,9 @@ export type ScheduleImportRowOutcome =
 export interface ScheduleImportRow {
   row_number: number
   execution_source?: ExecutionSource | null
+  agency_code?: AgencyCode | null
+  /** Custom columns from the import source, retained as batch provenance only. */
+  custom_fields?: Record<string, string>
   date: string
   start_time: string
   end_time: string
@@ -922,6 +983,8 @@ export interface ScheduleImportRow {
   notes?: string
   /** Source fields explicitly supplied by the imported row (defaults excluded). */
   source_presence?: Partial<Record<
+    | 'execution_source'
+    | 'agency_code'
     | 'campaign_name'
     | 'studio'
     | 'title'
@@ -1041,4 +1104,32 @@ export interface OperationalSettings {
   default_view_mode: string
   calendar_density: string
   show_unassigned_shifts: boolean
+}
+
+export type ShiftOperationalNoteCategory =
+  | 'normal'
+  | 'attendance'
+  | 'swap'
+  | 'incident'
+  | 'sales'
+  | 'other'
+
+export interface ShiftOperationalNote {
+  id: string
+  shift_id: string
+  business_date: string
+  date?: string
+  category: ShiftOperationalNoteCategory
+  note: string
+  author_id: string
+  author_name?: string
+  author_role?: string
+  actual_event_time: string
+  event_time?: string
+  affected_role?: OperationalRole | null
+  affected_user_id?: string | null
+  version: number
+  created_at: string
+  updated_at: string
+  deleted_at?: string | null
 }

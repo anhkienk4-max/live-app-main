@@ -1,0 +1,32 @@
+{
+  "result": "PASS",
+  "source_sha": "17ee41a185612f1d77449a6bc970e72e8364bab8",
+  "application_candidate_sha": "240a0d51b49863167be252d94545ea7c5ab2ac9a",
+  "postgres_server": "17.6 (Ubuntu 17.6-2.pgdg24.04+1)",
+  "database": "rc19_c5_3_final10_20261109",
+  "database_marker": "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY",
+  "baseline_schema_source_database": "rc19_c4_schema_base_20261107_pg176",
+  "baseline_schema_dump_sha256": "abc288de669ddb606653a72775df30fc948718d1aa6dad6893a869230389282a",
+  "baseline_snapshot_after_production_ledger_receipt_count": 89,
+  "historical_receipts_replayed_in_final_clone": 0,
+  "effective_migrations_applied": 20,
+  "actual_forward_receipts_in_clone": 20,
+  "final_forward_head": "20261108135226",
+  "effective_manifest_sha256": "4513aec1757b16e97133f3963e2667156c4b7a1c12cb2b971dbb4859cd8640b6",
+  "final_schema_dump_sha256": "eb40c3f3db6786f646ac4f6f0cbc94f042e5570be30b8c0c39a5b915292a7276",
+  "image_bucket_public": true,
+  "legacy_public_policy_present": true,
+  "private_contract_gate": {
+    "contract_file": "scripts/rc19-c4-migration-rehearsal/proposed-migrations/20261108135227_rc19_dashboard_image_private_contract.sql",
+    "contract_sha256": "99a83a159d09307c04287e23ea69697a27f12955d2560fd1ad519743c3f844f0",
+    "no_attestation": "DENIED_AND_ROLLED_BACK",
+    "no_attestation_log": "private-contract-no-attestation.log",
+    "attested_disposable_clone": "PRIVATE_BUCKET_AND_PUBLIC_POLICY_REMOVAL_PASS",
+    "attested_log": "private-contract-attested.log",
+    "production_contract_applied": false,
+    "runtime_attestation_verified": false
+  },
+  "provider_bytes_tested": false,
+  "pg_cron_worker_simulated": false,
+  "production_sql_authorized": false
+}

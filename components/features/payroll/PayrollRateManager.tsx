@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { HistoryPagination } from '@/components/ui/history-pagination'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { useToast } from '@/components/ui/toast'
 import { formatCurrency } from '@/lib/utils/currency'
 import {
@@ -49,8 +50,8 @@ export function PayrollRateManager() {
   const [loading, setLoading] = React.useState(true)
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(20)
-  const [roleFilter, setRoleFilter] = React.useState<string>('all')
-  const [scopeFilter, setScopeFilter] = React.useState<string>('all')
+  const [roleFilter, setRoleFilter] = React.useState<WorkforceRole[]>([])
+  const [scopeFilter, setScopeFilter] = React.useState<RateScope[]>([])
   const [staffIdFilter, setStaffIdFilter] = React.useState('')
   const [effectiveDateFilter, setEffectiveDateFilter] = React.useState('')
   const [pagination, setPagination] = React.useState<Pagination>({
@@ -104,8 +105,8 @@ export function PayrollRateManager() {
       const res = await workforceService.listRates({
         page,
         pageSize,
-        role: roleFilter === 'all' ? undefined : (roleFilter as WorkforceRole),
-        scope: scopeFilter === 'all' ? undefined : (scopeFilter as RateScope),
+        roles: roleFilter,
+        scopes: scopeFilter,
         staffId: staffIdFilter.trim() || undefined,
         effectiveDate: effectiveDateFilter || undefined,
       })
@@ -209,7 +210,7 @@ export function PayrollRateManager() {
 
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
-      <CardHeader className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <CardHeader className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between w-full min-w-0">
         <div>
           <CardTitle className="text-base font-bold text-slate-900">
             Khung lương & Đơn giá được phê duyệt
@@ -218,7 +219,7 @@ export function PayrollRateManager() {
             Quản lý đơn giá theo giờ và hệ số tăng ca được duyệt cho từng vai trò hoặc nhân sự cụ thể.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -242,38 +243,19 @@ export function PayrollRateManager() {
 
       <CardContent className="p-4 space-y-4">
         {/* Filters */}
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 w-full min-w-0">
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Vai trò
-            </label>
-            <Select value={roleFilter} onValueChange={(val) => { setRoleFilter(val); setPage(1); }}>
-              <SelectTrigger className="mt-1 h-8 text-xs">
-                <SelectValue placeholder="Tất cả vai trò" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả vai trò</SelectItem>
-                <SelectItem value="host">Host Livestream</SelectItem>
-                <SelectItem value="support">Trợ lý phiên Live</SelectItem>
-                <SelectItem value="technical">Kỹ thuật viên</SelectItem>
-              </SelectContent>
-            </Select>
+            <MultiSelectFilter label="Vai trò" placeholder="Tất cả vai trò" testId="payroll-rate-role-filter"
+              value={roleFilter} onChange={value => { setRoleFilter(value as WorkforceRole[]); setPage(1) }}
+              options={[{value:'host',label:'Host Livestream'}, {value:'support',label:'Trợ lý phiên Live'},
+                {value:'technical',label:'Kỹ thuật viên'}]} />
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Phạm vi áp dụng
-            </label>
-            <Select value={scopeFilter} onValueChange={(val) => { setScopeFilter(val); setPage(1); }}>
-              <SelectTrigger className="mt-1 h-8 text-xs">
-                <SelectValue placeholder="Tất cả phạm vi" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả phạm vi</SelectItem>
-                <SelectItem value="role_default">Mặc định vai trò</SelectItem>
-                <SelectItem value="staff_specific">Nhân sự cụ thể</SelectItem>
-              </SelectContent>
-            </Select>
+            <MultiSelectFilter label="Phạm vi áp dụng" placeholder="Tất cả phạm vi" testId="payroll-rate-scope-filter"
+              value={scopeFilter} onChange={value => { setScopeFilter(value as RateScope[]); setPage(1) }}
+              options={[{value:'role_default',label:'Mặc định vai trò'},
+                {value:'staff_specific',label:'Nhân sự cụ thể'}]} />
           </div>
 
           <div>
@@ -303,7 +285,7 @@ export function PayrollRateManager() {
         </div>
 
         {/* Rates Table */}
-        <div className="overflow-x-auto rounded-md border border-slate-200">
+        <div role="region" aria-label="Bảng dữ liệu, cuộn ngang / Scroll horizontally" tabIndex={0} className="w-full min-w-0 max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <table className="w-full text-left text-xs">
             <thead className="border-b bg-slate-50 font-semibold text-slate-600">
               <tr>
@@ -406,7 +388,7 @@ export function PayrollRateManager() {
 
       {/* Register Rate Modal */}
       <Dialog open={isRegisterOpen} onOpenChange={setIsRegisterOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-slate-900">
               Đăng ký & Phê duyệt khung lương mới
@@ -427,7 +409,7 @@ export function PayrollRateManager() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Phạm vi áp dụng</label>
                 <Select value={regScope} onValueChange={(val: RateScope) => setRegScope(val)}>
@@ -472,7 +454,7 @@ export function PayrollRateManager() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label htmlFor="payrollratemanager-field-4" className="text-xs font-semibold text-slate-700">
                   Đơn giá cơ bản (VND / giờ) <span className="text-rose-500">*</span>
@@ -525,7 +507,7 @@ export function PayrollRateManager() {
                     {formatCurrency(previewCalculation.netVnd)}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 font-mono">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600 font-mono">
                   <div>Lương cơ bản (120p): {formatCurrency(previewCalculation.regularVnd)}</div>
                   <div>Tăng ca (30p OT): {formatCurrency(previewCalculation.overtimeVnd)}</div>
                 </div>
@@ -535,7 +517,7 @@ export function PayrollRateManager() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label htmlFor="payrollratemanager-field-6" className="text-xs font-semibold text-slate-700">
                   Hiệu lực từ ngày (Effective From) <span className="text-rose-500">*</span>

@@ -1,0 +1,362 @@
+{
+  "schema_version": 1,
+  "report": "RC19 C5.9 Release Readiness",
+  "captured_at": "2026-11-09",
+  "repository": "anhkienk4-max/live-app-main",
+  "branch": "release/rc19-c5.4-candidate",
+  "candidate_sha": "2780719ec318495c757e3c722a6e354d59f395e1",
+  "remote_candidate_sha": "2780719ec318495c757e3c722a6e354d59f395e1",
+  "production": {
+    "domain": "ops5729.top",
+    "project_ref": "egdjnpmoasarrttvhgds",
+    "deployment_id": "dpl_H6YfLQLdMPaUJp8JvjTqeE7n4wmS",
+    "deployment_sha": "UNVERIFIED",
+    "postgres_version": "17.6",
+    "observed_transaction_read_only": true,
+    "connector_role": "postgres",
+    "migration_receipts": 89,
+    "ledger_head": "20261101073742",
+    "candidate_migration_receipts": 0,
+    "execution_allowlist": []
+  },
+  "exact_sha_ci": {
+    "status": "PASS",
+    "run_url": "https://github.com/anhkienk4-max/live-app-main/actions/runs/42580721243",
+    "run_id": "42580721243",
+    "tested_sha": "2780719ec318495c757e3c722a6e354d59f395e1",
+    "rerun": false
+  },
+  "migration_manifest": {
+    "path": "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-migration-manifest.json",
+    "sha256": "4513aec1757b16e97133f3963e2667156c4b7a1c12cb2b971dbb4859cd8640b6",
+    "count": 20,
+    "entries": [
+      {
+        "order": 1,
+        "version": "20261102110001",
+        "file": "supabase/migrations/20261102110001_rc19_batch05a_report_storage_expand.sql",
+        "sha256": "51592e132ff2f00ce901464a2ffec69f22d63e939b6361bb35195cc534de2a1f",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "supersedes 20261102110000; see frozen manifest"
+      },
+      {
+        "order": 2,
+        "version": "20261102135047",
+        "file": "supabase/migrations/20261102135047_rc19_batch05a3_domain_storage_routes.sql",
+        "sha256": "a4b6748b7a1530c7a1168636ab9ebabeced6c07e03c1d44622da290ed8c76f01",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 3,
+        "version": "20261102150000",
+        "file": "supabase/migrations/20261102150000_rc19_batch05a4_storage_runtime.sql",
+        "sha256": "b8fb59c16d6d4e13fcf7125d5ef8e487e67ce67ee511852059988ccaac37d5db",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 4,
+        "version": "20261102160334",
+        "file": "supabase/migrations/20261102160334_rc19_batch05a41_storage_release_blockers.sql",
+        "sha256": "4b5bfd4ddabf30af92fc9af95e2f267ceb76828a74256348431565f3a8763851",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 5,
+        "version": "20261102170608",
+        "file": "supabase/migrations/20261102170608_rc19_batch05a42_registry_and_excel_integrity.sql",
+        "sha256": "bb8be521e80b5b3d592043053bae9b722f35eab85794efc74b58c198cc7bce36",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 6,
+        "version": "20261102190000",
+        "file": "supabase/migrations/20261102190000_rc19_batch01_1_agency_code.sql",
+        "sha256": "55e199c231bd64ae4ced2084e425a9cd33873fd4d6ffc048de012c0bbd62a71b",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 7,
+        "version": "20261102200000",
+        "file": "supabase/migrations/20261102200000_rc19_batch01_3_shift_identity_index.sql",
+        "sha256": "5aea00c199c164a9c947e34eae9ffcf636eeb496b3cf1ebc470bd6b22dcf942f",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 8,
+        "version": "20261103093137",
+        "file": "supabase/migrations/20261103093137_rc19_unified_import_agency_supplemental_fields.sql",
+        "sha256": "47da2ca5fe2f34bd0d722cbefcd3831e8813b72049976c0e6351576670a000f1",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 9,
+        "version": "20261103195519",
+        "file": "supabase/migrations/20261103195519_rc19_c2_resource_public_and_app_edit.sql",
+        "sha256": "d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 10,
+        "version": "20261104085945",
+        "file": "supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql",
+        "sha256": "115f7a0f485b6e9d8e7fb604d5c25a45253e91de622e9ecb5a232f4432c4c37c",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 11,
+        "version": "20261104085946",
+        "file": "supabase/migrations/20261104085946_rc19_rbac02_account_permission_enforcement.sql",
+        "sha256": "e5d125aff1e0a907410f39e561215eccbe0256e6b4550c5752eb169fe5cdb04d",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 12,
+        "version": "20261104093735",
+        "file": "supabase/migrations/20261104093735_rc19_rbac03_supported_permission_enforcement.sql",
+        "sha256": "5b706e4c5d20d8420a3537afc76a095a771889933c4fc4b006c04e3234800944",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 13,
+        "version": "20261104110000",
+        "file": "supabase/migrations/20261104110000_rc19_c3_scoped_action_catalog.sql",
+        "sha256": "c779dbe8ecad9f324df565f260499092ff6b830c5275d5ef31963e377dc0b4bc",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 14,
+        "version": "20261104113000",
+        "file": "supabase/migrations/20261104113000_rc19_c3_staffing_permission_guard.sql",
+        "sha256": "44d24cc255ed837f182ca23494fe79a979f63f8fe91bd5c3d2bfda783194d413",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 15,
+        "version": "20261104120000",
+        "file": "supabase/migrations/20261104120000_rc19_c3_leader_brand_scope_reports.sql",
+        "sha256": "4ec6ef8a562ddf8846c55a508b49aed1695ba4a3239282cca7d9a9fbe857f188",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 16,
+        "version": "20261104174527",
+        "file": "supabase/migrations/20261104174527_rc19_c3_report_artifact_deletion.sql",
+        "sha256": "97dc6704e9a24f2cffb249baccb0d435edf57c6ceed20ee2743973f6bd61192e",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 17,
+        "version": "20261105120000",
+        "file": "supabase/migrations/20261105120000_rc19_c3_scoped_report_export.sql",
+        "sha256": "f28874984e5f7ed60571b1c709f3200af890d7c53b1433da59301af2d88b7293",
+        "group": "c4_effective_17",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 18,
+        "version": "20261107000000",
+        "file": "supabase/migrations/20261107000000_rc19_shift_operational_notes.sql",
+        "sha256": "731dbcd2989837b4744a9c578cb475870ea0b849a930557dec97c7087e69b5fe",
+        "group": "shift_ops",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 19,
+        "version": "20261107120000",
+        "file": "supabase/migrations/20261107120000_rc19_open_shifts_server_selection.sql",
+        "sha256": "f2cf3e718dd620b5bebaa63e92e9fc0da4004730eea1300990bacd02746eb77b",
+        "group": "shift_ops",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      },
+      {
+        "order": 20,
+        "version": "20261108135226",
+        "file": "supabase/migrations/20261108135226_rc19_staffing_candidate_brand_scope.sql",
+        "sha256": "d05f98100c935ef70a99582d31fa6c24e8614cb6da7c932e75e7a2a2a81ddc15",
+        "group": "c5_2_staffing_runtime_compatibility",
+        "production_receipt": "NOT_APPLIED",
+        "disposable_pg17_rehearsal": "PASS",
+        "production_execution": "BLOCKED",
+        "dependency_notes": "See ordered migration assessment in release-readiness markdown and frozen manifest."
+      }
+    ]
+  },
+  "pg17_rehearsal": {
+    "status": "PASS",
+    "server": "17.6 (Ubuntu 17.6-2.pgdg24.04+1)",
+    "source_sha": "17ee41a185612f1d77449a6bc970e72e8364bab8",
+    "application_candidate_sha": "240a0d51b49863167be252d94545ea7c5ab2ac9a",
+    "database": "rc19_c5_3_final10_20261109",
+    "marker": "CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY",
+    "applied": 20,
+    "migration_bytes_match_current_candidate": "20/20",
+    "provider_bytes_tested": false,
+    "production_sql_authorized": false,
+    "result_path": "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-pg176-20261108T191556Z/result.json"
+  },
+  "gates": {
+    "production_source_provenance": "BLOCKED",
+    "full_schema_parity": "PARTIAL_UNVERIFIED",
+    "authenticated_admin_leader_member_uat": "BLOCKED",
+    "leader_brand_grants": "BLOCKED",
+    "staffing_attendance_payroll_persisted_e2e": "BLOCKED",
+    "import_persisted_670_row_e2e": "BLOCKED",
+    "google_drive_identity_acl_readback": "BLOCKED",
+    "production_backup_restore": "OWNER_DEFERRED_NOT_RUN",
+    "effective_production_feature_flags": "UNVERIFIED",
+    "old_runtime_compatibility": "PARTIAL_UNVERIFIED"
+  },
+  "decisions": {
+    "ready_for_owner_release_review": "NO",
+    "production_go": "NO",
+    "source_changes_made": false,
+    "pushed": false,
+    "deployed": false,
+    "production_sql_changed": false
+  },
+  "blockers": [
+    "Current Production deployment has no Git source metadata; served SHA unverified.",
+    "Production schema parity is partial and none of the 20 candidate migrations has a receipt; allowlist remains empty.",
+    "Independent Production backup/restore is deferred and not proven.",
+    "No explicit Owner-approved Leader-to-Brand grants or authenticated role matrix.",
+    "Staffing to Attendance to Payroll persisted workflow is not proven.",
+    "Google Drive runtime principal, ACL, provider file receipt and checksum readback are not proven.",
+    "No isolated authenticated app/Auth runtime was available for import and role UAT.",
+    "Effective Production feature-flag values and full old/new runtime compatibility remain unverified."
+  ],
+  "evidence_files": [
+    "scripts/rc19-c4-migration-rehearsal/evidence/RC19_C5_9_RELEASE_READINESS.md",
+    "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-migration-manifest.json",
+    "scripts/rc19-c4-migration-rehearsal/evidence/c5.3-final-pg176-20261108T191556Z/result.json"
+  ],
+  "c5_10_delta": {
+    "captured_at": "2026-11-09",
+    "source_baseline_sha": "2780719ec318495c757e3c722a6e354d59f395e1",
+    "final_local_source_sha": "fc3202cfe146cd823c8f9aa0406bda01a4be6848",
+    "branch": "release/rc19-c5.4-candidate",
+    "source_commit": "fix(rc19): scope workforce capabilities and attest release builds",
+    "changes": [
+      "Leader Workforce team capability requires a valid non-empty session-scoped workforce.read Brand grant; malformed, empty, and RPC error cases fail closed.",
+      "Build injects GitHub source SHA/run ID; Admin-only no-store provenance endpoint reports incomplete when required metadata is missing.",
+      "Focused scope and provenance tests added."
+    ],
+    "verification": {
+      "focused_tests": {
+        "result": "PASS",
+        "passed": 11,
+        "failed": 0,
+        "exact_sha": "fc3202cfe146cd823c8f9aa0406bda01a4be6848"
+      },
+      "typecheck": "PASS",
+      "eslint": {
+        "result": "PASS",
+        "errors": 0,
+        "existing_warnings": 30
+      },
+      "credential_free_production_build": "PASS",
+      "migration_manifest": "PASS_20_HASHES_PRIVATE_CONTRACT_EXCLUDED_ALLOWLIST_EMPTY",
+      "drive_provider_contract": "PASS_39_OF_39_NOT_REAL_PROVIDER_IO",
+      "storage_and_source_file_contracts": "PASS_30_OF_30_NOT_PERSISTED_APP_E2E",
+      "import_postgres17": {
+        "result": "PASS_ONCE_FRESH_DISPOSABLE_DB",
+        "server_version": "17.11",
+        "test": "tests/rc19-unified-import-postgres17.test.ts",
+        "passed": 1,
+        "later_repeat": "NOT_VALID_WSL_CONNECTION_THEN_ONE_SHOT_FIXTURE_ALREADY_APPLIED",
+        "database_dropped": false
+      },
+      "pg17_6_migration_rehearsal": "REUSED_PRIOR_20_OF_20_SQL_EVIDENCE_MIGRATION_BYTES_UNCHANGED",
+      "exact_sha_github_ci": "NOT_RUN_NO_PUSH_OR_DISPATCH",
+      "persisted_authenticated_e2e": "BLOCKED_NO_ISOLATED_SUPABASE_AUTH_POSTGREST_RUNTIME_DOCKER_SERVICE_STOPPED"
+    },
+    "gates": {
+      "persisted_staffing_attendance_payroll": "BLOCKED_SEGMENTS_AND_REGISTRATION_LINKAGE_NOT_PERSISTED",
+      "leader_brand_uat": "BLOCKED_OWNER_APPROVED_GRANT_LIST_MISSING",
+      "production_source_provenance": "BLOCKED_CURRENT_LIVE_DEPLOYMENT_NOT_ATTESTED",
+      "production_migrations_and_recovery": "BLOCKED_ALLOWLIST_EMPTY_BACKUP_RESTORE_NOT_PROVEN",
+      "google_drive_real_io": "BLOCKED_PRINCIPAL_ACL_UPLOAD_READBACK_CHECKSUM_UNVERIFIED",
+      "import_670_row_persistence": "BLOCKED_NO_AUTHENTICATED_PERSISTED_E2E",
+      "source_ready": "NO",
+      "persisted_e2e": "BLOCKED",
+      "ready_for_owner_release_review": "NO",
+      "production_go": "NO"
+    },
+    "production_mutations": false,
+    "pushed": false,
+    "deployed": false,
+    "production_sql_changed": false,
+    "drive_writes": false
+  }
+}

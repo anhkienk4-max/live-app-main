@@ -1,7 +1,7 @@
 'use client'
 
 import { ShiftFormDialog } from './ShiftFormDialog'
-import { Brand, Platform, Campaign, User, ShiftRegistration } from '@/lib/types/database.types'
+import { Shift, Brand, Platform, Campaign, User, ShiftRegistration } from '@/lib/types/database.types'
 
 interface ShiftFormModalProps {
   open: boolean
@@ -11,7 +11,7 @@ interface ShiftFormModalProps {
   campaigns: Campaign[]
   users: User[]
   registrations: ShiftRegistration[]
-  onSuccess: () => void
+  onSuccess: (savedShift?: Shift) => void | Promise<void>
 }
 
 export function ShiftFormModal({

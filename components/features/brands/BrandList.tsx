@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
 import { Eye, LayoutGrid, List, Pencil, Plus, Power, PowerOff } from 'lucide-react'
 import { brandService, campaignService, platformService, userService } from '@/lib/services/dataService'
 import { Brand, Campaign, Platform, User } from '@/lib/types/database.types'
@@ -15,6 +14,7 @@ import { Column, DataTable } from '@/components/ui/data-table'
 import { useToast } from '@/components/ui/toast'
 import { BrandDetailDialog } from './BrandDetailDialog'
 import { BrandFormDialog } from './BrandFormDialog'
+import { BrandLogo } from './BrandLogo'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { usePagedList } from '@/lib/hooks/usePagedList'
 import { HistoryPagination } from '@/components/ui/history-pagination'
@@ -73,7 +73,7 @@ export function BrandList() {
   }
   const actions = (brand: Brand) => <div className="flex gap-1"><Button variant="ghost" size="icon" aria-label={t('viewDetails')} onClick={() => setDetailBrand(brand)}><Eye className="h-4 w-4" /></Button>{canManage && <><Button variant="ghost" size="icon" aria-label={t('edit')} onClick={() => edit(brand)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" aria-label={t(brand.status === 'inactive' ? 'activate' : 'deactivate')} onClick={() => setStatusTarget(brand)}>{brand.status === 'inactive' ? <Power className="h-4 w-4 text-green-600" /> : <PowerOff className="h-4 w-4 text-amber-600" />}</Button></>}</div>
   const columns: Column<Brand>[] = [
-    { header: t('brand'), accessor: row => <div className="flex items-center gap-3">{row.logo_url ? <Image unoptimized width={40} height={40} src={row.logo_url} alt={row.name} className="h-10 w-10 rounded border object-contain" /> : <div className="h-10 w-10 rounded" style={{ backgroundColor: row.color }} />}<div><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.category || '—'}</p></div></div> },
+    { header: t('brand'), accessor: row => <div className="flex items-center gap-3"><BrandLogo brandId={row.id} brandName={row.name} logoUrl={row.logo_url} size={40} className="rounded border" /><div><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.category || '—'}</p></div></div> },
     { header: t('status'), accessor: row => t(row.status || 'active') },
     { header: t('lastUpdated'), accessor: row => new Date(row.updated_at).toLocaleDateString() },
     { header: t('actions'), accessor: actions },
@@ -84,7 +84,7 @@ export function BrandList() {
   return <>
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-xl font-semibold">{t('brandKnowledge')}</h1><p className="mt-1 text-muted-foreground">{t('description')}</p></div><div className="flex gap-2"><div className="flex rounded-lg border"><Button variant={viewMode === 'grid' ? 'default' : 'ghost'} size="icon" onClick={() => changeView('grid')}><LayoutGrid className="h-4 w-4" /></Button><Button variant={viewMode === 'table' ? 'default' : 'ghost'} size="icon" onClick={() => changeView('table')}><List className="h-4 w-4" /></Button></div>{canManage && <Button onClick={() => { setSelectedBrand(null); setFormOpen(true) }}><Plus className="mr-2 h-4 w-4" />{t('create')} {t('brand')}</Button>}</div></div>
     {viewMode === 'grid' && <Input className="mb-3" value={search} aria-label={t('search')} placeholder={t('search')} onChange={event => { setSearch(event.target.value); list.reset() }} />}
-    {viewMode === 'table' ? <DataTable data={brands} columns={columns} pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total, onPageChange: list.setPage, onPageSizeChange: list.setPageSize }} search={search} onSearch={value => { setSearch(value); list.reset() }} searchPlaceholder={`${t('search')} ${t('brands')}`} /> : <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">{brands.map(brand => <Card key={brand.id}><CardContent className="space-y-4 pt-5"><div className="flex items-start justify-between">{brand.logo_url ? <Image unoptimized width={64} height={64} src={brand.logo_url} alt={brand.name} className="h-16 w-16 rounded-lg border object-contain" /> : <div className="h-16 w-16 rounded-lg" style={{ backgroundColor: brand.color }} />}{actions(brand)}</div><div><h3 className="text-lg font-semibold">{brand.name}</h3><p className="text-sm text-muted-foreground">{brand.category || '—'} · {t(brand.status || 'active')}</p></div><p className="line-clamp-3 text-sm">{brand.description || '—'}</p><Button className="w-full" variant="outline" onClick={() => setDetailBrand(brand)}>{t('viewDetails')}</Button></CardContent></Card>)}</div>}
+    {viewMode === 'table' ? <DataTable data={brands} columns={columns} pagination={{ loading: list.refreshing, page: list.page, pageSize: list.pageSize, total: list.total, onPageChange: list.setPage, onPageSizeChange: list.setPageSize }} search={search} onSearch={value => { setSearch(value); list.reset() }} searchPlaceholder={`${t('search')} ${t('brands')}`} /> : <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">{brands.map(brand => <Card key={brand.id}><CardContent className="space-y-4 pt-5"><div className="flex items-start justify-between"><BrandLogo brandId={brand.id} brandName={brand.name} logoUrl={brand.logo_url} size={64} className="rounded-lg" />{actions(brand)}</div><div><h3 className="text-lg font-semibold">{brand.name}</h3><p className="text-sm text-muted-foreground">{brand.category || '—'} · {t(brand.status || 'active')}</p></div><p className="line-clamp-3 text-sm">{brand.description || '—'}</p><Button className="w-full" variant="outline" onClick={() => setDetailBrand(brand)}>{t('viewDetails')}</Button></CardContent></Card>)}</div>}
     {viewMode === 'grid' && <HistoryPagination page={list.page} pageSize={list.pageSize} total={list.total} onPageChange={list.setPage} onPageSizeChange={list.setPageSize} />}
     <BrandFormDialog open={formOpen} onOpenChange={setFormOpen} brand={selectedBrand} onSuccess={refreshBrands} />
     {detailBrand && <BrandDetailDialog open brand={detailBrand} campaigns={campaigns} platforms={platforms} users={users} onOpenChange={open => !open && setDetailBrand(null)} onEdit={() => { edit(detailBrand); setDetailBrand(null) }} />}

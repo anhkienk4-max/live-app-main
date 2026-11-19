@@ -80,6 +80,9 @@ test('Core V1: hasPermission truth table mirrors matrix', () => {
   assert.equal(hasPermission(makeMockUser({ system_permission: 'member' }), 'shifts.register'), true)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'member' }), 'swaps.request'), true)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'member' }), 'reports.submit'), true)
+  assert.equal(hasPermission(makeMockUser({ system_permission: 'member' }), 'attendance.record_own'), true)
+  assert.equal(hasPermission(makeMockUser({ system_permission: 'member' }), 'storage.upload'), true)
+  assert.equal(hasPermission(makeMockUser({ system_permission: 'member' }), 'payroll.view_own'), true)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'member' }), 'swaps.approve'), false)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'member' }), 'staff.manage'), false)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'member' }), 'settings.admin'), false)
@@ -87,6 +90,7 @@ test('Core V1: hasPermission truth table mirrors matrix', () => {
   assert.equal(hasPermission(makeMockUser({ system_permission: 'leader' }), 'swaps.approve'), true)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'leader' }), 'shifts.approve_registration'), true)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'leader' }), 'reports.review'), true)
+  assert.equal(hasPermission(makeMockUser({ system_permission: 'leader' }), 'storage.delete'), true)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'leader' }), 'settings.leader'), true)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'leader' }), 'staff.manage'), false)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'leader' }), 'settings.admin'), false)
@@ -94,6 +98,8 @@ test('Core V1: hasPermission truth table mirrors matrix', () => {
   assert.equal(hasPermission(makeMockUser({ system_permission: 'admin' }), 'staff.manage'), true)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'admin' }), 'settings.admin'), true)
   assert.equal(hasPermission(makeMockUser({ system_permission: 'admin' }), 'data.force_delete'), true)
+  assert.equal(hasPermission(makeMockUser({ system_permission: 'admin' }), 'payroll.manage'), true)
+  assert.equal(hasPermission(makeMockUser({ system_permission: 'admin' }), 'storage.resource_manage'), true)
 })
 
 test('Core V1: resolveSystemPermission fallback (role -> system_permission, unknown -> member)', () => {

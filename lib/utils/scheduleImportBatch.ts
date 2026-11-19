@@ -66,7 +66,11 @@ export function sourceRowFingerprint(values: Record<string, unknown>): string {
 export function classifyRowOutcome(preview: ImportPreviewRow): ImportBatchRowStatus {
   const { errors, warnings } = preview.row
   if (errors.length > 0) return 'validation_failed'
-  if (!preview.shift && warnings.some(message => message.includes('already exists'))) {
+  if (preview.isInFileDuplicate) return 'duplicate_skipped'
+  if (!preview.shift && warnings.some(message => message.includes('already exists') || message.includes('trùng lặp') || message.includes('duplicate'))) {
+    return 'duplicate_skipped'
+  }
+  if (!preview.shift && preview.duplicateCandidate && !preview.isEnrichment) {
     return 'duplicate_skipped'
   }
   // A row with a shift AND warnings (e.g. overnight) still produces a shift:
@@ -168,7 +172,11 @@ export function isRowImported(row: ImportBatchRow): boolean {
  * unidentifiable one) must surface as retryable instead of being silently
  * skipped as a duplicate.
  */
-export const SCHEDULE_IMPORT_SLOT_CONSTRAINT = 'shifts_active_slot_uidx'
+export const SCHEDULE_IMPORT_SLOT_CONSTRAINTS = [
+  'shifts_active_identity_uidx',
+  'shifts_active_slot_uidx',
+] as const
+export const SCHEDULE_IMPORT_SLOT_CONSTRAINT = 'shifts_active_identity_uidx'
 
 export function isScheduleImportDuplicateError(error: unknown): boolean {
   const shaped = error as
@@ -181,7 +189,7 @@ export function isScheduleImportDuplicateError(error: unknown): boolean {
   const isUniqueViolation = shaped?.code === '23505'
     || /duplicate key value violates unique constraint/i.test(text)
   if (!isUniqueViolation) return false
-  return text.includes(SCHEDULE_IMPORT_SLOT_CONSTRAINT)
+  return SCHEDULE_IMPORT_SLOT_CONSTRAINTS.some(constraint => text.includes(constraint))
 }
 
 export function scheduleImportFailureCode(error: unknown): string {

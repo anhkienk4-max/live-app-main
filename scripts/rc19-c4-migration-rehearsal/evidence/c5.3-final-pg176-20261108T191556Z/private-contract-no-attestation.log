@@ -1,0 +1,2 @@
+psql:/mnt/c/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/rc19-c5.3-image-compat/scripts/rc19-c4-migration-rehearsal/proposed-migrations/20261108135227_rc19_dashboard_image_private_contract.sql:36: ERROR:  DASHBOARD_IMAGE_PRIVATE_CONTRACT_NOT_ATTESTED
+CONTEXT:  PL/pgSQL function inline_code_block line 8 at RAISE

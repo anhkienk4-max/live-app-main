@@ -22,6 +22,10 @@ export const CANONICAL_MEMBER_PERMISSIONS = new Set([
   'swaps.request',
   'profile.edit_own',
   'settings.member',
+  'attendance.record_own',
+  'storage.upload',
+  'storage.edit_own',
+  'payroll.view_own',
 ] as const)
 
 export const CANONICAL_LEADER_EXTRA = new Set([
@@ -38,6 +42,7 @@ export const CANONICAL_LEADER_EXTRA = new Set([
   'settings.leader',
   'campaigns.edit_operational',
   'audit.view_team',
+  'storage.delete',
 ] as const)
 
 export const CANONICAL_ADMIN_EXTRA = new Set([
@@ -52,6 +57,8 @@ export const CANONICAL_ADMIN_EXTRA = new Set([
   'audit.review',
   'data.force_delete',
   'shifts.delete',
+  'storage.resource_manage',
+  'payroll.manage',
 ] as const)
 
 export const CANONICAL_COUNTS: Record<CoreRole, number> = {

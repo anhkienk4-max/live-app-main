@@ -1,11 +1,12 @@
 import 'server-only'
+import { operationsResponseOwnerKey } from '@/lib/server/operationsResponseOwnerKey'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { requireRole, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from './authGuards'
+import { requirePermission, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from './authGuards'
 import { readJsonBody, RequestBodyError } from './apiSecurity'
 import { createOperationsCollectionHandler, listFiltersSchema } from './operationsCollectionHandler'
 import { buildScheduleExportRows } from '@/lib/utils/scheduleExportUtils'
-import { selectExportFields, type ExportRecord, type ExportSheet } from '@/lib/utils/calendarExport'
+import { authorizedExportFields, selectExportFields, SUPPLEMENTAL_EXPORT_ALL_ID, type ExportRecord, type ExportSheet } from '@/lib/utils/calendarExport'
 import { registrationFromRow } from '@/lib/services/supabaseShiftRegistrationService'
 import { buildCalendarExport } from '@/lib/utils/calendarExportWorkbook'
 import type { Shift, ShiftRegistration } from '@/lib/types/database.types'
@@ -21,10 +22,16 @@ type Depends = { resolveUser?: ServerUserResolver; createClient?: () => Promise<
 export function createCalendarExportHandler(deps: Depends = {}) {
   return { async POST(request: Request): Promise<Response> {
     try {
-      const user = await requireRole(request, ['admin', 'leader'], deps.resolveUser)
+      const user = await requirePermission(request, 'shifts.export', deps.resolveUser)
       const input = inputSchema.parse(await readJsonBody(request, 16 * 1024))
-      const fields = selectExportFields(user.systemPermission, input.fields)
-      if (input.format === 'csv' && fields.some(field => field.group !== 'schedule')) return fail('EXPORT_CSV_FLAT_FIELDS_REQUIRED', 400)
+      if (input.fields) {
+        const staticFields = input.fields.filter(id => id !== SUPPLEMENTAL_EXPORT_ALL_ID)
+        if (staticFields.length) selectExportFields(user.systemPermission, staticFields)
+        if (input.fields.includes(SUPPLEMENTAL_EXPORT_ALL_ID)
+          && !authorizedExportFields(user.systemPermission).some(field => field.permission === 'shifts.export')) {
+          return fail('EXPORT_FIELD_DENIED', 403)
+        }
+      }
       const client = deps.createClient ? await deps.createClient() : await (await import('@/lib/supabase/server')).createClient()
       const collection = createOperationsCollectionHandler({ resolveUser: async () => user, createClient: async () => client })
       const filters = input.scope === 'filtered' ? input.filters : { shiftIds: input.shiftIds }
@@ -42,7 +49,7 @@ export function createCalendarExportHandler(deps: Depends = {}) {
         request.signal.throwIfAborted()
         const result = await readPage(page)
         total ??= result.total
-        if (!Number.isSafeInteger(total) || total < 0 || result.total !== total || result.page !== page || result.ownerKey !== user.id + ':' + user.systemPermission) return fail('EXPORT_COLLECTION_CHANGED', 409)
+        if (!Number.isSafeInteger(total) || total < 0 || result.total !== total || result.page !== page || result.ownerKey !== operationsResponseOwnerKey(user)) return fail('EXPORT_COLLECTION_CHANGED', 409)
         for (const shift of result.items) {
           if (ids.has(shift.id)) return fail('EXPORT_COLLECTION_CHANGED', 409)
           ids.add(shift.id); shifts.push(shift)
@@ -51,6 +58,9 @@ export function createCalendarExportHandler(deps: Depends = {}) {
         if (result.items.length !== 50) return fail('EXPORT_READ_INCOMPLETE', 409)
       }
       if (shifts.length !== total || input.scope !== 'filtered' && (ids.size !== new Set(input.shiftIds).size || input.shiftIds!.some(id => !ids.has(id)))) return fail('EXPORT_SCOPE_CHANGED', 409)
+      const supplemental = [...new Map(shifts.flatMap(shift => Object.entries(shift.supplemental_fields ?? {}).map(([key, field]) => [key, field.label] as const)))].map(([key, label]) => ({ key, label }))
+      const fields = selectExportFields(user.systemPermission, input.fields, supplemental)
+      if (input.format === 'csv' && fields.some(field => field.group !== 'schedule')) return fail('EXPORT_CSV_FLAT_FIELDS_REQUIRED', 400)
       const data: Record<ExportSheet, ExportRecord[]> = { schedule: [], registrations: [] }
       const registrations: ShiftRegistration[] = []
       const registrationIds = new Set<string>()
@@ -86,8 +96,8 @@ export function createCalendarExportHandler(deps: Depends = {}) {
       data.schedule = buildScheduleExportRows(shifts, brands, platforms, campaigns, users, registrations) as unknown as ExportRecord[]
       data.registrations = registrations.map(row => ({ id: row.id, shift_id: row.shift_id, staff_name: names.get(row.user_id) ?? row.imported_name ?? '', operational_role: row.operational_role, status: row.status, source: row.source }))
       const finalPage = await readPage(1)
-      const latestUser = await requireRole(request, ['admin', 'leader'], deps.resolveUser)
-      if (latestUser.id !== user.id || latestUser.systemPermission !== user.systemPermission || finalPage.total !== total) return fail('EXPORT_COLLECTION_CHANGED', 409)
+      const latestUser = await requirePermission(request, 'shifts.export', deps.resolveUser)
+      if (latestUser.id !== user.id || operationsResponseOwnerKey(latestUser) !== operationsResponseOwnerKey(user) || finalPage.total !== total || finalPage.ownerKey !== operationsResponseOwnerKey(user)) return fail('EXPORT_COLLECTION_CHANGED', 409)
       const body = buildCalendarExport(data, fields, input.format)
       return new Response(body, { headers: { 'Content-Type': input.format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="calendar.${input.format}"`, 'Cache-Control': 'private, no-store', 'X-Export-Record-Count': String(total) } })

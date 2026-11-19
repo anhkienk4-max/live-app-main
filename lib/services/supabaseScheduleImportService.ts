@@ -16,6 +16,7 @@ import type {
   ImportBatchSummary,
 } from '@/lib/utils/scheduleImportBatch'
 import { toPreviewCounters } from '@/lib/utils/scheduleImportBatch'
+import { requestAttendanceFolderMaterialization } from '@/lib/services/attendanceFolderMaterializationClient'
 
 const batchColumns = [
   'id',
@@ -288,6 +289,14 @@ export function createSupabaseScheduleImportPort(
           p_batch_id: batchId,
         }).single()
         if (result.error) throw requestError('schedule import confirm', result.error)
+        if (result.data && typeof window !== 'undefined') {
+          const rows = await client.from('schedule_import_batch_rows').select('shift_id')
+            .eq('batch_id', batchId).in('outcome', ['imported', 'warning']).not('shift_id', 'is', null)
+          const shiftIds = (rows.data ?? []).map(row => row.shift_id).filter((id): id is string => typeof id === 'string')
+          if (rows.error || !await requestAttendanceFolderMaterialization(shiftIds)) {
+            console.warn('ATTENDANCE_FOLDER_MATERIALIZATION_PENDING')
+          }
+        }
         return result.data ? batchFromRow(result.data as unknown as BatchDbRow) : null
       }
       if (status === 'failed') {

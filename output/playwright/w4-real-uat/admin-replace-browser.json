@@ -1,0 +1,64 @@
+{
+  "result": "FAIL",
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "shift_id": "d5e4caee-99a0-417b-83b2-16d99519f64f",
+  "registration_id": "c77c9b79-ec21-4f3e-8a9e-e306d2280971",
+  "replace_rpc_count": 0,
+  "api_errors": [],
+  "console_errors": [],
+  "desktop": {
+    "detail": "W4 UI Atomic Replace ui_1794890074612_22ec09ce"
+  },
+  "mobile": {},
+  "screenshots": [
+    "w4-admin-dashboard-desktop-closure6.png",
+    "w4-admin-replace-failure-closure6.png"
+  ],
+  "login": {
+    "url": "/",
+    "authenticated": true
+  },
+  "reference_reads": [
+    {
+      "method": "GET",
+      "host": "127.0.0.1:15546",
+      "path": "/rest/v1/business_users",
+      "query_keys": [
+        "archived_at",
+        "deleted_at",
+        "limit",
+        "offset",
+        "order",
+        "select"
+      ],
+      "status": 200,
+      "range": "0-25/26",
+      "request_id": null,
+      "body_bytes": 17876,
+      "row_count": 26,
+      "target_present": true
+    },
+    {
+      "method": "GET",
+      "host": "127.0.0.1:15546",
+      "path": "/rest/v1/business_users",
+      "query_keys": [
+        "archived_at",
+        "deleted_at",
+        "limit",
+        "offset",
+        "order",
+        "select"
+      ],
+      "status": 200,
+      "range": "0-25/26",
+      "request_id": null,
+      "body_bytes": 17876,
+      "row_count": 26,
+      "target_present": true
+    }
+  ],
+  "directory_error_code": null,
+  "error": "DIRECTORY_OPTIONS_NOT_READY"
+}

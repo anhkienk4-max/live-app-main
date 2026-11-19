@@ -1,0 +1,42 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "pg": "170011",
+  "cases": [
+    {
+      "case": "member-own",
+      "actorId": "HostOne_c511_1794886705715_5f2238403c0c40",
+      "uiPath": "/payroll?tab=personal",
+      "uiLoading": false,
+      "uiShowsEmpty": false,
+      "uiShowsPayslip": false,
+      "apiStatus": 401,
+      "statementCount": 0,
+      "lineCount": 0,
+      "lineIds": [],
+      "totals": [],
+      "apiPayloadHasForeignLine": false,
+      "uiText": "adaOPS\nLIVESTREAM\nĐang tải ADA OPS Livestream",
+      "apiResponses": [],
+      "screenshot": "C:\\Users\\KienNguyen\\Downloads\\KIEN ADA code\\OPS LIVESTREAM PLATFORM\\rc19-w4-final-integration\\output\\playwright\\w4-real-uat/member-own-1794901975196.png"
+    },
+    {
+      "case": "member-foreign-denial",
+      "actorId": "C6UnauthorizedMember_c511_1794886779647_855a8743f0ad42",
+      "uiPath": "/payroll?tab=personal",
+      "uiLoading": false,
+      "uiShowsEmpty": false,
+      "uiShowsPayslip": false,
+      "apiStatus": 401,
+      "statementCount": 0,
+      "lineCount": 0,
+      "lineIds": [],
+      "totals": [],
+      "forgedTargetQueryIgnored": true,
+      "apiPayloadHasForeignLine": false,
+      "uiText": "adaOPS\nLIVESTREAM\nĐang tải ADA OPS Livestream",
+      "apiResponses": [],
+      "screenshot": "C:\\Users\\KienNguyen\\Downloads\\KIEN ADA code\\OPS LIVESTREAM PLATFORM\\rc19-w4-final-integration\\output\\playwright\\w4-real-uat/member-foreign-denial-1794901980773.png"
+    }
+  ]
+}

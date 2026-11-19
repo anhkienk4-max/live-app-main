@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { format } from 'date-fns'
+import { addDays, format } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
 import { ExternalLink, FileText, Lock, LockOpen, Pencil, Radio, UserPlus } from 'lucide-react'
 import {
@@ -130,8 +130,17 @@ export function DaySessionsDialog({
   const [pageSize, setPageSize] = React.useState(10)
   const locale = language === 'vi' ? vi : enUS
   const dateValue = date ? format(date, 'yyyy-MM-dd') : ''
+  const previousDate = date ? format(addDays(date, -1), 'yyyy-MM-dd') : ''
   const dayShifts = shifts
-    .filter(shift => shift.date === dateValue)
+    .filter(shift => {
+      if (shift.date === dateValue) return true
+      const overnight = Boolean(
+        shift.crosses_midnight ||
+        shift.end_date === dateValue ||
+        (shift.end_time < shift.start_time && shift.end_time > '00:00'),
+      )
+      return shift.date === previousDate && overnight
+    })
     .sort((left, right) => left.start_time.localeCompare(right.start_time))
   const range = pageRange(dayShifts.length, page, pageSize)
 
@@ -304,7 +313,7 @@ export function DaySessionsDialog({
                       {t('viewShiftDetail')}
                     </Button>
                     {['preparing', 'live', 'paused'].includes(shift.status) && (
-                      <Button onClick={() => window.location.assign('/live')} size="sm" variant="outline">
+                      <Button onClick={() => router.push('/live')} size="sm" variant="outline">
                         <Radio className="mr-1 h-4 w-4" />{t('openLiveMonitor')}
                       </Button>
                     )}
@@ -315,6 +324,8 @@ export function DaySessionsDialog({
                     )}
                     <ShiftRegistrationActions
                       allShifts={allShifts ?? shifts}
+                      brandName={brands.find(b => b.id === shift.brand_id)?.name}
+                      platformName={platforms.find(p => p.id === shift.platform_id)?.name}
                       currentUser={currentUser}
                       disabled={Boolean(busyAction)}
                       onRegister={role => currentUser
@@ -396,7 +407,7 @@ export function DaySessionsDialog({
                     <MobileActionMenu
                       breakpoint="sm"
                       actions={[
-                        ...( ['preparing', 'live', 'paused'].includes(shift.status) ? [{ key: 'live', label: t('openLiveMonitor'), icon: <Radio className="h-4 w-4" />, onClick: () => window.location.assign('/live') }] : [] ),
+                        ...( ['preparing', 'live', 'paused'].includes(shift.status) ? [{ key: 'live', label: t('openLiveMonitor'), icon: <Radio className="h-4 w-4" />, onClick: () => router.push('/live') }] : [] ),
                         ...( shift.status === 'completed' ? [{ key: 'report', label: t('openFinalReport'), icon: <FileText className="h-4 w-4" />, onClick: () => router.push(reportShiftHref(shift.id)) }] : [] ),
                         ...( currentUser && hasPermission(currentUser, 'shifts.edit') ? [
                           { key: 'edit', label: t('editShift'), icon: <Pencil className="h-4 w-4" />, onClick: () => onEditShift(shift) },

@@ -1,0 +1,478 @@
+--- before-20261104085946
++++ after-20261104085946
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict 7NPaV5QLgkVWTas0D4bCf90bOTkwtESftJFodrBI7OZKxZgjBfsnFkUGfRz2X2w
++\restrict Rxu2V92yuTuwVeeZfuWcNZN5VTpZIoejPNqicbcEFg0JI1XNWE8cw8qgz4R1aU3
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -2599,6 +2599,69 @@
+ 
+ 
+ --
++-- Name: rbac02_append_account_decision(text, text, text, text, timestamp with time zone, integer); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.rbac02_append_account_decision(p_target_business_user_id text, p_permission text, p_decision text, p_reason text, p_expires_at timestamp with time zone, p_expected_version integer) RETURNS jsonb
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE
++  v_actor text; v_target public.business_users%ROWTYPE; v_catalog private.rbac_permission_catalog%ROWTYPE;
++  v_current_version integer; v_next_version integer; v_id bigint;
++BEGIN
++  v_actor:=private.current_business_user_id();
++  IF v_actor IS NULL OR private.current_system_permission()<>'admin'
++    OR NOT private.rbac_has_permission('permissions.manage') THEN
++    RAISE EXCEPTION 'RBAC02_PERMISSION_DENIED' USING ERRCODE='42501';
++  END IF;
++  IF p_target_business_user_id IS NULL OR p_permission IS NULL
++    OR p_decision NOT IN ('allow','deny','reset','revoke')
++    OR p_expected_version IS NULL OR p_expected_version<0
++    OR length(btrim(coalesce(p_reason,''))) NOT BETWEEN 5 AND 500 THEN
++    RAISE EXCEPTION 'RBAC02_INPUT_INVALID' USING ERRCODE='22023';
++  END IF;
++  IF p_target_business_user_id=v_actor THEN
++    RAISE EXCEPTION 'RBAC02_SELF_CHANGE_DENIED' USING ERRCODE='42501';
++  END IF;
++  SELECT * INTO v_target FROM public.business_users u
++  WHERE u.id=p_target_business_user_id AND u.status='active' AND u.account_status='active'
++    AND u.archived_at IS NULL AND u.deleted_at IS NULL FOR UPDATE;
++  IF v_target.id IS NULL THEN RAISE EXCEPTION 'RBAC02_TARGET_INACTIVE' USING ERRCODE='42501'; END IF;
++  IF v_target.system_permission='admin' THEN
++    RAISE EXCEPTION 'RBAC02_ADMIN_TARGET_PROTECTED' USING ERRCODE='42501';
++  END IF;
++  SELECT * INTO v_catalog FROM private.rbac_permission_catalog c WHERE c.permission=p_permission;
++  IF v_catalog.permission IS NULL OR v_catalog.hard_restricted
++    OR NOT (v_target.system_permission=ANY(v_catalog.account_override_roles))
++    OR (p_decision='allow' AND NOT (v_target.system_permission=ANY(v_catalog.account_allow_roles))) THEN
++    RAISE EXCEPTION 'RBAC02_PERMISSION_NOT_CONFIGURABLE' USING ERRCODE='42501';
++  END IF;
++  IF p_expires_at IS NOT NULL AND p_expires_at<=clock_timestamp() THEN
++    RAISE EXCEPTION 'RBAC02_EXPIRY_INVALID' USING ERRCODE='22023';
++  END IF;
++  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
++    'rbac02:'||p_target_business_user_id||':'||p_permission,0));
++  SELECT coalesce(max(version),0) INTO v_current_version FROM private.rbac02_account_permission_versions
++  WHERE target_business_user_id=p_target_business_user_id AND permission=p_permission;
++  IF v_current_version<>p_expected_version THEN RAISE EXCEPTION 'RBAC02_VERSION_CONFLICT' USING ERRCODE='40001'; END IF;
++  v_next_version:=v_current_version+1;
++  INSERT INTO private.rbac02_account_permission_versions(
++    target_business_user_id,permission,version,expected_version,decision,
++    actor_business_user_id,reason,expires_at
++  ) VALUES (
++    p_target_business_user_id,p_permission,v_next_version,v_current_version,p_decision,
++    v_actor,btrim(p_reason),p_expires_at
++  ) RETURNING id INTO v_id;
++  RETURN jsonb_build_object('id',v_id,'target_business_user_id',p_target_business_user_id,
++    'permission',p_permission,'version',v_next_version,'decision',p_decision,
++    'expires_at',p_expires_at,'effective',p_decision IN ('allow','deny')
++      AND (p_expires_at IS NULL OR p_expires_at>statement_timestamp()));
++END;
++$$;
++
++
++--
+ -- Name: rbac_has_permission(text); Type: FUNCTION; Schema: private; Owner: -
+ --
+ 
+@@ -2607,8 +2670,8 @@
+     SET search_path TO ''
+     AS $$
+   SELECT coalesce((private.rbac_permission_decision_for_user(
+-    private.current_business_user_id(), p_permission
+-  ) ->> 'allowed')::boolean, false)
++    private.current_business_user_id(),p_permission
++  )->>'allowed')::boolean,false)
+ $$;
+ 
+ 
+@@ -2623,71 +2686,91 @@
+ DECLARE
+   v_user public.business_users%ROWTYPE;
+   v_catalog private.rbac_permission_catalog%ROWTYPE;
++  v_enabled boolean;
+   v_allowed boolean;
+   v_version_id bigint;
+   v_decision text;
+-  v_enabled boolean;
++  v_effective_at timestamptz;
++  v_account private.rbac02_account_permission_versions%ROWTYPE;
+ BEGIN
+   SELECT * INTO v_user FROM public.business_users u
+   WHERE u.id = p_business_user_id AND u.status = 'active' AND u.account_status = 'active'
+     AND u.archived_at IS NULL AND u.deleted_at IS NULL;
+-  IF v_user.id IS NULL THEN
+-    RAISE EXCEPTION 'RBAC_ACTOR_INACTIVE' USING ERRCODE = '42501';
+-  END IF;
++  IF v_user.id IS NULL THEN RAISE EXCEPTION 'RBAC_ACTOR_INACTIVE' USING ERRCODE='42501'; END IF;
+   SELECT * INTO v_catalog FROM private.rbac_permission_catalog c WHERE c.permission = p_permission;
+-  IF v_catalog.permission IS NULL THEN
+-    RAISE EXCEPTION 'RBAC_PERMISSION_UNKNOWN' USING ERRCODE = '22023';
+-  END IF;
++  IF v_catalog.permission IS NULL THEN RAISE EXCEPTION 'RBAC_PERMISSION_UNKNOWN' USING ERRCODE='22023'; END IF;
+   v_allowed := coalesce((v_catalog.legacy_defaults ->> v_user.system_permission)::boolean, false);
+   SELECT g.enabled INTO v_enabled FROM private.rbac_runtime_gate g WHERE g.id = true;
+   IF v_catalog.hard_restricted OR NOT coalesce(v_enabled, false) THEN
+     RETURN jsonb_build_object(
+-      'actor_business_user_id', v_user.id, 'role', v_user.system_permission,
+-      'permission', p_permission, 'allowed', v_allowed,
+-      'source', CASE WHEN v_catalog.hard_restricted THEN 'hard_restriction' ELSE 'legacy_default' END,
+-      'reason', CASE WHEN v_catalog.hard_restricted THEN 'This action is fixed by the security baseline.'
+-                     ELSE 'The dynamic policy gate is disabled; the legacy matrix applies.' END,
+-      'version', NULL, 'expires_at', NULL, 'effective_at', NULL
++      'actor_business_user_id',v_user.id,'role',v_user.system_permission,'permission',p_permission,
++      'allowed',v_allowed,'source',CASE WHEN v_catalog.hard_restricted THEN 'hard_restriction' ELSE 'legacy_default' END,
++      'reason',CASE WHEN v_catalog.hard_restricted THEN 'This action is fixed by the security baseline.'
++                    ELSE 'The dynamic policy gate is disabled; the legacy matrix applies.' END,
++      'version',NULL,'expires_at',NULL,'effective_at',NULL
+     );
+   END IF;
+ 
+-  v_version_id := private.rbac01_active_version_id(v_user.system_permission, p_at);
++  v_version_id := private.rbac01_active_version_id(v_user.system_permission,p_at);
+   IF v_version_id IS NOT NULL THEN
+     IF NOT EXISTS (
+       SELECT 1 FROM private.rbac01_role_default_events approval
+-      JOIN private.rbac01_role_default_versions version ON version.id = approval.version_id
+-      WHERE approval.version_id = v_version_id AND approval.event_type = 'approval'
+-        AND approval.actor_business_user_id <> version.proposed_by
++      JOIN private.rbac01_role_default_versions version ON version.id=approval.version_id
++      WHERE approval.version_id=v_version_id AND approval.event_type='approval'
++        AND approval.actor_business_user_id<>version.proposed_by
+     ) THEN
+-      RETURN jsonb_build_object(
+-        'actor_business_user_id', v_user.id, 'role', v_user.system_permission,
+-        'permission', p_permission, 'allowed', false, 'source', 'invalid_version',
+-        'reason', 'The active role configuration lacks independent approval.',
+-        'version', v_version_id, 'expires_at', NULL, 'effective_at', NULL
+-      );
++      RETURN jsonb_build_object('actor_business_user_id',v_user.id,'role',v_user.system_permission,
++        'permission',p_permission,'allowed',false,'source','invalid_version',
++        'reason','The active role configuration lacks independent approval.',
++        'version',v_version_id,'expires_at',NULL,'effective_at',NULL);
+     END IF;
+-    SELECT version.decisions ->> p_permission INTO v_decision
++    SELECT version.decisions->>p_permission INTO v_decision
+     FROM private.rbac01_role_default_versions version
+-    WHERE version.id = v_version_id AND version.role = v_user.system_permission;
++    WHERE version.id=v_version_id AND version.role=v_user.system_permission;
+     IF v_decision IN ('allow','deny') THEN
+-      RETURN jsonb_build_object(
+-        'actor_business_user_id', v_user.id, 'role', v_user.system_permission,
+-        'permission', p_permission, 'allowed', (v_decision = 'allow'),
+-        'source', 'role_override',
+-        'reason', format('Approved role policy v%s applies.', v_version_id),
+-        'version', v_version_id, 'expires_at', NULL,
+-        'effective_at', (SELECT e.effective_at FROM private.rbac01_role_default_events e
+-          WHERE e.event_type IN ('activation','rollback') AND e.resulting_version_id = v_version_id
+-          ORDER BY e.id DESC LIMIT 1)
+-      );
++      v_allowed := (v_decision='allow');
++      v_effective_at := (SELECT e.effective_at FROM private.rbac01_role_default_events e
++        WHERE e.event_type IN ('activation','rollback') AND e.resulting_version_id=v_version_id
++        ORDER BY e.effective_at DESC,e.id DESC LIMIT 1);
+     END IF;
+   END IF;
+-  RETURN jsonb_build_object(
+-    'actor_business_user_id', v_user.id, 'role', v_user.system_permission,
+-    'permission', p_permission, 'allowed', v_allowed, 'source', 'legacy_default',
+-    'reason', 'No active role override changes this permission.',
+-    'version', NULL, 'expires_at', NULL, 'effective_at', NULL
+-  );
++
++  SELECT * INTO v_account FROM private.rbac02_account_permission_versions a
++  WHERE a.target_business_user_id=v_user.id AND a.permission=p_permission
++  ORDER BY a.version DESC LIMIT 1;
++  IF v_account.id IS NOT NULL AND v_account.decision IN ('allow','deny') THEN
++    IF v_account.expires_at IS NOT NULL AND v_account.expires_at <= p_at THEN
++      RETURN jsonb_build_object('actor_business_user_id',v_user.id,'role',v_user.system_permission,
++        'permission',p_permission,'allowed',v_allowed,'source','expired',
++        'reason','The account override expired; the role policy applies.',
++        'version',v_account.version,'expires_at',v_account.expires_at,'effective_at',v_effective_at);
++    END IF;
++    IF v_account.decision='deny' THEN v_allowed := false;
++    ELSIF v_user.system_permission = ANY(v_catalog.account_allow_roles) THEN v_allowed := true;
++    ELSE v_allowed := false;
++    END IF;
++    RETURN jsonb_build_object('actor_business_user_id',v_user.id,'role',v_user.system_permission,
++      'permission',p_permission,'allowed',v_allowed,
++      'source',CASE WHEN v_account.decision='deny' THEN 'account_deny' ELSE 'account_allow' END,
++      'reason',CASE WHEN v_account.decision='deny' THEN 'An active account deny takes precedence.'
++                    WHEN v_allowed THEN 'An active account allow is permitted by the catalog.'
++                    ELSE 'This account role is not allowed to receive this permission.' END,
++      'version',v_account.version,'expires_at',v_account.expires_at,'effective_at',v_effective_at);
++  END IF;
++  IF v_account.id IS NOT NULL AND v_account.decision IN ('reset','revoke') THEN
++    RETURN jsonb_build_object('actor_business_user_id',v_user.id,'role',v_user.system_permission,
++      'permission',p_permission,'allowed',v_allowed,
++      'source',CASE WHEN v_account.decision='revoke' THEN 'revoked' ELSE 'legacy_default' END,
++      'reason',CASE WHEN v_account.decision='revoke' THEN 'The account override was revoked; the role policy applies.'
++                    ELSE 'The account override was reset; the role policy applies.' END,
++      'version',v_account.version,'expires_at',NULL,'effective_at',v_effective_at);
++  END IF;
++  RETURN jsonb_build_object('actor_business_user_id',v_user.id,'role',v_user.system_permission,
++    'permission',p_permission,'allowed',v_allowed,
++    'source',CASE WHEN v_version_id IS NULL THEN 'legacy_default' ELSE 'role_override' END,
++    'reason',CASE WHEN v_version_id IS NULL THEN 'No active role override changes this permission.'
++                  ELSE format('Approved role policy v%s applies.',v_version_id) END,
++    'version',v_version_id,'expires_at',NULL,'effective_at',v_effective_at);
+ END;
+ $$;
+ 
+@@ -8277,7 +8360,7 @@
+     LANGUAGE sql STABLE SECURITY DEFINER
+     SET search_path TO ''
+     AS $$
+-  SELECT coalesce((public.rbac_permission_decision(p_permission) ->> 'allowed')::boolean, false)
++  SELECT coalesce((public.rbac_permission_decision(p_permission)->>'allowed')::boolean,false)
+ $$;
+ 
+ 
+@@ -8464,6 +8547,75 @@
+ 
+ 
+ --
++-- Name: rbac02_list_account_overrides(); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rbac02_list_account_overrides() RETURNS jsonb
++    LANGUAGE plpgsql STABLE SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE v_actor text; v_result jsonb;
++BEGIN
++  v_actor:=private.current_business_user_id();
++  IF v_actor IS NULL OR private.current_system_permission()<>'admin' THEN
++    RAISE EXCEPTION 'RBAC02_PERMISSION_DENIED' USING ERRCODE='42501';
++  END IF;
++  SELECT coalesce(jsonb_agg(jsonb_build_object(
++    'target_business_user_id',a.target_business_user_id,'permission',a.permission,
++    'version',a.version,'decision',a.decision,'actor_business_user_id',a.actor_business_user_id,
++    'reason',a.reason,'expires_at',a.expires_at,'created_at',a.created_at
++  ) ORDER BY a.target_business_user_id,a.permission),'[]'::jsonb) INTO v_result
++  FROM private.rbac02_account_permission_versions a
++  JOIN (SELECT DISTINCT ON (target_business_user_id,permission)
++      target_business_user_id,permission,version
++    FROM private.rbac02_account_permission_versions
++    ORDER BY target_business_user_id,permission,version DESC) latest
++    USING (target_business_user_id,permission,version);
++  RETURN v_result;
++END;
++$$;
++
++
++--
++-- Name: rbac02_reset_account_override(text, text, text, integer); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rbac02_reset_account_override(p_target_business_user_id text, p_permission text, p_reason text, p_expected_version integer) RETURNS jsonb
++    LANGUAGE sql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++  SELECT private.rbac02_append_account_decision(
++    p_target_business_user_id,p_permission,'reset',p_reason,NULL,p_expected_version)
++$$;
++
++
++--
++-- Name: rbac02_revoke_account_override(text, text, text, integer); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rbac02_revoke_account_override(p_target_business_user_id text, p_permission text, p_reason text, p_expected_version integer) RETURNS jsonb
++    LANGUAGE sql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++  SELECT private.rbac02_append_account_decision(
++    p_target_business_user_id,p_permission,'revoke',p_reason,NULL,p_expected_version)
++$$;
++
++
++--
++-- Name: rbac02_set_account_override(text, text, text, text, timestamp with time zone, integer); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rbac02_set_account_override(p_target_business_user_id text, p_permission text, p_decision text, p_reason text, p_expires_at timestamp with time zone, p_expected_version integer) RETURNS jsonb
++    LANGUAGE sql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++  SELECT private.rbac02_append_account_decision(
++    p_target_business_user_id,p_permission,p_decision,p_reason,p_expires_at,p_expected_version)
++$$;
++
++
++--
+ -- Name: rbac_permission_decision(text); Type: FUNCTION; Schema: public; Owner: -
+ --
+ 
+@@ -8473,9 +8625,29 @@
+     AS $$
+ DECLARE v_actor text;
+ BEGIN
+-  v_actor := private.current_business_user_id();
+-  IF v_actor IS NULL THEN RAISE EXCEPTION 'RBAC_AUTHENTICATION_REQUIRED' USING ERRCODE = '42501'; END IF;
+-  RETURN private.rbac_permission_decision_for_user(v_actor, p_permission);
++  v_actor:=private.current_business_user_id();
++  IF v_actor IS NULL THEN RAISE EXCEPTION 'RBAC_AUTHENTICATION_REQUIRED' USING ERRCODE='42501'; END IF;
++  RETURN private.rbac_permission_decision_for_user(v_actor,p_permission);
++END;
++$$;
++
++
++--
++-- Name: rbac_permission_decisions(); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.rbac_permission_decisions() RETURNS jsonb
++    LANGUAGE plpgsql STABLE SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++DECLARE v_actor text; v_result jsonb;
++BEGIN
++  v_actor:=private.current_business_user_id();
++  IF v_actor IS NULL THEN RAISE EXCEPTION 'RBAC_AUTHENTICATION_REQUIRED' USING ERRCODE='42501'; END IF;
++  SELECT coalesce(jsonb_agg(private.rbac_permission_decision_for_user(v_actor,c.permission)
++    ORDER BY c.permission),'[]'::jsonb) INTO v_result
++  FROM private.rbac_permission_catalog c;
++  RETURN v_result;
+ END;
+ $$;
+ 
+@@ -13465,6 +13637,45 @@
+ 
+ 
+ --
++-- Name: rbac02_account_permission_versions; Type: TABLE; Schema: private; Owner: -
++--
++
++CREATE TABLE private.rbac02_account_permission_versions (
++    id bigint NOT NULL,
++    target_business_user_id text NOT NULL,
++    permission text NOT NULL,
++    version integer NOT NULL,
++    expected_version integer NOT NULL,
++    decision text NOT NULL,
++    actor_business_user_id text NOT NULL,
++    reason text NOT NULL,
++    expires_at timestamp with time zone,
++    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
++    CONSTRAINT rbac02_account_permission_versions_check CHECK (((decision = ANY (ARRAY['allow'::text, 'deny'::text])) OR (expires_at IS NULL))),
++    CONSTRAINT rbac02_account_permission_versions_decision_check CHECK ((decision = ANY (ARRAY['allow'::text, 'deny'::text, 'reset'::text, 'revoke'::text]))),
++    CONSTRAINT rbac02_account_permission_versions_expected_version_check CHECK ((expected_version >= 0)),
++    CONSTRAINT rbac02_account_permission_versions_reason_check CHECK (((length(btrim(reason)) >= 5) AND (length(btrim(reason)) <= 500))),
++    CONSTRAINT rbac02_account_permission_versions_version_check CHECK ((version > 0))
++);
++
++ALTER TABLE ONLY private.rbac02_account_permission_versions FORCE ROW LEVEL SECURITY;
++
++
++--
++-- Name: rbac02_account_permission_versions_id_seq; Type: SEQUENCE; Schema: private; Owner: -
++--
++
++ALTER TABLE private.rbac02_account_permission_versions ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
++    SEQUENCE NAME private.rbac02_account_permission_versions_id_seq
++    START WITH 1
++    INCREMENT BY 1
++    NO MINVALUE
++    NO MAXVALUE
++    CACHE 1
++);
++
++
++--
+ -- Name: rbac_permission_catalog; Type: TABLE; Schema: private; Owner: -
+ --
+ 
+@@ -14699,6 +14910,22 @@
+ 
+ 
+ --
++-- Name: rbac02_account_permission_versions rbac02_account_permission_ver_target_business_user_id_permi_key; Type: CONSTRAINT; Schema: private; Owner: -
++--
++
++ALTER TABLE ONLY private.rbac02_account_permission_versions
++    ADD CONSTRAINT rbac02_account_permission_ver_target_business_user_id_permi_key UNIQUE (target_business_user_id, permission, version);
++
++
++--
++-- Name: rbac02_account_permission_versions rbac02_account_permission_versions_pkey; Type: CONSTRAINT; Schema: private; Owner: -
++--
++
++ALTER TABLE ONLY private.rbac02_account_permission_versions
++    ADD CONSTRAINT rbac02_account_permission_versions_pkey PRIMARY KEY (id);
++
++
++--
+ -- Name: rbac_permission_catalog rbac_permission_catalog_pkey; Type: CONSTRAINT; Schema: private; Owner: -
+ --
+ 
+@@ -16298,6 +16525,13 @@
+ 
+ 
+ --
++-- Name: rbac02_account_permission_versions rbac02_versions_immutable; Type: TRIGGER; Schema: private; Owner: -
++--
++
++CREATE TRIGGER rbac02_versions_immutable BEFORE DELETE OR UPDATE ON private.rbac02_account_permission_versions FOR EACH ROW EXECUTE FUNCTION private.rbac_reject_immutable_change();
++
++
++--
+ -- Name: account_requests account_requests_notification_events; Type: TRIGGER; Schema: public; Owner: -
+ --
+ 
+@@ -16920,6 +17154,30 @@
+ 
+ 
+ --
++-- Name: rbac02_account_permission_versions rbac02_account_permission_versions_actor_business_user_id_fkey; Type: FK CONSTRAINT; Schema: private; Owner: -
++--
++
++ALTER TABLE ONLY private.rbac02_account_permission_versions
++    ADD CONSTRAINT rbac02_account_permission_versions_actor_business_user_id_fkey FOREIGN KEY (actor_business_user_id) REFERENCES public.business_users(id);
++
++
++--
++-- Name: rbac02_account_permission_versions rbac02_account_permission_versions_permission_fkey; Type: FK CONSTRAINT; Schema: private; Owner: -
++--
++
++ALTER TABLE ONLY private.rbac02_account_permission_versions
++    ADD CONSTRAINT rbac02_account_permission_versions_permission_fkey FOREIGN KEY (permission) REFERENCES private.rbac_permission_catalog(permission);
++
++
++--
++-- Name: rbac02_account_permission_versions rbac02_account_permission_versions_target_business_user_id_fkey; Type: FK CONSTRAINT; Schema: private; Owner: -
++--
++
++ALTER TABLE ONLY private.rbac02_account_permission_versions
++    ADD CONSTRAINT rbac02_account_permission_versions_target_business_user_id_fkey FOREIGN KEY (target_business_user_id) REFERENCES public.business_users(id);
++
++
++--
+ -- Name: account_requests account_requests_auth_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -18352,6 +18610,12 @@
+ --
+ 
+ ALTER TABLE private.rbac01_role_default_versions ENABLE ROW LEVEL SECURITY;
++
++--
++-- Name: rbac02_account_permission_versions; Type: ROW SECURITY; Schema: private; Owner: -
++--
++
++ALTER TABLE private.rbac02_account_permission_versions ENABLE ROW LEVEL SECURITY;
+ 
+ --
+ -- Name: rbac_permission_catalog; Type: ROW SECURITY; Schema: private; Owner: -
+@@ -19382,5 +19646,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict 7NPaV5QLgkVWTas0D4bCf90bOTkwtESftJFodrBI7OZKxZgjBfsnFkUGfRz2X2w
+-
++\unrestrict Rxu2V92yuTuwVeeZfuWcNZN5VTpZIoejPNqicbcEFg0JI1XNWE8cw8qgz4R1aU3
++

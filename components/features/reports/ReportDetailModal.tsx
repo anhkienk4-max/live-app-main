@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
 import { Report, Shift, Brand, Platform, User, Campaign, FinalReportRecap, OcrReviewData, ShiftRegistration, NormalizedReportMetrics, ReportMetricKey, LiveReportImage, ReportRevision } from '@/lib/types/database.types'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
@@ -13,13 +12,13 @@ import { ReportImage } from '@/lib/types/database.types'
 import { format } from 'date-fns'
 import { AlertTriangle, ChevronDown, ChevronUp, DollarSign, TrendingUp, Users, ThumbsUp, MessageCircle, Share2, ExternalLink, Star, Download, Check, X, Pencil, RotateCcw, ScanText, Trash2, History, LockOpen, Upload } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermission, canExportReportDetail } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useToast } from '@/components/ui/toast'
 import { Textarea } from '@/components/ui/textarea'
-import { exportReportDetailToExcel } from '@/lib/utils/excelUtils'
+import { downloadReportExport } from '@/lib/services/reportExportService'
 import { numericMetric } from '@/lib/utils/ocrMetrics'
 import {
   clearReviewMetric,
@@ -54,7 +53,7 @@ import {
   finalReportRecapFields,
   normalizeFinalReportRecap,
 } from '@/lib/utils/finalReportRecap'
-import { LiveReportImageEditor, LiveReportImageGallery } from '@/components/features/reports/LiveReportImageGallery'
+import { LiveReportImageDisplay, LiveReportImageEditor, LiveReportImageGallery } from '@/components/features/reports/LiveReportImageGallery'
 import {
   moveLiveReportImage,
   resolveLiveReportImagePermissions,
@@ -280,7 +279,6 @@ export function ReportDetailModal({
   brands, 
   platforms,
   users,
-  campaigns = [],
   registrations = [],
   onUpdated,
 }: ReportDetailModalProps) {
@@ -490,16 +488,11 @@ export function ReportDetailModal({
     onUpdated?.()
   }
 
-  const exportDetail = () => exportReportDetailToExcel(report, {
-    shifts: [shift],
-    campaigns,
-    users,
-    registrations,
-    brands: new Map(brands.map(brand => [brand.id, brand.name])),
-    platforms: new Map(platforms.map(platform => [platform.id, platform.name])),
+  const exportDetail = () => void downloadReportExport('report', [report.id]).catch(error => {
+    toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
   })
 
-  const canExport = !currentUser || hasPermission(currentUser, 'reports.export') || hasPermission(currentUser, 'reports.review') || hasPermission(currentUser, 'reports.submit') || report.submitted_by === currentUser?.id
+  const canExport = canExportReportDetail(currentUser, report.submitted_by)
 
   const rerunOcr = async () => {
     const platform = report.dashboard_platform || 'other'
@@ -1085,17 +1078,15 @@ export function ReportDetailModal({
                 {images.filter(image => image.image_type === 'dashboard').length === 0
                   ? <p className="text-sm text-gray-500">{t('noEvidenceImages')}</p>
                   : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {images.filter(image => image.image_type === 'dashboard').map(image => (
-                        <div className="space-y-2 rounded-lg border p-2" key={image.id}>
-                          <Image
-                            unoptimized
-                            width={1280}
-                            height={720}
-                            src={signedUrls[image.id] || (image.image_url.startsWith('blob:') || image.image_url.startsWith('data:') ? image.image_url : '')}
-                            alt={image.original_name || image.image_type}
-                            className="aspect-video w-full rounded-md object-cover"
-                          />
-                          <div className="flex items-center justify-between gap-2">
+                      {images.filter(image => image.image_type === 'dashboard').map(image => {
+                        const imgUrl = signedUrls[image.id] || ((image.image_url.startsWith('blob:') || image.image_url.startsWith('data:') || image.image_url.startsWith('http://') || image.image_url.startsWith('https://')) ? image.image_url : null)
+                        return (
+                          <div className="space-y-2 rounded-lg border p-2" key={image.id}>
+                            <LiveReportImageDisplay
+                              src={imgUrl}
+                              alt={image.original_name || image.image_type}
+                            />
+                            <div className="flex items-center justify-between gap-2">
                             <p className="min-w-0 truncate text-xs">{image.original_name || image.image_type}</p>
                             {liveImagePermissions.canEdit && (
                               <Button
@@ -1110,7 +1101,8 @@ export function ReportDetailModal({
                             )}
                           </div>
                         </div>
-                      ))}
+                      )
+                    })}
                     </div>}
               </CardContent>
             </Card>

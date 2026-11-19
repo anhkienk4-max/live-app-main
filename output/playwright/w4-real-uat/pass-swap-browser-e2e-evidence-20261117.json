@@ -1,0 +1,72 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "postgres": "170011",
+  "scenarios": {
+    "scenario1": {
+      "requestId": "7e7db372-63df-4630-afe8-e73bcfa146e8",
+      "status": "completed",
+      "version": 5,
+      "requester": "UiOriginal_ui_1794890074612_22ec09ce",
+      "recipient": "UiReplacement_ui_1794890074612_22ec09ce",
+      "admin": "admin_ui_1794890054824_7496b893",
+      "ok": true
+    },
+    "scenario2": {
+      "requestId": "cc2e3d64-51a7-46e1-8c37-e1d6911266ca",
+      "status": "rejected",
+      "version": 3,
+      "ok": true
+    },
+    "scenario3": {
+      "requestId": "330b8a07-5027-4db9-9745-f789401fba25",
+      "status": "cancelled",
+      "version": 3,
+      "ok": true
+    },
+    "scenario4": {
+      "ok": true,
+      "screen": "My Payslip"
+    }
+  },
+  "baselines": {
+    "lockedPayroll": {
+      "before": {
+        "periodCount": 3,
+        "lineCount": 6,
+        "sha256": "ea468279670ee91917a88d7c030f3799a201ca8f9e6a12ab416452b0b6b93cae"
+      },
+      "after": {
+        "periodCount": 3,
+        "lineCount": 6,
+        "sha256": "ea468279670ee91917a88d7c030f3799a201ca8f9e6a12ab416452b0b6b93cae"
+      },
+      "unchanged": true
+    },
+    "attendance": {
+      "before": {
+        "eventCount": 8,
+        "sha256": "3c9a77e3a448573d6399e3d658d3c7024c7e3c177573135e6bc387bf5a1f1484"
+      },
+      "after": {
+        "eventCount": 8,
+        "sha256": "3c9a77e3a448573d6399e3d658d3c7024c7e3c177573135e6bc387bf5a1f1484"
+      },
+      "unchanged": true
+    },
+    "approvedActual": {
+      "before": {
+        "segmentCount": 7,
+        "decisionCount": 6,
+        "sha256": "be13f9da929c7546718282ea7f7b089b921e57e4216b4df354e8d6368537206f"
+      },
+      "after": {
+        "segmentCount": 7,
+        "decisionCount": 6,
+        "sha256": "be13f9da929c7546718282ea7f7b089b921e57e4216b4df354e8d6368537206f"
+      },
+      "unchanged": true
+    }
+  },
+  "status": "ALL_PASS"
+}

@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import * as XLSX from 'xlsx'
+import { selectExportFields, SUPPLEMENTAL_EXPORT_ALL_ID } from '../lib/utils/calendarExport.ts'
 import {
   buildScheduleExportRows,
   buildScheduleExportFilename,
@@ -415,4 +416,89 @@ test('buildScheduleExportRows — all required operational fields present', () =
   assert.equal(row['Registration Locked'], true)
   assert.equal(row['Live Link'], 'https://tiktok.com/live/123')
   assert.equal(row['Notes'], 'Ghi chu san pham')
+})
+
+test('buildScheduleExportRows — exports Execution Source and Agency correctly', () => {
+  const shift = makeShift({
+    execution_source: 'agency',
+    agency_code: 'live_ai',
+  })
+  const rows = buildScheduleExportRows([shift], brands, platforms, campaigns, usersMap, [])
+  assert.equal(rows[0]['Execution Source'], 'External')
+  assert.equal(rows[0]['Agency'], 'Live AI')
+})
+
+test('buildScheduleExportRows — includes KPI fields and preserves 1 Parent = 1 Row GMV integrity (Issue #162)', () => {
+  const shift = makeShift({ id: 'shift-kpi-1' })
+  const registrations = [
+    makeRegistration({ id: 'reg-1', shift_id: 'shift-kpi-1', user_id: 'user-host-1', operational_role: 'host' }),
+    makeRegistration({ id: 'reg-2', shift_id: 'shift-kpi-1', user_id: 'user-support-1', operational_role: 'support' }),
+  ]
+  const reports = new Map([
+    ['shift-kpi-1', {
+      shift_id: 'shift-kpi-1',
+      gmv: 50000000,
+      target_gmv: 45000000,
+      orders: 320,
+      peak_viewer: 1500,
+    }],
+  ])
+
+  const rows = buildScheduleExportRows(
+    [shift],
+    brands,
+    platforms,
+    campaigns,
+    usersMap,
+    registrations,
+    reports,
+    { includeKpi: true },
+  )
+
+  // 1 Parent livestream = exactly 1 physical row
+  assert.equal(rows.length, 1)
+  const row = rows[0]
+
+  // KPI / GMV values mapped correctly without duplication
+  assert.equal(row['Target GMV'], 45000000)
+  assert.equal(row['Actual GMV'], 50000000)
+  assert.equal(row['Total Orders'], 320)
+  assert.equal(row['Peak Viewers'], 1500)
+
+  // Multiple staffed segments formatted cleanly in cell
+  assert.ok(row['Assigned Host Names'].includes('Nguyễn Thị Hương'))
+  assert.ok(row['Assigned Support Names'].includes('Lê Văn An'))
+})
+
+test('KAO header aliases dictionary maps all operational and KPI fields', async () => {
+  const { KAO_SCHEDULE_HEADER_ALIASES } = await import('../lib/utils/scheduleExportFields.ts')
+  assert.ok(KAO_SCHEDULE_HEADER_ALIASES['Date'].includes('ngày'))
+  assert.ok(KAO_SCHEDULE_HEADER_ALIASES['Brand'].includes('thương hiệu'))
+  assert.ok(KAO_SCHEDULE_HEADER_ALIASES['Studio'].includes('phòng live'))
+  assert.ok(KAO_SCHEDULE_HEADER_ALIASES['Actual GMV'].includes('doanh thu thực tế'))
+})
+
+test('calendar export exposes report KPI fields only to roles with reports.export', () => {
+  const reportKpiFieldIds = [
+    'schedule.Target GMV',
+    'schedule.Actual GMV',
+    'schedule.Total Orders',
+    'schedule.Peak Viewers',
+  ]
+  for (const permission of ['leader', 'admin'] as const) {
+    assert.deepEqual(
+      selectExportFields(permission).filter(field => reportKpiFieldIds.includes(field.id)).map(field => field.id),
+      reportKpiFieldIds,
+    )
+  }
+  assert.deepEqual(selectExportFields('member').filter(field => reportKpiFieldIds.includes(field.id)), [])
+  assert.throws(() => selectExportFields('member', ['schedule.Target GMV']), /EXPORT_FIELD_DENIED/)
+})
+
+test('calendar export selects supplemental fields only from the authorized Shift scope', () => {
+  const scopedFields = [{ key: 'target', label: 'TARGET' }, { key: 'timeslot', label: 'Timeslot' }]
+  const fields = selectExportFields('admin', [SUPPLEMENTAL_EXPORT_ALL_ID], scopedFields)
+  assert.deepEqual(fields.map(field => field.id), ['schedule.supplemental.target', 'schedule.supplemental.timeslot'])
+  assert.throws(() => selectExportFields('member', [SUPPLEMENTAL_EXPORT_ALL_ID], scopedFields), /EXPORT_FIELD_DENIED/)
+  assert.throws(() => selectExportFields('admin', [SUPPLEMENTAL_EXPORT_ALL_ID]), /EXPORT_FIELD_DENIED/)
 })

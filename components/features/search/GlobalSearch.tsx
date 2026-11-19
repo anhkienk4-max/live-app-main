@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
-import { Search, Calendar, User, Briefcase, Tag, FileText, Users, Upload } from 'lucide-react'
+import { Search, Calendar, User, Briefcase, Tag, FileText, Upload } from 'lucide-react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { NAVIGATION_GROUPS, UNIFIED_NAVIGATION_CATALOG } from '@/lib/ui/role-ux'
 
 type SearchResult = {
   id: string
@@ -80,11 +81,14 @@ export function GlobalSearch() {
     const addAction = (id: string, title: string, subtitle: string, url: string, icon: React.ReactNode) => {
       actions.push({ id, type: 'action', title, subtitle, url, icon })
     }
-    if (canViewShifts) addAction('calendar', t('openCalendar'), t('viewShifts'), '/calendar', <Calendar className="h-4 w-4" />)
+    for (const item of UNIFIED_NAVIGATION_CATALOG) {
+      const Icon = item.icon
+      const title = t((item.labelKey ?? item.name.toLowerCase()) as Parameters<typeof t>[0])
+      const group = NAVIGATION_GROUPS.find(value => value.id === item.group)
+      addAction(`nav:${item.href}`, title, group ? t(group.labelKey) : t('navMain'), item.href, <Icon className="h-4 w-4" />)
+    }
     if (canImportShifts) addAction('import', t('openImportSchedule'), t('importShifts'), '/calendar?action=import', <Upload className="h-4 w-4" />)
     if (canAssignStaff) addAction('create', t('createShift'), t('newShift'), '/calendar?action=create', <Calendar className="h-4 w-4" />)
-    if (canViewReports) addAction('reports', t('openReports'), t('viewReports'), '/reports', <FileText className="h-4 w-4" />)
-    if (canViewStaff) addAction('staff', t('openStaff'), t('manageStaff'), '/staff', <Users className="h-4 w-4" />)
     const q = normalize(query)
     if (!q) {
       setResults(actions)

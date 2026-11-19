@@ -1,0 +1,50 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "leader_scope_fixture": {
+    "brand_id": "brand_ui_1794890074612_22ec09ce",
+    "scope_id": 10,
+    "status": "active",
+    "version": 1
+  },
+  "leader_replace": "PASS_UI_SUCCESS",
+  "fresh_readback": [
+    {
+      "id": "1083c32a-6dd3-4365-84d0-9564a522e366",
+      "user_id": "HostOne_c511_1794886705715_5f2238403c0c40",
+      "status": "removed",
+      "staffing_segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+      "operational_role": "host"
+    },
+    {
+      "id": "aecff2ed-77cb-4adf-8fdb-7ddae4ca47d5",
+      "user_id": "HostTwo_c511_1794886705715_a73a0921852248",
+      "status": "removed",
+      "staffing_segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+      "operational_role": "host"
+    },
+    {
+      "id": "a8819c5e-1f22-4e6c-b1c0-dddba4082bc7",
+      "user_id": "HostOne_c511_1794886705715_5f2238403c0c40",
+      "status": "manually_assigned",
+      "staffing_segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+      "operational_role": "host"
+    }
+  ],
+  "foreign_brand_denial": {
+    "denied": true,
+    "code": "42501",
+    "message": "LEADER_BRAND_SCOPE_REQUIRED"
+  },
+  "rpcErrors": [],
+  "screenshots": [
+    "leader-replace-success-1440.png"
+  ],
+  "route": {
+    "status": 200,
+    "ok": true,
+    "error": null
+  },
+  "readback_ok": true,
+  "foreign_rows_unchanged": false
+}

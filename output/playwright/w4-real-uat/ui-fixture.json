@@ -1,0 +1,14 @@
+{
+  "database": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "admin_business_user_id": "admin_ui_1794890054824_7496b893",
+  "admin_auth_user_id": "bd5ba244-f24c-493a-a2ed-bb7878bb2e65",
+  "admin_email": "admin_ui_1794890054824_7496b893@w4.invalid",
+  "shift_id": "d5e4caee-99a0-417b-83b2-16d99519f64f",
+  "shift_title": "W4 UI Atomic Replace ui_1794890074612_22ec09ce",
+  "shift_date": "2026-11-22",
+  "segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+  "original_user_id": "UiOriginal_ui_1794890074612_22ec09ce",
+  "replacement_user_id": "UiReplacement_ui_1794890074612_22ec09ce",
+  "registration_id": "c77c9b79-ec21-4f3e-8a9e-e306d2280971"
+}

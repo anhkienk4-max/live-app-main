@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""Provision one marked local PostgreSQL DB from the verified C4 schema snapshot."""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+EVIDENCE = ROOT / "scripts/rc19-c4-migration-rehearsal/evidence"
+BASELINE_DIR = EVIDENCE / "c5.3-final-pg176-20261108T191556Z"
+BASELINE = BASELINE_DIR / "schema-after-20.sql"
+BASELINE_RESULT = BASELINE_DIR / "result.json"
+MANIFEST = EVIDENCE / "c5.3-final-migration-manifest.json"
+MIGRATION = ROOT / "supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql"
+MIGRATION_C512 = ROOT / "supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql"
+MIGRATION_ISSUE93 = ("20261110123000", ROOT / "supabase/migrations/20261110123000_rc19_issue93_pass_swap_lead_times.sql", "rc19_issue93_pass_swap_lead_times")
+POST_20261111_MIGRATIONS = [
+    ("20261112000000", ROOT / "supabase/migrations/20261112000000_rc19_c2_calendar_overlap_range.sql", "rc19_c2_calendar_overlap_range"),
+    ("20261112120000", ROOT / "supabase/migrations/20261112120000_rc19_audit_history_keyset.sql", "rc19_audit_history_keyset"),
+    ("20261112130000", ROOT / "supabase/migrations/20261112130000_rc19_c6_import_source_reconciliation.sql", "rc19_c6_import_source_reconciliation"),
+    ("20261113083000", ROOT / "supabase/migrations/20261113083000_rc19_c4_audit_dependency.sql", "rc19_c4_audit_dependency"),
+    ("20261113084154", ROOT / "supabase/migrations/20261113084154_rc19_c4_atomic_staffing_replacement.sql", "rc19_c4_atomic_staffing_replacement"),
+        ("20261115120000", ROOT / "supabase/migrations/20261115120000_rc19_w4_legacy_segment_compatibility.sql", "rc19_w4_legacy_segment_compatibility"),
+        ("20261115130000", ROOT / "supabase/migrations/20261115130000_rc19_w4_segmented_manual_assignment.sql", "rc19_w4_segmented_manual_assignment"),
+        ("20261115140000", ROOT / "supabase/migrations/20261115140000_rc19_w4_pass_swap_segment_preservation.sql", "rc19_w4_pass_swap_segment_preservation"),
+        ("20261115174231", ROOT / "supabase/migrations/20261115174231_rc19_w4_retire_unguarded_swap_approval.sql", "rc19_w4_retire_unguarded_swap_approval"),
+        ("20261116120000", ROOT / "supabase/migrations/20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql", "rc19_w4_swap_preflight_and_segment_capacity"),
+        ("20261117160000", ROOT / "supabase/migrations/20261117160000_rc19_w4_pass_recipient_visibility.sql", "rc19_w4_pass_recipient_visibility"),
+    ("20261118140000", ROOT / "supabase/migrations/20261118140000_rc19_w4_atomic_overtime_payroll_sync.sql", "rc19_w4_atomic_overtime_payroll_sync"),
+    ("20261118150000", ROOT / "supabase/migrations/20261118150000_rc19_w4_overtime_payroll_defect_fixes.sql", "rc19_w4_overtime_payroll_defect_fixes"),
+]
+MIGRATIONS_C515 = [
+    ("20261110115529", ROOT / "supabase/migrations/20261110115529_rc19_c515_payroll_second_precision.sql", "rc19_c515_payroll_second_precision"),
+    ("20261110130000", ROOT / "supabase/migrations/20261110130000_rc19_c515_payroll_approval_hold.sql", "rc19_c515_payroll_approval_hold"),
+    ("20261110140000", ROOT / "supabase/migrations/20261110140000_rc19_c515_overtime_cancellation_approvals.sql", "rc19_c515_overtime_cancellation_approvals"),
+    ("20261111000000", ROOT / "supabase/migrations/20261111000000_rc19_c515_live_cancellation_transition.sql", "rc19_c515_live_cancellation_transition"),
+]
+SOURCE_DB = "postgres"
+SOURCE_MARKER = "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY"
+
+
+DB_CONTAINER = os.environ.get("C511_DB_CONTAINER", "")
+NETWORK = os.environ.get("C511_NETWORK", "")
+NATIVE_PGHOST = os.environ.get("C511_NATIVE_PGHOST", "")
+NATIVE_PGPORT = os.environ.get("C511_NATIVE_PGPORT", "")
+NATIVE_PGDATA = os.environ.get("C511_NATIVE_PGDATA", "")
+
+
+def run(args: list[str], *, input_text: str | None = None, timeout: int = 180) -> str:
+    if args[0] in {"psql", "pg_dump", "createdb"}:
+        if NATIVE_PGHOST:
+            args = [*args[:1], "-h", NATIVE_PGHOST, "-p", NATIVE_PGPORT, *args[1:]]
+        else:
+            args = ["docker", "exec", "-i", DB_CONTAINER, *args]
+    result = subprocess.run(args, input=input_text, text=True, encoding="utf-8", capture_output=True,
+                            timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(f"exit={result.returncode} {' '.join(args)}\n{(result.stderr or result.stdout)[-3500:]}")
+    return result.stdout
+
+
+def query(sql: str, db: str = SOURCE_DB) -> str:
+    return run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db,
+                "-At", "-c", sql])
+
+
+def sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")).hexdigest()
+
+
+def exact_sha(path: Path) -> str:
+    return sha(path).upper()
+
+
+def main() -> None:
+    native = bool(NATIVE_PGHOST)
+    if native:
+        if (NATIVE_PGHOST != "/home/anhkienk4/.local/share/rc19-c511-native" or
+                NATIVE_PGPORT != "55439" or
+                NATIVE_PGDATA != "/home/anhkienk4/.local/share/rc19-c511-native/pgdata"):
+            raise RuntimeError("REFUSED_UNVERIFIED_NATIVE_C5_C11_CLUSTER")
+    elif (not DB_CONTAINER.startswith("codexb-c511-pg-") or
+          not NETWORK.startswith("codexb-c511-") or
+          not os.environ.get("C511_LOCAL_DB_PORT", "").isdecimal()):
+        raise RuntimeError("REFUSED_MISSING_EXPLICIT_C5_C11_DISPOSABLE_STACK")
+    if not native:
+        container = json.loads(run(["docker", "inspect", DB_CONTAINER], timeout=10))[0]
+        labels = container.get("Config", {}).get("Labels") or {}
+        networks = container.get("NetworkSettings", {}).get("Networks") or {}
+        network = json.loads(run(["docker", "network", "inspect", NETWORK], timeout=10))[0]
+        if (labels.get("codex.owner") != "side-c5-c11" or set(networks) != {NETWORK} or
+                (network.get("Labels") or {}).get("codex.owner") != "side-c5-c11" or
+                (network.get("Options") or {}).get("com.docker.network.bridge.host_binding_ipv4") != "127.0.0.1" or
+                len(network.get("Containers") or {}) != 1):
+            raise RuntimeError("REFUSED_NON_DEDICATED_C5_C11_DISPOSABLE_STACK")
+    source_head = sys.argv[1] if len(sys.argv) > 1 else "UNRECORDED"
+    worktree_dirty = sys.argv[2].lower() == "true" if len(sys.argv) > 2 else True
+    baseline_result = json.loads(BASELINE_RESULT.read_text(encoding="utf-8-sig"))
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8-sig"))
+    c515_manifest_path = ROOT / "docs/releases/c5.15-payroll-migration-extension.json"
+    c515_manifest = json.loads(c515_manifest_path.read_text(encoding="utf-8-sig"))
+    if baseline_result.get("result") != "PASS" or baseline_result.get("effective_migrations_applied") != 20:
+        raise RuntimeError("REFUSED_UNVERIFIED_C4_BASELINE")
+    if sha(BASELINE) != baseline_result.get("final_schema_dump_sha256"):
+        raise RuntimeError("REFUSED_C4_SCHEMA_SNAPSHOT_CHECKSUM_MISMATCH")
+    if len(manifest.get("entries", [])) != 20:
+        raise RuntimeError("REFUSED_C4_MIGRATION_MANIFEST_COUNT")
+    for item in manifest["entries"]:
+        if sha(ROOT / item["file"]) != item["sha256"]:
+            raise RuntimeError("REFUSED_C4_MIGRATION_SOURCE_HASH:" + item["file"])
+    if len(c515_manifest.get("additional_migrations", [])) != len(MIGRATIONS_C515):
+        raise RuntimeError("REFUSED_C515_MIGRATION_MANIFEST_COUNT")
+    for version, path, _name in MIGRATIONS_C515:
+        item = next((entry for entry in c515_manifest["additional_migrations"] if entry.get("version") == version), None)
+        if not item or item.get("file") != path.relative_to(ROOT).as_posix() or item.get("sha256") != exact_sha(path):
+            raise RuntimeError("REFUSED_C515_MIGRATION_SOURCE_HASH:" + version)
+    for _version, path, _name in [MIGRATION_ISSUE93, *POST_20261111_MIGRATIONS]:
+        if not path.is_file():
+            raise RuntimeError("REFUSED_FORWARD_MIGRATION_MISSING:" + path.name)
+
+    source = query("select current_setting('server_version_num')||'|'||current_database()||'|'||coalesce(shobj_description(oid,'pg_database'),'')||'|'||(select count(*) from auth.users) from pg_database where datname=current_database()")
+    fields = source.strip().split("|")
+    if len(fields) != 4 or fields[1] != SOURCE_DB or fields[2] != SOURCE_MARKER:
+        raise RuntimeError("REFUSED_SOURCE_STACK_IDENTITY")
+    if not (170000 <= int(fields[0]) < 180000) or fields[3] != "0":
+        raise RuntimeError("REFUSED_SOURCE_PG_VERSION_OR_AUTH_STATE")
+    if native:
+        native_identity = query("select current_setting('data_directory')||'|'||current_setting('listen_addresses')||'|'||current_setting('port')")
+        if native_identity.strip() != f"{NATIVE_PGDATA}|127.0.0.1|{NATIVE_PGPORT}":
+            raise RuntimeError("REFUSED_NATIVE_CLUSTER_BINDING_OR_DATA_DIRECTORY:" + native_identity)
+        db_port = NATIVE_PGPORT
+    else:
+        docker_running = run(["docker", "inspect", "--format", "{{.State.Running}}", DB_CONTAINER], timeout=10)
+        listeners = run(["docker", "port", DB_CONTAINER], timeout=10)
+        db_port = os.environ.get("C511_LOCAL_DB_PORT", "54322")
+        published = [line.strip() for line in listeners.splitlines() if line.strip()]
+        if (not db_port.isdecimal() or not 1 <= int(db_port) <= 65535 or
+                docker_running.strip() != "true" or not published or
+                any(not line.endswith(f"127.0.0.1:{db_port}") for line in published)):
+            raise RuntimeError("REFUSED_NON_LOOPBACK_SUPABASE_RUNTIME")
+
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    db_name = "rc19_c511_e2e_" + run_id.replace("T", "").replace("Z", "")
+    log_dir = EVIDENCE / "c5.11-local-pg1711"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"isolated-db-{run_id}.log"
+    result_path = log_dir / f"isolated-db-{run_id}.json"
+    log = [f"source_runtime={source.strip()}", f"target_database={db_name}",
+           f"c4_schema_snapshot={BASELINE.relative_to(ROOT).as_posix()}",
+           f"c4_schema_snapshot_sha256={sha(BASELINE)}", f"c4_forward_migrations_verified={len(manifest['entries'])}",
+           f"c511_migration={MIGRATION.relative_to(ROOT).as_posix()}", f"c511_migration_sha256={sha(MIGRATION)}",
+           f"c512_migration={MIGRATION_C512.relative_to(ROOT).as_posix()}", f"c512_migration_sha256={sha(MIGRATION_C512)}"]
+
+    run(["createdb", "-U", "postgres", db_name])
+    query(f"comment on database {db_name} is 'CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY';")
+    try:
+        query("drop schema public cascade;", db_name)
+        restored = run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name],
+                       input_text=BASELINE.read_text(encoding="utf-8"), timeout=240)
+        log.append("verified_c4_schema_snapshot_restore=PASS")
+        log.append("snapshot_restore_lines=" + str(len(restored.splitlines())))
+        source_auth_users = query("select count(*) from auth.users").strip()
+        if source_auth_users != "0":
+            raise RuntimeError("REFUSED_LOCAL_AUTH_SOURCE_HAS_USERS")
+        auth_schema = run(["pg_dump", "-U", "postgres", "-d", SOURCE_DB, "--schema-only",
+                           "--no-owner", "--no-acl", "--schema=auth"], timeout=90)
+        run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", db_name],
+            input_text="drop schema auth cascade;\n" + auth_schema)
+        auth_ownership = """
+        alter schema auth owner to supabase_admin;
+        do $$ declare r record; begin
+          for r in select c.relkind,n.nspname,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+            where n.nspname='auth' and c.relkind in ('r','p','v','m','S','f')
+              and (c.relkind<>'S' or not exists(select 1 from pg_depend d
+                where d.classid='pg_class'::regclass and d.objid=c.oid and d.deptype in ('a','i'))) loop
+            execute format('alter %s %I.%I owner to supabase_auth_admin',
+              case r.relkind when 'S' then 'sequence' when 'v' then 'view' when 'm' then 'materialized view' else 'table' end,
+              r.nspname,r.relname);
+          end loop;
+          for r in select p.prokind,n.nspname,p.proname,pg_get_function_identity_arguments(p.oid) args
+            from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='auth' loop
+            execute format('alter %s %I.%I(%s) owner to supabase_auth_admin',
+              case r.prokind when 'p' then 'procedure' else 'function' end,r.nspname,r.proname,r.args);
+          end loop;
+        end $$;
+        grant usage,create on schema auth to supabase_auth_admin;
+        grant all on all tables in schema auth to supabase_auth_admin;
+        grant all on all sequences in schema auth to supabase_auth_admin;
+        """
+        run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", db_name],
+            input_text=auth_ownership)
+        auth_ledger = run(["pg_dump", "-U", "postgres", "-d", SOURCE_DB, "--data-only",
+                           "--column-inserts", "--no-owner", "--no-acl", "--table=auth.schema_migrations"], timeout=60)
+        run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", db_name],
+            input_text=auth_ledger)
+        auth_ledger_count = query("select count(*) from auth.schema_migrations", db_name).strip()
+        source_auth_ledger_count = query("select count(*) from auth.schema_migrations", SOURCE_DB).strip()
+        if auth_ledger_count != source_auth_ledger_count or not int(auth_ledger_count):
+            raise RuntimeError("AUTH_MIGRATION_LEDGER_RESTORE_MISMATCH:" + auth_ledger_count)
+        log.append("local_auth_schema_dump_restored=true")
+        log.append("local_auth_schema_migration_receipts_copied=" + auth_ledger_count)
+        postgrest_grants = """
+        grant usage on schema public to anon, authenticated, service_role, supabase_auth_admin;
+        grant usage on schema private to authenticated;
+        grant all privileges on all tables in schema public to anon, authenticated, service_role;
+        grant all privileges on all sequences in schema public to anon, authenticated, service_role;
+        alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role;
+        alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
+        alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role;
+        """
+        run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name],
+            input_text=postgrest_grants)
+        log.append("supabase_postgrest_default_grants_replayed_from_local_source=true")
+        rbac_seed_migration = ROOT / "supabase/migrations/20261104085945_rc19_rbac01_role_permission_enforcement.sql"
+        rbac_seed_sql = re.search(
+            r"INSERT INTO private\.rbac_permission_catalog\b.*?ON CONFLICT \(permission\) DO NOTHING;",
+            rbac_seed_migration.read_text(encoding="utf-8"), re.IGNORECASE | re.DOTALL)
+        if not rbac_seed_sql:
+            raise RuntimeError("REFUSED_RBAC_PERMISSION_SEED_NOT_FOUND")
+        run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name],
+            input_text=rbac_seed_sql.group(0))
+        rbac_seed_count = query("select count(*) from private.rbac_permission_catalog", db_name).strip()
+        if not rbac_seed_count.isdigit() or int(rbac_seed_count) < 30:
+            raise RuntimeError("RBAC_PERMISSION_SEED_INCOMPLETE:" + rbac_seed_count)
+        log.append("rbac_permission_catalog_seed_restored_from_canonical_migration=true")
+        log.append("rbac_permission_catalog_seed_migration_sha256=" + sha(rbac_seed_migration))
+        log.append("rbac_permission_catalog_seed_rows=" + rbac_seed_count)
+        before = query("select current_setting('server_version_num')||'|'||current_database()||'|'||coalesce(shobj_description(oid,'pg_database'),'')||'|'||(select count(*) from auth.users)||'|'||(select count(*) from storage.objects) from pg_database where datname=current_database()", db_name).strip()
+        b = before.split("|")
+        if len(b) != 5 or b[1] != db_name or b[2] != "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY" or b[3:] != ["0", "0"]:
+            raise RuntimeError("REFUSED_NONEMPTY_OR_UNMARKED_TARGET_DATABASE " + before)
+
+        baseline_receipt_rows = []
+        for entry in manifest["entries"]:
+            b_ver = entry["version"]
+            b_file = entry["file"]
+            b_sha = entry["sha256"]
+            b_name = Path(b_file).stem.split("_", 1)[1]
+            baseline_receipt_rows.append(
+                "insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("
+                f"'{b_ver}',array['file={b_file}','sha256={b_sha}'],"
+                f"'{b_name}','c53-verified-snapshot','c53:{b_ver}:{b_sha}') on conflict (version) do nothing;"
+            )
+        run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name],
+            input_text="\n".join(baseline_receipt_rows), timeout=60)
+        log.append(f"c53_baseline_receipts_recorded={len(baseline_receipt_rows)}")
+
+        applied = run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name],
+                      input_text=MIGRATION.read_text(encoding="utf-8"), timeout=120)
+        log.append("c511_migration_apply=PASS")
+        log.append("migration_output_lines=" + str(len(applied.splitlines())))
+        query("insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("+
+              "'20261109100000',array['file=supabase/migrations/20261109100000_rc19_c511_persisted_staffing_segments.sql','sha256="+sha(MIGRATION)+"'],"+
+              "'rc19_c511_persisted_staffing_segments','c511-local-pg1711','c511:20261109100000:"+sha(MIGRATION)+"');", db_name)
+        applied_c512 = run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name],
+                           input_text=MIGRATION_C512.read_text(encoding="utf-8"), timeout=120)
+        log.append("c512_migration_apply=PASS")
+        log.append("c512_migration_output_lines=" + str(len(applied_c512.splitlines())))
+        query("insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("+
+              "'20261109131324',array['file=supabase/migrations/20261109131324_rc19_c512_attendance_photo_review.sql','sha256="+sha(MIGRATION_C512)+"'],"+
+              "'rc19_c512_attendance_photo_review','c512-local-pg1711','c512:20261109131324:"+sha(MIGRATION_C512)+"');", db_name)
+        c515_receipts = []
+        for version, path, name in MIGRATIONS_C515:
+            if version == "20261110130000":
+                i93_ver, i93_path, i93_name = MIGRATION_ISSUE93
+                i93_hash = exact_sha(i93_path)
+                i93_out = run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-1", "-U", "postgres", "-d", db_name],
+                              input_text=i93_path.read_text(encoding="utf-8"), timeout=120)
+                query(
+                    "insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("
+                    f"'{i93_ver}',array['file={i93_path.relative_to(ROOT).as_posix()}','sha256={i93_hash}'],"
+                    f"'{i93_name}','rc19-w4-pg1711','w4:{i93_ver}:{i93_hash}');",
+                    db_name,
+                )
+                log.append(f"issue93_migration_apply=PASS lines={len(i93_out.splitlines())}")
+            migration_hash = exact_sha(path)
+            started_at = datetime.now(timezone.utc).isoformat()
+            atomic_args = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", db_name]
+            if version == "20261110115529":
+                atomic_args.append("-1")
+            output = run(atomic_args, input_text=path.read_text(encoding="utf-8"), timeout=180)
+            ended_at = datetime.now(timezone.utc).isoformat()
+            receipt_sql = (
+                "insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("
+                f"'{version}',array['file={path.relative_to(ROOT).as_posix()}','sha256={migration_hash}'],"
+                f"'{name}','c515-local-pg1711','c515:{version}:{migration_hash}');"
+            )
+            query(receipt_sql, db_name)
+            receipt = query(
+                "select version||'|'||name||'|'||array_to_string(statements,';') from supabase_migrations.schema_migrations "
+                f"where version='{version}' and name='{name}'", db_name,
+            ).strip()
+            if migration_hash not in receipt:
+                raise RuntimeError("C515_MIGRATION_RECEIPT_MISMATCH:" + version)
+            schema_dump = run(["pg_dump", "-U", "postgres", "-d", db_name, "--schema-only", "--no-owner", "--no-acl"], timeout=120)
+            schema_fingerprint = hashlib.sha256(schema_dump.encode("utf-8")).hexdigest().upper()
+            c515_receipts.append({
+                "version": version, "file": path.relative_to(ROOT).as_posix(), "sha256": migration_hash,
+                "database": db_name, "database_marker": SOURCE_MARKER, "postgres_server_version_num": b[0],
+                "started_at_utc": started_at, "ended_at_utc": ended_at, "transaction_result": "COMMIT",
+                "migration_receipt_readback": receipt, "schema_dump_sha256_after_migration": schema_fingerprint,
+                "migration_output_lines": len(output.splitlines()),
+            })
+        forward_receipts = []
+        for version, path, name in POST_20261111_MIGRATIONS:
+            f_hash = exact_sha(path)
+            f_out = run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-1", "-U", "postgres", "-d", db_name],
+                        input_text=path.read_text(encoding="utf-8"), timeout=120)
+            query(
+                "insert into supabase_migrations.schema_migrations(version,statements,name,created_by,idempotency_key) values ("
+                f"'{version}',array['file={path.relative_to(ROOT).as_posix()}','sha256={f_hash}'],"
+                f"'{name}','rc19-w4-pg1711','w4:{version}:{f_hash}');",
+                db_name,
+            )
+            f_receipt = query(
+                "select version||'|'||name||'|'||array_to_string(statements,';') from supabase_migrations.schema_migrations "
+                f"where version='{version}' and name='{name}'", db_name,
+            ).strip()
+            if f_hash not in f_receipt:
+                raise RuntimeError("FORWARD_MIGRATION_RECEIPT_MISMATCH:" + version)
+            log.extend([f"{name}_apply=PASS", f"{name}_receipt={f_receipt}", f"{name}_output_lines={len(f_out.splitlines())}"])
+            forward_receipts.append({
+                "version": version, "file": path.relative_to(ROOT).as_posix(), "sha256": f_hash,
+                "receipt": f_receipt, "output_lines": len(f_out.splitlines()),
+            })
+        query("notify pgrst, 'reload schema';", db_name)
+        final = query("select current_setting('server_version_num')||'|'||current_database()||'|'||coalesce(shobj_description(oid,'pg_database'),'')||'|'||(select count(*) from auth.users)||'|'||(select count(*) from public.shift_staffing_segments)||'|'||(select count(*) from supabase_migrations.schema_migrations) from pg_database where datname=current_database()", db_name).strip()
+        log.append("final_state=" + final)
+        log.append("c511_receipt_inserted_after_successful_apply=1")
+        c6_entry = next((r for r in forward_receipts if r["version"] == "20261112130000"), None)
+        evidence = {
+            "result": "PASS",
+            "target_database": db_name,
+            "target_marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+            "postgres_server_version_num": b[0],
+            "source_c5_11_candidate_head": source_head,
+            "worktree_dirty_at_run": worktree_dirty,
+            "c4_schema_snapshot": str(BASELINE.relative_to(ROOT).as_posix()),
+            "c4_schema_snapshot_sha256": sha(BASELINE),
+            "c4_forward_migration_count_previously_verified": len(manifest["entries"]),
+            "c511_migration": str(MIGRATION.relative_to(ROOT).as_posix()),
+            "c511_migration_sha256": sha(MIGRATION),
+            "c512_migration": str(MIGRATION_C512.relative_to(ROOT).as_posix()),
+            "c512_migration_sha256": sha(MIGRATION_C512),
+            "c6_migration": c6_entry["file"] if c6_entry else None,
+            "c6_migration_sha256": c6_entry["sha256"] if c6_entry else None,
+            "c515_migrations": c515_receipts,
+            "forward_migrations_reconciled": forward_receipts,
+            "auth_users_after_restore": 0,
+            "storage_objects_after_restore": 0,
+            "shift_staffing_segments_created": 0,
+            "actual_auth_users_created": 0,
+            "log": str(log_path.relative_to(ROOT).as_posix()),
+        }
+        log.append("auth_users_created=0")
+        log_path.write_text("\n".join(log) + "\n", encoding="utf-8")
+        result_path.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
+        print(f"PASS db={db_name} postgres={b[0]} schema=20-verified+C511+C512 evidence={result_path.relative_to(ROOT).as_posix()}")
+    except Exception as exc:
+        log.append("result=FAIL")
+        log.append(str(exc))
+        log_path.write_text("\n".join(log) + "\n", encoding="utf-8")
+        raise
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)

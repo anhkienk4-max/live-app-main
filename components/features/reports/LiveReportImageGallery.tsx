@@ -1,13 +1,15 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ChevronLeft,
   ChevronRight,
+  FileImage,
   Images,
+  RefreshCw,
   Save,
   Star,
   Trash2,
@@ -19,11 +21,16 @@ import type {
   LiveReportImageCategory,
 } from '@/lib/types/database.types'
 import {
+  LIVE_REPORT_PHOTO_GROUPS,
+  type LiveReportPhotoGroup,
   createLiveReportImageDrafts,
+  filterLiveReportImagesByCategories,
   liveReportImageCategories,
   maximumLiveReportImageDescriptionLength,
   maximumLiveReportImages,
   maximumLiveReportImageTitleLength,
+  photoGroupToCategoryAndTitle,
+  resolveLiveReportPhotoGroup,
   revokeLiveReportImageObjectUrl,
   sortedLiveReportImages,
   type LiveReportImageValidationCode,
@@ -34,6 +41,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 import { Textarea } from '@/components/ui/textarea'
 
 export const liveReportImageCategoryTranslationKeys: Record<LiveReportImageCategory, TranslationKey> = {
@@ -50,6 +58,126 @@ const validationTranslationKeys: Record<LiveReportImageValidationCode, Translati
   empty_file: 'liveImageEmptyFileError',
   title_too_long: 'liveImageTitleTooLongError',
   description_too_long: 'liveImageDescriptionTooLongError',
+}
+
+function resolveLiveReportImageUrl(
+  image: { id: string; thumbnail_url?: string | null; file_url: string },
+  signedUrls?: Record<string, string>,
+): string | null {
+  if (signedUrls?.[image.id]) return signedUrls[image.id]
+  const raw = image.thumbnail_url || image.file_url
+  if (!raw) return null
+
+  // Local client draft preview
+  if (raw.startsWith('blob:')) return raw
+
+  // Restricted base64 data URIs: image types only
+  if (raw.startsWith('data:')) {
+    if (/^data:image\/(jpeg|png|webp|gif);base64,/i.test(raw)) {
+      return raw
+    }
+    return null
+  }
+
+  // Trusted HTTP/HTTPS URLs
+  if (raw.startsWith('https://') || raw.startsWith('http://')) {
+    try {
+      new URL(raw)
+      return raw
+    } catch {
+      return null
+    }
+  }
+
+  return null
+}
+
+export function LiveReportImageDisplay({
+  src,
+  alt,
+  className,
+  aspect = 'aspect-video',
+  onRetry,
+}: {
+  src: string | null
+  alt: string
+  className?: string
+  aspect?: string
+  onRetry?: () => void
+}) {
+  const [loadError, setLoadError] = React.useState(false)
+  const [prevSrc, setPrevSrc] = React.useState(src)
+  const [retryKey, setRetryKey] = React.useState(0)
+
+  if (prevSrc !== src) {
+    setPrevSrc(src)
+    setLoadError(false)
+  }
+
+  const effectiveSrc = React.useMemo(() => {
+    if (!src) return ''
+    if (retryKey > 0 && (src.startsWith('http://') || src.startsWith('https://'))) {
+      const sep = src.includes('?') ? '&' : '?'
+      return `${src}${sep}_retry=${retryKey}`
+    }
+    return src
+  }, [src, retryKey])
+
+  if (!src) {
+    return (
+      <div
+        className={`${aspect} w-full flex flex-col items-center justify-center rounded-md border border-dashed bg-muted/20 text-muted-foreground p-3 text-center`}
+        data-testid="live-image-placeholder-empty"
+      >
+        <FileImage className="h-8 w-8 opacity-40 mb-1" />
+        <span className="text-[11px] font-medium">Chưa có ảnh</span>
+        <span className="text-[10px] text-muted-foreground">Chưa có liên kết ảnh hoặc ảnh chưa sẵn sàng</span>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div
+        className={`${aspect} w-full flex flex-col items-center justify-center rounded-md border border-amber-300 bg-amber-50/70 p-3 text-center text-amber-900 space-y-1.5`}
+        data-testid="live-image-error-fallback"
+        role="alert"
+      >
+        <AlertTriangle className="h-6 w-6 text-amber-600" />
+        <span className="text-xs font-semibold">Không thể tải ảnh</span>
+        <p className="text-[10px] text-amber-800 max-w-[200px]">
+          Liên kết có thể đã hết hạn hoặc kết nối bị gián đoạn.
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[10px] border-amber-400 bg-white hover:bg-amber-100 text-amber-900"
+          onClick={() => {
+            setLoadError(false)
+            setRetryKey(k => k + 1)
+            onRetry?.()
+          }}
+          data-testid="live-image-retry-btn"
+        >
+          <RefreshCw className="mr-1 h-3 w-3" />
+          Tải lại ảnh
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      key={retryKey}
+      src={effectiveSrc}
+      alt={alt}
+      className={`${aspect} w-full rounded-md border object-cover ${className || ''}`}
+      onError={() => setLoadError(true)}
+      loading="lazy"
+    />
+  )
 }
 
 export function LiveReportImageEditor({
@@ -82,7 +210,7 @@ export function LiveReportImageEditor({
 }) {
   const { t } = useTranslation()
   const inputRef = React.useRef<HTMLInputElement>(null)
-  const [uploadCategory, setUploadCategory] = React.useState<LiveReportImageCategory>('live_session')
+  const [uploadGroup, setUploadGroup] = React.useState<LiveReportPhotoGroup>('live_session')
   const [dragging, setDragging] = React.useState(false)
   const [validationErrors, setValidationErrors] = React.useState<Array<{
     code: LiveReportImageValidationCode
@@ -94,7 +222,7 @@ export function LiveReportImageEditor({
     const result = createLiveReportImageDrafts({
       files,
       currentImages: images,
-      category: uploadCategory,
+      photoGroup: uploadGroup,
       uploadedBy,
     })
     setValidationErrors(result.errors)
@@ -111,6 +239,8 @@ export function LiveReportImageEditor({
     void addFiles(files)
     event.target.value = ''
   }
+
+  const activeGroupMeta = LIVE_REPORT_PHOTO_GROUPS.find(g => g.id === uploadGroup) || LIVE_REPORT_PHOTO_GROUPS[4]
 
   return (
     <section className="space-y-4 rounded-lg border p-4" data-testid="live-report-image-editor">
@@ -129,15 +259,19 @@ export function LiveReportImageEditor({
 
       {editable && (
         <div className="space-y-3">
-          <div className="max-w-xs">
-            <Select value={uploadCategory} onValueChange={value => setUploadCategory(value as LiveReportImageCategory)}>
+          <div className="flex flex-col gap-1 max-w-md">
+            <label className="text-xs font-semibold text-muted-foreground">Chọn nhóm ảnh để tải lên (6 nhóm Owner)</label>
+            <Select value={uploadGroup} onValueChange={value => setUploadGroup(value as LiveReportPhotoGroup)}>
               <SelectTrigger data-testid="live-image-upload-category"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {liveReportImageCategories.map(category => (
-                  <SelectItem value={category} key={category}>{t(liveReportImageCategoryTranslationKeys[category])}</SelectItem>
+                {LIVE_REPORT_PHOTO_GROUPS.map(group => (
+                  <SelectItem value={group.id} key={group.id}>
+                    {group.labelVi}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-[11px] text-muted-foreground">{activeGroupMeta.descriptionVi}</p>
           </div>
           <div
             className={`flex min-h-28 flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-colors ${dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/30'}`}
@@ -234,6 +368,7 @@ function LiveReportImageEditorCard({
   onSetCover: (image: LiveReportImage) => void | Promise<void>
 }) {
   const { t } = useTranslation()
+  const [photoGroup, setPhotoGroup] = React.useState<LiveReportPhotoGroup>(() => resolveLiveReportPhotoGroup(image))
   const [metadata, setMetadata] = React.useState({
     category: image.category,
     title: image.title || '',
@@ -241,16 +376,38 @@ function LiveReportImageEditorCard({
     captured_at: image.captured_at || '',
   })
 
+  const currentGroup = photoGroup
+  const groupMeta = LIVE_REPORT_PHOTO_GROUPS.find(g => g.id === currentGroup) || LIVE_REPORT_PHOTO_GROUPS[5]
+  const isPendingDraft = image.file_url.startsWith('blob:') || image.file_url.startsWith('data:') || !image.report_id
+
+  const handleGroupChange = (newGroup: LiveReportPhotoGroup) => {
+    setPhotoGroup(newGroup)
+    const mapped = photoGroupToCategoryAndTitle(newGroup, metadata.title)
+    setMetadata(current => ({
+      ...current,
+      category: mapped.category,
+      title: mapped.title || current.title,
+    }))
+  }
+
+  const handleSaveMetadata = () => {
+    const mapped = photoGroupToCategoryAndTitle(photoGroup, metadata.title)
+    const payload = {
+      ...metadata,
+      category: mapped.category,
+      title: mapped.title || metadata.title,
+    }
+    void onUpdate(image, payload)
+  }
+
+  const imageUrl = resolveLiveReportImageUrl(image, signedUrls)
+
   return (
     <article className="space-y-3 rounded-lg border p-3" data-testid={`live-image-card-${image.id}`}>
       <div className="relative">
-        <Image
-          unoptimized
-          src={signedUrls?.[image.id] || ((image.thumbnail_url || image.file_url).startsWith('blob:') || (image.thumbnail_url || image.file_url).startsWith('data:') ? (image.thumbnail_url || image.file_url) : '')}
+        <LiveReportImageDisplay
+          src={imageUrl}
           alt={image.title || image.file_name}
-          width={1280}
-          height={720}
-          className="aspect-video w-full rounded-md border object-cover"
         />
         {image.is_cover && (
           <Badge className="absolute left-2 top-2 bg-amber-500 text-white" data-testid="live-image-cover-badge">
@@ -259,20 +416,40 @@ function LiveReportImageEditorCard({
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Badge variant="outline">{t(liveReportImageCategoryTranslationKeys[image.category])}</Badge>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className="font-semibold text-xs border-primary/40 bg-primary/5 text-primary">
+            {groupMeta.labelVi}
+          </Badge>
+          <span className="sr-only">{t(liveReportImageCategoryTranslationKeys[image.category])}</span>
+        </div>
+        {isPendingDraft ? (
+          <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800 text-[10px] font-medium" data-testid="image-status-draft">
+            Chờ lưu (Bản nháp)
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="border-emerald-500 bg-emerald-50 text-emerald-800 text-[10px] font-medium" data-testid="image-status-persisted">
+            ✓ Đã lưu trên hệ thống
+          </Badge>
+        )}
         <p className="text-xs text-muted-foreground">{formatImageSize(image.size_bytes)}</p>
       </div>
       <p className="truncate text-xs text-muted-foreground" title={image.file_name}>{image.file_name}</p>
       {editable ? (
         <>
-          <Select value={metadata.category} onValueChange={value => setMetadata(current => ({ ...current, category: value as LiveReportImageCategory }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {liveReportImageCategories.map(category => (
-                <SelectItem value={category} key={category}>{t(liveReportImageCategoryTranslationKeys[category])}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-muted-foreground">Nhóm ảnh (6 nhóm Owner):</label>
+            <Select value={photoGroup} onValueChange={value => handleGroupChange(value as LiveReportPhotoGroup)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {LIVE_REPORT_PHOTO_GROUPS.map(group => (
+                  <SelectItem value={group.id} key={group.id}>{group.labelVi}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {groupMeta.requiresTimestamp && (
+              <p className="text-[11px] text-amber-700">Lưu ý: Chu kỳ 30 phút yêu cầu nhập mốc thời gian chụp (timestamp).</p>
+            )}
+          </div>
           <Input
             value={metadata.title}
             maxLength={maximumLiveReportImageTitleLength}
@@ -293,7 +470,7 @@ function LiveReportImageEditorCard({
               onChange={event => setMetadata(current => ({ ...current, captured_at: event.target.value }))}
             />
           </label>
-          <Button type="button" size="sm" variant="outline" onClick={() => void onUpdate(image, metadata)}>
+          <Button type="button" size="sm" variant="outline" onClick={() => void handleSaveMetadata()}>
             <Save className="mr-1 h-4 w-4" />{t('saveMetadata')}
           </Button>
         </>
@@ -322,15 +499,15 @@ export function LiveReportImageGallery({
   signedUrls?: Record<string, string>
 }) {
   const { t } = useTranslation()
-  const [filter, setFilter] = React.useState<'all' | LiveReportImageCategory>('all')
+  const [selectedCategories, setSelectedCategories] = React.useState<string[]>([])
   const [viewerId, setViewerId] = React.useState<string | null>(null)
   const ordered = sortedLiveReportImages(images)
-  const filtered = filter === 'all'
-    ? ordered
-    : ordered.filter(image => image.category === filter)
+  const filtered = filterLiveReportImagesByCategories(ordered, selectedCategories)
   const cover = ordered.find(image => image.is_cover)
+  const coverUrl = cover ? resolveLiveReportImageUrl(cover, signedUrls) : null
   const viewerIndex = filtered.findIndex(image => image.id === viewerId)
   const viewerImage = viewerIndex >= 0 ? filtered[viewerIndex] : null
+  const viewerUrl = viewerImage ? resolveLiveReportImageUrl(viewerImage, signedUrls) : null
 
   return (
     <section className="space-y-4" data-testid="live-report-image-gallery">
@@ -341,7 +518,12 @@ export function LiveReportImageGallery({
           onClick={() => setViewerId(cover.id)}
           data-testid="live-report-cover"
         >
-          <Image unoptimized src={signedUrls?.[cover.id] || (cover.file_url.startsWith('blob:') || cover.file_url.startsWith('data:') ? cover.file_url : '')} alt={cover.title || cover.file_name} width={1280} height={720} className="max-h-[420px] w-full object-cover transition-transform group-hover:scale-[1.01]" />
+          <LiveReportImageDisplay
+            src={coverUrl}
+            alt={cover.title || cover.file_name}
+            aspect="max-h-[420px] aspect-video"
+            className="transition-transform group-hover:scale-[1.01]"
+          />
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 text-white">
             <Badge className="mb-2 bg-amber-500 text-white"><Star className="mr-1 h-3 w-3 fill-current" />{t('reportCover')}</Badge>
             <p className="font-semibold">{cover.title || cover.file_name}</p>
@@ -353,36 +535,45 @@ export function LiveReportImageGallery({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="font-semibold">{t('liveSessionImages')}</h3>
         {images.length > 0 && (
-          <Select value={filter} onValueChange={value => setFilter(value as 'all' | LiveReportImageCategory)}>
-            <SelectTrigger className="w-64" data-testid="live-image-category-filter"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('allImageCategories')}</SelectItem>
-              {liveReportImageCategories.map(category => (
-                <SelectItem value={category} key={category}>{t(liveReportImageCategoryTranslationKeys[category])}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSelectFilter
+            label={t('category')}
+            value={selectedCategories}
+            onChange={setSelectedCategories}
+            options={[
+              ...LIVE_REPORT_PHOTO_GROUPS.map(group => ({ value: group.id, label: group.labelVi })),
+              ...liveReportImageCategories.map(category => ({ value: category, label: t(liveReportImageCategoryTranslationKeys[category]) })),
+            ]}
+            placeholder={t('allImageCategories')}
+            className="w-64"
+            testId="live-image-category-filter"
+          />
         )}
       </div>
 
       {images.length === 0
         ? <p className="rounded-lg bg-muted/40 p-4 text-sm text-muted-foreground">{t('noLiveSessionImages')}</p>
         : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map(image => (
-              <button
-                type="button"
-                className="overflow-hidden rounded-lg border bg-card text-left transition-shadow hover:shadow-md"
-                key={image.id}
-                onClick={() => setViewerId(image.id)}
-                data-testid={`gallery-image-${image.id}`}
-              >
-                <Image unoptimized src={signedUrls?.[image.id] || ((image.thumbnail_url || image.file_url).startsWith('blob:') || (image.thumbnail_url || image.file_url).startsWith('data:') ? (image.thumbnail_url || image.file_url) : '')} alt={image.title || image.file_name} width={1280} height={720} className="aspect-video w-full object-cover" />
-                <div className="space-y-2 p-3">
-                  <Badge variant="outline">{t(liveReportImageCategoryTranslationKeys[image.category])}</Badge>
-                  <LiveReportImageMetadata image={image} />
-                </div>
-              </button>
-            ))}
+            {filtered.map(image => {
+              const itemUrl = resolveLiveReportImageUrl(image, signedUrls)
+              return (
+                <button
+                  type="button"
+                  className="overflow-hidden rounded-lg border bg-card text-left transition-shadow hover:shadow-md"
+                  key={image.id}
+                  onClick={() => setViewerId(image.id)}
+                  data-testid={`gallery-image-${image.id}`}
+                >
+                  <LiveReportImageDisplay
+                    src={itemUrl}
+                    alt={image.title || image.file_name}
+                  />
+                  <div className="space-y-2 p-3">
+                    <Badge variant="outline">{t(liveReportImageCategoryTranslationKeys[image.category])}</Badge>
+                    <LiveReportImageMetadata image={image} />
+                  </div>
+                </button>
+              )
+            })}
           </div>}
 
       <Dialog open={Boolean(viewerImage)} onOpenChange={open => !open && setViewerId(null)}>
@@ -390,7 +581,12 @@ export function LiveReportImageGallery({
           <DialogHeader><DialogTitle className="text-white">{viewerImage?.title || viewerImage?.file_name}</DialogTitle></DialogHeader>
           {viewerImage && (
             <div className="relative flex min-h-[70vh] items-center justify-center">
-              <Image unoptimized src={signedUrls?.[viewerImage.id] || (viewerImage.file_url.startsWith('blob:') || viewerImage.file_url.startsWith('data:') ? viewerImage.file_url : '')} alt={viewerImage.title || viewerImage.file_name} width={1920} height={1080} className="max-h-[78vh] max-w-full object-contain" />
+              <LiveReportImageDisplay
+                src={viewerUrl}
+                alt={viewerImage.title || viewerImage.file_name}
+                aspect="max-h-[78vh] max-w-full"
+                className="object-contain"
+              />
               <Button className="absolute left-2" type="button" size="icon" variant="secondary" disabled={viewerIndex <= 0} aria-label={t('previousImage')} onClick={() => setViewerId(filtered[viewerIndex - 1]?.id || null)}><ChevronLeft className="h-5 w-5" /></Button>
               <Button className="absolute right-2" type="button" size="icon" variant="secondary" disabled={viewerIndex >= filtered.length - 1} aria-label={t('nextImage')} onClick={() => setViewerId(filtered[viewerIndex + 1]?.id || null)}><ChevronRight className="h-5 w-5" /></Button>
             </div>

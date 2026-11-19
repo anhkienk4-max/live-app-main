@@ -1,0 +1,84 @@
+=== create-disposable-db.sql -> postgres ===
+DO
+CREATE DATABASE
+COMMENT
+=== reconcile-production-function-acl.sql -> rc19_c5_3_final5_20261109 ===
+BEGIN
+SET
+DO
+REVOKE
+REVOKE
+REVOKE
+REVOKE
+REVOKE
+REVOKE
+REVOKE
+GRANT
+GRANT
+GRANT
+REVOKE
+GRANT
+GRANT
+GRANT
+GRANT
+DO
+DO
+COMMIT
+=== restore-production-api-grants.sql -> rc19_c5_3_final5_20261109 ===
+SET
+BEGIN
+DO
+REVOKE
+GRANT
+GRANT
+GRANT
+GRANT
+GRANT
+DO
+COMMIT
+                    ?column?
+-------------------------------------------------
+ C5_3_PRODUCTION_SNAPSHOT_API_TABLE_GRANTS: PASS
+(1 row)
+
+=== prepare-synthetic-baseline.sql -> rc19_c5_3_final5_20261109 ===
+SET
+DO
+CREATE EXTENSION
+ALTER SCHEMA
+REVOKE
+REVOKE
+GRANT
+GRANT
+REVOKE
+GRANT
+REVOKE
+GRANT
+GRANT
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+DO
+DO
+DO
+DO
+BEGIN
+SET
+DO
+DO
+ROLLBACK
+       database_name       |                  marker                  |          server_version
+---------------------------+------------------------------------------+----------------------------------
+ rc19_c5_3_final5_20261109 | CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY | 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+(1 row)
+
+          id           | public
+-----------------------+--------
+ live-dashboard-images | t
+(1 row)
+
+ synthetic_metadata_rows
+-------------------------
+                       1
+(1 row)
+Note: terminal column padding and trailing blank lines removed; SQL status and values preserved.

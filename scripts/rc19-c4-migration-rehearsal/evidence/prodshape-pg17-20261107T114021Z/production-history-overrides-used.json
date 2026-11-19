@@ -1,0 +1,22 @@
+[
+  {
+    "version": "20260831120000",
+    "production_name": "core_v1_shift_lifecycle_admin_guard",
+    "source_file": "supabase/migrations/20260831120000_core_v1_shift_lifecycle_admin_guard.sql",
+    "source_sha256": "68d07010221cd22565a8238ea1522abb647ba1d37cce8989dd0802c8dfbc99ed",
+    "execution_source": "scripts/rc19-c4-migration-rehearsal/evidence/production-ledger-statements-shift-rpc-20260831-20260913.json#20260831120000",
+    "execution_sha256": "9a279d1f19d2b17c4378de708c4e3f54c986bb3f449046cbce17723d31581061",
+    "statement_count": 2,
+    "capture_sha256": "2e399943447d8ce2da09550e774bac47b1222332190ab8c47665156e4451cf30"
+  },
+  {
+    "version": "20260913120000",
+    "production_name": "shift_status_mode_and_auto_completion",
+    "source_file": "supabase/migrations/20260913120000_shift_status_mode_and_auto_completion.sql",
+    "source_sha256": "4f1de35201318d5b2e8df079b0481ff4543103ff5b0c128f47a978e5ad72a162",
+    "execution_source": "scripts/rc19-c4-migration-rehearsal/evidence/production-ledger-statements-shift-rpc-20260831-20260913.json#20260913120000",
+    "execution_sha256": "ad5a52da4d352220a58b210f62901ad4f1582fbf1024bca32cbd3d56cfba1a6d",
+    "statement_count": 21,
+    "capture_sha256": "2e399943447d8ce2da09550e774bac47b1222332190ab8c47665156e4451cf30"
+  }
+]

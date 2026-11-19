@@ -1,0 +1,214 @@
+--- before-20261102190000
++++ after-20261102190000
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict ZdEY8FBvueVLiY3jtea3YyZqzechl346ELu9hmLPXcDsRL7a3xCAdwvs0e4I2ra
++\restrict vgNNqhbFZzxfRbwtFjTNij1Mv15ZeE8C4CN0kI016oW71GJOwKjMa8t4oGlP6la
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -215,6 +215,9 @@
+     version integer DEFAULT 1 NOT NULL,
+     status_mode text DEFAULT 'auto'::text NOT NULL,
+     execution_source text,
++    agency_code text,
++    CONSTRAINT shifts_agency_code_check CHECK (((agency_code IS NULL) OR (agency_code = ANY (ARRAY['ada'::text, 'snap'::text, 'live_ai'::text])))),
++    CONSTRAINT shifts_agency_execution_source_check CHECK (((agency_code IS NULL) OR (execution_source = 'agency'::text))),
+     CONSTRAINT shifts_crosses_midnight_check CHECK ((crosses_midnight = (end_date > date))),
+     CONSTRAINT shifts_duration_check CHECK (((duration_minutes >= 1) AND (duration_minutes <= 1439))),
+     CONSTRAINT shifts_end_date_check CHECK (((end_date >= date) AND (end_date <= (date + 1)))),
+@@ -292,6 +295,13 @@
+ --
+ 
+ COMMENT ON COLUMN public.shifts.execution_source IS 'Nullable until explicit operator classification. NEVER infer existing shifts as internal/agency.';
++
++
++--
++-- Name: COLUMN shifts.agency_code; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON COLUMN public.shifts.agency_code IS 'Designates partner agency assigned to shift: ada, snap, live_ai, or null for internal/unassigned.';
+ 
+ 
+ --
+@@ -5728,7 +5738,7 @@
+       'host_names', 'assistant_names', 'technical_names',
+       'required_host_count', 'required_support_count', 'required_technical_count',
+       'registration_cutoff_at', 'allow_multi_role', 'import_batch_id', 'status',
+-      'live_link', 'product_notes', 'execution_source'
++      'live_link', 'product_notes', 'execution_source', 'agency_code'
+     ]::text[]) then
+       raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';
+     end if;
+@@ -5737,6 +5747,14 @@
+     and p_data->>'execution_source' not in ('internal', 'agency')) then
+     raise exception using errcode = '22023', message = 'SHIFT_EXECUTION_SOURCE_INVALID';
+   end if;
++  if (p_data ? 'agency_code' and p_data->>'agency_code' is not null
++    and p_data->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
++    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
++  end if;
++  if (p_data ? 'agency_code' and p_data->>'agency_code' is not null
++    and p_data->>'execution_source' = 'internal') then
++    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
++  end if;
+ 
+   if (p_data ? 'host_names' and jsonb_typeof(p_data->'host_names') <> 'array')
+     or (p_data ? 'assistant_names' and jsonb_typeof(p_data->'assistant_names') <> 'array')
+@@ -5750,7 +5768,7 @@
+     title, studio, host_names, assistant_names, technical_names,
+     required_host_count, required_support_count, required_technical_count,
+     registration_cutoff_at, allow_multi_role, import_batch_id, status,
+-    live_link, product_notes, updated_by, execution_source
++    live_link, product_notes, updated_by, execution_source, agency_code
+   ) values (
+     (p_data->>'date')::date,
+     (p_data->>'start_time')::time,
+@@ -5774,7 +5792,8 @@
+     nullif(p_data->>'live_link', ''),
+     nullif(p_data->>'product_notes', ''),
+     actor_id,
+-    p_data->>'execution_source'
++    coalesce(nullif(p_data->>'execution_source', ''), case when p_data->>'agency_code' is not null then 'agency' else null end),
++    p_data->>'agency_code'
+   ) returning * into created_shift;
+ 
+   foreach role_name in array array['host', 'support', 'technical']::text[]
+@@ -10650,6 +10669,8 @@
+   updated_shift public.shifts;
+   input_key text;
+   requested_status text;
++  effective_agency text;
++  effective_source text;
+ begin
+   actor_id := private.require_shift_actor(true);
+   actor_permission := private.current_system_permission();
+@@ -10665,7 +10686,7 @@
+       'date', 'start_time', 'end_time', 'brand_id', 'platform_id', 'campaign_id',
+       'title', 'studio', 'required_host_count', 'required_support_count',
+       'required_technical_count', 'status', 'live_link', 'product_notes',
+-      'registration_cutoff_at', 'allow_multi_role', 'execution_source'
++      'registration_cutoff_at', 'allow_multi_role', 'execution_source', 'agency_code'
+     ]::text[]) then
+       raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';
+     end if;
+@@ -10679,6 +10700,11 @@
+     and p_patch->>'execution_source' not in ('internal', 'agency')) then
+     raise exception using errcode = '22023', message = 'SHIFT_EXECUTION_SOURCE_INVALID';
+   end if;
++  if (p_patch ? 'agency_code' and p_patch->>'agency_code' is not null
++    and p_patch->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
++    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
++  end if;
++
+   select * into existing_shift
+   from public.shifts
+   where id = p_shift_id and deleted_at is null and archived_at is null
+@@ -10686,6 +10712,20 @@
+   if existing_shift.id is null then
+     raise exception using errcode = 'P0001', message = 'SHIFT_NOT_FOUND';
+   end if;
++
++  effective_agency := case
++    when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
++    else existing_shift.agency_code
++  end;
++  effective_source := case
++    when p_patch ? 'execution_source' then nullif(p_patch->>'execution_source', '')
++    when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and existing_shift.execution_source is null then 'agency'
++    else existing_shift.execution_source
++  end;
++  if (effective_agency is not null and effective_source = 'internal') then
++    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
++  end if;
++
+   requested_status := coalesce(nullif(p_patch->>'status', ''), existing_shift.status);
+   if actor_permission in ('leader', 'admin')
+     and requested_status <> existing_shift.status and not (
+@@ -10727,7 +10767,11 @@
+     product_notes = case when p_patch ? 'product_notes' then nullif(p_patch->>'product_notes', '') else shift.product_notes end,
+     execution_source = case
+       when p_patch ? 'execution_source' then p_patch->>'execution_source'
++      when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and shift.execution_source is null then 'agency'
+       else shift.execution_source end,
++    agency_code = case
++      when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
++      else shift.agency_code end,
+     updated_by = actor_id
+   where shift.id = p_shift_id
+   returning * into updated_shift;
+@@ -10752,6 +10796,8 @@
+   updated_shift public.shifts;
+   input_key text;
+   requested_status text;
++  effective_agency text;
++  effective_source text;
+ begin
+   actor_id := private.require_shift_actor(true);
+   actor_permission := private.current_system_permission();
+@@ -10767,7 +10813,7 @@
+       'date', 'start_time', 'end_time', 'brand_id', 'platform_id', 'campaign_id',
+       'title', 'studio', 'required_host_count', 'required_support_count',
+       'required_technical_count', 'status', 'live_link', 'product_notes',
+-      'registration_cutoff_at', 'allow_multi_role', 'execution_source'
++      'registration_cutoff_at', 'allow_multi_role', 'execution_source', 'agency_code'
+     ]::text[]) then
+       raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';
+     end if;
+@@ -10781,6 +10827,11 @@
+     and p_patch->>'execution_source' not in ('internal', 'agency')) then
+     raise exception using errcode = '22023', message = 'SHIFT_EXECUTION_SOURCE_INVALID';
+   end if;
++  if (p_patch ? 'agency_code' and p_patch->>'agency_code' is not null
++    and p_patch->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
++    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
++  end if;
++
+   select * into existing_shift
+   from public.shifts
+   where id = p_shift_id and deleted_at is null and archived_at is null
+@@ -10788,7 +10839,22 @@
+   if existing_shift.id is null then
+     raise exception using errcode = 'P0001', message = 'SHIFT_NOT_FOUND';
+   end if;
++
+   perform private.assert_expected_version('Shift', p_expected_version, existing_shift.version);
++
++  effective_agency := case
++    when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
++    else existing_shift.agency_code
++  end;
++  effective_source := case
++    when p_patch ? 'execution_source' then nullif(p_patch->>'execution_source', '')
++    when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and existing_shift.execution_source is null then 'agency'
++    else existing_shift.execution_source
++  end;
++  if (effective_agency is not null and effective_source = 'internal') then
++    raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
++  end if;
++
+   requested_status := coalesce(nullif(p_patch->>'status', ''), existing_shift.status);
+   if actor_permission in ('leader', 'admin')
+     and requested_status <> existing_shift.status and not (
+@@ -10832,7 +10898,11 @@
+     product_notes = case when p_patch ? 'product_notes' then nullif(p_patch->>'product_notes', '') else shift.product_notes end,
+     execution_source = case
+       when p_patch ? 'execution_source' then p_patch->>'execution_source'
++      when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and shift.execution_source is null then 'agency'
+       else shift.execution_source end,
++    agency_code = case
++      when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
++      else shift.agency_code end,
+     updated_by = actor_id
+   where shift.id = p_shift_id
+   returning * into updated_shift;
+@@ -18173,5 +18243,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict ZdEY8FBvueVLiY3jtea3YyZqzechl346ELu9hmLPXcDsRL7a3xCAdwvs0e4I2ra
+-
++\unrestrict vgNNqhbFZzxfRbwtFjTNij1Mv15ZeE8C4CN0kI016oW71GJOwKjMa8t4oGlP6la
++

@@ -3,7 +3,7 @@ import test from 'node:test'
 import * as XLSX from 'xlsx'
 
 import type { Report, DashboardUpdate, StoredFileArtifact } from '@/lib/types/database.types'
-import { buildReportDetailWorkbookBytes, buildReportExportRows } from '@/lib/utils/excelUtils'
+import { buildReportDetailWorkbookBytes, buildReportExportRows, buildWorkbookBytes, REPORT_CURRENCY_COLUMNS } from '@/lib/utils/excelUtils'
 
 const shopeeReport = {
   id: 'report-shopee',
@@ -125,4 +125,64 @@ test('TikTok export preserves product clicks while avoiding current-viewers-to-a
   assert.equal(row['Average Viewers'], '')
   assert.equal(row['Product Clicks'], 320)
   assert.equal(row['Average Order Value'], 100000)
+})
+
+test('mixed Shopee/TikTok XLSX preserves distinct sales metrics, numeric types and zero values', () => {
+  const tiktok = {
+    ...shopeeReport,
+    id: 'report-tiktok-mixed',
+    shift_id: 'shift-tiktok-mixed',
+    dashboard_platform: 'tiktok_shop',
+    revenue: 32000000,
+    gmv: 34000000,
+    orders: 320,
+    product_clicks: 450,
+    average_order_value: 100000,
+    normalized_metrics: {
+      revenue: 32000000,
+      gmv: 34000000,
+      orders: 320,
+      product_clicks: 450,
+      average_order_value: 100000,
+      current_viewers: 42,
+    },
+    platform_metrics: { revenue: 32000000, gmv: 34000000, orders: 320, product_clicks: 450 },
+  } as Report
+  const zero = {
+    ...tiktok, id: 'report-tiktok-zero', shift_id: 'shift-tiktok-zero',
+    revenue: 0, gmv: 0, orders: 0, product_clicks: 0, average_order_value: undefined,
+    normalized_metrics: { revenue: 0, gmv: 0, orders: 0, product_clicks: 0 },
+    platform_metrics: { revenue: 0, gmv: 0, orders: 0, product_clicks: 0 },
+  } as Report
+  const exported = buildReportExportRows([shopeeReport, tiktok, zero], context)
+  const wb = XLSX.read(buildWorkbookBytes([{
+    name: 'Reports',
+    rows: exported,
+    currencyColumns: REPORT_CURRENCY_COLUMNS,
+  }]), { type: 'array' })
+  const sheet = wb.Sheets['Reports']
+  assert.ok(sheet)
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+  assert.equal(rows.length, 3)
+  assert.deepEqual(rows.map(row => row['Report ID']), ['report-shopee', 'report-tiktok-mixed', 'report-tiktok-zero'])
+
+  assert.equal(rows[0].Revenue, 13416434)
+  assert.equal(rows[0]['Average Basket Size'], 200245.28)
+  assert.equal(rows[0]['Average Order Value'], '')
+  assert.equal(rows[0]['Average Viewers'], '')
+  assert.equal(rows[0]['Product Clicks'], '')
+
+  assert.equal(rows[1].Revenue, 32000000)
+  assert.equal(rows[1].GMV, 34000000)
+  assert.equal(rows[1].Orders, 320)
+  assert.equal(rows[1]['Average Order Value'], 100000)
+  assert.equal(rows[1]['Product Clicks'], 450)
+  assert.equal(rows[1]['Average Viewers'], '')
+
+  assert.equal(rows[2].Revenue, 0)
+  assert.equal(rows[2].GMV, 0)
+  assert.equal(rows[2].Orders, 0)
+  assert.equal(rows[2]['Product Clicks'], 0)
+  assert.equal(rows[2]['Average Order Value'], '')
+  assert.equal(sheet[XLSX.utils.encode_cell({ r: 3, c: exported[0] ? Object.keys(exported[0]).indexOf('Revenue') : 0 })]?.t, 'n')
 })

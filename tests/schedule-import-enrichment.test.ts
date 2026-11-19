@@ -141,8 +141,6 @@ async function runEnrichment(existing: Shift, imported: Partial<Shift>, sourcePr
 }
 
 const enrichmentCases: Array<[string, Partial<Shift>, NonNullable<ScheduleImportRow['source_presence']>]> = [
-  ['campaign', { campaign_id: 'campaign-b' }, { campaign_name: true }],
-  ['studio', { studio: 'Studio B' }, { studio: true }],
   ['title', { title: 'Updated title' }, { title: true }],
   ['notes', { product_notes: 'New notes' }, { notes: true }],
   ['host count', { required_host_count: 3 }, { required_host_count: true }],
@@ -161,18 +159,32 @@ for (const [field, imported, sourcePresence] of enrichmentCases) {
   })
 }
 
+test('same slot with different campaign creates a distinct parallel shift', async () => {
+  const run = await runEnrichment(shift('existing'), { campaign_id: 'campaign-b' }, { campaign_name: true })
+  assert.equal(run.creates, 1)
+  assert.equal(run.result.imported, 1)
+  assert.deepEqual(run.outcomes, ['imported'])
+})
+
+test('same slot with different studio creates a distinct parallel shift', async () => {
+  const run = await runEnrichment(shift('existing'), { studio: 'Studio B' }, { studio: true })
+  assert.equal(run.creates, 1)
+  assert.equal(run.result.imported, 1)
+  assert.deepEqual(run.outcomes, ['imported'])
+})
+
 test('multiple explicit metadata changes produce one canonical Shift update', async () => {
   const run = await runEnrichment(
     shift('existing'),
-    { campaign_id: 'campaign-b', studio: 'Studio B', title: 'New title', product_notes: 'New notes' },
-    { campaign_name: true, studio: true, title: true, notes: true },
+    { title: 'New title', product_notes: 'New notes', required_host_count: 2, required_support_count: 3 },
+    { title: true, notes: true, required_host_count: true, required_support_count: true },
   )
   assert.equal(run.updateCalls, 1)
   assert.equal(run.result.recovered, 1)
-  assert.equal(run.current.campaign_id, 'campaign-b')
-  assert.equal(run.current.studio, 'Studio B')
   assert.equal(run.current.title, 'New title')
   assert.equal(run.current.product_notes, 'New notes')
+  assert.equal(run.current.required_host_count, 2)
+  assert.equal(run.current.required_support_count, 3)
 })
 
 test('same slot with no explicit changes remains duplicate_skipped', async () => {
@@ -184,7 +196,7 @@ test('same slot with no explicit changes remains duplicate_skipped', async () =>
 
 test('blank metadata and defaulted staffing values preserve existing fields', async () => {
   const existing = shift('existing', {
-    campaign_id: 'campaign-b', studio: 'Studio B', title: 'Existing title', product_notes: 'Existing notes',
+    campaign_id: undefined, studio: undefined, title: 'Existing title', product_notes: 'Existing notes',
     required_host_count: 3, required_support_count: 4, required_technical_count: 5,
   })
   const parsed = parseScheduleRows([{

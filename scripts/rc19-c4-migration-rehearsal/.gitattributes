@@ -1,0 +1,5 @@
+evidence/prodshape-pg17-*/schema-diff-*.patch whitespace=-blank-at-eol
+evidence/prodshape-pg17-*/source-data-normalized.sql whitespace=-blank-at-eof
+evidence/prodshape-pg17-*/restored-data-normalized.sql whitespace=-blank-at-eof
+archive/**/*.sql whitespace=-blank-at-eof
+archive/20261103195519_rc19_c2_resource_public_and_app_edit.original.sql -text whitespace=cr-at-eol,-blank-at-eof

@@ -65,7 +65,7 @@ import { AlertDialog } from '@/components/ui/alert-dialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
 import { getAuthMode } from '@/lib/auth/authMode'
-import { removeDashboardScreenshot, uploadDashboardScreenshot } from '@/lib/services/liveDashboardStorageService'
+import { uploadDashboardScreenshot } from '@/lib/services/liveDashboardStorageService'
 import { useTranslation } from '@/lib/i18n'
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, RefreshCw, ScanText, Upload, X } from 'lucide-react'
 
@@ -457,23 +457,28 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
 
   const persistUpdate = async () => {
     setSubmitting(true)
-    let uploadedStoragePath: string | undefined
 
     try {
       if (dashboardPlatform === 'other') throw new Error('Dashboard platform is required.')
       const serializedMetrics = serializeLiveMetricState(dashboardPlatform, metricValues)
       let screenshotUrl = formData.screenshot_url || undefined
+      let screenshotStoragePath: string | undefined
+      let screenshotFileId: string | undefined
       if (getAuthMode() === 'supabase' && screenshotFile) {
         const uploaded = await uploadDashboardScreenshot(screenshotFile, shift.id)
-        uploadedStoragePath = uploaded.storagePath
+        screenshotStoragePath = uploaded.storagePath
+        screenshotFileId = uploaded.fileId
         screenshotUrl = uploaded.screenshotUrl
+      } else if (getAuthMode() === 'supabase' && screenshotUrl?.startsWith('blob:')) {
+        throw new Error('Dashboard image must be uploaded before saving.')
       }
       await dashboardUpdateService.create({
         shift_id: shift.id,
         time: new Date().toISOString(),
         ...serializedMetrics,
         screenshot_url: screenshotUrl,
-        screenshot_storage_path: uploadedStoragePath,
+        screenshot_storage_path: screenshotStoragePath,
+        screenshot_file_id: screenshotFileId,
         notes: formData.notes || undefined,
         dashboard_platform: dashboardPlatform,
         ocr_review: ocrReview || undefined,
@@ -485,7 +490,6 @@ export function DashboardUpdateModal({ open, onOpenChange, shift, platformName, 
       onSuccess()
       onOpenChange(false)
     } catch {
-      if (uploadedStoragePath) await removeDashboardScreenshot(uploadedStoragePath, shift.id).catch(() => undefined)
       toast({ title: t('error'), description: t('validationError'), variant: 'destructive' })
     } finally {
       setSubmitting(false)

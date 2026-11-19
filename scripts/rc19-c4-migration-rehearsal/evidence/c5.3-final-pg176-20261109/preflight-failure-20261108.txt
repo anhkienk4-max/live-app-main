@@ -1,0 +1,10 @@
+This retained attempt is NOT a successful rehearsal and applied no forward migration.
+
+Source SHA: 88dec4c0d7377e77330213d2eb7bce8fe0cbbe2e
+PostgreSQL: 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+Database: rc19_c5_3_final_20261109
+Result: stopped at baseline preflight before the first migration; forward receipt count remained 0.
+Failure: the sanitized schema-only baseline omitted pgcrypto, which the runner requires at version 1.3.
+Evidence log: %TEMP%/rc19-c5.3-evidence-d347542b/pg176-final-rehearsal-88dec4c.log.
+
+The disposable setup now installs the PostgreSQL-packaged pgcrypto extension before running the rehearsal. No Production database was accessed or changed.

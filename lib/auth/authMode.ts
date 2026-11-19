@@ -59,5 +59,10 @@ export function requireSupabasePublicConfig(): SupabasePublicConfig {
 }
 
 export function safeLocalRedirect(value: string | null | undefined): string {
-  return value?.startsWith('/') && !value.startsWith('//') ? value : '/'
+  if (!value?.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u0020]/.test(value)) return '/'
+  try {
+    const parsed = new URL(value, 'https://redirect.invalid')
+    if (parsed.origin !== 'https://redirect.invalid') return '/'
+    return parsed.pathname + parsed.search + parsed.hash
+  } catch { return '/' }
 }

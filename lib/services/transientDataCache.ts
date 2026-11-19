@@ -19,7 +19,8 @@ export function readTransientData<T>(
   const key = pageCacheKey(identity, 'transient:' + namespace, {})
   const saved = readPageCache<T>(key)
   if (saved !== undefined) return Promise.resolve(saved)
-  const generation = currentPageCacheGeneration()
+  const cacheNamespace = 'transient:' + namespace
+  const generation = currentPageCacheGeneration(cacheNamespace)
   const existing = pending.get(key) as Request<T> | undefined
   if (existing && existing.generation === generation) return existing.promise
   const request: Request<T> = {
@@ -27,7 +28,7 @@ export function readTransientData<T>(
     promise: Promise.resolve().then(loader).then(async value => {
       // No stale response may enter the cache following logout/mutation.
       if (!(await verifyActor())) throw new Error('CACHE_IDENTITY_CHANGED')
-      if (generation !== currentPageCacheGeneration()) throw new Error('CACHE_INVALIDATED')
+      if (generation !== currentPageCacheGeneration(cacheNamespace)) throw new Error('CACHE_INVALIDATED')
       writePageCache(key, value)
       return value
     }),

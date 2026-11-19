@@ -1,0 +1,301 @@
+--- before-20261102110000
++++ after-20261102110000
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict s0KfwYZEoxyoVTcx7i2B9CFHFc8ZfJul9xTJhfY91aj53pNRHn5NalIdfHbZhu5
++\restrict VJaA0IE977RQOSS4OOWC9wddasYRYdnA45RI9y9QqeCoVAecQfKtPCtZkMiQllE
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -5238,8 +5238,10 @@
+     created_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
+     updated_at timestamp with time zone DEFAULT statement_timestamp() NOT NULL,
+     deleted_at timestamp with time zone,
++    screenshot_file_id text,
+     CONSTRAINT dashboard_updates_platform_check CHECK ((dashboard_platform = ANY (ARRAY['tiktok_shop'::text, 'shopee_live'::text, 'other'::text]))),
+     CONSTRAINT dashboard_updates_revenue_check CHECK ((revenue >= (0)::numeric)),
++    CONSTRAINT dashboard_updates_screenshot_file_reference_check CHECK (((screenshot_file_id IS NULL) OR ((screenshot_storage_path = ((('dashboard/'::text || shift_id) || '/'::text) || screenshot_file_id)) AND (screenshot_url = ('/api/dashboard-screenshots?file_id='::text || screenshot_file_id))))),
+     CONSTRAINT dashboard_updates_screenshot_path_check CHECK (((screenshot_storage_path IS NULL) OR (screenshot_storage_path ~~ 'dashboard/%'::text)))
+ );
+ 
+@@ -5251,22 +5253,19 @@
+ CREATE FUNCTION public.create_dashboard_update(p_data jsonb) RETURNS public.dashboard_updates
+     LANGUAGE plpgsql SECURITY DEFINER
+     SET search_path TO ''
+-    AS $$
++    AS $_$
+ declare
+   actor_id text;
+   created_row public.dashboard_updates;
++  screenshot_file public.operational_files;
+   shift_key text := nullif(btrim(p_data ->> 'shift_id'), '');
+-begin
+-  actor_id := private.current_business_user_id();
+-  if actor_id is null then
+-    raise exception using errcode = '42501', message = 'AUTHENTICATION_REQUIRED';
+-  end if;
++  screenshot_file_key text := nullif(btrim(p_data ->> 'screenshot_file_id'), '');
++  screenshot_url_value text := nullif(p_data ->> 'screenshot_url', '');
++  screenshot_path_value text := nullif(p_data ->> 'screenshot_storage_path', '');
++begin
++  actor_id := private.require_shift_actor(true);
+   if shift_key is null or not private.can_read_shift(shift_key) then
+     raise exception using errcode = '42501', message = 'DASHBOARD_UPDATE_NOT_ALLOWED';
+-  end if;
+-  if nullif(p_data ->> 'screenshot_storage_path', '') is not null
+-    and split_part(nullif(p_data ->> 'screenshot_storage_path', ''), '/', 2) <> shift_key then
+-    raise exception using errcode = '42501', message = 'DASHBOARD_SCREENSHOT_NOT_ALLOWED';
+   end if;
+   if not exists (
+     select 1
+@@ -5278,10 +5277,42 @@
+   ) then
+     raise exception using errcode = '42501', message = 'DASHBOARD_UPDATE_NOT_ALLOWED';
+   end if;
++
++  if screenshot_file_key is not null then
++    select * into screenshot_file
++    from public.operational_files
++    where id = screenshot_file_key and deleted_at is null
++    for key share;
++    if screenshot_file.id is null
++      or screenshot_file.shift_id is distinct from shift_key
++      or screenshot_file.scope_key is distinct from ('shift:' || shift_key)
++      or screenshot_file.category <> 'live_snapshot'
++      or screenshot_file.provider is distinct from 'google_drive'
++      or screenshot_file.integrity_status is distinct from 'sha256_verified'
++      or screenshot_file.external_file_id is null
++      or screenshot_file.external_parent_id is null
++      or screenshot_file.checksum_sha256 is null
++      or screenshot_file.checksum_sha256 !~ '^[a-f0-9]{64}$'
++      or screenshot_file.mime_type is null
++      or screenshot_file.mime_type not in ('image/png', 'image/jpeg', 'image/webp') then
++      raise exception using errcode = '42501', message = 'DASHBOARD_SCREENSHOT_NOT_ALLOWED';
++    end if;
++    screenshot_url_value := '/api/dashboard-screenshots?file_id=' || screenshot_file.id;
++    screenshot_path_value := 'dashboard/' || shift_key || '/' || screenshot_file.id;
++  elsif screenshot_path_value is not null then
++    if split_part(screenshot_path_value, '/', 2) <> shift_key then
++      raise exception using errcode = '42501', message = 'DASHBOARD_SCREENSHOT_NOT_ALLOWED';
++    end if;
++    screenshot_url_value := '/api/dashboard-screenshots?storage_path=' || screenshot_path_value;
++  end if;
++  if screenshot_file_key is null and screenshot_url_value like 'blob:%' then
++    raise exception using errcode = '42501', message = 'DASHBOARD_SCREENSHOT_NOT_ALLOWED';
++  end if;
++
+   insert into public.dashboard_updates (
+     shift_id, time, revenue, gmv, orders, peak_viewers, current_viewers,
+     total_views, total_viewers, likes, comments, shares, screenshot_url,
+-    screenshot_storage_path, dashboard_platform, normalized_metrics,
++    screenshot_storage_path, screenshot_file_id, dashboard_platform, normalized_metrics,
+     ocr_review, raw_ocr_output, notes, created_by
+   ) values (
+     shift_key,
+@@ -5296,8 +5327,9 @@
+     (p_data ->> 'likes')::integer,
+     (p_data ->> 'comments')::integer,
+     (p_data ->> 'shares')::integer,
+-    nullif(p_data ->> 'screenshot_url', ''),
+-    nullif(p_data ->> 'screenshot_storage_path', ''),
++    screenshot_url_value,
++    screenshot_path_value,
++    screenshot_file_key,
+     coalesce(nullif(p_data ->> 'dashboard_platform', ''), 'other'),
+     p_data -> 'normalized_metrics',
+     p_data -> 'ocr_review',
+@@ -5307,7 +5339,7 @@
+   ) returning * into created_row;
+   return created_row;
+ end;
+-$$;
++$_$;
+ 
+ 
+ --
+@@ -9882,7 +9914,11 @@
+     storage_idempotency_key text,
+     provider text,
+     external_file_id text,
++    external_parent_id text,
++    checksum_sha256 text,
+     CONSTRAINT live_report_images_category_check CHECK ((category = ANY (ARRAY['key_visual'::text, 'live_session'::text, 'other'::text]))),
++    CONSTRAINT live_report_images_checksum_sha256_check CHECK (((checksum_sha256 IS NULL) OR (checksum_sha256 ~ '^[a-f0-9]{64}$'::text))),
++    CONSTRAINT live_report_images_external_parent_id_check CHECK (((external_parent_id IS NULL) OR (btrim(external_parent_id) <> ''::text))),
+     CONSTRAINT live_report_images_file_provider_pair CHECK ((((provider IS NULL) AND (external_file_id IS NULL)) OR ((provider IS NOT NULL) AND (provider = ANY (ARRAY['google_drive'::text, 'onedrive'::text])) AND (external_file_id IS NOT NULL) AND (btrim(external_file_id) <> ''::text)))),
+     CONSTRAINT live_report_images_id_not_blank CHECK ((btrim(id) <> ''::text)),
+     CONSTRAINT live_report_images_storage_metadata_check CHECK ((((storage_file_name IS NULL) AND (storage_idempotency_key IS NULL)) OR ((storage_file_name IS NOT NULL) AND ((char_length(storage_file_name) >= 1) AND (char_length(storage_file_name) <= 180)) AND (storage_idempotency_key IS NOT NULL) AND (storage_idempotency_key ~ '^(key_visual|live_session|other):[a-f0-9]{64}$'::text) AND (split_part(storage_idempotency_key, ':'::text, 1) = category))))
+@@ -10841,6 +10877,10 @@
+     deleted_at timestamp with time zone,
+     provider text,
+     external_file_id text,
++    external_parent_id text,
++    checksum_sha256 text,
++    CONSTRAINT report_images_checksum_sha256_check CHECK (((checksum_sha256 IS NULL) OR (checksum_sha256 ~ '^[a-f0-9]{64}$'::text))),
++    CONSTRAINT report_images_external_parent_id_check CHECK (((external_parent_id IS NULL) OR (btrim(external_parent_id) <> ''::text))),
+     CONSTRAINT report_images_file_provider_pair CHECK ((((provider IS NULL) AND (external_file_id IS NULL)) OR ((provider IS NOT NULL) AND (provider = ANY (ARRAY['google_drive'::text, 'onedrive'::text])) AND (external_file_id IS NOT NULL) AND (btrim(external_file_id) <> ''::text)))),
+     CONSTRAINT report_images_id_not_blank CHECK ((btrim(id) <> ''::text)),
+     CONSTRAINT report_images_type_check CHECK ((image_type = ANY (ARRAY['dashboard'::text, 'livestream'::text, 'host'::text, 'support'::text, 'technical'::text, 'voucher'::text, 'product'::text, 'other'::text])))
+@@ -10941,6 +10981,49 @@
+   return created_image;
+ end;
+ $$;
++
++
++--
++-- Name: upload_report_image_with_storage_metadata(text, text, text, text, text, bigint, text, text, text, text, text); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.upload_report_image_with_storage_metadata(p_report_id text, p_storage_path text, p_image_url text, p_original_name text, p_mime_type text, p_size_bytes bigint, p_image_type text, p_provider text, p_external_file_id text, p_external_parent_id text, p_checksum_sha256 text) RETURNS public.report_images
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $_$
++declare
++  created_image public.report_images;
++begin
++  if p_provider is null or p_provider not in ('google_drive', 'onedrive')
++    or nullif(btrim(p_external_file_id), '') is null
++    or nullif(btrim(p_external_parent_id), '') is null
++    or p_checksum_sha256 is null
++    or p_checksum_sha256 !~ '^[a-f0-9]{64}$'
++    or p_size_bytes is null
++    or p_size_bytes <= 0 then
++    raise exception using errcode = '22023', message = 'REPORT_FILE_STORAGE_METADATA_INVALID';
++  end if;
++
++  created_image := public.upload_report_image_with_provider(
++    p_report_id,
++    p_storage_path,
++    p_image_url,
++    p_original_name,
++    p_mime_type,
++    p_size_bytes,
++    p_image_type,
++    p_provider,
++    p_external_file_id
++  );
++
++  update public.report_images
++  set external_parent_id = p_external_parent_id,
++      checksum_sha256 = p_checksum_sha256
++  where id = created_image.id
++  returning * into created_image;
++  return created_image;
++end;
++$_$;
+ 
+ 
+ --
+@@ -11089,6 +11172,56 @@
+   return created_image;
+ end;
+ $$;
++
++
++--
++-- Name: upsert_live_report_image_with_storage_metadata(jsonb); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.upsert_live_report_image_with_storage_metadata(p_data jsonb) RETURNS public.live_report_images
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $_$
++declare
++  created_image public.live_report_images;
++  provider_value text := p_data->>'provider';
++  external_id text := p_data->>'external_file_id';
++  parent_id text := p_data->>'external_parent_id';
++  checksum text := p_data->>'checksum_sha256';
++begin
++  if provider_value is null or provider_value not in ('google_drive', 'onedrive')
++    or nullif(btrim(external_id), '') is null
++    or nullif(btrim(parent_id), '') is null
++    or checksum is null
++    or checksum !~ '^[a-f0-9]{64}$' then
++    raise exception using errcode = '22023', message = 'REPORT_FILE_STORAGE_METADATA_INVALID';
++  end if;
++
++  created_image := public.upsert_live_report_image_with_provider(
++    p_data - 'external_parent_id' - 'checksum_sha256'
++  );
++
++  -- Keep the metadata belonging to a concurrent idempotency winner.
++  if created_image.external_file_id is not null then
++    if created_image.external_file_id = external_id
++      and (created_image.external_parent_id is null or created_image.checksum_sha256 is null) then
++      update public.live_report_images
++      set external_parent_id = parent_id,
++          checksum_sha256 = checksum
++      where id = created_image.id
++      returning * into created_image;
++    end if;
++    return created_image;
++  end if;
++
++  update public.live_report_images
++  set external_parent_id = parent_id,
++      checksum_sha256 = checksum
++  where id = created_image.id
++  returning * into created_image;
++  return created_image;
++end;
++$_$;
+ 
+ 
+ --
+@@ -14218,6 +14351,13 @@
+ 
+ 
+ --
++-- Name: dashboard_updates_screenshot_file_idx; Type: INDEX; Schema: public; Owner: -
++--
++
++CREATE INDEX dashboard_updates_screenshot_file_idx ON public.dashboard_updates USING btree (screenshot_file_id) WHERE (screenshot_file_id IS NOT NULL);
++
++
++--
+ -- Name: dashboard_updates_shift_idx; Type: INDEX; Schema: public; Owner: -
+ --
+ 
+@@ -15804,6 +15944,14 @@
+ 
+ ALTER TABLE ONLY public.dashboard_updates
+     ADD CONSTRAINT dashboard_updates_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.business_users(id) ON DELETE SET NULL;
++
++
++--
++-- Name: dashboard_updates dashboard_updates_screenshot_file_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.dashboard_updates
++    ADD CONSTRAINT dashboard_updates_screenshot_file_id_fkey FOREIGN KEY (screenshot_file_id) REFERENCES public.operational_files(id) ON DELETE RESTRICT;
+ 
+ 
+ --
+@@ -17540,10 +17688,12 @@
+ 
+ 
+ --
+--- Name: objects live dashboard image public read; Type: POLICY; Schema: storage; Owner: -
+---
+-
+-CREATE POLICY "live dashboard image public read" ON storage.objects FOR SELECT USING ((bucket_id = 'live-dashboard-images'::text));
++-- Name: objects live dashboard image scoped read; Type: POLICY; Schema: storage; Owner: -
++--
++
++CREATE POLICY "live dashboard image scoped read" ON storage.objects FOR SELECT TO authenticated USING (((bucket_id = 'live-dashboard-images'::text) AND (EXISTS ( SELECT 1
++   FROM public.dashboard_updates update_row
++  WHERE ((update_row.screenshot_storage_path = objects.name) AND (update_row.deleted_at IS NULL) AND ( SELECT private.can_read_shift(update_row.shift_id) AS can_read_shift))))));
+ 
+ 
+ --
+@@ -17628,5 +17778,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict s0KfwYZEoxyoVTcx7i2B9CFHFc8ZfJul9xTJhfY91aj53pNRHn5NalIdfHbZhu5
+-
++\unrestrict VJaA0IE977RQOSS4OOWC9wddasYRYdnA45RI9y9QqeCoVAecQfKtPCtZkMiQllE
++

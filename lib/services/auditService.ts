@@ -2,7 +2,7 @@ import { AuditAction, AuditLog, AuditModule, AuditRelatedRecord, SystemPermissio
 import { resolveSystemPermission } from '@/lib/permissions'
 import { classifyOperationStatus } from '@/lib/utils/auditNormalize'
 import { getAuthMode } from '@/lib/auth/authMode'
-import { getSupabaseAuditRepository } from '@/lib/services/supabaseAuditService'
+import { getSupabaseAuditRepository, type AuditHistoryCursor, type AuditHistoryPage } from '@/lib/services/supabaseAuditService'
 
 type AuditInput = {
   actor: Pick<User, 'id' | 'full_name' | 'role' | 'system_permission'>
@@ -32,6 +32,7 @@ export type AuditLogFilters = {
   from?: string
   to?: string
   actor?: string | readonly string[]
+  brand_id?: string | readonly string[]
   role?: string | readonly string[]
   module?: string | readonly string[]
   action?: string | readonly string[]
@@ -200,6 +201,7 @@ const filterAuditLogs = (logs: AuditLog[], filters: AuditLogFilters) => {
     return (!filters.from || date >= filters.from) &&
       (!filters.to || date <= filters.to) &&
       matches(entry.actor_id, filters.actor) &&
+      (!values(filters.brand_id).length || values(filters.brand_id).some(brandId => entry.before?.brand_id === brandId || entry.after?.brand_id === brandId)) &&
       matches(entry.actor_role, filters.role) &&
       matches(entry.module, filters.module) &&
       matches(entry.action, filters.action) &&
@@ -251,6 +253,67 @@ export const auditService = {
       pageSize: safePageSize,
       totalPages,
       actors,
+    }
+  },
+
+  async getAuditHistoryPage({ user, cursor, pageSize = 20, filters = {}, sort = 'newest', signal }: {
+    user: Pick<User, 'id' | 'role' | 'system_permission'>
+    cursor?: AuditHistoryCursor | null
+    pageSize?: number
+    filters?: AuditLogFilters
+    sort?: 'newest' | 'oldest'
+    signal?: AbortSignal
+  }): Promise<AuditHistoryPage> {
+    if (getAuthMode() === 'supabase') return getSupabaseAuditRepository().getAuditHistoryPage({ cursor, pageSize, filters, sort, signal })
+    if (signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError')
+    hydrate()
+    const safePageSize = [10, 20, 50].includes(pageSize) ? pageSize : 20
+    const snapshotAt = cursor?.snapshot_at ?? new Date().toISOString()
+    const hoChiMinhDate = (date = new Date()) =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+    const parseIsoDateUtcMs = (value: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw Object.assign(new Error('AUDIT_FILTER_INVALID'), { code: '22023' })
+      const ms = Date.parse(`${value}T00:00:00Z`)
+      if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== value) {
+        throw Object.assign(new Error('AUDIT_FILTER_INVALID'), { code: '22023' })
+      }
+      return ms
+    }
+    const rawTo = typeof filters.to === 'string' ? filters.to.trim() : ''
+    const rawFrom = typeof filters.from === 'string' ? filters.from.trim() : ''
+    const to = rawTo || hoChiMinhDate()
+    const toMs = parseIsoDateUtcMs(to)
+    const from = rawFrom || new Date(toMs - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const fromMs = parseIsoDateUtcMs(from)
+    if (toMs < fromMs || (toMs - fromMs) / (24 * 60 * 60 * 1000) > 365) {
+      throw Object.assign(new Error('AUDIT_DATE_RANGE_INVALID'), { code: '22023' })
+    }
+    const statusValues = Array.isArray(filters.status) ? filters.status : filters.status ? [filters.status] : []
+    const query = filters.query?.trim().toLowerCase() ?? ''
+    const scoped = filterAuditLogs(visibleLogsFor(user), { ...filters, from, to, query: undefined, status: undefined })
+      .filter(entry => !query || entry.entity_name.toLowerCase().includes(query))
+      .filter(entry => !statusValues.length || statusValues.includes(entry.status))
+      .filter(entry => entry.timestamp <= snapshotAt)
+      .filter(entry => !cursor || (sort === 'newest'
+        ? entry.timestamp < cursor.created_at || entry.timestamp === cursor.created_at && entry.id < cursor.id
+        : entry.timestamp > cursor.created_at || entry.timestamp === cursor.created_at && entry.id > cursor.id))
+      .sort((left, right) => {
+        const time = left.timestamp.localeCompare(right.timestamp) * (sort === 'newest' ? -1 : 1)
+        return time || left.id.localeCompare(right.id) * (sort === 'newest' ? -1 : 1)
+      })
+    const hasMore = scoped.length > safePageSize
+    const items = scoped.slice(0, safePageSize)
+    const last = items.at(-1)
+    const actors = [...new Map(items.filter(item => item.actor_id !== 'system').map(item => [item.actor_id, item.actor_name]))]
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
+    return {
+      items,
+      actors,
+      hasMore,
+      nextCursor: hasMore && last ? { created_at: last.timestamp, id: last.id, snapshot_at: snapshotAt } : null,
+      pageSize: safePageSize,
+      range: { from, to },
     }
   },
 

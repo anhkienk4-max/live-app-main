@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { hasPermission } from '@/lib/permissions'
+import { parseBrandProfileImport } from '@/components/features/brands/brandProfileImport'
 
 interface BrandFormDialogProps {
   open: boolean
@@ -49,11 +50,31 @@ export function BrandFormDialog({ open, onOpenChange, brand, onSuccess }: BrandF
   const { currentUser } = useCurrentUser()
   const [form, setForm] = React.useState(initial(brand))
   const [saving, setSaving] = React.useState(false)
+  const [importMessage, setImportMessage] = React.useState('')
   React.useEffect(() => {
     if (!open) return
-    const frame = requestAnimationFrame(() => setForm(initial(brand)))
+    const frame = requestAnimationFrame(() => {
+      setForm(initial(brand))
+      setImportMessage('')
+    })
     return () => cancelAnimationFrame(frame)
   }, [brand, open])
+
+  const importBrandProfile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    if (!file) return
+    try {
+      if (file.size > 64 * 1024) throw new Error('BRAND_IMPORT_TOO_LARGE')
+      const imported = parseBrandProfileImport(await file.text())
+      setForm(current => ({ ...current, ...imported }))
+      setImportMessage(t('brandImportSuccess'))
+    } catch {
+      setImportMessage(t('brandImportInvalid'))
+    } finally {
+      input.value = ''
+    }
+  }
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -101,7 +122,17 @@ export function BrandFormDialog({ open, onOpenChange, brand, onSuccess }: BrandF
       <Field label={t('contactPerson')} value={form.contact_person} onChange={value => setForm(current => ({ ...current, contact_person: value }))} />
       <Field label="Contact email" value={form.contact_email} onChange={value => setForm(current => ({ ...current, contact_email: value }))} type="email" />
       <Field label="Contact phone" value={form.contact_phone} onChange={value => setForm(current => ({ ...current, contact_phone: value }))} />
-    </div>
+  </div>
+    <section className="space-y-2 rounded-xl border border-dashed bg-muted/20 p-3">
+      <label htmlFor="brand-profile-import" className="text-sm font-semibold">{t('brandImportTitle')}</label>
+      <p id="brand-profile-import-help" className="text-xs leading-relaxed text-muted-foreground">{t('brandImportHelp')}</p>
+      <Input id="brand-profile-import" type="file" accept=".json,application/json" aria-describedby="brand-profile-import-help" onChange={event => void importBrandProfile(event)} />
+      <details className="text-xs text-muted-foreground">
+        <summary className="cursor-pointer font-medium">{t('brandImportTemplate')}</summary>
+        <pre className="mt-2 overflow-x-auto rounded-md bg-background p-3 text-[11px] leading-relaxed">{t('brandImportExample')}</pre>
+      </details>
+      {importMessage && <p role="status" className="text-xs text-muted-foreground">{importMessage}</p>}
+    </section>
     <div className="grid gap-4 md:grid-cols-2">
       <Area label={t('description')} value={form.description} onChange={value => setForm(current => ({ ...current, description: value }))} />
       <Area label={t('brandGuideline')} value={form.brand_guideline} onChange={value => setForm(current => ({ ...current, brand_guideline: value }))} />

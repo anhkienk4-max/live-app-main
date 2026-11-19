@@ -6,6 +6,7 @@ import { createWorkforceActualHandler } from '@/lib/server/workforceActualHandle
 import { createWorkforcePayrollHandler } from '@/lib/server/workforcePayrollHandler'
 import { createWorkforceCapabilitiesHandler } from '@/lib/server/workforceCapabilitiesHandler'
 import type { ServerUserResolver } from '@/lib/server/authGuards'
+import { SUPPLEMENTAL_EXPORT_ALL_ID } from '@/lib/utils/calendarExport'
 
 const admin = async () => ({ id: 'auth-admin', businessUserId: 'admin', systemPermission: 'admin' as const })
 const post = (body: object) => new Request('http://localhost/api/operations/calendar-export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -17,9 +18,9 @@ test('export checks anonymous, Member and unauthorized fields before database re
   }
 })
 
-function exportClient(total: number, changed = false) {
+function exportClient(total: number, changed = false, supplemental = false) {
   let listReads = 0
-  const shifts = Array.from({ length: total }, (_, index) => ({ id: 's' + index, date: '2026-10-15', start_time: '23:00', end_time: '01:00', brand_id: 'brand', platform_id: 'platform', title: index === 0 ? '=1+1' : 'Tiếng Việt ' + index, status: 'completed' }))
+  const shifts = Array.from({ length: total }, (_, index) => ({ id: 's' + index, date: '2026-10-15', start_time: '23:00', end_time: '01:00', brand_id: 'brand', platform_id: 'platform', title: index === 0 ? '=1+1' : 'Tiếng Việt ' + index, status: 'completed', supplemental_fields: supplemental ? { target: { label: 'TARGET', type: 'number', value: 1200 } } : {} }))
   return {
     rpc: async (name: string, args: Record<string, unknown>) => {
       if (name === 'get_shift_staffing_summary') return { data: [], error: null }
@@ -56,6 +57,15 @@ test('export refuses changed collection and an inaccessible selected shift', asy
   const missing = createCalendarExportHandler({ resolveUser: admin, createClient: async () => exportClient(0) as never })
   assert.equal((await missing.POST(post({ scope: 'one', shiftIds: ['private'], format: 'xlsx' }))).status, 409)
 })
+test('export selects only supplemental columns present in the authorized Shift result', async () => {
+  const handler = createCalendarExportHandler({ resolveUser: admin, createClient: async () => exportClient(1, false, true) as never })
+  const response = await handler.POST(post({ scope: 'filtered', format: 'xlsx', fields: [SUPPLEMENTAL_EXPORT_ALL_ID] }))
+  assert.equal(response.status, 200, await (response.status !== 200 ? response.clone().text() : Promise.resolve('')))
+  const workbook = XLSX.read(await response.arrayBuffer(), { type: 'array' })
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets['Lịch ca'])
+  assert.deepEqual(Object.keys(rows[0]), ['Supplemental: TARGET'])
+  assert.equal(rows[0]['Supplemental: TARGET'], 1200)
+})
 test('Actual Staffing and Payroll APIs fail closed before any database access', async () => {
   const denyDatabase = () => { throw new Error('FEATURE_OFF_DB_READ') }
   const actual = createWorkforceActualHandler({ resolveUser: admin, isEnabled: () => false, client: denyDatabase })
@@ -75,6 +85,6 @@ test('workforce capability response keeps Actual Staffing and Payroll hidden whe
   const response = await handler.GET(new Request('http://localhost/api/workforce/capabilities'))
   assert.equal(response.status, 200)
   assert.deepEqual((await response.json()).capabilities, {
-    actual_staffing: false, team_performance: false, own_performance: false, payroll: false,
+    actual_staffing: false, self_attendance_review: false, team_performance: false, own_performance: false, payroll: false,
   })
 })

@@ -1,0 +1,13 @@
+SET
+BEGIN
+SET
+DO
+psql:/mnt/c/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc19-c4-migration-rehearsal/scripts/rc19-c4-migration-rehearsal/evidence/active-c2-focused.sql:166: NOTICE:  relation "storage_resources" already exists, skipping
+CREATE TABLE
+psql:/mnt/c/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc19-c4-migration-rehearsal/scripts/rc19-c4-migration-rehearsal/evidence/active-c2-focused.sql:187: NOTICE:  relation "storage_resource_scopes" already exists, skipping
+CREATE TABLE
+psql:/mnt/c/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc19-c4-migration-rehearsal/scripts/rc19-c4-migration-rehearsal/evidence/active-c2-focused.sql:196: NOTICE:  relation "storage_resource_user_grants" already exists, skipping
+CREATE TABLE
+CREATE TABLE
+psql:/mnt/c/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc19-c4-migration-rehearsal/scripts/rc19-c4-migration-rehearsal/evidence/active-c2-focused.sql:207: ERROR:  SYNTHETIC_C2_TRANSACTION_ROLLBACK
+CONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE

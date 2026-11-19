@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { resolveSystemPermission } from '@/lib/permissions'
-import { authorizedExportFields } from '@/lib/utils/calendarExport'
+import { authorizedExportFields, SUPPLEMENTAL_EXPORT_ALL_ID } from '@/lib/utils/calendarExport'
 import type { ListFilters } from '@/lib/services/operationsPageService'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -32,6 +32,7 @@ function ExportWorkspace({ shiftId, selectedIds = [], filters = {}, listScope = 
   const [mode, setMode] = React.useState<'all' | 'select'>('all')
   const [format, setFormat] = React.useState<'xlsx' | 'csv'>('xlsx')
   const [selected, setSelected] = React.useState<string[]>(['schedule.Shift ID', 'schedule.Date', 'schedule.Start Time', 'schedule.End Time', 'schedule.Brand'])
+  const [includeSupplemental, setIncludeSupplemental] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [exported, setExported] = React.useState<number | null>(null)
@@ -39,6 +40,7 @@ function ExportWorkspace({ shiftId, selectedIds = [], filters = {}, listScope = 
   const owner = React.useRef(identityKey)
   React.useLayoutEffect(() => { owner.current = identityKey; controller.current?.abort(); return () => controller.current?.abort() }, [identityKey])
   const fields = authorizedExportFields(resolveSystemPermission(currentUser)).filter(field => format !== 'csv' || field.group === 'schedule')
+  const canExportSupplemental = fields.some(field => field.permission === 'shifts.export')
   const availableSelected = selected.filter(id => fields.some(field => field.id === id))
   const submit = async () => {
     if (busy || !currentUser) return
@@ -50,7 +52,7 @@ function ExportWorkspace({ shiftId, selectedIds = [], filters = {}, listScope = 
       const response = await fetch('/api/operations/calendar-export', { method: 'POST', cache: 'no-store', credentials: 'same-origin', signal: request.signal,
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope, filters, format, listScope,
           ...(scope === 'one' ? { shiftIds: [shiftId] } : scope === 'selected' ? { shiftIds: selectedIds } : {}),
-          ...(mode === 'select' ? { fields: availableSelected } : format === 'csv' ? { fields: fields.map(field => field.id) } : {}),
+          ...(mode === 'select' ? { fields: [...availableSelected, ...(includeSupplemental ? [SUPPLEMENTAL_EXPORT_ALL_ID] : [])] } : {}),
         }) })
       if (!response.ok) { const body = await response.json(); throw new Error(body.error?.code ?? 'EXPORT_FAILED') }
       const count = Number(response.headers.get('X-Export-Record-Count'))
@@ -86,14 +88,17 @@ function ExportWorkspace({ shiftId, selectedIds = [], filters = {}, listScope = 
       </select></label>
       <label className="space-y-1 text-sm">Định dạng<select aria-label="Định dạng xuất" className="h-9 w-full rounded-md border bg-background px-2" value={format} disabled={busy} onChange={event => setFormat(event.target.value as typeof format)}><option value="xlsx">XLSX</option><option value="csv">CSV</option></select></label>
     </div>
-    {mode === 'select' && <div className="grid gap-3 sm:grid-cols-2">{(['schedule', 'registrations'] as const).map(group => {
+    {mode === 'select' && <>
+      {canExportSupplemental && <label className="flex items-center gap-2 rounded-md border p-3 text-sm"><Checkbox checked={includeSupplemental} disabled={busy} onCheckedChange={checked => setIncludeSupplemental(checked === true)} />Bao gồm các trường bổ sung từ file import</label>}
+      <div className="grid gap-3 sm:grid-cols-2">{(['schedule', 'registrations'] as const).map(group => {
       const choices = fields.filter(field => field.group === group)
       return !!choices.length && <fieldset key={group} className="space-y-2 rounded-md border p-3"><legend className="text-sm font-semibold">{{ schedule: 'Lịch ca', registrations: 'Đăng ký' }[group]}</legend>
         {choices.map(field => <label key={field.id} className="flex items-center gap-2 text-xs"><Checkbox checked={selected.includes(field.id)} disabled={busy} onCheckedChange={checked => setSelected(current => checked ? [...current, field.id] : current.filter(id => id !== field.id))} />{field.label}</label>)}
       </fieldset>
-    })}</div>}
+    })}</div>
+    </>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {exported !== null && <p role="status">Đã xuất và xác minh {exported} ca.</p>}
-    <Button disabled={busy || !fields.length || !currentUser || mode === 'select' && !availableSelected.length} onClick={() => void submit()}>{busy ? 'Đang xuất…' : 'Xuất file'}</Button>
+    <Button disabled={busy || !fields.length || !currentUser || mode === 'select' && !availableSelected.length && !includeSupplemental} onClick={() => void submit()}>{busy ? 'Đang xuất…' : 'Xuất file'}</Button>
   </div>
 }

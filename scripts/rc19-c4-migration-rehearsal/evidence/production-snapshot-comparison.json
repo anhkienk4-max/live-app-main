@@ -1,0 +1,109 @@
+{
+  "reviewed_date": "2026-11-07",
+  "candidate_source_sha": "240a0d51b49863167be252d94545ea7c5ab2ac9a",
+  "production_project": "egdjnpmoasarrttvhgds",
+  "production_snapshot_captured_utc": "2026-11-06T08:40:48.029Z",
+  "rehearsal_database": "rc19_c4_schema_base_20261107_pg176",
+  "rehearsal_database_marker": "CODEX_DISPOSABLE_RC19_C4_REHEARSAL_ONLY",
+  "rehearsal_postgresql": "17.6 (170006)",
+  "baseline_source": "schema-after-89-production-ledger.sql; pg_dump --schema-only --no-owner --no-privileges",
+  "comparison": {
+    "relations": {
+      "production_snapshot": 10,
+      "ledger_baseline": 10,
+      "production_only": [],
+      "result": "MATCH",
+      "queried_target_rows": 19,
+      "expected_new_objects": [
+        "public.operational_schedule_source_files",
+        "public.operational_storage_domain_folders",
+        "public.operational_storage_drive_probe_rate_limits",
+        "public.operational_storage_drive_probe_runs",
+        "public.rc19_leader_brand_scope_events",
+        "public.rc19_leader_brand_scopes",
+        "public.rc19_report_artifact_deletion_events",
+        "public.rc19_report_artifact_deletions",
+        "public.rc19_report_export_audit"
+      ]
+    },
+    "columns": {
+      "production_snapshot": 172,
+      "ledger_baseline": 172,
+      "differences": 0,
+      "result": "MATCH"
+    },
+    "constraints": {
+      "production_snapshot": 98,
+      "ledger_baseline": 98,
+      "differences": 0,
+      "result": "MATCH"
+    },
+    "indexes": {
+      "production_snapshot": 29,
+      "ledger_baseline": 29,
+      "differences": 0,
+      "result": "MATCH"
+    },
+    "policies": {
+      "production_snapshot": 15,
+      "ledger_baseline": 15,
+      "differences": 0,
+      "result": "MATCH"
+    },
+    "table_grants": {
+      "production_snapshot": 74,
+      "ledger_baseline": 0,
+      "reason": "Sanitized schema dump explicitly used --no-privileges; not a database permission mismatch",
+      "result": "NOT_COMPARABLE"
+    },
+    "routines": {
+      "production_snapshot": 143,
+      "ledger_baseline": 142,
+      "production_only": [
+        "public.rls_auto_enable()"
+      ],
+      "c2_registry_functions": 2,
+      "metadata": "owner, return type, language, security-definer and search_path match in compared functions",
+      "acl": "Omitted from the schema dump; production snapshot records role ACLs",
+      "body": "Function bodies are not included in the captured Production snapshot",
+      "result": "PARTIAL"
+    },
+    "triggers": {
+      "production_snapshot": "not captured",
+      "c2_preflight": "Exact trigger fingerprint enforced by C2 SQL when run",
+      "result": "NOT_VERIFIED"
+    }
+  },
+  "c2_effective_sha256": "d9956e62f4f26480caa742ecdca1e37b6ebcefa5ae8035f0f63b5074af1914b5",
+  "c2_original_sha256": "1b16c0add91917c8188195d913e589d7618d8f27233f350dc55819c2b66be9dc",
+  "c2_focused_rehearsal": "PASS",
+  "ledger_plus_17_replay": "PASS on ledger-derived baseline; not complete Production-shaped",
+  "parity_gate": "BLOCKED_FULL_METADATA",
+  "production_execution_allowlist": [],
+  "no_production_sql_executed": true,
+  "c2_negative_preflight": {
+    "result": "PASS",
+    "evidence": "c2-focused-pg17-20261107T110755Z/c2-incompatible-schema-rejected.log",
+    "database": "rc19_c4_rehearsal_c2focus_20261107_r5_schema_mismatch",
+    "database_marker": "CODEX_DISPOSABLE_RC19_C4_REHEARSAL_ONLY",
+    "expected_error": "C2_RECONCILIATION_COLUMNS_MISMATCH:storage_resources",
+    "partial_c2_ddl": "none",
+    "receipt_written": false
+  },
+  "c2_existing_role_grants": {
+    "result": "PASS",
+    "production_snapshot_entries": 38,
+    "expected_relations": {
+      "public.storage_resources": "authenticated SELECT INSERT UPDATE; service_role ALL",
+      "public.storage_resource_scopes": "authenticated SELECT INSERT UPDATE; service_role ALL",
+      "public.storage_resource_user_grants": "authenticated SELECT INSERT UPDATE; service_role ALL",
+      "public.storage_resource_audit_events": "authenticated SELECT; service_role ALL"
+    },
+    "raw_acl_grantor": "C2 migration preflight enforces exact relacl; live raw grantor string was not included in the sanitized snapshot"
+  },
+  "root_cause_corrected": "The comparison counted all 19 queried target-name rows as existing relations. Nine rows had exists=false. It compared list length to the ten-row replay relation list instead of counting exists=true.",
+  "latest_relation_check": "live-production-target-relations-20261107.json",
+  "detailed_corrected_comparison": "production-baseline-comparison-c42.json",
+  "full_schema_parity": "PARTIAL_UNVERIFIED: triggers, whole-schema table grants, and production function bodies are not all captured.",
+  "c2_live_readonly_preflight": "PASS; exact production fingerprints, grants, functions and data-compatibility predicates matched; no DDL/DML executed."
+}

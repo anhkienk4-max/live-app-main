@@ -1,0 +1,247 @@
+--- before-20261103093137
++++ after-20261103093137
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict WbCmW221NLKdhilKFKPNBp53l5s3agRlQPH07AMzTHHN7eQ737pUXEJul7ouwAb
++\restrict nwrUXstmInpHjzX51TQHedRatm9ChBhF3Fp4CI3YqtcUlb5hAcEB1G0uG78Mlkn
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -162,6 +162,45 @@
+   end if;
+ end;
+ $$;
++
++
++--
++-- Name: is_valid_shift_supplemental_fields(jsonb); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.is_valid_shift_supplemental_fields(p_fields jsonb) RETURNS boolean
++    LANGUAGE sql IMMUTABLE
++    SET search_path TO ''
++    AS $_$
++  select case
++    when p_fields is null or jsonb_typeof(p_fields) is distinct from 'object' then false
++    when (select count(*) from jsonb_object_keys(p_fields)) > 50 then false
++    else not exists (
++      select 1
++      from jsonb_each(p_fields) as item(field_key, field_value)
++      where case
++        when jsonb_typeof(item.field_value) <> 'object' then true
++        else item.field_key !~ '^[a-z0-9][a-z0-9_-]{0,79}$'
++          or (select count(*) from jsonb_object_keys(item.field_value)) <> 3
++          or not (item.field_value ?& array['label', 'type', 'value'])
++          or jsonb_typeof(item.field_value->'label') <> 'string'
++          or length(btrim(item.field_value->>'label')) not between 1 and 80
++          or item.field_value->>'type' not in ('text', 'number', 'boolean', 'date', 'time')
++          or case item.field_value->>'type'
++            when 'text' then jsonb_typeof(item.field_value->'value') <> 'string'
++              or length(item.field_value->>'value') > 2000
++            when 'number' then jsonb_typeof(item.field_value->'value') <> 'number'
++            when 'boolean' then jsonb_typeof(item.field_value->'value') <> 'boolean'
++            when 'date' then jsonb_typeof(item.field_value->'value') <> 'string'
++              or item.field_value->>'value' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
++            when 'time' then jsonb_typeof(item.field_value->'value') <> 'string'
++              or item.field_value->>'value' !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
++            else true
++          end
++      end
++    )
++  end;
++$_$;
+ 
+ 
+ SET default_tablespace = '';
+@@ -216,8 +255,9 @@
+     status_mode text DEFAULT 'auto'::text NOT NULL,
+     execution_source text,
+     agency_code text,
++    supplemental_fields jsonb DEFAULT '{}'::jsonb NOT NULL,
+     CONSTRAINT shifts_agency_code_check CHECK (((agency_code IS NULL) OR (agency_code = ANY (ARRAY['ada'::text, 'snap'::text, 'live_ai'::text])))),
+-    CONSTRAINT shifts_agency_execution_source_check CHECK (((agency_code IS NULL) OR (execution_source = 'agency'::text))),
++    CONSTRAINT shifts_agency_execution_source_check CHECK (((agency_code IS NULL) OR ((agency_code = 'ada'::text) AND (execution_source = 'internal'::text)) OR ((agency_code = ANY (ARRAY['snap'::text, 'live_ai'::text])) AND (execution_source = 'agency'::text)))),
+     CONSTRAINT shifts_crosses_midnight_check CHECK ((crosses_midnight = (end_date > date))),
+     CONSTRAINT shifts_duration_check CHECK (((duration_minutes >= 1) AND (duration_minutes <= 1439))),
+     CONSTRAINT shifts_end_date_check CHECK (((end_date >= date) AND (end_date <= (date + 1)))),
+@@ -229,6 +269,7 @@
+     CONSTRAINT shifts_required_technical_count_check CHECK (((required_technical_count >= 0) AND (required_technical_count <= 100))),
+     CONSTRAINT shifts_status_check CHECK ((status = ANY (ARRAY['scheduled'::text, 'preparing'::text, 'live'::text, 'paused'::text, 'completed'::text, 'cancelled'::text]))),
+     CONSTRAINT shifts_status_mode_check CHECK ((status_mode = ANY (ARRAY['auto'::text, 'manual'::text]))),
++    CONSTRAINT shifts_supplemental_fields_object_check CHECK (private.is_valid_shift_supplemental_fields(supplemental_fields)),
+     CONSTRAINT shifts_time_order_check CHECK ((end_at > start_at)),
+     CONSTRAINT shifts_version_positive_check CHECK ((version > 0))
+ );
+@@ -302,6 +343,13 @@
+ --
+ 
+ COMMENT ON COLUMN public.shifts.agency_code IS 'Designates partner agency assigned to shift: ada, snap, live_ai, or null for internal/unassigned.';
++
++
++--
++-- Name: COLUMN shifts.supplemental_fields; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON COLUMN public.shifts.supplemental_fields IS 'Typed, RLS-protected operational fields retained from schedule imports; values use {label,type,value}.';
+ 
+ 
+ --
+@@ -5721,6 +5769,7 @@
+   input_key text;
+   initial_user_id text;
+   role_name text;
++  effective_source text;
+ begin
+   actor_id := private.require_shift_actor(true);
+   select * into settings_row from public.system_settings limit 1;
+@@ -5738,7 +5787,7 @@
+       'host_names', 'assistant_names', 'technical_names',
+       'required_host_count', 'required_support_count', 'required_technical_count',
+       'registration_cutoff_at', 'allow_multi_role', 'import_batch_id', 'status',
+-      'live_link', 'product_notes', 'execution_source', 'agency_code'
++      'live_link', 'product_notes', 'execution_source', 'agency_code', 'supplemental_fields'
+     ]::text[]) then
+       raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';
+     end if;
+@@ -5751,9 +5800,14 @@
+     and p_data->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
+     raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
+   end if;
+-  if (p_data ? 'agency_code' and p_data->>'agency_code' is not null
+-    and p_data->>'execution_source' = 'internal') then
++  effective_source := coalesce(nullif(p_data->>'execution_source', ''),
++    case p_data->>'agency_code' when 'ada' then 'internal' when 'snap' then 'agency' when 'live_ai' then 'agency' else null end);
++  if (p_data->>'agency_code' is not null and effective_source is distinct from
++    case p_data->>'agency_code' when 'ada' then 'internal' else 'agency' end) then
+     raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
++  end if;
++  if p_data ? 'supplemental_fields' and not private.is_valid_shift_supplemental_fields(p_data->'supplemental_fields') then
++    raise exception using errcode = '22023', message = 'SHIFT_SUPPLEMENTAL_FIELDS_INVALID';
+   end if;
+ 
+   if (p_data ? 'host_names' and jsonb_typeof(p_data->'host_names') <> 'array')
+@@ -5768,7 +5822,7 @@
+     title, studio, host_names, assistant_names, technical_names,
+     required_host_count, required_support_count, required_technical_count,
+     registration_cutoff_at, allow_multi_role, import_batch_id, status,
+-    live_link, product_notes, updated_by, execution_source, agency_code
++    live_link, product_notes, updated_by, execution_source, agency_code, supplemental_fields
+   ) values (
+     (p_data->>'date')::date,
+     (p_data->>'start_time')::time,
+@@ -5792,8 +5846,9 @@
+     nullif(p_data->>'live_link', ''),
+     nullif(p_data->>'product_notes', ''),
+     actor_id,
+-    coalesce(nullif(p_data->>'execution_source', ''), case when p_data->>'agency_code' is not null then 'agency' else null end),
+-    p_data->>'agency_code'
++    effective_source,
++    p_data->>'agency_code',
++    coalesce(p_data->'supplemental_fields', '{}'::jsonb)
+   ) returning * into created_shift;
+ 
+   foreach role_name in array array['host', 'support', 'technical']::text[]
+@@ -10704,7 +10759,7 @@
+       'date', 'start_time', 'end_time', 'brand_id', 'platform_id', 'campaign_id',
+       'title', 'studio', 'required_host_count', 'required_support_count',
+       'required_technical_count', 'status', 'live_link', 'product_notes',
+-      'registration_cutoff_at', 'allow_multi_role', 'execution_source', 'agency_code'
++      'registration_cutoff_at', 'allow_multi_role', 'execution_source', 'agency_code', 'supplemental_fields'
+     ]::text[]) then
+       raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';
+     end if;
+@@ -10722,6 +10777,9 @@
+     and p_patch->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
+     raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
+   end if;
++  if p_patch ? 'supplemental_fields' and not private.is_valid_shift_supplemental_fields(p_patch->'supplemental_fields') then
++    raise exception using errcode = '22023', message = 'SHIFT_SUPPLEMENTAL_FIELDS_INVALID';
++  end if;
+ 
+   select * into existing_shift
+   from public.shifts
+@@ -10737,10 +10795,12 @@
+   end;
+   effective_source := case
+     when p_patch ? 'execution_source' then nullif(p_patch->>'execution_source', '')
+-    when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and existing_shift.execution_source is null then 'agency'
++    when p_patch ? 'agency_code' and effective_agency is not null then
++      case effective_agency when 'ada' then 'internal' else 'agency' end
+     else existing_shift.execution_source
+   end;
+-  if (effective_agency is not null and effective_source = 'internal') then
++  if (effective_agency is not null and effective_source is distinct from
++    case effective_agency when 'ada' then 'internal' else 'agency' end) then
+     raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
+   end if;
+ 
+@@ -10783,9 +10843,11 @@
+     status = requested_status,
+     live_link = case when p_patch ? 'live_link' then nullif(p_patch->>'live_link', '') else shift.live_link end,
+     product_notes = case when p_patch ? 'product_notes' then nullif(p_patch->>'product_notes', '') else shift.product_notes end,
++    supplemental_fields = case when p_patch ? 'supplemental_fields' then p_patch->'supplemental_fields' else shift.supplemental_fields end,
+     execution_source = case
+       when p_patch ? 'execution_source' then p_patch->>'execution_source'
+-      when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and shift.execution_source is null then 'agency'
++      when p_patch ? 'agency_code' and nullif(p_patch->>'agency_code', '') is not null then
++        case nullif(p_patch->>'agency_code', '') when 'ada' then 'internal' else 'agency' end
+       else shift.execution_source end,
+     agency_code = case
+       when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
+@@ -10831,7 +10893,7 @@
+       'date', 'start_time', 'end_time', 'brand_id', 'platform_id', 'campaign_id',
+       'title', 'studio', 'required_host_count', 'required_support_count',
+       'required_technical_count', 'status', 'live_link', 'product_notes',
+-      'registration_cutoff_at', 'allow_multi_role', 'execution_source', 'agency_code'
++      'registration_cutoff_at', 'allow_multi_role', 'execution_source', 'agency_code', 'supplemental_fields'
+     ]::text[]) then
+       raise exception using errcode = '22023', message = 'SHIFT_FIELD_NOT_ALLOWED';
+     end if;
+@@ -10849,6 +10911,9 @@
+     and p_patch->>'agency_code' not in ('ada', 'snap', 'live_ai')) then
+     raise exception using errcode = '22023', message = 'SHIFT_AGENCY_CODE_INVALID';
+   end if;
++  if p_patch ? 'supplemental_fields' and not private.is_valid_shift_supplemental_fields(p_patch->'supplemental_fields') then
++    raise exception using errcode = '22023', message = 'SHIFT_SUPPLEMENTAL_FIELDS_INVALID';
++  end if;
+ 
+   select * into existing_shift
+   from public.shifts
+@@ -10866,10 +10931,12 @@
+   end;
+   effective_source := case
+     when p_patch ? 'execution_source' then nullif(p_patch->>'execution_source', '')
+-    when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and existing_shift.execution_source is null then 'agency'
++    when p_patch ? 'agency_code' and effective_agency is not null then
++      case effective_agency when 'ada' then 'internal' else 'agency' end
+     else existing_shift.execution_source
+   end;
+-  if (effective_agency is not null and effective_source = 'internal') then
++  if (effective_agency is not null and effective_source is distinct from
++    case effective_agency when 'ada' then 'internal' else 'agency' end) then
+     raise exception using errcode = '22023', message = 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT';
+   end if;
+ 
+@@ -10914,9 +10981,11 @@
+     status = requested_status,
+     live_link = case when p_patch ? 'live_link' then nullif(p_patch->>'live_link', '') else shift.live_link end,
+     product_notes = case when p_patch ? 'product_notes' then nullif(p_patch->>'product_notes', '') else shift.product_notes end,
++    supplemental_fields = case when p_patch ? 'supplemental_fields' then p_patch->'supplemental_fields' else shift.supplemental_fields end,
+     execution_source = case
+       when p_patch ? 'execution_source' then p_patch->>'execution_source'
+-      when p_patch ? 'agency_code' and p_patch->>'agency_code' is not null and shift.execution_source is null then 'agency'
++      when p_patch ? 'agency_code' and nullif(p_patch->>'agency_code', '') is not null then
++        case nullif(p_patch->>'agency_code', '') when 'ada' then 'internal' else 'agency' end
+       else shift.execution_source end,
+     agency_code = case
+       when p_patch ? 'agency_code' then nullif(p_patch->>'agency_code', '')
+@@ -18268,5 +18337,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict WbCmW221NLKdhilKFKPNBp53l5s3agRlQPH07AMzTHHN7eQ737pUXEJul7ouwAb
+-
++\unrestrict nwrUXstmInpHjzX51TQHedRatm9ChBhF3Fp4CI3YqtcUlb5hAcEB1G0uG78Mlkn
++

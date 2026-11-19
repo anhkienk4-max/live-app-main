@@ -1,0 +1,16 @@
+\set ON_ERROR_STOP on
+SET ROLE authenticated;
+SET c12.audit_view = 'true';
+SELECT public.get_audit_history_page('{}'::jsonb, NULL, NULL, NULL, 20, 'newest') AS c12_first_page \gset
+SELECT (:'c12_first_page'::jsonb->'next_cursor'->>'created_at') AS c12_cursor_created,
+  (:'c12_first_page'::jsonb->'next_cursor'->>'id') AS c12_cursor_id,
+  (:'c12_first_page'::jsonb->'next_cursor'->>'snapshot_at') AS c12_snapshot \gset
+RESET ROLE;
+SELECT 'audit-added-after-snapshot-' || gen_random_uuid()::text AS c12_new_event_id \gset
+INSERT INTO public.audit_logs (id, created_at, actor_business_user_id, actor_name, actor_role, module, action, entity_type, entity_id, entity_name)
+VALUES (:'c12_new_event_id', clock_timestamp(), 'admin-1', 'Admin One', 'admin', 'calendar', 'update', 'shift', 'shift-new', 'Synthetic concurrent event');
+SET ROLE authenticated;
+SELECT public.get_audit_history_page('{}'::jsonb, :'c12_cursor_created'::timestamptz, :'c12_cursor_id', :'c12_snapshot'::timestamptz, 20, 'newest') AS c12_second_page \gset
+SELECT public.c12_assert(NOT (:'c12_second_page'::jsonb->'items' @> jsonb_build_array(jsonb_build_object('id', :'c12_new_event_id'))), 'event committed after first-page snapshot is deferred until refresh');
+RESET ROLE;
+\echo C12_PG17_SNAPSHOT_STABILITY_PASS

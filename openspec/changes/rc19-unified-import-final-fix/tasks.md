@@ -1,0 +1,5 @@
+- [ ] Implement Agency/source mapping and explicit conflict validation across parser, editor, service, and database RPCs.
+- [ ] Add Admin-controlled typed custom-column mapping and persist mapped operational/supplemental fields through the existing import flow.
+- [ ] Add the additive migration with legacy-data safety checks and database RPC validation.
+- [ ] Display and edit persisted supplemental fields using existing Shift permissions and version checks; include them in authorized exports.
+- [ ] Add focused parser/mapping/persistence tests, run TypeScript/lint/memory validation/build and canonical regressions, and obtain exact-SHA PostgreSQL 17 CI evidence.

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
-import { verifyLiveStreamLink } from '../lib/utils/liveStreamLink.ts'
+import { classifyLiveStreamLink, verifyLiveStreamLink } from '../lib/utils/liveStreamLink.ts'
 
 test('official TikTok/Shopee live links are safe to open and identify source', () => {
   for (const [url,platform] of [
@@ -36,6 +36,17 @@ test('rejects invalid, injected, non-HTTPS and untrusted livestream destinations
   ]) assert.equal(verifyLiveStreamLink(url),null,`should reject ${String(url).slice(0,80)}`)
 })
 
+test('classifies viewer links, direct media URLs, and unsupported URLs without playing media URLs', () => {
+  assert.deepEqual(classifyLiveStreamLink('https://www.tiktok.com/@brand/live'), {
+    kind: 'viewer',
+    link: { href: 'https://www.tiktok.com/@brand/live', platform: 'TikTok' },
+  })
+  assert.equal(classifyLiveStreamLink('https://cdn.example.test/live.m3u8?token=secret').kind, 'direct-media')
+  assert.equal(classifyLiveStreamLink('https://cdn.example.test/video.mp4').kind, 'direct-media')
+  assert.equal(classifyLiveStreamLink('https://example.test/live').kind, 'unsupported')
+  assert.equal(classifyLiveStreamLink('javascript:alert(1)').kind, 'unsupported')
+})
+
 test('link captured via editable shift form, rendered per shift in monitor with external fallback', () => {
   const form=readFileSync('components/features/shifts/ShiftFormDialog.tsx','utf8')
   const consoleCode=readFileSync('components/features/live/LiveOperationsConsole.tsx','utf8')
@@ -54,6 +65,10 @@ test('link captured via editable shift form, rendered per shift in monitor with 
   assert.match(panel,/rel="noopener noreferrer"/)
   assert.match(panel,/data-testid="open-live-side-window"/)
   assert.match(panel,/data-testid="live-embed-unavailable"/)
+  assert.match(panel,/data-testid="live-direct-media-unsupported"/)
+  assert.match(panel,/data-testid="live-link-unsupported"/)
+  assert.match(panel,/classifyLiveStreamLink\(shift\.live_link\)/)
+  assert.match(panel,/Chỉ luồng media được cấp quyền mới phát trong Monitor/)
   assert.match(panel,/<LiveTabCapture key=/)
   assert.match(panel,/window\.open\(link\.href, '_blank'/)
   assert.doesNotMatch(panel, /<iframe|src=\{link\.href\}/)
@@ -64,7 +79,7 @@ test('link captured via editable shift form, rendered per shift in monitor with 
 test('live polling does not reload static directories and pauses while document is hidden', () => {
   const source=readFileSync('components/features/live/LiveMonitoringDashboard.tsx','utf8')
   const start=source.indexOf('  const loadData = React.useCallback')
-  const end=source.indexOf('  React.useEffect(() => {\n    const frame',start)
+  const end=source.indexOf('\n  useShiftChangeRefresh(loadData)',start)
   assert.ok(start>0&&end>start)
   const polling=source.slice(start,end)
   assert.match(polling,/shiftService\.getLivePage\(/)

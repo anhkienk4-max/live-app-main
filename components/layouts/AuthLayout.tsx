@@ -1,56 +1,83 @@
 'use client'
 
-import * as React from 'react'
+import type { ReactNode } from 'react'
+import { CalendarDays, Radio, ShieldCheck, Video } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { PageShell } from '@/components/ui/archetypes'
+import { AdaBrand } from '@/components/branding/AdaBrand'
 
-export function AuthLayout({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle: string }) {
-  const {t} = useTranslation()
-  return (
-    <div className="flex min-h-screen flex-col lg:flex-row bg-white">
-      {/* Visual / Brand Side (Hidden on Mobile) */}
-      <div className="relative hidden w-full lg:flex lg:w-1/2 flex-col justify-between bg-zinc-950 p-10 text-white overflow-hidden border-r border-zinc-800">
-        {/* Subtle decorative background pattern */}
-        <div className="absolute inset-0 bg-grid-white/[0.05] bg-[length:16px_16px]" />
-        
-        <div className="relative z-10 flex items-center gap-2 font-semibold tracking-tight text-xl">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-blue-600">
-            <svg className="size-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </div>
-          LiveStream Ops
+/**
+ * U01: a readable, stable authentication layout across phone, tablet and desktop.
+ * Shared by sign-in, account request, password recovery and reset. Authentication
+ * and form validation are intentionally owned by the caller, not this shell.
+ */
+export function AuthLayout({ children, title, subtitle, variant = 'default' }: { children: ReactNode; title: string; subtitle: string; variant?: 'default' | 'login' }) {
+  const { t } = useTranslation()
+
+  if (variant === 'login') return (
+    <div data-testid="ada-reference-login" className="ada-login-reference relative isolate flex min-h-dvh flex-col items-center justify-center overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+      {/* Sweeping Luminous Waves & Curved Ribbons */}
+      <div className="ada-login-ribbon-1" aria-hidden="true" />
+      <div className="ada-login-ribbon-2" aria-hidden="true" />
+      <div className="ada-login-wave-1" aria-hidden="true" />
+      <div className="ada-login-wave-2" aria-hidden="true" />
+
+      {/* Centered Frosted Glass Card */}
+      <main className="ada-login-reference__content relative z-10 mx-auto flex w-full max-w-[460px] flex-col rounded-[28px] border border-white/60 bg-white/95 p-6 shadow-2xl backdrop-blur-xl sm:p-9">
+        <div className="ada-login-reference__identity flex flex-col items-center text-center">
+          <AdaBrand className="ada-login-reference__logo" />
+          <div className="mt-3.5 mb-4 h-1 w-12 rounded-full bg-blue-600" aria-hidden="true" />
+          <h1 className="text-center text-2xl font-extrabold tracking-tight text-[#0f172a] sm:text-[26px]">{title}</h1>
+          <p className="sr-only">{subtitle}</p>
         </div>
-
-        <div className="relative z-10 max-w-md rounded-xl border border-zinc-800 bg-zinc-900/60 p-5"><h2 className="text-lg font-semibold">{t('operationsCenter')}</h2><p className="mt-2 text-sm leading-relaxed text-zinc-400">{t('loginSubtitle')}</p><ul className="mt-5 space-y-3 text-sm text-zinc-300"><li>{t('calendar')}</li><li>{t('staffing')}</li><li>{t('liveMonitor')} · {t('reports')}</li></ul></div>
-        <div className="relative z-10 max-w-md border-t border-zinc-800 pt-6">
-          <blockquote className="space-y-2">
-            <p className="text-lg text-zinc-300">
-              &quot;The command center for live operational excellence. Streamlined, real-time, and resilient.&quot;
-            </p>
-            <footer className="text-sm text-zinc-500">LiveStream Ops</footer>
-          </blockquote>
-        </div>
-      </div>
-
-      {/* Form Side */}
-      <div className="flex w-full lg:w-1/2 flex-col items-center justify-center p-6 sm:p-10 lg:p-12">
-        <PageShell archetype="auth" className="w-full max-w-md flex flex-col space-y-6">
-          <div className="flex flex-col space-y-2 text-left">
-            <div className="lg:hidden mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-blue-600 shadow-md">
-              <svg className="size-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-            <p className="text-sm text-muted-foreground">{subtitle}</p>
-          </div>
-
-          <div className="grid gap-6">
-            {children}
-          </div>
-        </PageShell>
-      </div>
+        <div className="ada-login-reference__fields mt-4 w-full">{children}</div>
+      </main>
     </div>
+  )
+
+  return (
+    <main className="flex min-h-dvh w-full min-w-0 items-start justify-center bg-gradient-to-br from-[#eef4fb] via-[#f7f9fc] to-white px-3 py-4 text-slate-900 sm:px-6 sm:py-8 lg:items-center lg:px-8 lg:py-10 xl:items-start xl:py-[11dvh]">
+      <a href="#auth-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-blue-800 focus:shadow-lg">{title}</a>
+
+      <div data-testid="auth-layout-card" className="grid w-full min-w-0 max-w-[720px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_60px_-28px_rgba(8,39,67,0.22)] sm:rounded-3xl lg:max-w-none lg:w-[86vw] xl:min-h-[78dvh] xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)]">
+        <aside className="relative hidden min-w-0 flex-col justify-between overflow-hidden bg-[#082743] px-9 py-10 text-white xl:flex xl:px-12 xl:py-12" aria-label={t('operationsCenter')}>
+          <div aria-hidden="true" className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full bg-blue-500/20 blur-3xl" />
+          <div aria-hidden="true" className="pointer-events-none absolute -bottom-36 -left-20 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
+
+          <div className="relative flex items-center gap-3 text-base font-semibold tracking-tight">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-950/20">
+              <Video className="size-6" aria-hidden="true" />
+            </span>
+            <span>LiveStream Ops</span>
+          </div>
+
+          <div className="relative max-w-md space-y-5">
+            <div className="h-1 w-12 rounded-full bg-blue-400" aria-hidden="true" />
+            <h2 className="max-w-[17ch] break-words text-3xl font-semibold leading-tight tracking-tight xl:text-4xl">{t('operationsCenter')}</h2>
+            <p className="max-w-sm break-words text-base leading-7 text-blue-100/90">{t('loginSubtitle')}</p>
+          </div>
+
+          <ul className="relative grid gap-4 text-sm text-blue-50/90">
+            <li className="flex items-center gap-3"><CalendarDays className="size-5 shrink-0 text-sky-300" aria-hidden="true" /><span>{t('calendar')} · {t('staffing')}</span></li>
+            <li className="flex items-center gap-3"><Radio className="size-5 shrink-0 text-sky-300" aria-hidden="true" /><span>{t('liveMonitor')} · {t('reports')}</span></li>
+            <li className="flex items-center gap-3"><ShieldCheck className="size-5 shrink-0 text-sky-300" aria-hidden="true" /><span>{t('systemPermissions')}</span></li>
+          </ul>
+        </aside>
+
+        <section className="flex min-w-0 w-full items-center justify-center px-5 py-9 sm:px-10 sm:py-11 lg:px-12 lg:py-14 xl:px-16" data-testid="auth-form-panel">
+          <PageShell archetype="auth" id="auth-content" tabIndex={-1} aria-labelledby="auth-title" className="min-w-0 w-full">
+            <div className="mb-10 flex items-center gap-3 text-base font-semibold text-[#082743] lg:hidden">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-blue-600 text-white"><Video className="size-5" aria-hidden="true" /></span>
+              <span>LiveStream Ops</span>
+            </div>
+            <header className="mb-8 min-w-0 space-y-3">
+              <h1 id="auth-title" className="break-words text-3xl font-semibold leading-tight tracking-tight text-[#082743] sm:text-[34px]">{title}</h1>
+              <p className="break-words text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">{subtitle}</p>
+            </header>
+            <div className="grid min-w-0 gap-6">{children}</div>
+          </PageShell>
+        </section>
+      </div>
+    </main>
   )
 }

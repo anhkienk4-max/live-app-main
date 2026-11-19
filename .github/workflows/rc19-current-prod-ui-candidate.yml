@@ -1,0 +1,74 @@
+name: ADA OPS UI on RC19 Core baseline (NO PRODUCTION DEPLOY)
+on:
+  push:
+    branches:
+      - release/rc19-ui-on-live-1609db-20261028
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+      - name: Install locked deps
+        run: pnpm install --frozen-lockfile
+      - name: Historical 28 Oct provenance (NOT live source parity)
+        run: node scripts/verify-current-prod-source.mjs
+      - name: 29 Oct visible live source / RC19 Core reconciliation (PARTIAL ONLY)
+        run: node scripts/verify-aliased-live-core-visible.mjs
+      - name: CURRENT aliased 29 Oct visible CLI source vs Core (PARTIAL / NO-GO)
+        run: |
+          node scripts/verify-aliased-live-current-visible.mjs
+          echo 'NO-GO: this verifies visible hashes only; one uploaded E2E test is SHA-pinned as UNREVIEWED and cannot authorize Production.' >> "$GITHUB_STEP_SUMMARY"
+      - name: UI boundary and role authorization guard
+        run: node scripts/verify-current-prod-ui-scope.mjs
+      - name: Validate 3-role Staging UAT definition (no private credentials)
+        run: |
+          node --test tests/pwa-functional-uat-contract.test.mjs
+          pnpm exec playwright test --config=playwright.pwa-functional.uat.config.ts --list
+      - name: Three-role Overview navigation contract
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/e1-role-ux.test.ts
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Scoped ESLint
+        run: |
+          git diff --name-only 1befe23bea9380dac37061a7132ac38143cf678b HEAD | grep -E '\.(tsx?|mjs)$' | tr '\n' '\0' | xargs -0 -r pnpm exec eslint
+      - name: Production build without credentials
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_PAYROLL: 'false'
+          FEATURE_ACTUAL_STAFFING: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm build
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: PWA login visual mock
+        run: pnpm exec playwright test --config=playwright.pwa.config.ts
+      - name: PWA responsive mock
+        run: pnpm exec playwright test --config=playwright.pwa-dashboard.config.ts
+      - name: Upload mock-only screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ada-ops-live-1609db-ui-mock
+          path: |
+            test-results/pwa-dashboard/*.png
+            test-results/pwa-visual/*.png
+          if-no-files-found: warn
+      - name: Production release gate
+        if: always()
+        run: echo 'NO PRODUCTION DEPLOY. The old 28 Oct provenance is historical only; live CLI source parity, fresh Core-based preview SHA, branch-scoped Staging UAT and release approval are required.' >> "$GITHUB_STEP_SUMMARY"

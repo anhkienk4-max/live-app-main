@@ -1,6 +1,7 @@
-﻿'use client'
+'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { shiftRegistrationService, shiftService, reportService } from '@/lib/services/dataService'
@@ -12,6 +13,7 @@ import { ContentSkeleton } from '@/components/ui/content-skeleton'
 import { Shift, Brand, Platform, Campaign, User, OperationalRole, ShiftRegistration, Report } from '@/lib/types/database.types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -30,8 +32,9 @@ import {
   X,
   Download,
   Trash2,
+  UserPlus,
 } from 'lucide-react'
-import { format, addMonths, addDays, addWeeks, startOfWeek } from 'date-fns'
+import { format, addMonths, addDays, addWeeks, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 import { MonthView } from './MonthView'
 import { WeekView } from './WeekView'
 import { DayView } from './DayView'
@@ -42,8 +45,10 @@ import { ShiftDetailModal } from '../shifts/ShiftDetailModal'
 import { ShiftPreviewDrawer } from '../shifts/ShiftPreviewDrawer'
 import { DaySessionsDialog } from './DaySessionsDialog'
 import { BulkStaffingApprovalDialog } from './BulkStaffingApprovalDialog'
+import { BulkStaffingAssignDialog } from './BulkStaffingAssignDialog'
 import { BulkDeleteShiftsDialog } from './BulkDeleteShiftsDialog'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { hasPermission } from '@/lib/permissions'
 import { useTranslation } from '@/lib/i18n'
 import { useToast } from '@/components/ui/toast'
@@ -61,7 +66,13 @@ import {
   UNASSIGNED_STUDIO_FILTER,
   type CalendarFilterState,
 } from '@/lib/utils/calendarFilters'
-import { calendarAuthorityScope, calendarDataScope } from '@/lib/utils/calendarRange'
+import {
+  calendarAuthorityScope,
+  calendarDataScope,
+  isViewWithinDateRange,
+  reconcileCalendarViewportDate,
+  resolveDateFilterSyncTarget,
+} from '@/lib/utils/calendarRange'
 
 const DEFAULT_CALENDAR_FILTERS: CalendarFilterState = {
   brandIds: [],
@@ -119,26 +130,26 @@ function ActiveFilterChips({ filters, setFilters, onClearAll, t, brands, platfor
   if (filters.time !== 'all') {
     let timeLabel = t(filters.time) || filters.time
     if (filters.time === 'custom') timeLabel = `${filters.customFrom} - ${filters.customTo}`
-    activeChips.push({ id: 'time', label: `Time: ${timeLabel}`, onRemove: () => setFilters({ ...filters, time: 'all', customFrom: '', customTo: '' }) })
+    activeChips.push({ id: 'time', label: `${t('time')}: ${timeLabel}`, onRemove: () => setFilters({ ...filters, time: 'all', customFrom: '', customTo: '' }) })
   }
 
   if (filters.operationalRoles.length > 0) {
     const roleLabels: Record<string, string> = { host: t('host'), support: t('support'), technical: t('technical') }
     const names = filters.operationalRoles.map(r => roleLabels[r] || r).join(', ')
-    activeChips.push({ id: 'operationalRoles', label: `Role: ${names}`, onRemove: () => setFilters({ ...filters, operationalRoles: [] }) })
+    activeChips.push({ id: 'operationalRoles', label: `${t('role')}: ${names}`, onRemove: () => setFilters({ ...filters, operationalRoles: [] }) })
   }
   if (filters.staffingStates.length > 0) {
-    const stateLabels: Record<string, string> = { fully_staffed: 'Fully Staffed', missing_staff: 'Missing Staff' }
+    const stateLabels: Record<string, string> = { fully_staffed: t('fullyStaffed'), missing_staff: t('staffingGap') }
     const names = filters.staffingStates.map(s => stateLabels[s] || s).join(', ')
-    activeChips.push({ id: 'staffingStates', label: `Staffing: ${names}`, onRemove: () => setFilters({ ...filters, staffingStates: [] }) })
+    activeChips.push({ id: 'staffingStates', label: `${t('staffing')}: ${names}`, onRemove: () => setFilters({ ...filters, staffingStates: [] }) })
   }
   if (filters.registrationStates.length > 0) {
-    const regLabels: Record<string, string> = { approved: 'Approved', pending: 'Pending', rejected: 'Rejected', manually_assigned: 'Manually Assigned' }
+    const regLabels: Record<string, string> = { approved: t('approved'), pending: t('pending'), rejected: t('rejected'), manually_assigned: t('manuallyAssigned') }
     const names = filters.registrationStates.map(s => regLabels[s] || s).join(', ')
-    activeChips.push({ id: 'registrationStates', label: `Registration: ${names}`, onRemove: () => setFilters({ ...filters, registrationStates: [] }) })
+    activeChips.push({ id: 'registrationStates', label: `${t('registrationStatus')}: ${names}`, onRemove: () => setFilters({ ...filters, registrationStates: [] }) })
   }
   if (filters.hasImportedStaffing) {
-    activeChips.push({ id: 'importedStaffing', label: 'Imported Staffing', onRemove: () => setFilters({ ...filters, hasImportedStaffing: false }) })
+    activeChips.push({ id: 'importedStaffing', label: t('importedStaffingLabels'), onRemove: () => setFilters({ ...filters, hasImportedStaffing: false }) })
   }
   if (activeChips.length === 0) return null
 
@@ -160,6 +171,7 @@ function ActiveFilterChips({ filters, setFilters, onClearAll, t, brands, platfor
 }
 
 export function CalendarView({ createRequest = 0 }: { createRequest?: number }) {
+  const router = useRouter()
   const { currentUser } = useCurrentUser()
   const { language, t } = useTranslation()
   const { toast } = useToast()
@@ -169,15 +181,45 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     : { all: 'All time', week: 'Current week', month: 'Current month', studios: 'All studios', unassigned: 'Unassigned' }
   const listPagination = useListPagination('calendar_list', 10)
   const { params, navigate: listNavigate } = listPagination
+  const mobileCompactCalendar = params.get('calendar_mobile_mode') === 'compact'
+  const mobileFullCalendar = !mobileCompactCalendar
   const rawView = params.get('calendar_view')
   const view = rawView === 'month' || rawView === 'week' || rawView === 'day' || rawView === 'list' ? rawView
     : hasPermission(currentUser, 'shifts.approve_registration') ? 'week' : 'month'
   const [today] = React.useState(() => format(new Date(), 'yyyy-MM-dd'))
   const rawDate = params.get('calendar_date') ?? today
-  const currentDate = React.useMemo(() => {
+  const encodedFilters = params.get('calendar_filters') ?? ''
+  const filters = React.useMemo((): CalendarFilterState => {
+    try {
+      const parsed = JSON.parse(encodedFilters)
+      return { ...DEFAULT_CALENDAR_FILTERS, ...parsed,
+        ...Object.fromEntries(Object.keys(DEFAULT_CALENDAR_FILTERS).filter(key => Array.isArray(DEFAULT_CALENDAR_FILTERS[key as keyof CalendarFilterState])).map(key => [key, Array.isArray(parsed[key]) ? parsed[key].filter((value: unknown) => typeof value === 'string') : []])),
+        time: ['all', 'today', 'current_week', 'current_month', 'custom'].includes(parsed.time) ? parsed.time : 'all',
+        customFrom: typeof parsed.customFrom === 'string' ? parsed.customFrom : '',
+        customTo: typeof parsed.customTo === 'string' ? parsed.customTo : '',
+        hasImportedStaffing: parsed.hasImportedStaffing === true,
+      }
+    } catch { return DEFAULT_CALENDAR_FILTERS }
+  }, [encodedFilters])
+
+
+  const parsedCurrentDate = React.useMemo(() => {
     const parsed = new Date(rawDate + 'T12:00:00')
     return Number.isFinite(parsed.getTime()) && format(parsed, 'yyyy-MM-dd') === rawDate ? parsed : new Date(today + 'T12:00:00')
   }, [rawDate, today])
+
+  const dateReconciliation = React.useMemo(
+    () => reconcileCalendarViewportDate(view, parsedCurrentDate, filters, today),
+    [filters, parsedCurrentDate, today, view],
+  )
+  const currentDate = dateReconciliation.resolvedDate
+
+  React.useEffect(() => {
+    if (dateReconciliation.reconciled) {
+      listNavigate({ calendar_date: dateReconciliation.resolvedDateStr }, true)
+    }
+  }, [dateReconciliation.reconciled, dateReconciliation.resolvedDateStr, listNavigate])
+
   const setCurrentDate = (date: Date) => listNavigate({ calendar_date: format(date, 'yyyy-MM-dd'), calendar_list_page: null })
   const setView = React.useCallback((value: 'month' | 'week' | 'day' | 'list') => listNavigate({ calendar_view: value, calendar_list_page: null }), [listNavigate])
   const [shifts, setShifts] = React.useState<Shift[]>([])
@@ -195,13 +237,55 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   const [exportOpen, setExportOpen] = React.useState(false)
   const [showForm, setShowForm] = React.useState(false)
   const [selectedShift, setSelectedShift] = React.useState<Shift | null>(null)
+
+  const handleSelectShift = React.useCallback((shift: Shift | null) => {
+    setSelectedShift(shift)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      if (shift) {
+        url.searchParams.set('shift_id', shift.id)
+      } else {
+        url.searchParams.delete('shift_id')
+        url.searchParams.delete('shiftId')
+        url.searchParams.delete('shift_tab')
+      }
+      window.history.replaceState(null, '', url.toString())
+    }
+  }, [])
+
+  // Deep-link to a specific shift from URL query param
+  const urlShiftId = params.get('shift_id') || params.get('shiftId')
+  React.useEffect(() => {
+    if (!urlShiftId || selectedShift?.id === urlShiftId) return
+    let active = true
+    const frame = requestAnimationFrame(() => {
+      if (!active) return
+      const matched = shifts.find(s => s.id === urlShiftId)
+      if (matched) {
+        setSelectedShift(matched)
+      } else {
+        void shiftService.getById(urlShiftId).then(loaded => {
+          if (active && loaded) setSelectedShift(loaded)
+        }).catch(() => {
+          // Ignore invalid deep-link shift id
+        })
+      }
+    })
+    return () => {
+      active = false
+      cancelAnimationFrame(frame)
+    }
+  }, [urlShiftId, shifts, selectedShift?.id])
   const [previewShift, setPreviewShift] = React.useState<Shift | null>(null)
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const [editingShift, setEditingShift] = React.useState<Shift | null>(null)
   const [showFilters, setShowFilters] = React.useState(false)
+  const [draftFilters, setDraftFilters] = React.useState<CalendarFilterState>(DEFAULT_CALENDAR_FILTERS)
+  const [draftTime, setDraftTime] = React.useState<CalendarFilterState['time']>('all')
   const [showBulkStaffingApproval, setShowBulkStaffingApproval] = React.useState(false)
   const [bulkApprovalLoading, setBulkApprovalLoading] = React.useState(false)
   const [showBulkDelete, setShowBulkDelete] = React.useState(false)
+  const [showBulkStaffingAssign, setShowBulkStaffingAssign] = React.useState(false)
   const searchTerm = params.get('calendar_search') ?? ''
   const [searchInput, setSearchInput] = React.useState(searchTerm)
   React.useEffect(() => {
@@ -214,23 +298,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     return () => window.clearTimeout(timer)
   }, [listNavigate, searchInput, searchTerm])
   const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set())
-  const encodedFilters = params.get('calendar_filters') ?? ''
-  const filters = React.useMemo((): CalendarFilterState => {
-    try {
-      const parsed = JSON.parse(encodedFilters)
-      return { ...DEFAULT_CALENDAR_FILTERS, ...parsed,
-        ...Object.fromEntries(Object.keys(DEFAULT_CALENDAR_FILTERS).filter(key => Array.isArray(DEFAULT_CALENDAR_FILTERS[key as keyof CalendarFilterState])).map(key => [key, Array.isArray(parsed[key]) ? parsed[key].filter((value: unknown) => typeof value === 'string') : []])),
-        time: ['all', 'today', 'current_week', 'current_month', 'custom'].includes(parsed.time) ? parsed.time : 'all',
-        customFrom: typeof parsed.customFrom === 'string' ? parsed.customFrom : '',
-        customTo: typeof parsed.customTo === 'string' ? parsed.customTo : '',
-        hasImportedStaffing: parsed.hasImportedStaffing === true,
-      }
-    } catch { return DEFAULT_CALENDAR_FILTERS }
-  }, [encodedFilters])
   const setFilters = (value: CalendarFilterState) => listNavigate({ calendar_filters: JSON.stringify(value), calendar_list_page: null })
   const rawTime = params.get('calendar_time')
   const listTimeOverride = rawTime === 'all' || rawTime === 'today' || rawTime === 'current_week' || rawTime === 'current_month' || rawTime === 'custom' ? rawTime : null
-  const setListTimeOverride = (value: CalendarFilterState['time'] | null) => listNavigate({ calendar_time: value, calendar_list_page: null })
   const listTimeFilter = effectiveListTimeFilter(filters.time, listTimeOverride)
   const dataScope = React.useMemo(
     () => calendarDataScope(view, currentDate, view === 'list' ? listTimeFilter : filters.time, filters.customFrom, filters.customTo, false),
@@ -293,7 +363,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     const version = ++requestVersion.current
     const filters = JSON.parse(operationalQuery)
     const cacheKey = pageCacheKey(identity, 'calendar_window', { view, page: listPage, pageSize: listSize, filters })
-    if (!reuseCache) invalidatePageCache()
+    if (!reuseCache) invalidatePageCache(undefined, 'calendar_window')
     else {
       const cached = readPageCache<ShiftListPage>(cacheKey)
       if (cached) {
@@ -322,6 +392,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
             if (version !== requestVersion.current || controller.signal.aborted) return
             setShifts(first.items)
             setRegistrations(first.registrations)
+            setListTotal(first.total)
             setLoadedIdentity(identity)
             setLoadedKey(requestKey)
             setLoading(false)
@@ -338,7 +409,13 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       setLoadedIdentity(identity)
       setLoadedKey(requestKey)
     } catch (error: unknown) {
-      if (version === requestVersion.current && !controller.signal.aborted) setLoadError(error)
+      if (version === requestVersion.current && !controller.signal.aborted) {
+        setShifts([])
+        setRegistrations([])
+        setLoadedKey('')
+        setWindowComplete(false)
+        setLoadError(error)
+      }
     } finally {
       if (version === requestVersion.current) {
         setLoading(false)
@@ -346,6 +423,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       }
     }
   }, [identity, listNavigate, listPage, operationalQuery, listSize, requestKey, view])
+  useShiftChangeRefresh(() => loadData(false))
 
   React.useEffect(() => {
     const generation = requestVersion
@@ -414,7 +492,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }, 0)
     return () => { active = false; window.clearTimeout(timer) }
   }, [dayReportIds, t, toast])
-  const listShifts = view === 'list' ? shifts : EMPTY_SHIFTS
+  const listShifts = view === 'list' && loadedKey === requestKey ? shifts : EMPTY_SHIFTS
   const [selectionScope, setSelectionScope] = React.useState(listShifts)
   if (selectionScope !== listShifts) {
     setSelectionScope(listShifts)
@@ -433,14 +511,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   )
 
   const studioOptions = React.useMemo(() => buildStudioFilterOptions(shifts), [shifts])
-  const timeScope = React.useMemo(
-    () => calendarTimeScope(view === 'list' ? listTimeFilter : filters.time, currentDate, filters.customFrom, filters.customTo),
-    [filters.time, filters.customFrom, filters.customTo, currentDate, listTimeFilter, view],
-  )
-
   const calendarScopeShifts = React.useMemo(
-    () => shiftsInCalendarScope(view === 'list' ? listShifts : filteredShifts, view, currentDate),
-    [currentDate, filteredShifts, listShifts, view],
+    () => loadedKey === requestKey ? shiftsInCalendarScope(view === 'list' ? listShifts : filteredShifts, view, currentDate) : EMPTY_SHIFTS,
+    [currentDate, filteredShifts, listShifts, loadedKey, requestKey, view],
   )
   const pendingStaffingRegistrations = React.useMemo(
     () => pendingRegistrationsInScope(registrations, calendarScopeShifts),
@@ -448,7 +521,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   )
   const pendingStaffingCount = calendarScopeShifts.reduce((count, shift) => count + (shift.staffing_summary?.reduce((total, role) => total + role.pending, 0) ?? pendingStaffingRegistrations.filter(row => row.shift_id === shift.id).length), 0)
   const openBulkStaffingApproval = async () => {
-    if (bulkApprovalLoading || loadingMore || !windowComplete) return
+    if (bulkApprovalLoading || loadingMore || !windowComplete || loadedKey !== requestKey) return
     const version = requestVersion.current
     setBulkApprovalLoading(true)
     try {
@@ -461,12 +534,93 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
   }
 
   const navigate = (direction: 'prev' | 'next') => {
-    if (view === 'month' || view === 'list') {
-      setCurrentDate(direction === 'prev' ? addMonths(currentDate, -1) : addMonths(currentDate, 1))
-    } else if (view === 'week') {
-      setCurrentDate(direction === 'prev' ? addWeeks(currentDate, -1) : addWeeks(currentDate, 1))
-    } else if (view === 'day') {
-      setCurrentDate(direction === 'prev' ? addDays(currentDate, -1) : addDays(currentDate, 1))
+    const nextDate = view === 'month' || view === 'list'
+      ? addMonths(currentDate, direction === 'prev' ? -1 : 1)
+      : view === 'week'
+      ? addWeeks(currentDate, direction === 'prev' ? -1 : 1)
+      : addDays(currentDate, direction === 'prev' ? -1 : 1)
+
+    const nextDateStr = format(nextDate, 'yyyy-MM-dd')
+    const activeTimeFilter = view === 'list' ? listTimeFilter : filters.time
+
+    let shouldResetTime = false
+    if (activeTimeFilter === 'custom') {
+      shouldResetTime = !isViewWithinDateRange(view, nextDate, filters.customFrom, filters.customTo)
+    } else if (activeTimeFilter === 'today') {
+      shouldResetTime = nextDateStr !== today
+    } else if (activeTimeFilter === 'current_week') {
+      const todayDate = new Date(today + 'T12:00:00')
+      const currentWeekStart = format(startOfWeek(todayDate), 'yyyy-MM-dd')
+      const currentWeekEnd = format(endOfWeek(todayDate), 'yyyy-MM-dd')
+      shouldResetTime = !isViewWithinDateRange(view, nextDate, currentWeekStart, currentWeekEnd)
+    } else if (activeTimeFilter === 'current_month') {
+      const todayDate = new Date(today + 'T12:00:00')
+      const currentMonthStart = format(startOfMonth(todayDate), 'yyyy-MM-dd')
+      const currentMonthEnd = format(endOfMonth(todayDate), 'yyyy-MM-dd')
+      shouldResetTime = !isViewWithinDateRange(view, nextDate, currentMonthStart, currentMonthEnd)
+    }
+
+    if (shouldResetTime) {
+      const preservedFilters: CalendarFilterState = {
+        ...filters,
+        time: 'all',
+        customFrom: '',
+        customTo: '',
+      }
+      listNavigate({
+        calendar_date: nextDateStr,
+        calendar_filters: JSON.stringify(preservedFilters),
+        calendar_time: null,
+        calendar_list_page: null,
+      })
+      toast({
+        title: language === 'vi' ? 'Đã bỏ bộ lọc thời gian' : 'Time filter cleared',
+        description: language === 'vi'
+          ? 'Đã tự động chuyển về tất cả thời gian vì bạn chuyển ra ngoài khoảng lọc. Các bộ lọc khác vẫn được giữ nguyên.'
+          : 'Automatically reset time filter to all because you navigated outside the filtered period. Other filters were preserved.',
+        variant: 'info',
+      })
+    } else {
+      if (view === 'month' || view === 'list') {
+        setCurrentDate(direction === 'prev' ? addMonths(currentDate, -1) : addMonths(currentDate, 1))
+      } else if (view === 'week') {
+        setCurrentDate(direction === 'prev' ? addWeeks(currentDate, -1) : addWeeks(currentDate, 1))
+      } else if (view === 'day') {
+        setCurrentDate(direction === 'prev' ? addDays(currentDate, -1) : addDays(currentDate, 1))
+      }
+    }
+  }
+
+  const goToToday = () => {
+    const todayDate = new Date(today + 'T12:00:00')
+    const activeTimeFilter = view === 'list' ? listTimeFilter : filters.time
+    let shouldResetTime = false
+    if (activeTimeFilter === 'custom') {
+      shouldResetTime = !isViewWithinDateRange(view, todayDate, filters.customFrom, filters.customTo)
+    }
+
+    if (shouldResetTime) {
+      const preservedFilters: CalendarFilterState = {
+        ...filters,
+        time: 'all',
+        customFrom: '',
+        customTo: '',
+      }
+      listNavigate({
+        calendar_date: today,
+        calendar_filters: JSON.stringify(preservedFilters),
+        calendar_time: null,
+        calendar_list_page: null,
+      })
+      toast({
+        title: language === 'vi' ? 'Đã bỏ bộ lọc thời gian' : 'Time filter cleared',
+        description: language === 'vi'
+          ? 'Đã tự động chuyển về tất cả thời gian vì bạn chuyển về hôm nay. Các bộ lọc khác vẫn được giữ nguyên.'
+          : 'Automatically reset time filter to all because you jumped to today. Other filters were preserved.',
+        variant: 'info',
+      })
+    } else {
+      setCurrentDate(todayDate)
     }
   }
 
@@ -475,12 +629,25 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     listNavigate({ calendar_filters: null, calendar_search: null, calendar_time: null, calendar_list_page: null })
   }
 
-  const changeTimeFilter = (time: CalendarFilterState['time']) => {
-    if (view === 'list') {
-      setListTimeOverride(time)
-    } else {
-      setFilters({ ...filters, time })
+  const openFilters = () => {
+    setDraftFilters(filters)
+    setDraftTime(view === 'list' ? listTimeFilter : filters.time)
+    setShowFilters(true)
+  }
+  const applyFilters = () => {
+    if (!calendarTimeScope(draftTime, currentDate, draftFilters.customFrom, draftFilters.customTo).valid) return
+    const targetDate = resolveDateFilterSyncTarget(draftTime, draftFilters.customFrom, today)
+    const nextFilters: CalendarFilterState = {
+      ...draftFilters,
+      time: draftTime,
     }
+    listNavigate({
+      calendar_filters: JSON.stringify(nextFilters),
+      ...(view === 'list' ? { calendar_time: draftTime } : { calendar_time: null }),
+      ...(targetDate ? { calendar_date: targetDate } : {}),
+      calendar_list_page: null,
+    })
+    setShowFilters(false)
   }
 
   const changeView = (nextView: 'month' | 'week' | 'day' | 'list') => {
@@ -537,60 +704,131 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
     }
   }
 
+  const filterFields = (() => {
+    const filters = draftFilters
+    const setFilters = setDraftFilters
+    const listTimeFilter = draftTime
+    const changeTimeFilter = (time: CalendarFilterState['time']) => {
+      setDraftTime(time)
+      setDraftFilters(current => ({ ...current, time }))
+    }
+    const timeScope = calendarTimeScope(draftTime, currentDate, filters.customFrom, filters.customTo)
+    return <>
+            <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-2 xl:grid-cols-4">
+<MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters({ ...filters, brandIds })} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={`${t('all')} ${t('brands')}`} testId="calendar-brand-filter" />
+<MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters({ ...filters, platformIds })} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={`${t('all')} ${t('platforms')}`} testId="calendar-platform-filter" />
+<MultiSelectFilter label={t('studio')} value={filters.studios} onChange={studios => setFilters({ ...filters, studios })} options={studioOptions.map(option => ({ value: option.value, label: option.value === UNASSIGNED_STUDIO_FILTER ? timeFilterLabels.unassigned : option.label }))} placeholder={timeFilterLabels.studios} testId="calendar-studio-filter" />
+<MultiSelectFilter label={t('status')} value={filters.statuses} onChange={statuses => setFilters({ ...filters, statuses: statuses as CalendarFilterState['statuses'] })} options={['scheduled','preparing','live','paused','completed','cancelled'].map(status => ({ value: status, label: status === 'live' ? t('liveStatus') : (t as (key: string) => string)(status) }))} placeholder={t('all')} testId="calendar-status-filter" />
+            </div>
+
+              <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
+                 <MultiSelectFilter label={t('campaign')} value={filters.campaignIds} onChange={campaignIds => setFilters({ ...filters, campaignIds })} options={campaigns.map(campaign => ({ value: campaign.id, label: campaign.name }))} placeholder={`${t('all')} ${t('campaigns')}`} testId="calendar-campaign-filter" />
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('time')}</label>
+                  <Select value={view === 'list' ? listTimeFilter : filters.time} onValueChange={(value) => changeTimeFilter(value as CalendarFilterState['time'])}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{timeFilterLabels.all}</SelectItem>
+                      <SelectItem value="today">{t('today')}</SelectItem>
+                    <SelectItem value="current_week">{timeFilterLabels.week}</SelectItem>
+                    <SelectItem value="current_month">{timeFilterLabels.month}</SelectItem>
+                    <SelectItem value="custom">{t('customRange')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {!timeScope.valid && <p className="mt-1 text-xs text-red-600" role="alert">{timeScope.error}</p>}
+              </div>
+              {(view === 'list' ? listTimeFilter : filters.time) === 'custom' && <>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('startDate')}</label>
+                  <Input type="date" value={filters.customFrom} onChange={(event) => setFilters({ ...filters, customFrom: event.target.value })} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('endDate')}</label>
+                  <Input type="date" value={filters.customTo} onChange={(event) => setFilters({ ...filters, customTo: event.target.value })} />
+                </div>
+              </>}
+              <MultiSelectFilter label={t('host')} value={filters.hostIds} onChange={hostIds => setFilters({ ...filters, hostIds })} options={users.filter(u => u.operational_roles?.includes('host')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('host')}`} testId="calendar-host-filter" />
+              <MultiSelectFilter label={t('support')} value={filters.supportIds} onChange={supportIds => setFilters({ ...filters, supportIds })} options={users.filter(u => u.operational_roles?.includes('support')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('support')}`} testId="calendar-support-filter" />
+              <MultiSelectFilter label={t('technical')} value={filters.technicalIds} onChange={technicalIds => setFilters({ ...filters, technicalIds })} options={users.filter(u => u.operational_roles?.includes('technical')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('technical')}`} testId="calendar-technical-filter" />
+              <MultiSelectFilter label={t('role')} value={filters.operationalRoles} onChange={operationalRoles => setFilters({ ...filters, operationalRoles })} options={[{ value: 'host', label: t('host') }, { value: 'support', label: t('support') }, { value: 'technical', label: t('technical') }]} placeholder={t('all')} testId="calendar-role-filter" />
+              <MultiSelectFilter label={t('staffing')} value={filters.staffingStates} onChange={staffingStates => setFilters({ ...filters, staffingStates })} options={[{ value: 'fully_staffed', label: t('fullyStaffed') }, { value: 'missing_staff', label: t('staffingGap') }]} placeholder={t('all')} testId="calendar-staffing-state-filter" />
+              <MultiSelectFilter label={t('registrationStatus')} value={filters.registrationStates} onChange={registrationStates => setFilters({ ...filters, registrationStates })} options={[{ value: 'approved', label: t('approved') }, { value: 'pending', label: t('pending') }, { value: 'rejected', label: t('rejected') }, { value: 'manually_assigned', label: t('manuallyAssigned') }]} placeholder={t('all')} testId="calendar-registration-state-filter" />
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox id="imported-staffing" checked={filters.hasImportedStaffing} onCheckedChange={(checked: boolean | 'indeterminate') => setFilters({ ...filters, hasImportedStaffing: !!checked })} />
+                <label htmlFor="imported-staffing" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  {t('importedStaffingLabels')}
+                </label>
+              </div>
+            </div>
+  </>
+  })()
+
   if (loadedIdentity && loadedIdentity !== identity) return <ContentSkeleton />
 
   return (
     <div ref={calendarRoot} className="min-w-0 space-y-0">
       {/* Unified Command Toolbar */}
-      <div className="sticky top-0 z-30 flex flex-col bg-background pb-2">
-          <ActiveFilterChips filters={filters} setFilters={setFilters} onClearAll={clearFilters} t={t} brands={brands} platforms={platforms} campaigns={campaigns} users={users} />
+      <div className={view === 'month' && mobileFullCalendar ? "static flex flex-col bg-background pb-2 md:sticky md:top-0 md:z-30" : "sticky top-0 z-30 flex flex-col bg-background pb-2"}>
+          <ActiveFilterChips filters={{ ...filters, time: view === 'list' ? listTimeFilter : filters.time }} setFilters={value => {
+            if (view === 'list') listNavigate({ calendar_filters: JSON.stringify({ ...value, time: value.time }), calendar_time: value.time === 'all' ? null : value.time, calendar_list_page: null })
+            else setFilters(value)
+          }} onClearAll={clearFilters} t={t} brands={brands} platforms={platforms} campaigns={campaigns} users={users} />
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between px-0 pb-2 border-b border-border">
           {/* Left: Date Navigation */}
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 sm:gap-2">
             <>
-                <Button variant="outline" size="icon" aria-label={t('previousNavigation')} onClick={() => navigate('prev')} className="h-9 w-9">
+                <Button variant="outline" size="icon" aria-label={t('previousNavigation')} onClick={() => navigate('prev')} className="h-9 w-9" data-testid="calendar-prev-btn">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" onClick={() => setCurrentDate(new Date())} className="h-9">
+                <Button variant="outline" onClick={goToToday} className="h-9" data-testid="calendar-today-btn">
                   {t('today')}
                 </Button>
-                <Button variant="outline" size="icon" aria-label={t('nextNavigation')} onClick={() => navigate('next')} className="h-9 w-9">
+                <Button variant="outline" size="icon" aria-label={t('nextNavigation')} onClick={() => navigate('next')} className="h-9 w-9" data-testid="calendar-next-btn">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
             </>
             <h2 className="flex min-w-0 basis-full items-center text-sm font-semibold sm:basis-auto sm:text-base sm:ml-2">
               <CalendarIcon className="h-5 w-5 shrink-0 mr-2 text-muted-foreground" />
-              <span className="min-w-0">{getViewTitle()}</span>
+              <span className="min-w-0" data-testid="calendar-view-title">{getViewTitle()}</span>
             </h2>
           </div>
 
           {/* Right: View Toggles & Primary Actions */}
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            <div className="flex w-fit overflow-hidden rounded-md border bg-muted/20 p-1">
-              <Button variant={view === 'month' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('month')} className="h-7 text-xs">
-                <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
+            <div className="grid w-full min-w-0 grid-cols-4 rounded-md border bg-muted/20 p-1 sm:flex sm:w-fit">
+              <Button variant={view === 'month' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('month')} className="min-w-0 px-1 text-xs sm:h-7 sm:px-2.5">
+                <LayoutGrid className="hidden h-3.5 w-3.5 mr-1.5 sm:block" />
                 {t('month')}
               </Button>
-              <Button variant={view === 'week' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('week')} className="h-7 text-xs">
+              <Button variant={view === 'week' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('week')} className="min-w-0 px-1 text-xs sm:h-7 sm:px-2.5">
                 {t('week')}
               </Button>
-              <Button variant={view === 'day' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('day')} className="h-7 text-xs">
-                <Clock className="h-3.5 w-3.5 mr-1.5" />
+              <Button variant={view === 'day' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('day')} className="min-w-0 px-1 text-xs sm:h-7 sm:px-2.5">
+                <Clock className="hidden h-3.5 w-3.5 mr-1.5 sm:block" />
                 {t('day')}
               </Button>
-              <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('list')} className="h-7 text-xs">
-                <List className="h-3.5 w-3.5 mr-1.5" />
+              <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="sm" onClick={() => changeView('list')} className="min-w-0 px-1 text-xs sm:h-7 sm:px-2.5">
+                <List className="hidden h-3.5 w-3.5 mr-1.5 sm:block" />
                 {t('list')}
               </Button>
             </div>
-
+            {(view === 'month' || view === 'week') && (
+              <div className="grid w-full grid-cols-2 rounded-md border bg-muted/20 p-1 sm:hidden" role="group" aria-label={language === 'vi' ? 'Kiểu hiển thị lịch trên điện thoại' : 'Mobile calendar layout'} data-testid="calendar-mobile-layout-toggle">
+                <Button type="button" size="sm" variant={mobileCompactCalendar ? 'secondary' : 'ghost'} aria-pressed={mobileCompactCalendar} data-testid="calendar-mobile-compact" onClick={() => listNavigate({ calendar_mobile_mode: 'compact' })} className="min-w-0 text-xs">
+                  {language === 'vi' ? 'Lịch gọn' : 'Compact'}
+                </Button>
+                <Button type="button" size="sm" variant={mobileFullCalendar ? 'secondary' : 'ghost'} aria-pressed={mobileFullCalendar} data-testid="calendar-mobile-full" onClick={() => listNavigate({ calendar_mobile_mode: null })} className="min-w-0 text-xs">
+                  {language === 'vi' ? 'Lịch đầy đủ' : 'Full calendar'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Search + Secondary Actions */}
         <div className="pt-2">
           <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[200px] flex-1 shrink-0 sm:min-w-56">
+              <div className="relative min-w-0 basis-full flex-1 sm:min-w-56 sm:basis-auto">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   aria-label={t('searchShifts')}
@@ -604,7 +842,9 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               <Button
                 variant={showFilters ? 'secondary' : 'outline'}
                 size="sm"
-                onClick={() => setShowFilters(!showFilters)}
+                data-testid="calendar-filter-toggle"
+                aria-expanded={showFilters}
+                onClick={openFilters}
                 className="shrink-0 h-9"
               >
                 <Filter className="h-4 w-4 mr-2" />
@@ -642,13 +882,34 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
                   {t('deleteSelectedCount', { count: visibleSelection.selectedVisibleShiftIds.length })}
                 </Button>
               )}
+              {view === 'list' && currentUser && (hasPermission(currentUser, 'shifts.assign_staff') || hasPermission(currentUser, 'shifts.approve_registration')) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => setShowBulkStaffingAssign(true)}
+                  disabled={visibleSelection.selectedVisibleShiftIds.length === 0}
+                  data-testid="open-bulk-staffing-assign"
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  {language === 'vi' ? 'Phân bổ nhân sự' : 'Bulk Assign'} ({visibleSelection.selectedVisibleShiftIds.length})
+                </Button>
+              )}
+              {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
+                <Button type="button" variant="outline" size="sm" className="h-9"
+                  data-testid="calendar-open-staffing-gaps"
+                  onClick={() => router.push('/staffing?gap=missing')}>
+                  <UserCheck className="mr-2 h-4 w-4" />
+                  Ca cần bổ sung nhân sự
+                </Button>
+              )}
               {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-9"
                   onClick={() => void openBulkStaffingApproval()}
-                  disabled={bulkApprovalLoading || loadingMore || !windowComplete}
+                  disabled={bulkApprovalLoading || loadingMore || !windowComplete || loadedKey !== requestKey}
                   data-testid="open-bulk-staffing-approval"
                 >
                   <UserCheck className="mr-2 h-4 w-4" />
@@ -657,74 +918,68 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2 xl:grid-cols-4 [&>div>span]:sr-only">
-<MultiSelectFilter label={t('brand')} value={filters.brandIds} onChange={brandIds => setFilters({ ...filters, brandIds })} options={brands.map(brand => ({ value: brand.id, label: brand.name }))} placeholder={`${t('all')} ${t('brands')}`} testId="calendar-brand-filter" />
-<MultiSelectFilter label={t('platform')} value={filters.platformIds} onChange={platformIds => setFilters({ ...filters, platformIds })} options={platforms.map(platform => ({ value: platform.id, label: platform.name }))} placeholder={`${t('all')} ${t('platforms')}`} testId="calendar-platform-filter" />
-<MultiSelectFilter label={t('studio')} value={filters.studios} onChange={studios => setFilters({ ...filters, studios })} options={studioOptions.map(option => ({ value: option.value, label: option.value === UNASSIGNED_STUDIO_FILTER ? timeFilterLabels.unassigned : option.label }))} placeholder={timeFilterLabels.studios} testId="calendar-studio-filter" />
-<MultiSelectFilter label={t('status')} value={filters.statuses} onChange={statuses => setFilters({ ...filters, statuses: statuses as CalendarFilterState['statuses'] })} options={['scheduled','preparing','live','paused','completed','cancelled'].map(status => ({ value: status, label: status === 'live' ? t('liveStatus') : (t as (key: string) => string)(status) }))} placeholder={t('all')} testId="calendar-status-filter" />
-            </div>
-
-            {showFilters && (
-              <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
-                 <MultiSelectFilter label={t('campaign')} value={filters.campaignIds} onChange={campaignIds => setFilters({ ...filters, campaignIds })} options={campaigns.map(campaign => ({ value: campaign.id, label: campaign.name }))} placeholder={`${t('all')} ${t('campaigns')}`} testId="calendar-campaign-filter" />
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('time')}</label>
-                  <Select value={view === 'list' ? listTimeFilter : filters.time} onValueChange={(value) => changeTimeFilter(value as CalendarFilterState['time'])}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{timeFilterLabels.all}</SelectItem>
-                      <SelectItem value="today">{t('today')}</SelectItem>
-                    <SelectItem value="current_week">{timeFilterLabels.week}</SelectItem>
-                    <SelectItem value="current_month">{timeFilterLabels.month}</SelectItem>
-                    <SelectItem value="custom">{t('customRange')}</SelectItem>
-                  </SelectContent>
-                </Select>
-                {!timeScope.valid && <p className="mt-1 text-xs text-red-600" role="alert">{timeScope.error}</p>}
-              </div>
-              {(view === 'list' ? listTimeFilter : filters.time) === 'custom' && <>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('startDate')}</label>
-                  <Input type="date" value={filters.customFrom} onChange={(event) => setFilters({ ...filters, customFrom: event.target.value })} />
+            <Dialog open={showFilters} onOpenChange={setShowFilters}>
+              <DialogContent data-testid="calendar-filter-drawer" size="lg" className="top-0 right-0 bottom-0 left-auto flex h-dvh max-h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col overflow-hidden rounded-none sm:top-1/2 sm:right-auto sm:bottom-auto sm:left-1/2 sm:h-auto sm:max-h-[92dvh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg">
+                <DialogHeader><DialogTitle>{t('filters')} ({activeFilterCount})</DialogTitle></DialogHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto pb-2">{filterFields}</div>
+                <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t bg-popover pt-3">
+                  <Button variant="outline" onClick={() => { setDraftFilters(DEFAULT_CALENDAR_FILTERS); setDraftTime('all') }}>{t('resetFilters')}</Button>
+                  <Button variant="outline" onClick={() => setShowFilters(false)}>{t('close')}</Button>
+                  <Button onClick={applyFilters} disabled={!calendarTimeScope(draftTime, currentDate, draftFilters.customFrom, draftFilters.customTo).valid} data-testid="calendar-filter-apply">{language === 'vi' ? 'Áp dụng' : 'Apply'}</Button>
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('endDate')}</label>
-                  <Input type="date" value={filters.customTo} onChange={(event) => setFilters({ ...filters, customTo: event.target.value })} />
-                </div>
-              </>}
-              <MultiSelectFilter label={t('host')} value={filters.hostIds} onChange={hostIds => setFilters({ ...filters, hostIds })} options={users.filter(u => u.operational_roles?.includes('host')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('host')}`} testId="calendar-host-filter" />
-              <MultiSelectFilter label={t('support')} value={filters.supportIds} onChange={supportIds => setFilters({ ...filters, supportIds })} options={users.filter(u => u.operational_roles?.includes('support')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('support')}`} testId="calendar-support-filter" />
-              <MultiSelectFilter label={t('technical')} value={filters.technicalIds} onChange={technicalIds => setFilters({ ...filters, technicalIds })} options={users.filter(u => u.operational_roles?.includes('technical')).map(u => ({ value: u.id, label: u.full_name }))} placeholder={`${t('all')} ${t('technical')}`} testId="calendar-technical-filter" />
-              <MultiSelectFilter label={t('role')} value={filters.operationalRoles} onChange={operationalRoles => setFilters({ ...filters, operationalRoles })} options={[{ value: 'host', label: t('host') }, { value: 'support', label: t('support') }, { value: 'technical', label: t('technical') }]} placeholder={t('all')} testId="calendar-role-filter" />
-              <MultiSelectFilter label="Staffing State" value={filters.staffingStates} onChange={staffingStates => setFilters({ ...filters, staffingStates })} options={[{ value: 'fully_staffed', label: 'Fully Staffed' }, { value: 'missing_staff', label: 'Missing Staff' }]} placeholder={t('all')} testId="calendar-staffing-state-filter" />
-              <MultiSelectFilter label="Registration State" value={filters.registrationStates} onChange={registrationStates => setFilters({ ...filters, registrationStates })} options={[{ value: 'approved', label: t('approved') }, { value: 'pending', label: t('pending') }, { value: 'rejected', label: t('rejected') }, { value: 'manually_assigned', label: 'Manually Assigned' }]} placeholder={t('all')} testId="calendar-registration-state-filter" />
-              <div className="flex items-center space-x-2 pt-2">
-                <Checkbox id="imported-staffing" checked={filters.hasImportedStaffing} onCheckedChange={(checked: boolean | 'indeterminate') => setFilters({ ...filters, hasImportedStaffing: !!checked })} />
-                <label htmlFor="imported-staffing" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Has Imported Staffing
-                </label>
-              </div>
-              {hasActiveFilters && (
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <Button variant="outline" size="sm" onClick={clearFilters}>
-                    <X className="h-3 w-3 mr-2" />
-                    {t('resetFilters')}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+              </DialogContent>
+            </Dialog>
         </div>
       </div>
 
       {!!loadError && <PageLoadError error={loadError} onRetry={() => { void loadData(); void loadReferenceData().catch(setLoadError) }} />}
       {/* Calendar Views */}
-      <Card className="min-w-0 overflow-hidden gap-0 py-0" aria-busy={loading}>
+      <Card className="min-w-0 overflow-hidden gap-0 py-0" aria-busy={loading || loadingMore || loadedKey !== requestKey} data-route-readiness={loadError ? 'error' : loading || loadedKey !== requestKey ? 'pending' : 'ready'}>
         {loadedKey !== requestKey && <ContentSkeleton />}
         {loading && loadedKey === requestKey && <div role="status" className="px-3 py-1 text-xs text-muted-foreground">{t('loading')}</div>}
-         {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">Đang tải thêm ca trong khoảng thời gian đang xem…</div>}
+         {loadingMore && loadedKey === requestKey && <div role="status" data-testid="calendar-progressive-loading" className="px-3 py-1 text-xs text-muted-foreground">{language === 'vi' ? `Đang tải ca trong kỳ: ${shifts.length}/${listTotal}. Dữ liệu chưa đầy đủ.` : `Loading shifts in range: ${shifts.length}/${listTotal}. Data is incomplete.`}</div>}
         {loadedKey === requestKey && <>
-        {view === 'month' && <div className="max-w-full overflow-x-auto"><div className="min-w-[760px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>}
-        {view === 'week' && <div className="w-full"><WeekView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms}  registrations={registrations} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
+        {hasActiveFilters && filteredShifts.length === 0 && !loading && !loadingMore && (
+          <div
+            data-testid="calendar-filtered-empty-notice"
+            data-empty-reason={shifts.length > 0 ? 'filtered-empty' : 'range-mismatch'}
+            className="m-3 flex flex-col items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-4 text-center sm:flex-row sm:text-left"
+            role="status"
+          >
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Filter className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span>
+                {shifts.length > 0
+                  ? (language === 'vi'
+                      ? `Có ${shifts.length} ca trong khoảng thời gian này nhưng không khớp với bộ lọc đang chọn.`
+                      : `There are ${shifts.length} shifts in this period, but none match your active filters.`)
+                  : (language === 'vi'
+                      ? (filters.time === 'custom' && filters.customFrom && filters.customTo
+                          ? `Không có ca nào trong khoảng ngày đã lọc (${filters.customFrom} - ${filters.customTo}).`
+                          : 'Không tìm thấy ca nào phù hợp với bộ lọc hiện tại trong khoảng thời gian này.')
+                      : (filters.time === 'custom' && filters.customFrom && filters.customTo
+                          ? `No shifts found in the filtered date range (${filters.customFrom} - ${filters.customTo}).`
+                          : 'No shifts match the current filters in this period.'))}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearFilters}
+              data-testid="calendar-clear-filters-notice-btn"
+              className="shrink-0 h-8"
+            >
+              {language === 'vi' ? 'Xóa bộ lọc' : 'Clear filters'}
+            </Button>
+          </div>
+        )}
+        {view === 'month' && <>
+          <div className={mobileFullCalendar ? "max-w-full overflow-x-auto" : "hidden max-w-full overflow-x-auto lg:block"} role="region" aria-label={t('month')} tabIndex={0} data-testid="calendar-full-month-view"><div className="min-w-[1400px]"><MonthView currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onShiftClick={setPreviewShift} onDayClick={setSelectedDay} /></div></div>
+          <section className={mobileFullCalendar ? "hidden" : "min-w-0 lg:hidden"} data-testid="calendar-compact-month-view">
+            <MonthView compact complete={windowComplete} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} registrations={registrations} onDayClick={setSelectedDay} />
+          </section>
+        </>}
+        {view === 'week' && <div className="w-full"><WeekView fullOnMobile={mobileFullCalendar} currentDate={currentDate} shifts={filteredShifts} brands={brands} platforms={platforms} users={users} registrations={registrations} onShiftClick={setPreviewShift} onEditShift={setEditingShift} hasActiveFilters={hasActiveFilters} currentUser={currentUser} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} /></div>}
         {view === 'day' && <DayView currentDate={currentDate} shifts={filteredShifts} allShifts={shifts} onRegister={registerForShift} registrations={registrations} currentUser={currentUser} brands={brands} platforms={platforms} users={users} onShiftClick={setPreviewShift} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreateShift={() => setShowForm(true)} />}
         {view === 'list' && (
           <ListView
@@ -827,6 +1082,20 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
         />
       )}
 
+      {showBulkStaffingAssign && currentUser && (hasPermission(currentUser, 'shifts.assign_staff') || hasPermission(currentUser, 'shifts.approve_registration')) && (
+        <BulkStaffingAssignDialog
+          open={showBulkStaffingAssign}
+          onOpenChange={setShowBulkStaffingAssign}
+          selectedShiftIds={visibleSelection.selectedVisibleShiftIds}
+          shifts={shifts}
+          users={users}
+          onSuccess={() => {
+            void loadData()
+            setSelectedShiftIds(new Set())
+          }}
+        />
+      )}
+
       {currentUser && hasPermission(currentUser, 'shifts.approve_registration') && (
         <BulkStaffingApprovalDialog
           open={showBulkStaffingApproval}
@@ -854,7 +1123,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           users={users}
           onViewFullShift={(shift) => {
             setPreviewShift(null)
-            setSelectedShift(shift)
+            handleSelectShift(shift)
           }}
           onPrimaryAction={undefined}
         />
@@ -863,7 +1132,8 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
       {selectedShift && (
         <ShiftDetailModal
           open={!!selectedShift}
-          onOpenChange={(open) => !open && setSelectedShift(null)}
+          initialTab={params.get('shift_tab') || undefined}
+          onOpenChange={(open) => !open && handleSelectShift(null)}
           shift={selectedShift}
           brands={brands}
           platforms={platforms}
@@ -890,7 +1160,7 @@ export function CalendarView({ createRequest = 0 }: { createRequest?: number }) 
           }}
           onDelete={() => {
             loadData()
-            setSelectedShift(null)
+            handleSelectShift(null)
           }}
         />
       )}

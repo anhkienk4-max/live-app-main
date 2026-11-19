@@ -14,6 +14,7 @@ import type {
 const registrationColumns = [
   'id',
   'shift_id',
+  'staffing_segment_id',
   'user_id',
   'operational_role',
   'status',
@@ -165,6 +166,7 @@ export function registrationFromRow(row: RegistrationRow): ShiftRegistration {
   return {
     id: row.id,
     shift_id: row.shift_id,
+    staffing_segment_id: row.staffing_segment_id ?? undefined,
     user_id: row.user_id,
     operational_role: row.operational_role,
     status: row.status,
@@ -239,6 +241,50 @@ export interface ShiftRoleCapacity {
   remaining: number
 }
 
+export interface ReplaceShiftAssignmentInput {
+  shiftId: string
+  staffingSegmentId: string
+  registrationId: string
+  replacementUserId: string
+  role: OperationalRole
+  expectedShiftVersion: number
+  expectedRegistrationVersion: number
+  effectiveAt: string
+  reason: string
+  emergency: boolean
+  idempotencyKey: string
+}
+
+export interface ShiftStaffingSegmentOption {
+  id: string
+  segment_index: number
+  start_at: string
+  end_at: string
+  required_host_count: number
+  required_support_count: number
+  required_technical_count: number
+}
+
+export interface ReplaceShiftAssignmentResult {
+  replacement_id: string
+  shift_id: string
+  staffing_segment_id: string
+  old_registration_id: string
+  registration: Pick<ShiftRegistration, 'id' | 'shift_id' | 'user_id' | 'operational_role' | 'status' | 'source' | 'reviewed_by' | 'reviewed_at' | 'review_notes' | 'version'> & {
+    staffing_segment_id: string | null
+  }
+  effective_at: string
+  shift_version: number
+  roster: Array<{
+    registration_id: string
+    user_id: string
+    role: OperationalRole
+    status: ShiftRegistration['status']
+    version: number
+  }>
+  replayed: boolean
+}
+
 export const isStaffedRegistration = (
   registration: Pick<ShiftRegistration, 'status'>,
 ): boolean =>
@@ -253,6 +299,7 @@ export interface SupabaseShiftRegistrationRepository {
   getCapacity(shiftId: string): Promise<ShiftRoleCapacity[]>
   getMyApprovedShifts(userId: string): Promise<Shift[]>
   register(shiftId: string, role: OperationalRole): Promise<ShiftRegistration>
+  registerForSegment(segmentId: string, role: OperationalRole): Promise<ShiftRegistration>
   cancel(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
   approve(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
   reject(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
@@ -262,7 +309,7 @@ export interface SupabaseShiftRegistrationRepository {
     notes?: string,
     expectedVersions?: Record<string, number>,
   ): Promise<ShiftRegistrationReviewResult[]>
-  assignManually(shiftId: string, userId: string, role: OperationalRole, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
+  assignManually(shiftId: string, userId: string, role: OperationalRole, notes?: string, expectedVersion?: number, staffingSegmentId?: string): Promise<ShiftRegistration>
   assignImported(
     shiftId: string,
     userId: string,
@@ -273,6 +320,9 @@ export interface SupabaseShiftRegistrationRepository {
     expectedVersion?: number,
   ): Promise<ShiftRegistration>
   removeAssignment(id: string, notes?: string, expectedVersion?: number): Promise<ShiftRegistration>
+  verifyReplacementCapability(shiftId: string, role: OperationalRole): Promise<void>
+  getSegmentsForShift(shiftId: string): Promise<ShiftStaffingSegmentOption[]>
+  replaceAssignment(input: ReplaceShiftAssignmentInput): Promise<ReplaceShiftAssignmentResult>
 }
 
 export function createSupabaseShiftRegistrationRepository(
@@ -289,18 +339,37 @@ export function createSupabaseShiftRegistrationRepository(
     },
 
     async getAll() {
-      const result = await selectRegistrations()
-        .order('requested_at', { ascending: true })
-      return optionalRows('registration read', result)
-        .map(row => registrationFromRow(row as unknown as RegistrationRow))
+      // Reads every page; one un-ranged query is capped by PostgREST max-rows and would
+      // silently drop the newest registrations.
+      const rows = new Map<string, RegistrationRow>()
+      for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+        const result = await selectRegistrations()
+          .order('requested_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
+        const page = optionalRows('registration read', result)
+        page.forEach(row => rows.set(String((row as unknown as RegistrationRow).id), row as unknown as RegistrationRow))
+        if (page.length < SUPABASE_PAGE_SIZE) break
+      }
+      return [...rows.values()].map(row => registrationFromRow(row))
     },
 
     async getForShift(shiftId) {
-      const result = await selectRegistrations()
-        .eq('shift_id', shiftId)
-        .order('requested_at', { ascending: true })
-      return optionalRows('registration shift read', result)
-        .map(row => registrationFromRow(row as unknown as RegistrationRow))
+      // Read all pages for the selected shift. PostgREST limits un-ranged
+      // responses; Leader/Admin applicant groups cannot use truncated data.
+      // Member rows remain restricted by shift_registrations RLS.
+      const rows = new Map<string, RegistrationRow>()
+      for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+        const result = await selectRegistrations()
+          .eq('shift_id', shiftId)
+          .order('requested_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
+        const page = optionalRows('registration shift read', result)
+        page.forEach(row => rows.set(String((row as unknown as RegistrationRow).id), row as unknown as RegistrationRow))
+        if (page.length < SUPABASE_PAGE_SIZE) break
+      }
+      return [...rows.values()].map(row => registrationFromRow(row))
     },
 
     async getForShifts(shiftIds) {
@@ -360,6 +429,16 @@ export function createSupabaseShiftRegistrationRepository(
       )
     },
 
+    async registerForSegment(segmentId, role) {
+      const result = await client.rpc('register_for_staffing_segment', {
+        p_segment_id: segmentId,
+        p_role: role,
+      }).single()
+      return registrationFromRow(
+        requiredRow('segment registration register', result) as unknown as RegistrationRow,
+      )
+    },
+
     async cancel(id, notes, expectedVersion) {
       const result = await client.rpc('cancel_own_shift_registration', {
         p_registration_id: id,
@@ -414,14 +493,23 @@ export function createSupabaseShiftRegistrationRepository(
         }))
     },
 
-    async assignManually(shiftId, userId, role, notes, expectedVersion) {
-      const result = await client.rpc('manual_assign_shift_staff', {
-        p_shift_id: shiftId,
-        p_user_id: userId,
-        p_role: role,
-        p_notes: notes ?? null,
-        p_expected_version: expectedVersion ?? null,
-      }).single()
+    async assignManually(shiftId, userId, role, notes, expectedVersion, staffingSegmentId) {
+      const result = staffingSegmentId
+        ? await client.rpc('manual_assign_shift_staff_to_segment', {
+          p_shift_id: shiftId,
+          p_user_id: userId,
+          p_role: role,
+          p_notes: notes ?? null,
+          p_expected_version: expectedVersion ?? null,
+          p_staffing_segment_id: staffingSegmentId,
+        }).single()
+        : await client.rpc('manual_assign_shift_staff', {
+          p_shift_id: shiftId,
+          p_user_id: userId,
+          p_role: role,
+          p_notes: notes ?? null,
+          p_expected_version: expectedVersion ?? null,
+        }).single()
       return registrationFromRow(
         requiredRow('registration manual assign', result) as unknown as RegistrationRow,
       )
@@ -451,6 +539,52 @@ export function createSupabaseShiftRegistrationRepository(
       return registrationFromRow(
         requiredRow('registration remove assignment', result) as unknown as RegistrationRow,
       )
+    },
+
+    async verifyReplacementCapability(shiftId, role) {
+      const result = await client.rpc('replace_shift_assignment', {
+        p_shift_id: shiftId,
+        p_staffing_segment_id: crypto.randomUUID(),
+        p_registration_id: crypto.randomUUID(),
+        p_replacement_user_id: crypto.randomUUID(),
+        p_role: role,
+        p_expected_shift_version: 1,
+        p_expected_registration_version: 1,
+        p_effective_at: new Date().toISOString(),
+        p_reason: 'No-write authenticated capability check',
+        p_is_emergency: false,
+        p_idempotency_key: crypto.randomUUID(),
+      }).single()
+      if (result.error?.code === 'P0001' && result.error.message.includes('STAFFING_SEGMENT_SHIFT_MISMATCH')) return
+      throw result.error ?? new Error('ATOMIC_REPLACEMENT_CAPABILITY_UNVERIFIED')
+    },
+
+    async getSegmentsForShift(shiftId) {
+      const result = await client.from('shift_staffing_segments')
+        .select('id,segment_index,start_at,end_at,required_host_count,required_support_count,required_technical_count')
+        .eq('shift_id', shiftId)
+        .order('start_at', { ascending: true })
+        .order('id', { ascending: true })
+      if (result.error) throw requestError('staffing segment read', result.error)
+      return result.data ?? []
+    },
+
+    async replaceAssignment(input) {
+      const response = await fetch('/api/staffing/replacements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const payload = await response.json().catch(() => null) as {
+        ok?: boolean
+        data?: ReplaceShiftAssignmentResult
+        error?: { code?: string }
+      } | null
+      if (!response.ok || !payload?.ok || !payload.data) {
+        const code = payload?.error?.code || 'STAFFING_REPLACEMENT_FAILED'
+        throw new RegistrationRequestError(code, code)
+      }
+      return payload.data
     },
   }
 }

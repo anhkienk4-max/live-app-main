@@ -134,6 +134,7 @@ test('MIME validation allows only category-compatible extensions', () => {
 type Row = Record<string, unknown>
 function client() {
   const rows: Row[] = []
+  const dashboardUpdates: Row[] = []
   let counter = 0
   const get = (table: string): Row[] => {
     if (table === 'brands') return [{ id: 'brand-1', name: 'Female AI livestream', deleted_at: null }]
@@ -142,6 +143,7 @@ function client() {
       { id: 'platform-2', name: 'TikTok Shop', deleted_at: null },
     ]
     if (table === 'shifts') return [{ id: 'shift-1', brand_id: 'brand-1', platform_id: 'platform-1', date: '2026-09-14', execution_source: 'internal', deleted_at: null }]
+    if (table === 'shift_registrations') return [{ id: 'registration-1', shift_id: 'shift-1', user_id: 'member-1', status: 'approved' }]
     if (table === 'campaigns') return [
       { id: 'campaign-1', name: 'Fall Campaign', brand_id: 'brand-1',
         start_date: '2026-09-01', end_date: '2026-09-30',
@@ -151,6 +153,7 @@ function client() {
         platform_ids: ['platform-1'], platform_source: '', deleted_at: null },
     ]
     if (table === 'operational_files') return rows
+    if (table === 'dashboard_updates') return dashboardUpdates
     return []
   }
   const db = {
@@ -174,6 +177,14 @@ function client() {
       const q = {
         select(_cols?: string) { return q },
         eq(key: string, val: unknown) { filters.push(row => row[key] === val); return q },
+        in(key: string, values: unknown[]) { filters.push(row => values.includes(row[key])); return q },
+        limit() { return q },
+        ilike(key: string, pattern: string) {
+          assert.ok(pattern.startsWith('%') && pattern.endsWith('%'))
+          const literal = pattern.slice(1, -1).replace(/\\([\\%_])/g, '$1').toLowerCase()
+          filters.push(row => String(row[key] ?? '').toLowerCase().includes(literal))
+          return q
+        },
         is(key: string, val: unknown) { filters.push(row => (row[key] ?? null) === val); return q },
         order(_name: string, _opts?: unknown) { return q },
         not(key: string, op: string, value: string) { assert.equal(op, 'in'); const excluded = value.slice(1,-1).split(','); filters.push(row => !excluded.includes(String(row[key]))); return q },
@@ -189,7 +200,7 @@ function client() {
       return q
     },
   }
-  return { db: db as never, rows }
+  return { db: db as never, rows, dashboardUpdates }
 }
 
 function form(category: OperationalFileCategory, filename: string, mime: string, bytes: Uint8Array) {
@@ -247,6 +258,9 @@ test('operational file lifecycle uses external object, no duplicate, metadata-on
         } }
       },
       async read() { return new Uint8Array([1, 2, 3]) },
+      async getMetadata(ref: { external_file_id: string }) {
+        return { id: ref.external_file_id, kind: 'file', parent_ids: ['parent-id'] }
+      },
       async delete(ref: { external_file_id: string }) { providerDeletes.push(ref.external_file_id) },
       async ensureFolder() { return { id: 'folder-id', name: 'folder', provider: 'google_drive' } },
     } as never,
@@ -259,11 +273,12 @@ test('operational file lifecycle uses external object, no duplicate, metadata-on
   const invoice = await leader.POST(form('payment_document', 'invoice.pdf', 'application/pdf', new Uint8Array([1, 2, 3])))
   assert.equal(invoice.status, 403)
 
+  const admin = createOperationalFileRouteHandler({ ...dependencies, resolveUser: auth('admin') })
   const upload = () => form('schedule_source', 'source.csv', 'text/csv', new Uint8Array([1, 2, 3]))
-  const first = await leader.POST(upload())
+  const first = await admin.POST(upload())
   assert.equal(first.status, 200)
   assert.equal((await first.json() as { reused: boolean }).reused, false)
-  const second = await leader.POST(upload())
+  const second = await admin.POST(upload())
   assert.equal(second.status, 200)
   assert.equal((await second.json() as { reused: boolean }).reused, true)
   assert.equal(providerUploads.length, 1)
@@ -274,30 +289,31 @@ test('operational file lifecycle uses external object, no duplicate, metadata-on
   assert.equal(state.rows[0].folder_path,
     'Female AI livestream/Shopee Live/THÁNG 09.2026/OPS/SCHEDULE/SOURCE')
 
-  const listed = await leader.GET(new Request('https://example.test/api/operational-files?shift_id=shift-1'))
+  const listed = await admin.GET(new Request('https://example.test/api/operational-files?shift_id=shift-1'))
   assert.equal(listed.status, 200)
   // Scoped by shift, a period-level file must not be returned.
   assert.deepEqual((await listed.json() as { files: unknown[] }).files, [])
 
-  const listedByPeriod = await leader.GET(new Request('https://example.test/api/operational-files?brand_id=brand-1&platform_id=platform-1&period_date=2026-09-14&execution_source=internal'))
+  const listedByPeriod = await admin.GET(new Request('https://example.test/api/operational-files?brand_id=brand-1&platform_id=platform-1&period_date=2026-09-14&execution_source=internal'))
   assert.equal((await listedByPeriod.json() as { files: unknown[] }).files.length, 1)
 
-  const downloaded = await leader.GET(new Request('https://example.test/api/operational-files?file_id=operational-1'))
+  const downloaded = await admin.GET(new Request('https://example.test/api/operational-files?file_id=operational-1'))
   assert.equal(downloaded.status, 200)
   assert.deepEqual(Array.from(new Uint8Array(await downloaded.arrayBuffer())), [1, 2, 3])
 
-  const deleted = await leader.DELETE(new Request('https://example.test/api/operational-files', {
+  const deleted = await admin.DELETE(new Request('https://example.test/api/operational-files', {
     method: 'DELETE', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ file_id: 'operational-1' }),
   }))
   assert.equal(deleted.status, 200)
-  assert.deepEqual(providerDeletes, ['drive-id-1'])
+  assert.deepEqual(providerDeletes, [])
   assert.equal(typeof state.rows[0].deleted_at, 'string')
 
-  const admin = createOperationalFileRouteHandler({ ...dependencies, resolveUser: auth('admin') })
   const cat = await admin.GET(new Request('https://example.test/api/operational-files?catalog=1'))
   const catalog = await cat.json() as { categories: Array<{ id: string }> }
   assert.ok(catalog.categories.some(entry => entry.id === 'payment_document'))
+  const routeCount = await admin.GET(new Request('https://example.test/api/operational-files?catalog=1'))
+  assert.equal((await routeCount.json() as {active_route_count:number}).active_route_count,0)
   const leaderCat = await leader.GET(new Request('https://example.test/api/operational-files?catalog=1'))
   const leaderCatalog = await leaderCat.json() as { categories: Array<{ id: string }> }
   assert.equal(leaderCatalog.categories.some(entry => entry.id === 'payment_document'), false)
@@ -357,8 +373,8 @@ test('linked provider object must be in exact planned folder; native Docs are me
   assert.equal(state.rows.length, 1)
 
   const view = await handler.GET(new Request('https://example.test/api/operational-files?file_id=operational-1'))
-  assert.equal(view.status, 302)
-  assert.match(view.headers.get('Location') ?? '', /drive\.google\.com/u)
+  assert.equal(view.status, 415)
+  assert.equal(view.headers.get('Location'), null)
 })
 
 test('leader cannot read existing finance artifact by guessing file ID', async () => {
@@ -382,7 +398,7 @@ test('leader cannot read existing finance artifact by guessing file ID', async (
     routingMode: 'database',
   })
   const response = await handler.GET(new Request('https://example.test/api/operational-files?file_id=finance-1'))
-  assert.equal(response.status, 403)
+  assert.equal(response.status, 404)
 })
 
 
@@ -391,7 +407,7 @@ test('Campaign Content/Production files enforce brand, platform, dates and isola
   let uploadCount = 0
   const handler = createOperationalFileRouteHandler({
     createClient: () => state.db,
-    resolveUser: async () => ({ id: 'leader', systemPermission: 'leader', businessUserId: 'leader' }),
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
     storage: {
       async upload(input: FileUploadInput) {
         return { asset: {
@@ -400,6 +416,9 @@ test('Campaign Content/Production files enforce brand, platform, dates and isola
         } }
       },
       async read() { return new Uint8Array([1, 2, 3]) },
+      async getMetadata(ref: { external_file_id: string }) {
+        return { id: ref.external_file_id, kind: 'file', parent_ids: ['parent-id'] }
+      },
       async delete() { throw new Error('Unexpected delete') },
       async ensureFolder() { throw new Error('Folder injection not allowed') },
     } as never,
@@ -490,8 +509,8 @@ test('large provider-linked MP4 uses exact-parent verification, never buffers vi
   assert.equal(state.rows[0].integrity_status, 'provider_reference')
   assert.equal(state.rows[0].checksum_sha256, null)
   const access = await handler.GET(new Request('https://example.test/api/operational-files?file_id=operational-1'))
-  assert.equal(access.status, 302)
-  assert.equal(access.headers.get('Location'), 'https://drive.google.com/file/d/large-video-id/view')
+  assert.equal(access.status, 413)
+  assert.equal(access.headers.get('Location'), null)
   assert.equal(reads, 0)
 })
 
@@ -526,10 +545,13 @@ test('concurrent provider-deduplicated upload NEVER trashes the winning shared o
   }
   const handler = createOperationalFileRouteHandler({
     createClient: () => fakeDb as never,
-    resolveUser: async () => ({ id: 'leader', systemPermission: 'leader', businessUserId: 'leader' }),
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
     storage: {
       async upload() { return { asset: { external_file_id: 'shared-drive-object', provider_metadata: {} } } },
-      async read() { return new Uint8Array([]) },
+      async read() { return new Uint8Array([1, 2, 3]) },
+      async getMetadata(ref: { external_file_id: string }) {
+        return { id: ref.external_file_id, kind: 'file', parent_ids: ['parent-id'] }
+      },
       async delete() { providerDeletes += 1 },
       async ensureFolder() { throw new Error('must reuse existing folder') },
     } as never,
@@ -554,7 +576,7 @@ test('confidential Finance writes fail closed until separately approved, includi
     allowConfidentialWrites: () => approved,
     resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
     storage: {
-      async upload(input: FileUploadInput) {
+      async upload(_input: FileUploadInput) {
         uploads += 1
         return { asset: { external_file_id: 'finance-drive-' + uploads, provider_metadata: {} } }
       },
@@ -604,9 +626,215 @@ test('confidential Finance writes fail closed until separately approved, includi
   assert.equal(state.rows.length, 1)
   const linked = await approved.POST(link())
   assert.equal(linked.status, 200)
-  assert.equal(metadataReads, 1)
+  assert.equal(metadataReads, 2)
   assert.equal(state.rows.length, 2)
   const catalog = await handler(false).GET(new Request('https://example.test/api/operational-files?catalog=1'))
   const body = await catalog.json() as { confidential_write_ready: boolean }
   assert.equal(body.confidential_write_ready, false)
+})
+
+test('members can upload only verified Google Drive image snapshots to an active readable shift', async () => {
+  const state = client()
+  const imageBytes = new Uint8Array([1, 2, 3])
+  const activeShiftClient = {
+    from(table: string) {
+      assert.equal(table, 'shifts')
+      const query = {
+        select() { return query },
+        eq(column: string, value: unknown) { assert.equal(column, 'id'); assert.equal(value, 'shift-1'); return query },
+        async maybeSingle() {
+          return { data: { id: 'shift-1', status: 'live', deleted_at: null, archived_at: null }, error: null }
+        },
+      }
+      return query
+    },
+  }
+  let uploads = 0
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    createUserClient: async () => activeShiftClient as never,
+    resolveUser: async () => ({ id: 'member-auth', systemPermission: 'member', businessUserId: 'member-1' }),
+    storage: {
+      async upload(input: FileUploadInput) {
+        uploads += 1
+        return { asset: {
+          id: 'snapshot-asset', provider: 'google_drive' as const,
+          external_file_id: 'snapshot-drive-id', external_parent_id: input.external_parent_id,
+          name: input.name, mime_type: input.mime_type, size_bytes: input.size_bytes,
+          checksum_sha256: input.checksum_sha256, entity_type: input.entity_type,
+          entity_id: input.entity_id, status: 'active' as const,
+          created_by: input.created_by, created_at: '2026-11-02T00:00:00Z',
+        } }
+      },
+      async getMetadata(reference: { external_file_id: string }) {
+        return { id: reference.external_file_id, name: 'snapshot.png', kind: 'file', parent_ids: ['parent-id'] }
+      },
+      async read() { return imageBytes },
+      async delete() {},
+    } as never,
+    routes: { async resolvePlacement() { return base } },
+    materializeFolders: async () => 'parent-id',
+    routingMode: 'database',
+  })
+  const snapshot = (provider = 'google_drive', filename = 'snapshot.png', mime = 'image/png') => {
+    const data = new FormData()
+    data.set('shift_id', 'shift-1')
+    data.set('category', 'live_snapshot')
+    data.set('provider', provider)
+    data.set('file', new File([imageBytes], filename, { type: mime }))
+    return new Request('https://example.test/api/operational-files', { method: 'POST', body: data })
+  }
+
+  const uploaded = await handler.POST(snapshot())
+  assert.equal(uploaded.status, 200)
+  assert.equal(state.rows[0]?.shift_id, 'shift-1')
+  assert.equal(state.rows[0]?.category, 'live_snapshot')
+  assert.equal(state.rows[0]?.provider, 'google_drive')
+  assert.equal(state.rows[0]?.integrity_status, 'sha256_verified')
+  assert.equal(uploads, 1)
+
+  assert.equal((await handler.POST(snapshot('onedrive'))).status, 403)
+  assert.equal((await handler.POST(snapshot('google_drive', 'snapshot.csv', 'text/csv'))).status, 400)
+  assert.equal(uploads, 1)
+  assert.equal(state.rows.length, 1)
+})
+
+test('linked dashboard evidence cannot be deleted from operational storage', async () => {
+  const state = client()
+  state.rows.push({ id: 'snapshot-1', category: 'live_snapshot', provider: 'google_drive',
+    external_file_id: 'drive-snapshot-1', deleted_at: null })
+  state.dashboardUpdates.push({ id: 'update-1', screenshot_file_id: 'snapshot-1', deleted_at: null })
+  let providerDeletes = 0
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+    storage: { async delete() { providerDeletes += 1 } } as never,
+  })
+  const response = await handler.DELETE(new Request('https://example.test/api/operational-files', {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id: 'snapshot-1' }),
+  }))
+  assert.equal(response.status, 409)
+  assert.equal((await response.json() as { error: { code: string } }).error.code, 'OPERATIONAL_FILE_IN_USE')
+  assert.equal(providerDeletes, 0)
+  assert.equal(state.rows[0]?.deleted_at, null)
+})
+
+test('operational file delete hides metadata but keeps provider bytes recoverable', async () => {
+  const state = client()
+  state.rows.push({ id: 'file-1', category: 'report_image', provider: 'google_drive',
+    external_file_id: 'drive-file-1', brand_id: 'brand-1', scope_key: 'brand:brand-1', deleted_at: null })
+  let providerDeletes = 0
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+    storage: { async delete() { providerDeletes += 1 } } as never,
+  })
+
+  const response = await handler.DELETE(new Request('https://example.test/api/operational-files', {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id: 'file-1' }),
+  }))
+
+  assert.equal(response.status, 200)
+  assert.equal(providerDeletes, 0)
+  assert.equal(typeof state.rows[0]?.deleted_at, 'string')
+})
+
+test('Member cannot invoke operational file delete directly with a guessed file ID', async () => {
+  const state = client()
+  state.rows.push({ id: 'file-1', category: 'report_image', provider: 'google_drive',
+    external_file_id: 'drive-file-1', brand_id: 'brand-1', scope_key: 'brand:brand-1', deleted_at: null })
+  let providerDeletes = 0
+  const handler = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'member', systemPermission: 'member', businessUserId: 'member' }),
+    storage: { async delete() { providerDeletes += 1 } } as never,
+  })
+
+  const response = await handler.DELETE(new Request('https://example.test/api/operational-files', {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id: 'file-1' }),
+  }))
+
+  assert.equal(response.status, 403)
+  assert.equal(state.rows[0]?.deleted_at, null)
+  assert.equal(providerDeletes, 0)
+})
+
+test('Leader brand-period scope stays denied; Admin filename search is literal, case-insensitive and counted before page limiting', async () => {
+  const state = client()
+  const scope = 'period:brand-1:platform-1:internal:2026-09-14'
+  const make = (id:string, file_name:string, provider:string, category='schedule_source', scope_key=scope) => ({
+    id,scope_key,category,file_name,provider,folder_path:'2026/THÁNG 09.2026/SHOPEE_LIVE/DATA/SOURCE',
+    size_bytes:2048,created_at:'2026-10-01T00:00:00.000Z',deleted_at:null,
+    integrity_status:id==='a'?'sha256_verified':'provider_reference',
+  })
+  state.rows.push(make('a','Deal_100%_FINAL.xlsx','google_drive'))
+  state.rows.push(make('b','Deal_100%_DRAFT.xlsx','onedrive'))
+  state.rows.push(make('c','Unrelated.xlsx','google_drive'))
+  state.rows.push(make('d','Deal_100%_PRIVATE.xlsx','google_drive','payment_document'))
+  state.rows.push(make('e','Deal_100%_OTHER.xlsx','google_drive','schedule_source','period:other'))
+  const leader=createOperationalFileRouteHandler({
+    createClient:()=>state.db,
+    resolveUser:async()=>({id:'leader',systemPermission:'leader',businessUserId:'leader'}),
+    routingMode:'database',
+  })
+  const prefix='https://example.test/api/operational-files?brand_id=brand-1&platform_id=platform-1&period_date=2026-09-14&execution_source=internal'
+  assert.equal((await leader.GET(new Request(prefix+'&search=100%25'))).status,403)
+  const route=createOperationalFileRouteHandler({
+    createClient:()=>state.db,
+    resolveUser:async()=>({id:'admin',systemPermission:'admin',businessUserId:'admin'}),
+    routingMode:'database',
+  })
+  const found=await route.GET(new Request(prefix+'&page=1&pageSize=10&search=100%25'))
+  assert.equal(found.status,200)
+  const envelope=await found.json() as {total:number;files:Array<{id:string;integrity_status:string;access_url:string}>}
+  assert.equal(envelope.total,3)
+  assert.deepEqual(envelope.files.map(row=>row.id).sort(),['a','b','d'])
+  assert.equal(envelope.files.find(item=>item.id==='a')?.integrity_status,'sha256_verified')
+  assert.ok(envelope.files.every(item=>item.access_url.startsWith('/api/operational-files?file_id=')))
+  const drive=await route.GET(new Request(prefix+'&search=100%25&provider_filter=google_drive'))
+  assert.equal(drive.status,200)
+  const driveRows=await drive.json() as {total:number;files:Array<{id:string}>}
+  assert.equal(driveRows.total,2)
+  assert.deepEqual(driveRows.files.map(row=>row.id).sort(),['a','d'])
+  const invalid=await route.GET(new Request(prefix+'&provider_filter=not-a-provider'))
+  assert.equal(invalid.status,400)
+})
+
+test('catalog endpoint surfaces provider_availability distinguishing configured Google Drive from unconfigured OneDrive', async () => {
+  const state = client()
+  const route = createOperationalFileRouteHandler({
+    createClient: () => state.db,
+    resolveUser: async () => ({ id: 'admin', systemPermission: 'admin', businessUserId: 'admin' }),
+    storage: {
+      upload: async () => { throw new Error('not implemented') },
+      read: async () => new Uint8Array([]),
+      delete: async () => {},
+      ensureFolder: async () => ({ id: 'f', name: 'f', provider: 'google_drive' }),
+      getMetadata: async () => ({ id: 'f', name: 'f', kind: 'folder', provider: 'google_drive' }),
+      getViewUrl: async () => 'https://drive.google.com',
+      providerAvailability: {
+        google_drive: true,
+        onedrive: false,
+        supabase_legacy: false,
+      },
+    },
+    routingMode: 'database',
+  })
+  const response = await route.GET(new Request('https://example.test/api/operational-files?catalog=1'))
+  assert.equal(response.status, 200)
+  const data = await response.json() as {
+    ok: boolean
+    active_route_count: number | null
+    provider_availability: { google_drive: boolean; onedrive: boolean }
+  }
+  assert.equal(data.ok, true)
+  assert.equal(data.active_route_count, 0)
+  assert.deepEqual(data.provider_availability, {
+    google_drive: true,
+    onedrive: false,
+    supabase_legacy: false,
+  })
 })

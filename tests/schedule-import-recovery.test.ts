@@ -130,7 +130,7 @@ test('reconciliation uses exact identity and the same import batch only', () => 
   assert.equal(hasExactScheduleImportIdentity(exact, shiftDraft), true)
   assert.equal(
     hasExactScheduleImportIdentity(shift('different-studio', 'batch-1', { studio: 'Studio B' }), shiftDraft),
-    true,
+    false,
   )
   assert.deepEqual(reconcileScheduleImportShift('batch-1', shiftDraft, [exact]), {
     kind: 'recovered',
@@ -170,7 +170,7 @@ test('multiple exact same-batch shifts block as ambiguous', async () => {
 
 test('same-batch slot with changed metadata enriches the existing shift', async () => {
   const flow = workflow({
-    initialShifts: [shift('different-studio', 'batch-1', { studio: 'Studio B' })],
+    initialShifts: [shift('same-studio', 'batch-1', { studio: 'Studio A', host_names: [] })],
   })
   const result = await flow.run()
 
@@ -455,14 +455,15 @@ test('SUCCESS PATH: exact identity with campaign and studio match merges staffin
   assert.equal((outcomes[0] as { outcome: string }).outcome, 'imported')
 })
 
-test('FAILED PATH: campaign null vs populated with single slot still merges via slot unique (safe)', async () => {
-  // Existing shift has no campaign, imported has campaign-1 but slot is unique -> should still merge via slot fallback
+test('FAILED PATH: campaign null vs populated with single slot is ambiguous and requires review', async () => {
+  // Existing shift has no campaign, imported has campaign-1 -> ambiguous discriminator, must NOT auto-merge
   const existing = shift('failed-campaign-null', 'other-batch', { campaign_id: undefined, studio: 'Studio A', host_names: [] })
   let updated: { host_names: string[] } | null = null
   const preview: ImportPreviewRow = {
     row: { row_number: 2, date: shiftDraft.date, start_time: shiftDraft.start_time, end_time: shiftDraft.end_time, brand_name: 'Mars', platform_name: 'Shopee', title: 'Morning', studio: 'Studio A', campaign_name: 'campaign-1', host_names: ['Kiên'], assistant_names: [], technical_names: [], required_host_count: 1, required_support_count: 1, required_technical_count: 1, warnings: [], errors: [] },
     shift: { ...shiftDraft, campaign_id: 'campaign-1', studio: 'Studio A', host_names: ['Kiên'] },
   }
+  const outcomes: Array<{ outcome: string; failureCode?: string }> = []
   await processScheduleImportRows({
     batchId: 'batch-1',
     previews: [preview],
@@ -470,11 +471,12 @@ test('FAILED PATH: campaign null vs populated with single slot still merges via 
     initialShifts: [existing],
     createShift: async () => { throw new Error('should not create') },
     refreshShifts: async () => [existing],
-    recordOutcome: async () => {},
+    recordOutcome: async outcome => { outcomes.push(outcome) },
     updateStaffingLabels: async (id, labels) => { updated = labels; return { ...existing, ...labels, updated_at: NOW } },
   })
-  // With unique slot, staffing is merged even though campaign differs (single safe candidate)
-  assert.deepEqual(updated?.host_names, ['Kiên'])
+  // Without matching campaign discriminator, staffing is not auto-merged and outcome is retryable ambiguous
+  assert.equal(updated, null)
+  assert.equal(outcomes[0]?.failureCode, 'IMPORT_RECONCILIATION_AMBIGUOUS')
 })
 
 test('FAILED PATH: studio blank vs Studio A with multiple slot mates is ambiguous and does not merge', async () => {
@@ -525,4 +527,34 @@ test('duplicateCandidate ambiguous slot does not first-match wrong shift', async
   assert.equal(mergeCalled, false)
   assert.equal(outcomes[0].outcome, 'retryable')
   assert.equal(outcomes[0].failureCode, 'IMPORT_RECONCILIATION_AMBIGUOUS')
+})
+
+test('atomic persisted Confirm owns its receipt and never falls back to client create or enrichment', async () => {
+  let atomicCalls = 0
+  let fallbackCreateCalls = 0
+  let receiptCalls = 0
+  const result = await processScheduleImportRows({
+    batchId: 'batch-1',
+    previews: [preview()],
+    batchRows: [batchRow()],
+    initialShifts: [],
+    createShift: async () => {
+      fallbackCreateCalls += 1
+      return shift('unexpected')
+    },
+    createShiftFromImport: async () => {
+      atomicCalls += 1
+      return { kind: 'review_required', failureCode: 'IMPORT_SOURCE_CHANGED_REVIEW_REQUIRED:title' }
+    },
+    refreshShifts: async () => [],
+    recordOutcome: async () => { receiptCalls += 1 },
+    updateShift: async () => { throw new Error('atomic import cannot enrich an existing shift') },
+    updateStaffingLabels: async () => { throw new Error('atomic import cannot rewrite planned labels') },
+  })
+
+  assert.equal(atomicCalls, 1)
+  assert.equal(fallbackCreateCalls, 0)
+  assert.equal(receiptCalls, 0, 'the database RPC commits the row receipt with the decision')
+  assert.equal(result.imported, 0)
+  assert.equal(result.retryable, 1)
 })

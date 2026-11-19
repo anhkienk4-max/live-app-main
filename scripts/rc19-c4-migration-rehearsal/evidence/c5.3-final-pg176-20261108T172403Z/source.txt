@@ -1,0 +1,12 @@
+source_sha=d347542b487ed7264d8022b2dec09447cdaa096f
+application_candidate_sha=240a0d51b49863167be252d94545ea7c5ab2ac9a
+database=rc19_c5_3_reconciled_20261108
+database_marker=CODEX_DISPOSABLE_RC19_C5_3_BASELINE_ONLY
+postgres_server=17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+baseline_schema_source=production-shaped schema-only snapshot after the 89-receipt replay
+historical_receipts_in_this_clone=0 (not replayed or fabricated)
+forward_migrations=20; receipts inserted only after each SQL file succeeds
+pg_cron_worker=not simulated; no forward migration references pg_cron
+provider_object_bytes=not present; only one synthetic Storage metadata row
+worktree_clean_at_run_start=true
+created_utc=20261108T172403Z

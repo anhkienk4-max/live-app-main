@@ -1,0 +1,14 @@
+\set ON_ERROR_STOP on
+\i tests/rbac01b/pg17_fixture.sql
+\i docs/rbac02/RC19_RBAC02_ACCOUNT_OVERRIDES_REVIEW_ONLY.sql
+DO $fixture$
+BEGIN
+  IF current_setting('server_version_num')::int NOT BETWEEN 170000 AND 179999 THEN
+    RAISE EXCEPTION 'RBAC02_REQUIRES_POSTGRESQL_17';
+  END IF;
+  IF (SELECT enabled FROM private.rbac02_runtime_gate WHERE id=true) IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'RBAC02_FIXTURE_MUST_START_DISABLED';
+  END IF;
+END;
+$fixture$;
+SELECT 'RBAC02_PG17_DISPOSABLE_FIXTURE: READY';

@@ -1,6 +1,9 @@
-import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, FolderArchive, Banknote, Activity, type LucideIcon } from 'lucide-react'
+import { Home, Calendar, Radio, FileText, User, Settings, Users, Package, Megaphone, BarChart3, RefreshCw, History, Bell, UserCheck, FolderArchive, Banknote, Activity, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { SystemPermission, User as UserType } from '@/lib/types/database.types'
-import { hasAnyPermission, Permission } from '@/lib/permissions'
+import { hasAnyPermission, hasPermission, Permission } from '@/lib/permissions'
+import type { WorkforceCapabilities } from '@/lib/services/workforceService'
+
+export type NavAccessStatus = 'available' | 'read_only' | 'restricted' | 'unavailable' | 'pending'
 
 export type NavItem = {
   name: string
@@ -10,124 +13,175 @@ export type NavItem = {
   labelKey?: string
   /** Short label for compact layouts (e.g. mobile bottom nav) */
   shortLabelKey?: string
-  /**
-   * When set, item is only rendered if the user holds at least one of these
-   * permissions. Only use this for routes that have a genuine access requirement
-   * (i.e., classification A). Do NOT apply to routes that are merely
-   * mutation-restricted while remaining readable (classification B).
-   *
-   * Classification reference:
-   *   A = route genuinely permission-restricted (hidden from unauthorised users)
-   *   B = readable but mutation-restricted (page renders for all; only actions gated)
-   *   C = intentional UX omission for role simplification (not a permission denial)
-   */
+  /** Required permissions for viewing the module */
   requiredPermissions?: Permission[]
-  group?: string
+  /** Specific permissions required for mutation/management actions */
+  actionPermissions?: Permission[]
+  /** Workforce capabilities required */
+  requiredCapability?: 'payroll' | 'team_performance' | 'own_performance' | 'actual_staffing'
+  group?: NavigationGroupId
+  accessStatus?: NavAccessStatus
 }
 
-// Full catalogue of all application destinations
-const navCatalogue: Record<string, NavItem> = {
-  dashboard:     { name: 'Dashboard',     href: '/',              icon: Home, labelKey: 'dashboard', shortLabelKey: 'myWorkspaceShort' },
-  calendar:      { name: 'Calendar',      href: '/calendar',      icon: Calendar, labelKey: 'calendar', shortLabelKey: 'myScheduleShort' },
-  live:          { name: 'Live',          href: '/live',          icon: Radio, labelKey: 'live', shortLabelKey: 'live' },
-  reports:       { name: 'Reports',       href: '/reports',       icon: FileText },
-  storage:       { name: 'Storage',       href: '/storage',       icon: FolderArchive, labelKey: 'storage', requiredPermissions: ['reports.review'] },
-  swaps:         { name: 'Swaps',         href: '/swaps',         icon: RefreshCw },
-  analytics:     { name: 'Analytics',     href: '/analytics',     icon: BarChart3 },
-  staff:         { name: 'Staff',         href: '/staff',         icon: Users },
-  brands:        { name: 'Brands',        href: '/brands',        icon: Package },
-  platforms:     { name: 'Platforms',     href: '/platforms',     icon: Megaphone },
-  campaigns:     { name: 'Campaigns',     href: '/campaigns',     icon: Megaphone },
-  audit:         { name: 'Audit',         href: '/audit',         icon: History,  labelKey: 'auditHistory', requiredPermissions: ['audit.view', 'audit.view_team'] },
-  settings:      { name: 'Settings',      href: '/settings',      icon: Settings },
-  profile:       { name: 'Profile',       href: '/profile',       icon: User },
-  notifications: { name: 'Notifications', href: '/notifications', icon: Bell,     labelKey: 'navNotifications' },
-  payroll:       { name: 'Bảng lương',    href: '/payroll',       icon: Banknote, labelKey: 'payroll' },
-  workforce:     { name: 'Hiệu suất',     href: '/workforce',     icon: Activity, labelKey: 'workforce' },
+export const NAVIGATION_GROUPS = [
+  { id: 'overview', labelKey: 'navGroupOverview' },
+  { id: 'operations', labelKey: 'navGroupOperations' },
+  { id: 'data', labelKey: 'navGroupData' },
+  { id: 'people', labelKey: 'navGroupPeople' },
+  { id: 'system', labelKey: 'navGroupSystem' },
+] as const
+export type NavigationGroupId = typeof NAVIGATION_GROUPS[number]['id']
 
-  // Additional parity placeholders
-  shifts:        { name: 'Shifts',        href: '/shifts',        icon: Calendar, labelKey: 'shifts' },
-  staffing:      { name: 'Staffing',      href: '/staffing',      icon: Users, labelKey: 'staffing' },
-  registration:  { name: 'Registration',  href: '/staffing?tab=registration', icon: UserCheck, labelKey: 'registration', requiredPermissions: ['shifts.approve_registration'] },
-  staffDirectory:{ name: 'Staff Directory',href: '/staff',        icon: Users, labelKey: 'staffDirectory' },
-  myWorkspace:   { name: 'My Workspace',  href: '/',              icon: Home, labelKey: 'myWorkspace', shortLabelKey: 'myWorkspaceShort' },
-  mySchedule:    { name: 'My Schedule',   href: '/calendar?tab=mine', icon: Calendar, labelKey: 'mySchedule', shortLabelKey: 'myScheduleShort' },
-  openShifts:    { name: 'Open Shifts',   href: '/calendar?tab=open', icon: Calendar, labelKey: 'openShifts', shortLabelKey: 'openShiftsShort' },
-  mySwaps:       { name: 'My Swaps',      href: '/swaps',         icon: RefreshCw, labelKey: 'mySwaps', shortLabelKey: 'mySwapsShort' },
+export function groupNavigation(items: NavItem[]) {
+  return NAVIGATION_GROUPS.map(group => ({ ...group, items: items.filter(item => (item.group ?? 'overview') === group.id) }))
+    .filter(group => group.items.length > 0)
 }
 
-// ADMIN priority
-const adminNav: NavItem[] = [
-  { ...navCatalogue.dashboard, group: 'APP OPS' },
-  { ...navCatalogue.calendar, group: 'OPERATIONS' },
-  { ...navCatalogue.live, group: 'OPERATIONS' },
-  { ...navCatalogue.shifts, group: 'OPERATIONS' },
-  { ...navCatalogue.staffing, group: 'OPERATIONS' },
-  { ...navCatalogue.registration, group: 'OPERATIONS' },
-  { ...navCatalogue.storage, group: 'OPERATIONS' },
-  { ...navCatalogue.swaps, group: 'OPERATIONS' },
-  { ...navCatalogue.reports, group: 'PERFORMANCE' },
-  { ...navCatalogue.workforce, group: 'PERFORMANCE' },
-  { ...navCatalogue.analytics, group: 'PERFORMANCE' },
-  { ...navCatalogue.payroll, group: 'MANAGEMENT' },
-  { ...navCatalogue.brands, group: 'MANAGEMENT' },
-  { ...navCatalogue.platforms, group: 'MANAGEMENT' },
-  { ...navCatalogue.campaigns, group: 'MANAGEMENT' },
-  { ...navCatalogue.staff, group: 'MANAGEMENT' },
-  { ...navCatalogue.audit, group: 'SYSTEM' },
-  { ...navCatalogue.settings, group: 'SYSTEM' },
-]
+export function mobilePrimaryNavigation(items: NavItem[]) {
+  return ['/', '/calendar', '/shifts', '/live'].flatMap(path => {
+    const item = items.find(item => item.href.split('?')[0] === path)
+    return item ? [item] : []
+  })
+}
 
-// LEADER priority
-const leaderNav: NavItem[] = [
-  { ...navCatalogue.dashboard, name: 'Team Operations', labelKey: 'teamOperations', shortLabelKey: 'teamOperationsShort', group: 'APP OPS' },
-  { ...navCatalogue.calendar, group: 'OPERATIONS' },
-  { ...navCatalogue.live, group: 'OPERATIONS' },
-  { ...navCatalogue.shifts, group: 'OPERATIONS' },
-  { ...navCatalogue.staffing, group: 'OPERATIONS' },
-  { ...navCatalogue.registration, group: 'OPERATIONS' },
-  { ...navCatalogue.swaps, group: 'OPERATIONS' },
-  { ...navCatalogue.reports, group: 'PERFORMANCE' },
-  { ...navCatalogue.workforce, group: 'PERFORMANCE' },
-  { ...navCatalogue.staffDirectory, group: 'TEAM' },
-  { ...navCatalogue.notifications, group: 'TEAM' },
-]
+// One catalogue backs desktop, mobile, dashboard, and search navigation.
+export const UNIFIED_NAVIGATION_CATALOG: NavItem[] = [
+  // Overview
+  { name: 'Dashboard', href: '/', icon: Home, labelKey: 'dashboard', shortLabelKey: 'myWorkspaceShort', group: 'overview' },
+  { name: 'Profile', href: '/profile', icon: User, labelKey: 'profile', group: 'overview' },
+  { name: 'Notifications', href: '/notifications', icon: Bell, labelKey: 'navNotifications', group: 'overview' },
 
-// MEMBER priority
-const memberNav: NavItem[] = [
-  { ...navCatalogue.myWorkspace, group: 'APP OPS' },
-  { ...navCatalogue.mySchedule, group: 'APP OPS' },
-  { ...navCatalogue.openShifts, group: 'APP OPS' },
-  { ...navCatalogue.mySwaps, group: 'APP OPS' },
-  { ...navCatalogue.live, group: 'APP OPS' },
-  { ...navCatalogue.reports, group: 'APP OPS' },
-  { ...navCatalogue.workforce, name: 'Hiệu suất cá nhân', labelKey: 'myWorkforce', group: 'APP OPS' },
-  { ...navCatalogue.notifications, group: 'APP OPS' },
+  // Operations
+  { name: 'Calendar', href: '/calendar', icon: Calendar, labelKey: 'calendar', shortLabelKey: 'myScheduleShort', group: 'operations' },
+  { name: 'Shifts', href: '/shifts', icon: Calendar, labelKey: 'shifts', group: 'operations' },
+  { name: 'Open Shifts', href: '/calendar?tab=open', icon: Calendar, labelKey: 'openShifts', shortLabelKey: 'openShiftsShort', group: 'operations' },
+  { name: 'My Schedule', href: '/calendar?tab=mine', icon: Calendar, labelKey: 'mySchedule', shortLabelKey: 'myScheduleShort', group: 'operations' },
+  { name: 'Registration', href: '/staffing?tab=registration', icon: UserCheck, labelKey: 'registration', group: 'operations', actionPermissions: ['shifts.approve_registration'] },
+  { name: 'Staffing', href: '/staffing', icon: Users, labelKey: 'staffing', group: 'operations', actionPermissions: ['shifts.assign_staff'] },
+  { name: 'Swaps', href: '/swaps', icon: RefreshCw, labelKey: 'swaps', group: 'operations' },
+  { name: 'Live', href: '/live', icon: Radio, labelKey: 'live', shortLabelKey: 'live', group: 'operations' },
+  { name: 'Attendance', href: '/calendar?tab=attendance', icon: UserCheck, labelKey: 'attendance', group: 'operations' },
+
+  // Data & Reports
+  { name: 'Reports', href: '/reports', icon: FileText, labelKey: 'reports', group: 'data' },
+  { name: 'Analytics', href: '/analytics', icon: BarChart3, labelKey: 'analytics', group: 'data' },
+  { name: 'Storage', href: '/storage', icon: FolderArchive, labelKey: 'storage', group: 'data', requiredPermissions: ['storage.upload', 'reports.review'] },
+  { name: 'Product catalog', href: '/brand-catalog', icon: Package, labelKey: 'productCatalog', group: 'data' },
+  { name: 'Workforce Performance', href: '/workforce', icon: Activity, labelKey: 'workforce', group: 'data', requiredCapability: 'team_performance' },
+  { name: 'Data Quality', href: '/data-quality', icon: FileText, labelKey: 'dataQuality', group: 'data' },
+
+  // People & Finance
+  { name: 'Staff Directory', href: '/staff', icon: Users, labelKey: 'staffDirectory', group: 'people', actionPermissions: ['staff.manage'] },
+  { name: 'Payroll', href: '/payroll', icon: Banknote, labelKey: 'payroll', group: 'people', requiredPermissions: ['payroll.manage'], requiredCapability: 'payroll' },
+  { name: 'Personal Payslip', href: '/payroll?tab=personal', icon: Banknote, labelKey: 'personalPayslip', group: 'people' },
+
+  // System Administration
+  { name: 'Admin workspace', href: '/admin', icon: ShieldCheck, labelKey: 'adminWorkspace', group: 'system', requiredPermissions: ['settings.admin'] },
+  { name: 'Brands', href: '/brands', icon: Package, labelKey: 'brands', group: 'system', actionPermissions: ['brands.manage'] },
+  { name: 'Platforms', href: '/platforms', icon: Megaphone, labelKey: 'platforms', group: 'system', actionPermissions: ['platforms.manage'] },
+  { name: 'Campaigns', href: '/campaigns', icon: Megaphone, labelKey: 'campaigns', group: 'system', actionPermissions: ['campaigns.manage', 'campaigns.edit_operational'] },
+  { name: 'Audit', href: '/audit', icon: History, labelKey: 'auditHistory', group: 'system', requiredPermissions: ['audit.view', 'audit.view_team'] },
+  { name: 'Settings', href: '/settings', icon: Settings, labelKey: 'settings', group: 'system' },
 ]
 
 /**
- * Shared permission filter — single source of truth for Sidebar and BottomNav.
- * Only removes items whose requiredPermissions the user does not satisfy (class A items).
- * Class B/C items pass through unconditionally.
+ * Routes that are intentionally NOT top-level sidebar entries (RC19 G6) but must stay reachable.
+ * They are internal tabs of an owning module and remain valid deep links / bookmarks.
+ * Permission enforcement stays in the owning page and in API/RLS, never in this list.
+ */
+export const PRESERVED_INTERNAL_ROUTES = [
+  { href: '/calendar?tab=notes', owner: '/calendar', note: 'Operational notes live in Shift Detail; legacy tab kept as compatibility landing.' },
+  { href: '/staff?tab=accounts', owner: '/staff', note: 'Account Management is an authorized tab of the Staff module.' },
+] as const
+
+export function resolveNavAccessStatus(
+  item: NavItem,
+  currentUser: Pick<UserType, 'role' | 'system_permission'> | null | undefined,
+  capabilities?: WorkforceCapabilities,
+  effectivePermissions?: Partial<Record<Permission, boolean>> | null,
+): NavAccessStatus {
+  if (!currentUser) return 'restricted'
+
+  const permissionAccess = (permissions: Permission[]) => {
+    if (effectivePermissions === undefined) return hasAnyPermission(currentUser, permissions)
+    if (effectivePermissions === null) return null
+    const results = permissions.map(permission => effectivePermissions[permission])
+    if (results.includes(true)) return true
+    return results.some(result => result === undefined) ? null : false
+  }
+
+  if (item.href === '/storage' && process.env.NEXT_PUBLIC_FEATURE_FILE_STORAGE === 'false') {
+    return 'unavailable'
+  }
+
+  if (item.requiredCapability === 'payroll') {
+    if (capabilities?.payroll === false) return 'unavailable'
+    const allowed = permissionAccess(['payroll.manage'])
+    if (allowed === false) return 'restricted'
+    if (allowed === null || (capabilities === undefined && effectivePermissions !== undefined)) return 'pending'
+    return allowed ? 'available' : 'restricted'
+  }
+
+  if (item.requiredCapability === 'team_performance') {
+    if (capabilities?.team_performance === false && capabilities.own_performance === false) return 'unavailable'
+    if (capabilities?.team_performance === true) return 'available'
+    if (capabilities?.own_performance === true) return 'read_only'
+    if (hasPermission(currentUser, 'staff.manage')) return 'available'
+    if (capabilities === undefined && effectivePermissions === null) return 'pending'
+    return 'restricted'
+  }
+
+  if (item.requiredCapability === 'actual_staffing') {
+    if (capabilities?.actual_staffing === true) return 'available'
+    if (capabilities === undefined && effectivePermissions === null) return 'pending'
+    return 'restricted'
+  }
+
+  if (item.requiredPermissions && item.requiredPermissions.length > 0) {
+    if (effectivePermissions === undefined && !hasAnyPermission(currentUser, item.requiredPermissions)) return 'restricted'
+    const allowed = permissionAccess(item.requiredPermissions)
+    if (allowed === null) return 'pending'
+    if (!allowed) return 'restricted'
+  }
+
+  if (item.actionPermissions && item.actionPermissions.length > 0) {
+    const allowed = permissionAccess(item.actionPermissions)
+    if (allowed === null) return 'pending'
+    if (!allowed) return 'read_only'
+  }
+
+  return 'available'
+}
+
+/**
+ * Shared navigation resolver — single source of truth for navigation surfaces.
+ * For unauthenticated users, strips elevated routes (security failsafe).
+ * For all authenticated roles, preserves discovery parity while annotating accessStatus.
  */
 export function filterNav(
   items: NavItem[],
   currentUser: Pick<UserType, 'role' | 'system_permission'> | null | undefined,
+  capabilities?: WorkforceCapabilities,
+  effectivePermissions?: Partial<Record<Permission, boolean>> | null,
 ): NavItem[] {
-  return items.filter(item => {
-    if (!item.requiredPermissions || item.requiredPermissions.length === 0) return true
-    if (!currentUser) return false
-    return hasAnyPermission(currentUser, item.requiredPermissions)
-  })
+  if (!currentUser) {
+    return items.filter(item => {
+      if (item.requiredPermissions && item.requiredPermissions.length > 0) return false
+      if (item.requiredCapability) return false
+      if (item.actionPermissions && item.actionPermissions.length > 0) return false
+      return true
+    })
+  }
+
+  return items.map(item => ({
+    ...item,
+    accessStatus: resolveNavAccessStatus(item, currentUser, capabilities, effectivePermissions),
+  }))
 }
 
-export function getNavigationForRole(systemPermission: SystemPermission | undefined): NavItem[] {
-  switch (systemPermission) {
-    case 'admin':  return adminNav
-    case 'leader': return leaderNav
-    case 'member':
-    default:       return memberNav // safe fallback
-  }
+export function getNavigationForRole(systemPermission?: SystemPermission): NavItem[] {
+  void systemPermission
+  return UNIFIED_NAVIGATION_CATALOG.map(item => ({ ...item }))
 }
 
 export type ExceptionSeverity = 'critical' | 'action_required' | 'pending' | 'informational' | 'resolved'

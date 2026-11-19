@@ -1,0 +1,10 @@
+This run is NOT a complete rehearsal.
+
+Source SHA: d106bdcf79be67d1f8edf444f776da4a4088adef
+PostgreSQL: 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+Database: rc19_c5_3_final2_20261109
+Result: all 20 effective migration files and receipts passed; the synthetic role fixture failed while inserting its first shift.
+Failure: `OPERATIONAL_SETTINGS_NOT_CONFIGURED` from `private.set_shift_derived_fields()` because the schema-only baseline contains the `system_settings` table but no configuration rows.
+Evidence: `role-brand-shift-assertions.log` in this run directory; migration receipts and per-migration hashes are in `progress.tsv`.
+
+Classification: baseline fixture omission, not a C4 migration failure. The baseline preparation now seeds and verifies one synthetic default settings row; the next rehearsal uses a fresh disposable clone.

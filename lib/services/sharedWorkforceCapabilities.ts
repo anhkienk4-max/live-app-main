@@ -7,6 +7,34 @@
 type Entry = { promise: Promise<unknown>; expiresAt: number; pending: boolean }
 const requests = new Map<string, Entry>()
 const DEDUPE_WINDOW_MS = 1000
+const resumeSubscribers = new Set<() => void>()
+let resumeEventsListening = false
+let lastResumeAt = 0
+
+function notifyWorkforceResume(): void {
+  if (document.visibilityState !== 'visible') return
+  const now = Date.now()
+  if (now - lastResumeAt < DEDUPE_WINDOW_MS) return
+  lastResumeAt = now
+  resumeSubscribers.forEach(subscriber => subscriber())
+}
+
+export function subscribeToWorkforceCapabilityResume(subscriber: () => void): () => void {
+  resumeSubscribers.add(subscriber)
+  if (!resumeEventsListening) {
+    window.addEventListener('focus', notifyWorkforceResume)
+    document.addEventListener('visibilitychange', notifyWorkforceResume)
+    resumeEventsListening = true
+  }
+  return () => {
+    resumeSubscribers.delete(subscriber)
+    if (resumeSubscribers.size === 0 && resumeEventsListening) {
+      window.removeEventListener('focus', notifyWorkforceResume)
+      document.removeEventListener('visibilitychange', notifyWorkforceResume)
+      resumeEventsListening = false
+    }
+  }
+}
 
 export function readSharedWorkforceCapabilities<T>(
   identityKey: string,

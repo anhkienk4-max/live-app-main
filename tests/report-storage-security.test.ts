@@ -316,10 +316,14 @@ describe('Report Storage Security & Idempotency', () => {
   })
 
   it('13. Live Report image private-storage path is renderable through signed URL', async () => {
-    assert.match(galleryFile, /signedUrls\?\.\[cover\.id\]\s*\|\|/)
-    assert.match(galleryFile, /signedUrls\?\.\[image\.id\]\s*\|\|/)
-    assert.match(detailModalFile, /signedUrls\[image\.id\]/)
-    assert.match(detailModalFile, /reportImageService\.getSignedUrl\(img\.file_url\)/)
+    const resolver = galleryFile.match(/function resolveLiveReportImageUrl\([\s\S]*?\n\}/)?.[0]
+    assert.ok(resolver, 'gallery must have one URL resolver for every private image surface')
+    assert.match(resolver, /if \(signedUrls\?\.\[image\.id\]\) return signedUrls\[image\.id\]/)
+    assert.match(galleryFile, /const coverUrl = cover \? resolveLiveReportImageUrl\(cover, signedUrls\) : null/)
+    assert.match(galleryFile, /const viewerUrl = viewerImage \? resolveLiveReportImageUrl\(viewerImage, signedUrls\) : null/)
+    assert.match(galleryFile, /src=\{coverUrl\}/)
+    assert.match(detailModalFile, /reportImageService\.getAccessUrl\(img\.id, img\.storage_path \|\| img\.image_url\) \|\| await reportImageService\.getSignedUrl\(img\.storage_path \|\| img\.image_url\) \|\| ''/)
+    assert.match(detailModalFile, /liveReportImageService\.getAccessUrl\(img\.id, img\.file_url\) \|\| await reportImageService\.getSignedUrl\(img\.file_url\) \|\| ''/)
   })
   
   it('13b. Live metadata failure cleanup behaves correctly', async () => {
@@ -418,8 +422,13 @@ describe('Report Storage Security & Idempotency', () => {
     const { repo } = createStorageHarness({ sign: async () => ({ error: { message: 'signing denied' } }) })
     assert.strictEqual(await repo.getSignedImageUrl('reports/r1/private.png'), null)
     assert.doesNotMatch(serviceFile, /getPublicUrl/)
-    assert.match(galleryFile, /signedUrls\?\.\[image\.id\]\s*\|\|[\s\S]*startsWith\('blob:'\)[\s\S]*startsWith\('data:'\)/)
-    assert.match(detailModalFile, /signedUrls\[image\.id\]\s*\|\|\s*\(image\.image_url\.startsWith\('blob:'\)\s*\|\|\s*image\.image_url\.startsWith\('data:'\)/)
+    const resolver = galleryFile.match(/function resolveLiveReportImageUrl\([\s\S]*?\n\}/)?.[0]
+    assert.ok(resolver)
+    assert.match(resolver, /if \(signedUrls\?\.\[image\.id\]\) return signedUrls\[image\.id\]/)
+    assert.match(resolver, /if \(raw\.startsWith\('blob:'\)\) return raw/)
+    assert.match(resolver, /if \(raw\.startsWith\('data:'\)\)[\s\S]*?return null/)
+    assert.match(resolver, /return null\s*\n\}/, 'unrecognized stored paths must not become image URLs')
+    assert.match(detailModalFile, /reportImageService\.getAccessUrl\(img\.id, img\.storage_path \|\| img\.image_url\) \|\| await reportImageService\.getSignedUrl\(img\.storage_path \|\| img\.image_url\) \|\| ''/)
   })
 
   it('18. matching Report/Live metadata precheck skips object upload and RPC', async () => {

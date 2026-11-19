@@ -2,14 +2,13 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-10-20T16:56:31+00:00
+Generated at: 2026-11-19T18:01:33+07:00
 
 ## Repository
 
-- Branch: `fix/live-monitor-iframe-blocked-20261020`
-- HEAD: `3b75c03b77609307ad3eff4c58c642c22b46f0ef`
-- origin/main: `b96dcb6e1842e59f43170a1a8b15da712ee8a8e0`
-- Worktree: `C:/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc17b-payroll`
+- Canonical source branch: `main`
+- Snapshot HEAD: `af6a254d89dabb03515076501ffdb0a1feffcabe`
+- origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
 ## Hardening
@@ -21,10 +20,10 @@ Generated at: 2026-10-20T16:56:31+00:00
 
 ## Inventory
 
-- Routes: 56
-- Source files in tracked inventory roots: 742
-- Tests: 173
-- Migrations: 71
+- Routes: 88
+- Source files in tracked inventory roots: 1319
+- Tests: 319
+- Migrations: 132
 
 ## Modules
 

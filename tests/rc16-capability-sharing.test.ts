@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   readSharedWorkforceCapabilities,
   invalidateSharedWorkforceCapabilities,
+  subscribeToWorkforceCapabilityResume,
 } from '@/lib/services/sharedWorkforceCapabilities'
 
 test('RC16L capability calls share one in-flight request for the same identity', async () => {
@@ -104,4 +105,31 @@ test('RC16L slow in-flight capability reads remain coalesced beyond the short TT
   resolve('approved-by-server')
   assert.equal(await later, 'approved-by-server')
   invalidateSharedWorkforceCapabilities(identity)
+})
+
+test('workforce resume refresh shares one focus/visibility listener across consumers', () => {
+  const previousWindow = globalThis.window
+  const previousDocument = globalThis.document
+  const fakeWindow = new EventTarget() as Window
+  const fakeDocument = Object.assign(new EventTarget(), { visibilityState: 'visible' }) as Document
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: fakeWindow })
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: fakeDocument })
+  let firstRefreshes = 0
+  let secondRefreshes = 0
+  const unsubscribeFirst = subscribeToWorkforceCapabilityResume(() => { firstRefreshes++ })
+  const unsubscribeSecond = subscribeToWorkforceCapabilityResume(() => { secondRefreshes++ })
+
+  try {
+    fakeWindow.dispatchEvent(new Event('focus'))
+    fakeDocument.dispatchEvent(new Event('visibilitychange'))
+    assert.equal(firstRefreshes, 1)
+    assert.equal(secondRefreshes, 1)
+    unsubscribeFirst()
+    unsubscribeSecond()
+  } finally {
+    unsubscribeFirst()
+    unsubscribeSecond()
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: previousWindow })
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument })
+  }
 })

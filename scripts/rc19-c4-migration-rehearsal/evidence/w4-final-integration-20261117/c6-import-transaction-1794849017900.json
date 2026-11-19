@@ -1,0 +1,37 @@
+{
+  "result": "PASS",
+  "source_sha": "7200a90c91b2ae6a2d155e451f6cddb77f0ae5e3+dirty-candidate",
+  "worktree_dirty": false,
+  "postgres": "17.11",
+  "database": "rc19_c511_e2e_20261116042559",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "authenticated_actor": "synthetic Admin",
+  "reimport_identity_contract": "source + source_name + row_number receipt history; business-code changes within that locator are detected and never create a new parent",
+  "reimport_supported_mutation": "none; all changed source returns retryable IMPORT_SOURCE_CHANGED_REVIEW_REQUIRED",
+  "scenario_results": {
+    "A": "identical source -> duplicate_skipped; same parent and child IDs",
+    "B": "planned Host names -> retryable review_required; no assignment created",
+    "C": "K02 Host capacity H2 to H3 -> retryable review_required; no staffing mutation",
+    "D": "K02 time window change -> retryable review_required; no segment mutation",
+    "E": "parent date and external code change -> retryable review_required; no parent mutation",
+    "F": "parent start/end and external code change -> retryable review_required; no parent or segment mutation",
+    "G": "approved manual assignment present -> review_required; registration and audit preserved",
+    "H": "synthetic photo receipt, approved actual and decision present -> review_required; evidence and actuals preserved",
+    "I": "locked Payroll period and line present -> review_required; locked records preserved",
+    "J": "two concurrent changed-source requests -> both retryable, original import receipt unchanged"
+  },
+  "authorization_results": {
+    "in_scope_leader": "authenticated Leader with active shifts.manage Brand grant receives review_required; no parent mutation",
+    "foreign_brand_leader": "authenticated Leader without Brand grant denied; pending receipt unchanged",
+    "member": "authenticated Member denied Confirm; pending receipt unchanged",
+    "anonymous": "anon EXECUTE denied; pending receipt unchanged"
+  },
+  "fault_injection": [
+    "second-segment capacity rollback",
+    "duplicate segment index rollback",
+    "stale expected version denied"
+  ],
+  "concurrent_confirm": "one parent, two segments, persisted idempotent row outcome, audit history linked to canonical parent",
+  "timeout_response": "PostgreSQL SQLSTATE 57014 recorded retryable; imported count remained zero (injected RPC error contract)",
+  "production_accessed": false
+}

@@ -1,0 +1,5 @@
+SET
+BEGIN
+SET
+psql:/mnt/c/Users/KienNguyen/Downloads/KIEN ADA code/OPS LIVESTREAM PLATFORM/live-app-clean/.worktrees/rc19-c4-migration-rehearsal/scripts/rc19-c4-migration-rehearsal/evidence/active-c2-focused.sql:128: ERROR:  C2_RECONCILIATION_COLUMNS_MISMATCH:storage_resources
+CONTEXT:  PL/pgSQL function inline_code_block line 37 at RAISE

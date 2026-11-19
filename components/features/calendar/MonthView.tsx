@@ -16,6 +16,8 @@ interface MonthViewProps {
   registrations?: ShiftRegistration[]
   onShiftClick?: (shift: Shift) => void
   onDayClick?: (date: Date) => void
+  compact?: boolean
+  complete?: boolean
 }
 
 export const MONTH_VISIBLE_EVENT_LIMITS = {
@@ -26,8 +28,17 @@ export const MONTH_VISIBLE_EVENT_LIMITS = {
 
 export function shiftsForCalendarDate(shifts: Shift[], date: Date) {
   const dateValue = format(date, 'yyyy-MM-dd')
+  const previousDate = format(addDays(date, -1), 'yyyy-MM-dd')
   return shifts
-    .filter(shift => shift.date === dateValue)
+    .filter(shift => {
+      if (shift.date === dateValue) return true
+      const overnight = Boolean(
+        shift.crosses_midnight ||
+        shift.end_date === dateValue ||
+        (shift.end_time < shift.start_time && shift.end_time > '00:00'),
+      )
+      return shift.date === previousDate && overnight
+    })
     .sort((left, right) =>
       left.start_time.localeCompare(right.start_time) ||
       (left.title || left.id).localeCompare(right.title || right.id),
@@ -42,6 +53,8 @@ export function MonthView({
   registrations = [],
   onShiftClick,
   onDayClick,
+  compact = false,
+  complete = true,
 }: MonthViewProps) {
   const context: CalendarFilterContext = { currentDate: new Date(), brands, platforms, registrations }
   const { language, t } = useTranslation()
@@ -54,6 +67,41 @@ export function MonthView({
   for (let day = startDate; day <= endDate; day = addDays(day, 1)) {
     calendarDays.push(day)
   }
+
+  if (compact) return (
+    <div className="min-w-0" data-testid="calendar-compact-month-grid" aria-busy={!complete}>
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-t-lg border border-b-0 bg-border">
+        {Array.from({ length: 7 }, (_, index) => addDays(startDate, index)).map(day => (
+          <div className="min-w-0 bg-muted/60 px-0.5 py-1.5 text-center text-[10px] font-semibold text-muted-foreground sm:text-xs" key={format(day, 'yyyy-MM-dd')} aria-label={format(day, 'EEEE', { locale })}>
+            {format(day, 'EEE', { locale })}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-lg border bg-border">
+        {calendarDays.map(day => {
+          const date = format(day, 'yyyy-MM-dd')
+          const count = shiftsForCalendarDate(shifts, day).length
+          const currentDay = isToday(day)
+          return (
+            <button
+              type="button"
+              key={date}
+              data-testid={`calendar-compact-day-${date}`}
+              data-count={complete ? count : undefined}
+              aria-current={currentDay ? 'date' : undefined}
+              aria-label={`${t('openDaySessions', { date: format(day, 'PP', { locale }) })}, ${complete ? `${count} ${t('shifts')}` : t('loading')}`}
+              disabled={!complete}
+              onClick={() => onDayClick?.(day)}
+              className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 p-0.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-14 ${isSameMonth(day, monthStart) ? 'bg-background' : 'bg-muted/40 text-muted-foreground'} ${currentDay ? 'ring-2 ring-inset ring-primary' : ''}`}
+            >
+              <span className={`flex size-5 items-center justify-center rounded-full font-semibold ${currentDay ? 'bg-primary text-primary-foreground' : ''}`}>{format(day, 'd')}</span>
+              <span aria-hidden="true" className="text-[10px] leading-none">{complete ? count : '…'}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 
   const brandColor = (brandId: string) =>
     brands.find(brand => brand.id === brandId)?.color || '#2563EB'
@@ -70,14 +118,14 @@ export function MonthView({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-lg border bg-border">
+      <div className="grid grid-cols-7 gap-px rounded-b-lg border bg-border">
         {calendarDays.map(day => {
           const dayShifts = shiftsForCalendarDate(shifts, day)
           const currentMonth = isSameMonth(day, monthStart)
           const currentDay = isToday(day)
           return (
             <div
-              className={`min-h-36 min-w-0 overflow-hidden bg-background p-1.5 sm:min-h-40 sm:p-2 lg:min-h-44 ${
+              className={`scroll-mb-24 md:scroll-mb-0 min-h-36 min-w-0 bg-background p-1.5 sm:min-h-40 sm:p-2 lg:min-h-44 ${
                 currentMonth ? '' : 'bg-muted/40 text-muted-foreground'
               } ${currentDay ? 'ring-2 ring-inset ring-primary' : ''}`}
               data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
@@ -100,58 +148,29 @@ export function MonthView({
               </button>
 
               <div className="min-w-0 space-y-1">
-                {dayShifts.slice(0, MONTH_VISIBLE_EVENT_LIMITS.large).map((shift, index) => {
+                {dayShifts.slice(0, MONTH_VISIBLE_EVENT_LIMITS.large).map((shift) => {
                   const crossesMidnight = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time)?.crossesMidnight
-                  const title = shift.title || `${brandName(shift.brand_id)} live`
-                  const displayTitle = shift.studio ? `${title} • ${shift.studio}` : title
-                  const visibility = index === 1 ? 'hidden md:flex' : index === 2 ? 'hidden lg:flex' : 'flex'
                   return (
                       <ShiftCard
                         key={shift.id}
                         shift={shift}
-                        variant="standard"
-                        className={visibility + ' bg-background border-l-[3px] shadow-sm hover:shadow border-y border-r border-y-border border-r-border'}
+                        variant="month"
+                        className="shadow-sm hover:shadow"
                         style={{ borderLeftColor: brandColor(shift.brand_id) }}
                         onClick={event => {
                           event.stopPropagation()
                           onShiftClick?.(shift)
                         }}
                         context={context}
-                        title={shift.start_time + (crossesMidnight ? ' +1' : '') + ' - ' + displayTitle + ' - ' + shift.status}
+                        title={`${shift.start_time}${crossesMidnight ? ' +1' : ''} - ${brandName(shift.brand_id)} - ${shift.title || ''} - ${platforms.find(platform => platform.id === shift.platform_id)?.name || ''} - ${shift.status}`}
                         data-testid={'calendar-event-' + shift.id}
                       />
                     )
                 })}
 
-                {dayShifts.length > MONTH_VISIBLE_EVENT_LIMITS.narrow && (
-                  <button
-                    className="block w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted md:hidden"
-                    data-testid={`calendar-more-narrow-${format(day, 'yyyy-MM-dd')}`}
-                    onClick={event => {
-                      event.stopPropagation()
-                      onDayClick?.(day)
-                    }}
-                    type="button"
-                  >
-                    {t('moreSessions', { count: dayShifts.length - MONTH_VISIBLE_EVENT_LIMITS.narrow })}
-                  </button>
-                )}
-                {dayShifts.length > MONTH_VISIBLE_EVENT_LIMITS.medium && (
-                  <button
-                    className="hidden w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted md:block lg:hidden"
-                    data-testid={`calendar-more-medium-${format(day, 'yyyy-MM-dd')}`}
-                    onClick={event => {
-                      event.stopPropagation()
-                      onDayClick?.(day)
-                    }}
-                    type="button"
-                  >
-                    {t('moreSessions', { count: dayShifts.length - MONTH_VISIBLE_EVENT_LIMITS.medium })}
-                  </button>
-                )}
                 {dayShifts.length > MONTH_VISIBLE_EVENT_LIMITS.large && (
                   <button
-                    className="hidden w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted lg:block"
+                    className="block w-full truncate rounded px-1 text-center text-mini text-muted-foreground hover:bg-muted"
                     data-testid={`calendar-more-large-${format(day, 'yyyy-MM-dd')}`}
                     onClick={event => {
                       event.stopPropagation()

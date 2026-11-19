@@ -1,0 +1,58 @@
+{
+  "db": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "unassign": "PASS_UI_STATUS",
+  "assign": "PASS_UI_STATUS",
+  "rpcResponses": [
+    {
+      "path": "/rest/v1/rpc/search_staffing_candidates",
+      "status": 200
+    },
+    {
+      "path": "/rest/v1/rpc/search_staffing_candidates",
+      "status": 200
+    },
+    {
+      "path": "/rest/v1/rpc/remove_shift_staffing",
+      "status": 200
+    },
+    {
+      "path": "/rest/v1/rpc/search_staffing_candidates",
+      "status": 200
+    },
+    {
+      "path": "/rest/v1/rpc/search_staffing_candidates",
+      "status": 200
+    },
+    {
+      "path": "/rest/v1/rpc/manual_assign_shift_staff_to_segment",
+      "status": 200
+    },
+    {
+      "path": "/rest/v1/rpc/search_staffing_candidates",
+      "status": 200
+    },
+    {
+      "path": "/rest/v1/rpc/search_staffing_candidates",
+      "status": 200
+    }
+  ],
+  "readback": [
+    {
+      "id": "d2d6905c-a5c5-4b13-81f0-1524f4731681",
+      "user_id": "C6ReimportProtectedHost_c511_1794886705715_d9b0ea4cd96347",
+      "status": "removed",
+      "staffing_segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+      "operational_role": "host"
+    },
+    {
+      "id": "aecff2ed-77cb-4adf-8fdb-7ddae4ca47d5",
+      "user_id": "HostTwo_c511_1794886705715_a73a0921852248",
+      "status": "manually_assigned",
+      "staffing_segment_id": "b5644837-37a3-47a4-b295-3c2ed31e4bfe",
+      "operational_role": "host"
+    }
+  ],
+  "readback_ok": true,
+  "screenshot": "admin-assign-unassign-success-1440.png"
+}

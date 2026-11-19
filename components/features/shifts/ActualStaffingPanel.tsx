@@ -40,6 +40,7 @@ import {
   workforceService,
   workforceErrorMessage,
   type ActualSegment,
+  type ActualSegmentsResponse,
   type WorkforceRole,
 } from '@/lib/services/workforceService'
 import {
@@ -83,7 +84,9 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
   const { toast } = useToast()
   const permission = resolveSystemPermission(currentUser)
   const isSupervisor = permission === 'admin' || permission === 'leader'
+  const isAdmin = permission === 'admin'
   const isCompleted = shift.status === 'completed'
+  const requiresPayrollFinal = shift.date >= '2026-11-10'
 
   const [segments, setSegments] = React.useState<ActualSegment[]>([])
   const [loadError, setLoadError] = React.useState<string | null>(null)
@@ -109,6 +112,53 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
   const [revNote, setRevNote] = React.useState('')
   const [revSubmitting, setRevSubmitting] = React.useState(false)
   const [revError, setRevError] = React.useState<string | null>(null)
+  const [confirmingPayrollSegment, setConfirmingPayrollSegment] = React.useState<ActualSegment | null>(null)
+  const [payrollConfirmReason, setPayrollConfirmReason] = React.useState('')
+  const [payrollConfirmError, setPayrollConfirmError] = React.useState<string | null>(null)
+  const [payrollConfirmSubmitting, setPayrollConfirmSubmitting] = React.useState(false)
+  const [overtimeSegment,setOvertimeSegment]=React.useState<ActualSegment|null>(null)
+  const [overtimeStart,setOvertimeStart]=React.useState('')
+  const [overtimeEnd,setOvertimeEnd]=React.useState('')
+  const [overtimeDayClass,setOvertimeDayClass]=React.useState<'weekday'|'weekend'|'holiday'>('weekday')
+  const [overtimeTimeClass,setOvertimeTimeClass]=React.useState<'day'|'night'>('day')
+  const [overtimeReason,setOvertimeReason]=React.useState('')
+  const [overtimeReceipt,setOvertimeReceipt]=React.useState('')
+  const [overtimeError,setOvertimeError]=React.useState<string|null>(null)
+  const [overtimeSubmitting,setOvertimeSubmitting]=React.useState(false)
+  const [cancellationContext,setCancellationContext]=React.useState<ActualSegmentsResponse['cancellation_compensation_context']>()
+  const [compensationOpen,setCompensationOpen]=React.useState(false)
+  const [compensationCandidate,setCompensationCandidate]=React.useState('')
+  const [compensationPeriod,setCompensationPeriod]=React.useState('')
+  const [compensationReceipt,setCompensationReceipt]=React.useState('')
+  const [compensationCancelReason,setCompensationCancelReason]=React.useState('')
+  const [compensationReason,setCompensationReason]=React.useState('')
+  const [compensationAmount,setCompensationAmount]=React.useState('')
+  const [compensationError,setCompensationError]=React.useState<string|null>(null)
+  const [compensationSubmitting,setCompensationSubmitting]=React.useState(false)
+  const [compensationIntentLocked,setCompensationIntentLocked]=React.useState(false)
+  const compensationIntent=React.useRef<{payload:string;idempotencyKey:string}|null>(null)
+  const compensationSubmitLock=React.useRef(false)
+
+  const compensationCandidates = React.useMemo(() => [
+    ...segments.filter(segment => segment.event_kind === 'worked' && segment.review_status === 'approved'
+      && segment.actual_start_at && segment.actual_end_at)
+      .map(segment => ({
+        value: `segment:${segment.id}`,
+        staffId: segment.staff_id,
+        role: segment.operational_role,
+        actualSegmentId: segment.id,
+        registrationId: null,
+        label: `${segment.staff_id} · ${roleLabels[segment.operational_role]} · ${Math.max(0, Math.floor((Date.parse(segment.actual_end_at!) - Date.parse(segment.actual_start_at!)) / 1000))} giây đã duyệt`,
+      })),
+    ...(cancellationContext?.registrations ?? []).map(registration => ({
+      value: `registration:${registration.id}`,
+      staffId: registration.user_id,
+      role: registration.operational_role,
+      actualSegmentId: null,
+      registrationId: registration.id,
+      label: `${registration.user_id} · ${roleLabels[registration.operational_role]} · chưa ghi nhận thời gian làm`,
+    })),
+  ], [segments, cancellationContext])
 
   const reload = React.useCallback(() => {
     setLoading(true)
@@ -116,6 +166,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
     void workforceService.getActualSegments(shift.id)
       .then((res) => {
         setSegments(res.segments || [])
+        setCancellationContext(res.cancellation_compensation_context)
         if (res.lateness_policy) setLatenessPolicy(res.lateness_policy)
         if (res.planned_staff) setPlannedStaffList(res.planned_staff)
       })
@@ -129,6 +180,7 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
       .then((res) => {
         if (!ignore) {
           setSegments(res.segments || [])
+          setCancellationContext(res.cancellation_compensation_context)
           if (res.lateness_policy) setLatenessPolicy(res.lateness_policy)
           if (res.planned_staff) setPlannedStaffList(res.planned_staff)
           setLoadError(null)
@@ -324,6 +376,128 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
     }
   }
 
+  const handlePayrollConfirm = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!confirmingPayrollSegment || payrollConfirmReason.trim().length < 8) return
+    setPayrollConfirmSubmitting(true)
+    setPayrollConfirmError(null)
+    try {
+      const result = await workforceService.confirmPayrollSegment({
+        segmentId: confirmingPayrollSegment.id,
+        expectedVersion: confirmingPayrollSegment.payroll_decision?.version ?? 0,
+        idempotencyKey: crypto.randomUUID(),
+        reason: payrollConfirmReason.trim(),
+      })
+      if (result.decision.state === 'payroll_hold') {
+        toast({
+          title: 'Payroll vẫn đang HOLD',
+          description: result.decision.missing_evidence.join(', ') || 'Cần bổ sung minh chứng bắt buộc.',
+          variant: 'destructive',
+        })
+      } else {
+        toast({ title: 'Admin đã xác nhận Payroll', description: 'Quyết định được lưu cùng lịch sử kiểm toán.' })
+      }
+      setConfirmingPayrollSegment(null)
+      setPayrollConfirmReason('')
+      reload()
+    } catch (err: unknown) {
+      setPayrollConfirmError(workforceErrorMessage(err))
+    } finally {
+      setPayrollConfirmSubmitting(false)
+    }
+  }
+
+  const handleOvertimeSubmit=async(event:React.FormEvent)=>{
+    event.preventDefault()
+    const segment=overtimeSegment
+    if(!segment||!segment.actual_start_at||!segment.actual_end_at)return
+    setOvertimeError(null)
+    const vnInstant=(value:string)=>new Date(`${value}${value.length===16?':00':''}+07:00`).toISOString()
+    try{
+      const start=vnInstant(overtimeStart),end=vnInstant(overtimeEnd)
+      if(Date.parse(start)<Date.parse(segment.actual_start_at)||Date.parse(end)>Date.parse(segment.actual_end_at)||Date.parse(end)<=Date.parse(start))
+        throw new Error('Khoảng OT phải nằm trong giờ thực tế đã duyệt của phân đoạn.')
+      setOvertimeSubmitting(true)
+      await workforceService.requestOvertime({segmentId:segment.id,startAt:start,endAt:end,
+        dayClass:overtimeDayClass,timeClass:overtimeTimeClass,reason:overtimeReason.trim(),
+        evidenceReceiptId:overtimeReceipt.trim(),idempotencyKey:crypto.randomUUID()})
+      toast({title:'Đã gửi đề xuất OT',description:'OT chỉ được tính sau khi Admin xác nhận rate card hiệu lực.'})
+      setOvertimeSegment(null)
+      reload()
+    }catch(error){setOvertimeError(error instanceof Error?error.message:workforceErrorMessage(error))}
+    finally{setOvertimeSubmitting(false)}
+  }
+
+  const handleOvertimeDecision=async(decision:'leader_preapprove'|'admin_confirm'|'reject')=>{
+    const request=overtimeSegment?.overtime_request
+    if(!request)return
+    setOvertimeError(null)
+    try{
+      setOvertimeSubmitting(true)
+      await workforceService.decideOvertimeRequest({requestId:request.id,expectedVersion:request.version,
+        decision,reason:overtimeReason.trim(),idempotencyKey:crypto.randomUUID()})
+      toast({title:decision==='admin_confirm'?'OT đã được Admin xác nhận':'Đã lưu quyết định OT'})
+      setOvertimeSegment(null)
+      reload()
+    }catch(error){setOvertimeError(workforceErrorMessage(error))}
+    finally{setOvertimeSubmitting(false)}
+  }
+
+  const handleCompensationSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (compensationSubmitLock.current || !cancellationContext?.available) return
+    const candidate = compensationCandidates.find(item => item.value === compensationCandidate)
+    const amount = Number(compensationAmount)
+    if (!candidate || !compensationPeriod || !compensationReceipt
+      || !compensationCancelReason.trim() || compensationCancelReason.trim().length < 8
+      || compensationReason.trim().length < 8 || !Number.isSafeInteger(amount)
+      || amount < 1 || amount > 1_000_000_000_000) {
+      setCompensationError('Chọn nhân sự, kỳ lương và bằng chứng đã xác minh; nhập số tiền VND hợp lệ cùng lý do hủy và lý do đề xuất (mỗi lý do tối thiểu 8 ký tự).')
+      return
+    }
+    const payload = {
+      shiftId: shift.id,
+      staffId: candidate.staffId,
+      operationalRole: candidate.role,
+      actualSegmentId: candidate.actualSegmentId,
+      registrationId: candidate.registrationId,
+      periodId: compensationPeriod,
+      cancellationReason: compensationCancelReason.trim(),
+      reason: compensationReason.trim(),
+      evidenceReceiptId: compensationReceipt,
+      proposedAmountVnd: amount,
+    }
+    const fingerprint = JSON.stringify(payload)
+    if (compensationIntent.current && compensationIntent.current.payload !== fingerprint) {
+      setCompensationError('Đề xuất trước có thể đã được ghi nhận. Không đổi nội dung khi retry; hãy tải lại và kiểm tra danh sách trước khi tạo đề xuất mới.')
+      return
+    }
+    compensationIntent.current ??= { payload: fingerprint, idempotencyKey: crypto.randomUUID() }
+    setCompensationIntentLocked(true)
+    compensationSubmitLock.current = true
+    setCompensationSubmitting(true)
+    setCompensationError(null)
+    try {
+      await workforceService.proposeCancellationCompensation({ ...payload, idempotencyKey: compensationIntent.current.idempotencyKey })
+      compensationIntent.current = null
+      setCompensationIntentLocked(false)
+      setCompensationOpen(false)
+      setCompensationCandidate('')
+      setCompensationPeriod('')
+      setCompensationReceipt('')
+      setCompensationCancelReason('')
+      setCompensationReason('')
+      setCompensationAmount('')
+      toast({ title: isAdmin ? 'Đã lưu khoản hỗ trợ' : 'Đã gửi đề xuất cho Admin', description: isAdmin ? 'Khoản hỗ trợ được ghi nhận qua xác nhận Admin.' : 'Leader không thể xác nhận cuối khoản hỗ trợ.' })
+      reload()
+    } catch (error) {
+      setCompensationError(workforceErrorMessage(error))
+    } finally {
+      compensationSubmitLock.current = false
+      setCompensationSubmitting(false)
+    }
+  }
+
   const graceMinutes = latenessPolicy?.grace_minutes ?? 0
 
   function renderVarianceBadges(seg: ActualSegment) {
@@ -485,6 +659,11 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
             </Button>
           </div>
         )}
+        {shift.status === 'cancelled' && isSupervisor && cancellationContext?.available && compensationCandidates.length > 0 && (
+          <Button size="sm" variant="outline" onClick={() => { setCompensationOpen(true); setCompensationError(null) }}>
+            <Plus className="mr-1 h-3.5 w-3.5" /> Đề xuất hỗ trợ hủy ca
+          </Button>
+        )}
       </div>
 
       {loadError && <p role="alert" className="text-xs text-rose-600">{loadError}</p>}
@@ -577,10 +756,19 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                       {seg.evidence_note}
                     </td>
                     <td className="px-3 py-2.5">
-                      {isApproved ? (
+                      {isApproved && seg.payroll_decision?.state === 'payroll_hold' ? (
+                        <div className="space-y-1 text-rose-700">
+                          <div className="flex items-center gap-1 font-semibold text-[11px]"><AlertTriangle className="h-3.5 w-3.5" />PAYROLL_HOLD</div>
+                          <span className="block max-w-48 text-[10px]">Thiếu: {seg.payroll_decision.missing_evidence.join(', ') || 'Admin confirmation'}</span>
+                        </div>
+                      ) : isApproved && seg.payroll_decision?.state === 'pending_admin_confirmation' ? (
+                        <div className="flex items-center gap-1 text-amber-700 font-semibold text-[11px]"><Clock className="h-3.5 w-3.5" />Chờ Admin xác nhận Payroll</div>
+                      ) : isApproved && seg.payroll_decision?.state === 'admin_confirmed' ? (
+                        <div className="flex items-center gap-1 text-emerald-700 font-semibold text-[11px]"><CheckCircle2 className="h-3.5 w-3.5" />Admin đã xác nhận Payroll</div>
+                      ) : isApproved ? (
                         <div className="flex items-center gap-1 text-emerald-700 font-semibold text-[11px]">
                           <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>Đã duyệt (v{seg.version})</span>
+                          <span>{requiresPayrollFinal ? 'Giờ thực tế đã duyệt; chưa xác nhận Payroll' : `Đã duyệt (v${seg.version})`}</span>
                         </div>
                       ) : isRejected ? (
                         <div className="flex items-center gap-1 text-rose-700 font-semibold text-[11px]">
@@ -598,6 +786,9 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                           Bởi {seg.reviewed_by}
                         </div>
                       )}
+                      {isApproved&&seg.event_kind==='worked'&&requiresPayrollFinal&&seg.overtime_request?(
+                        <div className="mt-1 text-[10px] text-slate-600">OT {seg.overtime_request.day_class}/{seg.overtime_request.time_class} · {seg.overtime_request.state==='admin_confirmed'?'Admin đã duyệt':seg.overtime_request.state==='rejected'?'Đã từ chối':seg.overtime_request.leader_preapproved_by?'Chờ Admin xác nhận':'Chờ xem xét'} · {seg.overtime_request.overtime_seconds}s</div>
+                      ):null}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       {isDraftStatus && isSupervisor && (
@@ -613,6 +804,37 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
                         >
                           {isCreator ? 'Không thể tự duyệt' : 'Xét duyệt'}
                         </Button>
+                      )}
+                      {isSupervisor&&isApproved&&seg.event_kind==='worked'&&requiresPayrollFinal&&!seg.overtime_request&&seg.overtime_available!==false&&(
+                        <Button size="sm" variant="outline" className="mt-1 h-7 text-xs" onClick={()=>{
+                          setOvertimeSegment(seg);setOvertimeStart('');setOvertimeEnd('');setOvertimeDayClass('weekday');
+                          setOvertimeTimeClass('day');setOvertimeReason('');setOvertimeReceipt('');setOvertimeError(null)
+                        }}>Đề xuất OT</Button>
+                      )}
+                      {isAdmin&&seg.overtime_request?.state==='pending_admin_confirmation'&&(
+                        <Button size="sm" variant="outline" className="mt-1 h-7 text-xs" onClick={()=>{
+                          setOvertimeSegment(seg);setOvertimeReason('Admin xác nhận OT đã đối chiếu');setOvertimeError(null)
+                        }}>Duyệt OT</Button>
+                      )}
+                      {permission==='leader'&&seg.overtime_request?.state==='pending_admin_confirmation'&&!seg.overtime_request.leader_preapproved_by&&(
+                        <Button size="sm" variant="outline" className="mt-1 h-7 text-xs" onClick={()=>{
+                          setOvertimeSegment(seg);setOvertimeReason('Leader đã đối chiếu đề xuất OT');setOvertimeError(null)
+                        }}>Duyệt sơ bộ OT</Button>
+                      )}
+                      {isAdmin && requiresPayrollFinal && isApproved && seg.event_kind === 'worked'
+                        && seg.payroll_decision?.state !== 'admin_confirmed'
+                        && seg.payroll_decision_available !== false && (
+                        <Button size="sm" variant="outline" className="mt-1 h-7 text-xs"
+                          onClick={() => {
+                            setConfirmingPayrollSegment(seg)
+                            setPayrollConfirmReason('')
+                            setPayrollConfirmError(null)
+                          }}>
+                          Xác nhận Payroll
+                        </Button>
+                      )}
+                      {isAdmin && requiresPayrollFinal && isApproved && seg.payroll_decision_available === false && (
+                        <span className="block text-[10px] text-rose-700">Migration C5.15 chưa khả dụng</span>
                       )}
                     </td>
                   </tr>
@@ -898,6 +1120,92 @@ function ActualStaffingWorkspace({ shift, currentUser }: ActualStaffingPanelProp
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(confirmingPayrollSegment)} onOpenChange={(open) => !open && setConfirmingPayrollSegment(null)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Xác nhận Payroll cho phân đoạn</DialogTitle>
+            <DialogDescription>
+              Chỉ Admin có quyền Payroll mới có thể xác nhận cuối. Máy chủ sẽ kiểm tra lại Attendance, báo cáo cuối và KV/Visibility đã lưu.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handlePayrollConfirm} className="space-y-4">
+            {payrollConfirmError && <p role="alert" className="text-sm text-rose-700">{payrollConfirmError}</p>}
+            <p className="text-xs text-slate-600">Nhân sự: {confirmingPayrollSegment?.staff_id} · {confirmingPayrollSegment?.operational_role}</p>
+            <label htmlFor="actualstaffingpanel-payroll-confirm-reason" className="text-xs font-semibold">Lý do xác nhận</label>
+            <Textarea id="actualstaffingpanel-payroll-confirm-reason" value={payrollConfirmReason}
+              onChange={event => setPayrollConfirmReason(event.target.value)} minLength={8} maxLength={2000} required />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setConfirmingPayrollSegment(null)}>Đóng</Button>
+              <Button type="submit" disabled={payrollConfirmSubmitting || payrollConfirmReason.trim().length < 8}>
+                {payrollConfirmSubmitting ? 'Đang kiểm tra...' : 'Xác nhận và kiểm tra HOLD'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(overtimeSegment)} onOpenChange={open=>!open&&!overtimeSubmitting&&setOvertimeSegment(null)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto max-w-lg">
+          <DialogHeader><DialogTitle>Phê duyệt tăng ca có cấu trúc</DialogTitle>
+            <DialogDescription>OT chỉ tính trong giờ thực tế đã duyệt, theo rate card Admin đã cấu hình và xác nhận. Không có rate hợp lệ thì OT không được tính.</DialogDescription>
+          </DialogHeader>
+          {overtimeError?<p role="alert" className="text-sm text-rose-700">{overtimeError}</p>:null}
+          {overtimeSegment?.overtime_request? <div className="space-y-3 text-sm">
+            <p>Nhân sự {overtimeSegment.staff_id} · {overtimeSegment.operational_role} · {overtimeSegment.overtime_request.day_class}/{overtimeSegment.overtime_request.time_class} · {overtimeSegment.overtime_request.overtime_seconds} giây</p>
+            <p>Trạng thái: {overtimeSegment.overtime_request.state}. Rate card: {overtimeSegment.overtime_request.rate_card_id??'chưa xác nhận'}.</p>
+            <Textarea aria-label="Lý do quyết định OT" minLength={8} maxLength={2000} value={overtimeReason} onChange={e=>setOvertimeReason(e.target.value)} />
+            <DialogFooter>
+              {permission==='leader'&&!overtimeSegment.overtime_request.leader_preapproved_by?<Button type="button" variant="outline" disabled={overtimeSubmitting||overtimeReason.trim().length<8} onClick={()=>void handleOvertimeDecision('leader_preapprove')}>Duyệt sơ bộ</Button>:null}
+              {isAdmin?<><Button type="button" variant="outline" disabled={overtimeSubmitting||overtimeReason.trim().length<8} onClick={()=>void handleOvertimeDecision('reject')}>Từ chối</Button><Button type="button" disabled={overtimeSubmitting||overtimeReason.trim().length<8} onClick={()=>void handleOvertimeDecision('admin_confirm')}>Admin xác nhận</Button></>:null}
+            </DialogFooter>
+          </div>:<form onSubmit={handleOvertimeSubmit} className="space-y-3">
+            <p className="text-xs text-slate-600">{overtimeSegment?.staff_id} · {overtimeSegment?.operational_role}. Phân loại thời gian là đề xuất có cấu trúc và được người duyệt đối chiếu.</p>
+            <div className="grid grid-cols-2 gap-2"><label className="text-xs">Bắt đầu OT (giờ Việt Nam)<Input type="datetime-local" step="1" required value={overtimeStart} onChange={e=>setOvertimeStart(e.target.value)} /></label>
+              <label className="text-xs">Kết thúc OT (giờ Việt Nam)<Input type="datetime-local" step="1" required value={overtimeEnd} onChange={e=>setOvertimeEnd(e.target.value)} /></label></div>
+            <div className="grid grid-cols-2 gap-2"><label className="text-xs">Ngày<select className="mt-1 block w-full rounded border p-2" value={overtimeDayClass} onChange={e=>setOvertimeDayClass(e.target.value as typeof overtimeDayClass)}><option value="weekday">Ngày thường</option><option value="weekend">Cuối tuần</option><option value="holiday">Ngày lễ</option></select></label>
+              <label className="text-xs">Khung giờ<select className="mt-1 block w-full rounded border p-2" value={overtimeTimeClass} onChange={e=>setOvertimeTimeClass(e.target.value as typeof overtimeTimeClass)}><option value="day">Ban ngày</option><option value="night">Ban đêm</option></select></label></div>
+            <Input required minLength={1} maxLength={120} aria-label="ID biên nhận minh chứng OT đã xác minh" placeholder="ID biên nhận file có SHA-256 đã xác minh" value={overtimeReceipt} onChange={e=>setOvertimeReceipt(e.target.value)} />
+            <Textarea required minLength={8} maxLength={2000} aria-label="Lý do đề xuất OT" placeholder="Lý do và căn cứ đề xuất OT" value={overtimeReason} onChange={e=>setOvertimeReason(e.target.value)} />
+            <DialogFooter><Button type="button" variant="outline" disabled={overtimeSubmitting} onClick={()=>setOvertimeSegment(null)}>Hủy</Button><Button type="submit" disabled={overtimeSubmitting}>{overtimeSubmitting?'Đang gửi…':'Gửi đề xuất'}</Button></DialogFooter>
+          </form>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={compensationOpen} onOpenChange={open => !compensationSubmitting && setCompensationOpen(open)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Đề xuất hỗ trợ do Brand/ADA hủy ca</DialogTitle>
+            <DialogDescription>Giờ thực tế đã duyệt được giữ riêng. Thời gian chưa làm không tự sinh lương và không có mức hỗ trợ tối thiểu. {isAdmin ? 'Đề xuất Admin gửi được xác nhận trực tiếp theo quyền hiện có.' : 'Đề xuất của Leader chỉ có hiệu lực sau Admin xác nhận.'}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCompensationSubmit} className="space-y-3">
+            {compensationError && <p role="alert" className="text-sm text-rose-700">{compensationError}</p>}
+            <label className="block space-y-1 text-xs">Nhân sự và thời gian thực tế
+              <select required disabled={compensationIntentLocked || compensationSubmitting} value={compensationCandidate} onChange={event => setCompensationCandidate(event.target.value)} className="block w-full rounded border bg-white px-3 py-2 text-sm">
+                <option value="">Chọn hồ sơ</option>{compensationCandidates.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </label>
+            <label className="block space-y-1 text-xs">Kỳ Payroll
+              <select required disabled={compensationIntentLocked || compensationSubmitting} value={compensationPeriod} onChange={event => setCompensationPeriod(event.target.value)} className="block w-full rounded border bg-white px-3 py-2 text-sm">
+                <option value="">Chọn kỳ đang mở</option>{cancellationContext?.periods.map(period => <option key={period.id} value={period.id}>{period.period_start} → {period.period_end}</option>)}
+              </select>
+            </label>
+            <label className="block space-y-1 text-xs">Bằng chứng lưu trữ đã xác minh
+              <select required disabled={compensationIntentLocked || compensationSubmitting} value={compensationReceipt} onChange={event => setCompensationReceipt(event.target.value)} className="block w-full rounded border bg-white px-3 py-2 text-sm">
+                <option value="">Chọn biên nhận</option>{cancellationContext?.evidence_receipts.map(receipt => <option key={receipt.id} value={receipt.id}>{receipt.created_at} · {receipt.id}</option>)}
+              </select>
+            </label>
+            <Input required minLength={8} maxLength={2000} disabled={compensationIntentLocked || compensationSubmitting} aria-label="Lý do hủy ca" placeholder="Lý do Brand/ADA hủy ca" value={compensationCancelReason} onChange={event => setCompensationCancelReason(event.target.value)} />
+            <Input required type="number" min={1} max={1_000_000_000_000} step={1} inputMode="numeric" disabled={compensationIntentLocked || compensationSubmitting} aria-label="Khoản hỗ trợ đề xuất VND" placeholder="Số tiền đề xuất (VND), không có mức mặc định" value={compensationAmount} onChange={event => setCompensationAmount(event.target.value)} />
+            <Textarea required minLength={8} maxLength={2000} disabled={compensationIntentLocked || compensationSubmitting} aria-label="Lý do đề xuất hỗ trợ" placeholder="Căn cứ đề xuất, tối thiểu 8 ký tự" value={compensationReason} onChange={event => setCompensationReason(event.target.value)} />
+            {compensationIntentLocked && <p role="status" className="text-xs text-amber-700">Retry sẽ gửi nguyên payload với cùng idempotency key. Không chỉnh nội dung cho đến khi xác định kết quả lần gửi trước.</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={compensationSubmitting} onClick={() => setCompensationOpen(false)}>Đóng</Button>
+              <Button type="submit" disabled={compensationSubmitting || !cancellationContext?.available}>{compensationSubmitting ? 'Đang gửi…' : 'Gửi để Admin xác nhận'}</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

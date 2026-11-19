@@ -1,0 +1,6 @@
+
+> app@0.1.0 build C:\Users\KienNguyen\Downloads\KIEN ADA code\OPS LIVESTREAM PLATFORM\rc19-g11-workforce-payroll-ui
+> node --import ./tests/typescript-alias-loader.mjs scripts/check-runtime-environment.ts build && next build
+
+[ENV GUARD] ENV_SUPABASE_CONFIG_REQUIRED
+ ELIFECYCLE  Command failed with exit code 1.

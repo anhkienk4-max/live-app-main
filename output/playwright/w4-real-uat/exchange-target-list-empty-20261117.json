@@ -1,0 +1,50 @@
+{
+  "db": "rc19_c511_e2e_20261116173756",
+  "marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "actor": "UiReplacement_ui_1794890074612_22ec09ce",
+  "fixtureShiftId": "881c2bde-541a-4683-8b0c-7731e9d67402",
+  "api": [
+    {
+      "status": 200,
+      "entity": "swaps",
+      "total": 1,
+      "items": 1,
+      "containsFixture": false,
+      "firstTitles": [
+        null
+      ]
+    },
+    {
+      "status": 200,
+      "entity": "my_shifts",
+      "total": 1,
+      "items": 1,
+      "containsFixture": false,
+      "firstTitles": [
+        "W4 UI Atomic Replace ui_1794890074612_22ec09ce"
+      ]
+    },
+    {
+      "status": 200,
+      "entity": "my_shifts",
+      "total": 1,
+      "items": 1,
+      "containsFixture": false,
+      "firstTitles": [
+        "W4 UI Atomic Replace ui_1794890074612_22ec09ce"
+      ]
+    },
+    {
+      "status": 200,
+      "entity": "shifts",
+      "total": 1,
+      "items": 1,
+      "containsFixture": false,
+      "firstTitles": [
+        "W4 UI Atomic Replace ui_1794890074612_22ec09ce"
+      ]
+    }
+  ],
+  "text": "nd 1794886776005\nC6 PG17 Brand 1794886776005\nW4 UI Test Brand ui_1794890074612_22ec09ce\nPlatform\nTất cả\nC5.11 Platform 1794886705715\nC5.15 cancellation platform 1794886705715\nC6 PG17 1794886776005\nW4 UI Test Platform ui_1794890074612_22ec09ce\nTìm kiếm\nCa trực\tBrand / Platform\tNgày · Giờ\tTrạng thái\tVai trò\tChọn\nW4 UI Atomic Replace ui_1794890074612_22ec09ce\tW4 UI Test Brand ui_1794890074612_22ec09ce · W4 UI Test Platform ui_1794890074612_22ec09ce\t2026-11-22 · 10:00 - 11:00 Asia/Ho_Chi_Minh · synthetic\tĐÃ LÊN LỊCH\tHost\tĐã chọn\nVai trò thực hiện đổi ca\n✓ Tự động chọn vai trò duy nhất\nHost\nW4 UI Atomic Replace ui_1794890074612_22ec09ce · 2026-11-22 (10:00 - 11:00)\n2. Ca và người đổi chéo\nTìm kiếm\nKhông có ca đổi phù hợp trong hệ thống\n3. Lý do yêu cầu *\nTối thiểu 10 ký tự\n0/500\nHủy\nGửi yêu cầu",
+  "screen": "C:\\Users\\KienNguyen\\Downloads\\KIEN ADA code\\OPS LIVESTREAM PLATFORM\\rc19-w4-final-integration\\output\\playwright\\w4-real-uat/exchange-target-list-empty.png"
+}

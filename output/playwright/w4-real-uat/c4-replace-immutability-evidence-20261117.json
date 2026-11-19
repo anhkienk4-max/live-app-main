@@ -1,0 +1,54 @@
+{
+  "verifiedAt": "2026-11-17T09:29:20.378Z",
+  "testShift": {
+    "id": "6ee6fb9d-291e-4e91-9541-09b6a5d708b7",
+    "date": "2026-12-25",
+    "segmentId": "12d49b1a-99ca-4d7f-ad4b-66f3fd1a3127",
+    "incumbentStaffId": "HostOne_c511_1794886705715_5f2238403c0c40",
+    "replacementStaffId": "HostTwo_c511_1794886705715_a73a0921852248",
+    "attendanceEventId": "d98e4ec2-5d74-46a8-8101-90696a83cb06",
+    "actualSegmentId": "1a2cbc12-3729-496d-add6-91b03a480adb"
+  },
+  "c4ReplacementResult": {
+    "replacementId": "bf42ffe7-7327-4bff-b1d0-10d3ce7e0f90",
+    "oldRegistrationId": "ca65e459-42ca-4507-b7fd-98f0802845ca",
+    "oldRegistrationStatus": "removed",
+    "newRegistrationId": "c0fe0f70-9c69-427f-9207-edcef5ef313d",
+    "newRegistrationStatus": "manually_assigned",
+    "replacementReceiptId": "bf42ffe7-7327-4bff-b1d0-10d3ce7e0f90",
+    "success": true
+  },
+  "baselines": {
+    "payrollBefore": {
+      "periodCount": 3,
+      "lineCount": 6,
+      "sha256": "ea468279670ee91917a88d7c030f3799a201ca8f9e6a12ab416452b0b6b93cae"
+    },
+    "payrollAfter": {
+      "periodCount": 3,
+      "lineCount": 6,
+      "sha256": "ea468279670ee91917a88d7c030f3799a201ca8f9e6a12ab416452b0b6b93cae"
+    },
+    "payrollUnchanged": true,
+    "attendanceBefore": {
+      "eventCount": 12,
+      "sha256": "703c7baee0a573f1f347f8ee6b91d503b3c46e2f67fcf61edd01f0e5a48bcc1d"
+    },
+    "attendanceAfter": {
+      "eventCount": 12,
+      "sha256": "703c7baee0a573f1f347f8ee6b91d503b3c46e2f67fcf61edd01f0e5a48bcc1d"
+    },
+    "attendanceUnchanged": true,
+    "actualBefore": {
+      "segmentCount": 7,
+      "decisionCount": 6,
+      "sha256": "be13f9da929c7546718282ea7f7b089b921e57e4216b4df354e8d6368537206f"
+    },
+    "actualAfter": {
+      "segmentCount": 7,
+      "decisionCount": 6,
+      "sha256": "be13f9da929c7546718282ea7f7b089b921e57e4216b4df354e8d6368537206f"
+    },
+    "actualUnchanged": true
+  }
+}

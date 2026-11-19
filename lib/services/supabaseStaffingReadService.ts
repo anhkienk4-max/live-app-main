@@ -4,11 +4,11 @@ import type { Shift, ShiftStaffingSummary } from '@/lib/types/database.types'
 export async function readShiftStaffingSummary(client: SupabaseClient, shiftIds: string[]): Promise<ShiftStaffingSummary[]> {
   const rows: ShiftStaffingSummary[] = []
   const ids = [...new Set(shiftIds)]
-  for (let offset = 0; offset < ids.length; offset += 100) {
-    const result = await client.rpc('get_shift_staffing_summary', { p_shift_ids: ids.slice(offset, offset + 100) })
+  for (let offset = 0; offset < ids.length; offset += 400) { const batch = [0, 100, 200, 300].map(d => offset + d).filter(o => o < ids.length); const results = await Promise.all(batch.map(o => client.rpc('get_shift_staffing_summary', { p_shift_ids: ids.slice(o, o + 100) }))); for (const result of results) {
+    void offset
     if (result.error) throw new Error(result.error.message)
     rows.push(...(result.data ?? []))
-  }
+  } }
   return rows
 }
 

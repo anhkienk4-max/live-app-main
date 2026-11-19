@@ -62,7 +62,7 @@ import {
   resolveHybridMetric,
 } from '@/lib/utils/visionOcrHybrid'
 import { toVisionPlatform, type HybridMetricResult } from '@/lib/visionOcr/types'
-import { hasPermission } from '@/lib/permissions'
+import { canExportReports, hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
@@ -911,6 +911,31 @@ export function ReportFormModal({
             </div>
           </section>
 
+          <LiveReportImageEditor
+            signedUrls={signedUrls}
+            images={liveImages}
+            uploadedBy={currentUser?.id}
+            editable={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+            canDelete={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+            canReorderAndSetCover={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
+            onAdd={incoming => setLiveImages(current => [...current, ...incoming])}
+            onUpdate={(image, patch) => {
+              const result = updateLiveReportImageMetadata(liveImages, image.id, patch)
+              if (result.error) {
+                toast({ title: t('validationError'), variant: 'destructive' })
+                return
+              }
+              setLiveImages(result.images)
+            }}
+            onDelete={image => {
+              const result = removeLiveReportImage(liveImages, image.id)
+              if (result.removed) revokeLiveReportImageObjectUrl(result.removed)
+              setLiveImages(result.images)
+            }}
+            onMove={(image, direction) => setLiveImages(current => moveLiveReportImage(current, image.id, direction))}
+            onSetCover={image => setLiveImages(current => setLiveReportCover(current, image.id))}
+          />
+
           <section className="space-y-4 rounded-lg border p-4" data-testid="report-data-artifacts">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -946,9 +971,14 @@ export function ReportFormModal({
                         <p className="text-xs text-muted-foreground">{artifact.folder_path}</p>
                       </div>
                       <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => window.open(reportArtifactService.getAccessUrl(artifact.id), '_blank')}>
-                          Tải xuống
-                        </Button>
+                        {(artifact.logical_category === 'data_report'
+                          ? canExportReports(currentUser)
+                          : canExportReports(currentUser) || (currentUser && resolveSystemPermission(currentUser) === 'member'
+                            && initialReport?.submitted_by === currentUser.id)) && (
+                          <Button type="button" size="sm" variant="outline" onClick={() => window.open(reportArtifactService.getAccessUrl(artifact.id), '_blank')}>
+                            Tải xuống
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           size="sm"
@@ -1134,31 +1164,6 @@ export function ReportFormModal({
               </>}
             </>}
           </section>
-
-          <LiveReportImageEditor
-              signedUrls={signedUrls}
-              images={liveImages}
-            uploadedBy={currentUser?.id}
-            editable={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
-            canDelete={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
-            canReorderAndSetCover={Boolean(currentUser && hasPermission(currentUser, 'reports.submit'))}
-            onAdd={incoming => setLiveImages(current => [...current, ...incoming])}
-            onUpdate={(image, patch) => {
-              const result = updateLiveReportImageMetadata(liveImages, image.id, patch)
-              if (result.error) {
-                toast({ title: t('validationError'), variant: 'destructive' })
-                return
-              }
-              setLiveImages(result.images)
-            }}
-            onDelete={image => {
-              const result = removeLiveReportImage(liveImages, image.id)
-              if (result.removed) revokeLiveReportImageObjectUrl(result.removed)
-              setLiveImages(result.images)
-            }}
-            onMove={(image, direction) => setLiveImages(current => moveLiveReportImage(current, image.id, direction))}
-            onSetCover={image => setLiveImages(current => setLiveReportCover(current, image.id))}
-          />
 
           <section className="space-y-4 rounded-lg border p-4" data-testid="final-report-notes-section">
             <h3 className="font-semibold">{t('notes')}</h3>

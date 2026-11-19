@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  calculatePayrollAmounts, calculatePayrollLine, nextPayrollState, selectApprovedRate,
+  autoCalculatePeriodLines, calculatePayrollAmounts, calculatePayrollAmountsFromSeconds,
+  calculatePayrollLine, calculateRecalculationDiffs, calculateSecondPrecisionPayrollLine,
+  nextPayrollState, selectApprovedRate,
   type ActualStaffingEvidence, type ApprovedPayrollRate,
 } from '@/lib/workforce/payrollCalculation'
 import { summarizeWorkforcePerformance } from '@/lib/workforce/workforcePerformance'
@@ -56,6 +58,90 @@ test('payroll: actual time crossing midnight is computed from timezone offsets',
   })
   assert.equal(item.actualMinutes,90)
   assert.equal(item.grossVnd,150000)
+})
+test('RC19 seconds: owner example keeps exact seconds and rounds only final VND',()=>{
+  const line=calculateSecondPrecisionPayrollLine({
+    segment:{...verified,startAt:'2026-11-10T10:03:27+07:00',endAt:'2026-11-10T14:00:12+07:00'},
+    shiftDate:'2026-11-10',rate,payableSeconds:14205,overtimeSeconds:0,
+  })
+  assert.equal(line.actualSeconds,14205)
+  assert.equal(line.payableSeconds,14205)
+  assert.equal(line.actualMinutes,236) // compatibility projection only
+  assert.equal(line.grossVnd,394583)
+  assert.equal(line.calculationVersion,'rc19-seconds-v1')
+})
+test('RC19 seconds: one and fifty-nine seconds remain distinct, including overnight',()=>{
+  assert.equal(calculateSecondPrecisionPayrollLine({
+    segment:{...verified,startAt:'2026-11-10T23:59:59+07:00',endAt:'2026-11-11T00:00:00+07:00'},
+    shiftDate:'2026-11-10',rate,payableSeconds:1,overtimeSeconds:0,
+  }).actualSeconds,1)
+  assert.equal(calculateSecondPrecisionPayrollLine({
+    segment:{...verified,startAt:'2026-11-10T23:59:01+07:00',endAt:'2026-11-11T00:00:00+07:00'},
+    shiftDate:'2026-11-10',rate,payableSeconds:59,overtimeSeconds:0,
+  }).actualSeconds,59)
+  assert.equal(calculateSecondPrecisionPayrollLine({
+    segment:{...verified,startAt:'2026-11-10T10:00:00.001+07:00',endAt:'2026-11-10T10:00:01+07:00'},
+    shiftDate:'2026-11-10',rate,payableSeconds:1,overtimeSeconds:0,
+  }).actualSeconds,1)
+})
+test('RC19 auto payroll never grants post-cutover overtime from free-text notes',()=>{
+  const result=autoCalculatePeriodLines({
+    period:{periodStart:'2026-11-10',periodEnd:'2026-11-10'},
+    segments:[{shiftDate:'2026-11-10',segment:{...verified,
+      startAt:'2026-11-10T10:00:00+07:00',endAt:'2026-11-10T11:00:01+07:00',
+      reviewNote:'OT approved 1 hour',evidenceNote:'overtime'},
+      payrollEvidenceCompleteness:'verified_complete'}],
+    rates:[rate],
+  })
+  assert.equal(result.preparedLines[0]?.actualSeconds,3601)
+  assert.equal(result.preparedLines[0]?.overtimeSeconds,0)
+  assert.equal(result.unapprovedOtExceptions[0]?.reason,'STRUCTURED_OVERTIME_APPROVAL_REQUIRED')
+})
+test('RC19 post-cutover OT is paid only from an approved structured interval and keeps its classification',()=>{
+  const segment={...verified,startAt:'2026-11-10T10:00:00+07:00',endAt:'2026-11-10T11:00:01+07:00',
+    reviewNote:'OT approved 1 hour',evidenceNote:'Overtime request'}
+  const base={period:{periodStart:'2026-11-10',periodEnd:'2026-11-10'},
+    segments:[{shiftDate:'2026-11-10',segment,payrollEvidenceCompleteness:'verified_complete' as const}],rates:[rate]}
+  const denied=autoCalculatePeriodLines(base)
+  assert.equal(denied.preparedLines[0]?.overtimeSeconds,0)
+  const approved=autoCalculatePeriodLines({...base,approvedOvertimeBySegment:new Map([['segment-1',{
+    id:'ot-1',overtimeSeconds:61,dayClass:'weekday' as const,timeClass:'day' as const,multiplierBasisPoints:20000,
+  }]])})
+  assert.equal(approved.preparedLines[0]?.overtimeSeconds,61)
+  assert.equal(approved.preparedLines[0]?.overtimeRequestId,'ot-1')
+  assert.equal(approved.preparedLines[0]?.overtimeDayClass,'weekday')
+  assert.equal(approved.preparedLines[0]?.overtimeTimeClass,'day')
+  assert.equal(approved.preparedLines[0]?.overtimeMultiplierBasisPoints,20000)
+  assert.equal(approved.preparedLines[0]?.grossVnd,101722)
+})
+test('RC19 post-cutover shifts without verified report completeness enter Payroll Hold',()=>{
+  const result=autoCalculatePeriodLines({
+    period:{periodStart:'2026-11-10',periodEnd:'2026-11-10'},
+    segments:[{shiftDate:'2026-11-10',segment:{...verified,
+      startAt:'2026-11-10T10:00:00+07:00',endAt:'2026-11-10T11:00:00+07:00'}}],
+    rates:[rate],
+  })
+  assert.equal(result.preparedLines.length,0)
+  assert.equal(result.payrollHolds[0]?.reason,'REQUIRED_EVIDENCE_COMPLETENESS_UNVERIFIED')
+  assert.equal(result.skippedSegments[0]?.reason,'PAYROLL_HOLD_REQUIRED_EVIDENCE_COMPLETENESS_UNVERIFIED')
+})
+test('RC19 second payroll money uses one integer half-up VND rounding',()=>{
+  assert.equal(calculatePayrollAmountsFromSeconds({actualSeconds:14205,payableSeconds:14205,
+    overtimeSeconds:0,rateVndPerHour:100000,overtimeMultiplierBasisPoints:15000}).grossVnd,394583)
+  assert.throws(()=>calculatePayrollAmountsFromSeconds({actualSeconds:59,payableSeconds:60,
+    overtimeSeconds:0,rateVndPerHour:100000,overtimeMultiplierBasisPoints:15000}),
+  {message:'WORKFORCE_PAYABLE_SECONDS_INVALID'})
+})
+test('RC19 rate recalculation preview uses stored seconds, not minute projections',()=>{
+  const {diffs}=calculateRecalculationDiffs({
+    lines:[{id:'line-seconds',periodId:'p',segmentId:'s',rateCardId:'old-rate',staffId:'staff-1',
+      role:'host',version:1,shiftDate:'2026-11-10',actualMinutes:236,payableMinutes:236,
+      overtimeMinutes:0,actualSeconds:14205,payableSeconds:14205,overtimeSeconds:0,
+      rateVndPerHour:100000,overtimeMultiplierBasisPoints:15000,grossVnd:394583,
+      adjustmentVnd:0,netVnd:394583,adjustmentReason:null}],
+    rates:[{...rate,id:'new-rate',effectiveFrom:'2026-11-10',vndPerHour:120000}],
+  })
+  assert.equal(diffs[0]?.newGrossVnd,473500)
 })
 test('payroll refuses draft, no-show, out-of-scope rates, fabricated time and OT', () => {
   const original={segment:verified,shiftDate:'2026-09-30',rate,payableMinutes:90,overtimeMinutes:0}

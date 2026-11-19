@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { requestAttendanceFolderMaterialization } from '@/lib/services/attendanceFolderMaterializationClient'
 import { withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
 
 import { createClient } from '@/lib/supabase/client'
 import type {
+  AgencyCode,
   DeletionImpact,
   LifecycleMetadata,
   Shift,
@@ -10,7 +12,8 @@ import type {
   ShiftStatusMode,
 } from '@/lib/types/database.types'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE } from '@/lib/utils/shiftUtils'
-import { resolveExecutionSource } from '@/lib/utils/executionSource'
+import { executionSourceForAgency, resolveExecutionSource } from '@/lib/utils/executionSource'
+import type { PersistedScheduleImportResult } from '@/lib/utils/scheduleImportRecovery'
 
 const shiftColumns = [
   'id',
@@ -25,6 +28,7 @@ const shiftColumns = [
   'duration_minutes',
   'brand_id',
   'execution_source',
+  'agency_code',
   'platform_id',
   'campaign_id',
   'title',
@@ -46,6 +50,7 @@ const shiftColumns = [
   'status_mode',
   'live_link',
   'product_notes',
+  'supplemental_fields',
   'updated_by',
   'created_at',
   'updated_at',
@@ -60,7 +65,7 @@ const shiftColumns = [
 type ShiftSchemaMode = 'database' | 'compat'
 
 function selectedShiftColumns(mode: ShiftSchemaMode): string {
-  return shiftColumns.filter(column => mode === 'database' || column !== 'execution_source').join(',')
+  return shiftColumns.filter(column => mode === 'database' || !['execution_source', 'agency_code', 'supplemental_fields'].includes(column)).join(',')
 }
 
 const SUPABASE_PAGE_SIZE = 1000
@@ -187,6 +192,7 @@ export function shiftFromRow(row: ShiftRow, mode: ShiftSchemaMode, explicitExecu
     execution_source: mode === 'compat'
       ? resolveExecutionSource({ explicit: explicitExecutionSource, studio: row.studio })
       : row.execution_source ?? null,
+    agency_code: mode === 'compat' ? null : ((row.agency_code as AgencyCode | null) ?? null),
     platform_id: row.platform_id,
     campaign_id: row.campaign_id ?? undefined,
     title: row.title ?? undefined,
@@ -208,6 +214,7 @@ export function shiftFromRow(row: ShiftRow, mode: ShiftSchemaMode, explicitExecu
     status_mode: (row.status_mode as ShiftStatusMode | null) ?? 'auto',
     live_link: row.live_link ?? undefined,
     product_notes: row.product_notes ?? undefined,
+    supplemental_fields: row.supplemental_fields ?? {},
     updated_by: row.updated_by ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -224,7 +231,10 @@ function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>, mo
     end_time: data.end_time,
     timezone: data.timezone || DEFAULT_BUSINESS_TIMEZONE,
     brand_id: data.brand_id,
-    ...(mode === 'database' ? { execution_source: data.execution_source } : {}),
+    ...(mode === 'database' ? {
+      execution_source: data.execution_source,
+      agency_code: data.agency_code ?? null,
+    } : {}),
     platform_id: data.platform_id,
     campaign_id: data.campaign_id,
     title: data.title,
@@ -235,6 +245,7 @@ function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>, mo
     host_names: data.host_names ?? [],
     assistant_names: data.assistant_names ?? [],
     technical_names: data.technical_names ?? [],
+    ...(data.staffing_segments?.length ? { staffing_segments: data.staffing_segments } : {}),
     required_host_count: data.required_host_count,
     required_support_count: data.required_support_count,
     required_technical_count: data.required_technical_count,
@@ -244,6 +255,7 @@ function createPayload(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>, mo
     status: data.status,
     live_link: data.live_link,
     product_notes: data.product_notes,
+    ...(mode === 'database' ? { supplemental_fields: data.supplemental_fields } : {}),
   }
   return Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== undefined),
@@ -257,7 +269,10 @@ function updatePayload(data: Partial<Shift>, mode: ShiftSchemaMode): Record<stri
     start_time: data.start_time,
     end_time: data.end_time,
     brand_id: data.brand_id,
-    ...(mode === 'database' ? { execution_source: data.execution_source } : {}),
+    ...(mode === 'database' ? {
+      execution_source: data.execution_source,
+      agency_code: data.agency_code,
+    } : {}),
     platform_id: data.platform_id,
     campaign_id: data.campaign_id,
     title: data.title,
@@ -268,6 +283,7 @@ function updatePayload(data: Partial<Shift>, mode: ShiftSchemaMode): Record<stri
     status: data.status,
     live_link: data.live_link,
     product_notes: data.product_notes,
+    ...(mode === 'database' ? { supplemental_fields: data.supplemental_fields } : {}),
     registration_cutoff_at: data.registration_cutoff_at,
     allow_multi_role: data.allow_multi_role,
   }
@@ -290,6 +306,7 @@ export interface SupabaseShiftRepository {
   getToday(): Promise<Shift[]>
   getDeletionImpact(id: string): Promise<DeletionImpact | null>
   create(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<Shift>
+  createFromImport(batchId: string, rowNumber: number, data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<PersistedScheduleImportResult>
   update(id: string, data: Partial<Shift>, confirmImpact?: boolean, expectedVersion?: number): Promise<Shift | null>
   updateStaffingLabels(id: string, labels: ShiftStaffingLabels, expectedVersion?: number): Promise<Shift | null>
   setRegistrationLock(id: string, locked: boolean, expectedVersion?: number): Promise<Shift | null>
@@ -304,40 +321,37 @@ export function createSupabaseShiftRepository(
 ): SupabaseShiftRepository {
   const routingMode = options.routingMode ?? 'database'
   const selectShifts = () => client.from('shifts').select(selectedShiftColumns(routingMode))
-  const refreshAutomaticStatuses = async () => {
-    const result = await client.rpc('refresh_automatic_shift_statuses', {}).single()
-    if (result.error) throw requestError('automatic shift status refresh', result.error)
+
+  // Reads every page in a stable (date, start_time, id) order. A single un-ranged
+  // query is capped by PostgREST max-rows and would silently drop the newest shifts.
+  const readAllShiftRows = async (includeDeleted: boolean, operation: string) => {
+    const rows = new Map<string, Row>()
+    for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+      let query = selectShifts()
+      if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
+      const page = optionalRows(operation, await query
+        .order('date', { ascending: true })
+        .order('start_time', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + SUPABASE_PAGE_SIZE - 1))
+      page.forEach(row => rows.set(String((row as unknown as Row).id), row as unknown as Row))
+      if (page.length < SUPABASE_PAGE_SIZE) break
+    }
+    return [...rows.values()]
   }
 
   return {
     async getAll(includeDeleted = false) {
-      if (!includeDeleted) await refreshAutomaticStatuses()
-      let query = selectShifts().order('date', { ascending: true }).order('start_time', { ascending: true })
-      if (!includeDeleted) query = query.is('deleted_at', null).is('archived_at', null)
-      const result = await query
-      return withShiftStaffingSummary(client, optionalRows('shift read', result).map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
+      const rows = await readAllShiftRows(includeDeleted, 'shift read')
+      return withShiftStaffingSummary(client, rows.map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getAllComplete() {
-      await refreshAutomaticStatuses()
-      const rows = new Map<string, Row>()
-      for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
-        const query = selectShifts()
-          .is('deleted_at', null)
-          .is('archived_at', null)
-          .order('date', { ascending: true })
-          .order('start_time', { ascending: true })
-          .order('id', { ascending: true })
-          .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
-        const page = optionalRows('complete shift read', await query)
-        page.forEach(row => rows.set(String((row as unknown as Row).id), row as unknown as Row))
-        if (page.length < SUPABASE_PAGE_SIZE) break
-      }
-      return withShiftStaffingSummary(client, [...rows.values()].map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
+      const rows = await readAllShiftRows(false, 'complete shift read')
+      return withShiftStaffingSummary(client, rows.map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
     },
 
     async getReportCandidates(limit) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .in('status', ['preparing', 'live', 'paused', 'completed'])
         .is('deleted_at', null)
@@ -353,7 +367,6 @@ export function createSupabaseShiftRepository(
 
     async getByIds(ids) {
       if (ids.length === 0) return []
-      await refreshAutomaticStatuses()
       const rows: Shift[] = []
       const unique=[...new Set(ids)]
       for(let offset=0;offset<unique.length;offset+=50) {
@@ -372,16 +385,14 @@ export function createSupabaseShiftRepository(
     },
 
     async getById(id) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts().eq('id', id).maybeSingle()
       if (result.error) throw requestError('shift lookup', result.error)
       return result.data ? (await withShiftStaffingSummary(client, [shiftFromRow(result.data as unknown as ShiftRow, routingMode)]))[0] : null
     },
 
     async getByDate(date) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts()
-        .eq('date', date)
+        .or(`date.eq.${date},and(end_date.eq.${date},crosses_midnight.eq.true)`)
         .is('deleted_at', null)
         .is('archived_at', null)
         .order('start_time', { ascending: true })
@@ -390,7 +401,6 @@ export function createSupabaseShiftRepository(
     },
 
     async getByDateRange(startDate, endDate) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .gte('date', startDate)
         .lte('date', endDate)
@@ -404,7 +414,6 @@ export function createSupabaseShiftRepository(
     },
 
     async getByStatus(status) {
-      await refreshAutomaticStatuses()
       const result = await selectShifts()
         .eq('status', status)
         .is('deleted_at', null)
@@ -415,16 +424,28 @@ export function createSupabaseShiftRepository(
     },
 
     async getOpen() {
-      await refreshAutomaticStatuses()
+      const nowIso = new Date().toISOString()
       const result = await selectShifts()
-        .eq('status', 'scheduled')
+        .in('status', ['scheduled', 'preparing'])
         .eq('registration_locked', false)
         .is('deleted_at', null)
         .is('archived_at', null)
-        .gt('end_at', new Date().toISOString())
+        .or(`registration_cutoff_at.gt.${nowIso},and(registration_cutoff_at.is.null,start_at.gt.${nowIso})`)
         .order('date', { ascending: true })
-      return withShiftStaffingSummary(client, optionalRows('shift open read', result)
-        .map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)))
+      const shiftsWithSummary = await withShiftStaffingSummary(
+        client,
+        optionalRows('shift open read', result).map(row => shiftFromRow(row as unknown as ShiftRow, routingMode)),
+      )
+      return shiftsWithSummary.filter(shift => {
+        const summary = shift.staffing_summary
+        if (summary && summary.length > 0) {
+          return summary.some(roleSummary => roleSummary.remaining > 0 || roleSummary.approved < roleSummary.required)
+        }
+        const hasHostVacant = (shift.required_host_count ?? 1) > (shift.host_id ? 1 : 0)
+        const hasSupportVacant = (shift.required_support_count ?? 0) > (shift.support_id ? 1 : 0)
+        const hasTechVacant = (shift.required_technical_count ?? 0) > (shift.technical_id ? 1 : 0)
+        return hasHostVacant || hasSupportVacant || hasTechVacant
+      })
     },
 
     async getToday() {
@@ -458,23 +479,84 @@ export function createSupabaseShiftRepository(
     },
 
     async create(data) {
-      const result = await client.rpc('create_shift', { p_data: createPayload(data, routingMode) }).single()
-      return shiftFromRow(
+      const agencySource = executionSourceForAgency(data.agency_code)
+      if (data.agency_code && data.execution_source && data.execution_source !== agencySource) {
+        throw new ShiftRequestError('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT', 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT')
+      }
+      const effectiveData = {
+        ...data,
+        execution_source: data.execution_source ?? agencySource,
+      }
+      const payload = createPayload(effectiveData, routingMode)
+      const result = effectiveData.staffing_segments?.length
+        ? await client.rpc('create_shift_with_staffing_segments', {
+          p_data: Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'staffing_segments')),
+          p_segments: effectiveData.staffing_segments,
+        }).single()
+        : await client.rpc('create_shift', { p_data: payload }).single()
+      const shift = shiftFromRow(
         requiredRow('shift create', result) as unknown as ShiftRow,
         routingMode,
-        data.execution_source,
+        effectiveData.execution_source,
       )
+      if (typeof window !== 'undefined' && !await requestAttendanceFolderMaterialization([shift.id])) {
+        console.warn('ATTENDANCE_FOLDER_MATERIALIZATION_PENDING')
+      }
+      return shift
+    },
+
+    async createFromImport(batchId, rowNumber, data) {
+      const agencySource = executionSourceForAgency(data.agency_code)
+      if (data.agency_code && data.execution_source && data.execution_source !== agencySource) {
+        throw new ShiftRequestError('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT', 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT')
+      }
+      const effectiveData = { ...data, execution_source: data.execution_source ?? agencySource }
+      const payload = createPayload(effectiveData, routingMode)
+      const result = await client.rpc('create_schedule_import_shift', {
+        p_batch_id: batchId,
+        p_row_number: rowNumber,
+        p_data: Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'staffing_segments')),
+        p_segments: effectiveData.staffing_segments ?? [],
+      }).single()
+      const response = requiredRow('schedule import shift create', result) as unknown as {
+        outcome: 'imported' | 'warning' | 'duplicate_skipped' | 'retryable'
+        shift?: ShiftRow
+        shift_id?: string
+        failure_code?: string
+      }
+      if (response.outcome === 'retryable') {
+        return { kind: 'review_required', failureCode: response.failure_code ?? 'IMPORT_SOURCE_REVIEW_REQUIRED' }
+      }
+      if (response.outcome === 'duplicate_skipped') {
+        return { kind: 'duplicate_skipped', shiftId: response.shift_id }
+      }
+      if (!response.shift) throw new ShiftRequestError('IMPORT_PERSISTED_SHIFT_MISSING', 'IMPORT_PERSISTED_SHIFT_MISSING')
+      const shift = shiftFromRow(response.shift, routingMode, effectiveData.execution_source)
+      if (response.outcome === 'imported' && typeof window !== 'undefined'
+        && !await requestAttendanceFolderMaterialization([shift.id])) {
+        console.warn('ATTENDANCE_FOLDER_MATERIALIZATION_PENDING')
+      }
+      return { kind: 'created', shift, outcome: response.outcome }
     },
 
     async update(id, data, confirmImpact = false, expectedVersion) {
+      const agencySource = executionSourceForAgency(data.agency_code)
+      if (data.agency_code && data.execution_source && data.execution_source !== agencySource) {
+        throw new ShiftRequestError('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT', 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT')
+      }
+      const effectiveData = {
+        ...data,
+        execution_source: data.execution_source ?? agencySource,
+      }
+      const patch = updatePayload(effectiveData, routingMode)
       const result = await client.rpc('update_shift', {
         p_shift_id: id,
-        p_patch: updatePayload(data, routingMode),
+        p_patch: patch,
         p_confirm_impact: confirmImpact,
         p_expected_version: expectedVersion ?? null,
       }).single()
       if (result.error) throw requestError('shift update', result.error)
-      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode, data.execution_source) : null
+      return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode, effectiveData.execution_source) : null
     },
 
     async updateStaffingLabels(id, labels, expectedVersion) {

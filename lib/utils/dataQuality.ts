@@ -1,4 +1,5 @@
 import type { DataQualityIssue } from '@/lib/types/dataQuality'
+import { matchesMultiSelect } from '@/lib/utils/multiSelectFilter'
 import type { ImportResult } from '@/lib/utils/excelUtils'
 import type { Report, Shift, ShiftRegistration } from '@/lib/types/database.types'
 import { isStaffedRegistration } from '@/lib/services/supabaseShiftRegistrationService'
@@ -182,6 +183,16 @@ export function getAllIssues(args: { importResult?: ImportResult | null; reports
     ...getReportIssues(args.reports || [], args.shifts || []),
     ...getStaffingIssues(args.shifts || [], args.registrations || []),
   ]
+}
+
+export function filterDataQualityIssues(
+  issues: readonly DataQualityIssue[],
+  severities: readonly string[],
+  sources: readonly string[],
+): DataQualityIssue[] {
+  return issues.filter(issue =>
+    matchesMultiSelect(issue.severity, severities) && matchesMultiSelect(issue.source, sources),
+  )
 }
 
 export function recoveryActionFor(issue: DataQualityIssue): { label: string; url: string } {

@@ -17,43 +17,49 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/utils/currency'
-import type { PayrollPeriod, PayrollLine } from '@/lib/services/workforceService'
+import type { PayrollPeriod, PayrollLine, PayrollAdjustment } from '@/lib/services/workforceService'
 
 interface PayrollOverviewProps {
   period: PayrollPeriod | null
   lines: PayrollLine[]
+  compensationAdjustments?:PayrollAdjustment[]
   loading?: boolean
 }
 
-export function PayrollOverview({ period, lines, loading = false }: PayrollOverviewProps) {
+export function PayrollOverview({ period, lines, compensationAdjustments = [], loading = false }: PayrollOverviewProps) {
   const activeLines = React.useMemo(() => lines.filter(l => !l.voided_at), [lines])
   const voidedLines = React.useMemo(() => lines.filter(l => Boolean(l.voided_at)), [lines])
 
   const totals = React.useMemo(() => {
-    let totalMinutes = 0
+    let totalSeconds = 0
     let totalGross = 0
     let totalAdjustment = 0
     let totalNet = 0
 
     for (const line of activeLines) {
-      totalMinutes += line.payable_minutes
+      totalSeconds += line.payable_seconds ?? line.payable_minutes*60
       totalGross += line.gross_vnd
       totalAdjustment += line.adjustment_vnd
       totalNet += line.net_vnd
     }
 
-    const hours = Math.floor(totalMinutes / 60)
-    const minutes = totalMinutes % 60
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor(totalSeconds%3600/60)
+    const seconds = totalSeconds%60
 
+    const compensationTotal=compensationAdjustments.reduce((sum,row)=>sum+row.amount_vnd,0)
+    totalAdjustment+=compensationTotal
+    totalNet+=compensationTotal
     return {
-      totalMinutes,
+      totalSeconds,
       hours,
       minutes,
+      seconds,
       totalGross,
       totalAdjustment,
       totalNet,
     }
-  }, [activeLines])
+  }, [activeLines,compensationAdjustments])
 
   if (loading) {
     return (
@@ -129,9 +135,9 @@ export function PayrollOverview({ period, lines, loading = false }: PayrollOverv
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white font-semibold">
             <Banknote className="h-5 w-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="w-full text-base font-bold text-slate-900 sm:w-auto">
                 Chu kỳ: {period.period_start} → {period.period_end}
               </h2>
               <Badge variant="outline" className={currentStatus.badgeClass}>
@@ -144,7 +150,7 @@ export function PayrollOverview({ period, lines, loading = false }: PayrollOverv
                 Rev #{period.revision}
               </Badge>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5 [overflow-wrap:anywhere]">
               Mã chu kỳ: <span className="font-mono text-slate-700">{period.id}</span>
               {period.created_by && (
                 <span className="ml-2">
@@ -193,10 +199,10 @@ export function PayrollOverview({ period, lines, loading = false }: PayrollOverv
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight text-slate-900">
-              {totals.hours}h {totals.minutes}p
+              {totals.hours}h {totals.minutes}p {totals.seconds}s
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              {activeLines.length} phân đoạn ca đã đối soát ({totals.totalMinutes.toLocaleString()} phút)
+              {activeLines.length} phân đoạn ca đã đối soát ({totals.totalSeconds.toLocaleString()} giây)
             </p>
           </CardContent>
         </Card>

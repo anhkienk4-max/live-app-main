@@ -32,6 +32,7 @@ import { ImportReferenceMock } from '@/components/visual-qa/ImportReferenceMock'
 import { AuditReferenceMock } from '@/components/visual-qa/AuditReferenceMock'
 import { SettingsReferenceMock } from '@/components/visual-qa/SettingsReferenceMock'
 import { AuthReferenceMock } from '@/components/visual-qa/AuthReferenceMock'
+import { AttendanceSourceManager } from '@/components/features/workforce/AttendanceSourceManager'
 
 function VisualQaContent() {
   const searchParams = useSearchParams()
@@ -134,6 +135,25 @@ function VisualQaContent() {
 
   if (scenario === 'auth') {
     return <AuthReferenceMock />
+  }
+
+  if (scenario === 'attendance') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="border-b border-slate-800 pb-4">
+            <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+              <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">📋</span>
+              Nhập chấm công lịch sử (Historical Attendance Import)
+            </h1>
+            <p className="text-sm text-slate-400 mt-1">
+              Phục vụ đối soát chấm công ca livestream từ Google Sheets &amp; Excel cho kỳ lương RC1.7C.
+            </p>
+          </div>
+          <AttendanceSourceManager />
+        </div>
+      </div>
+    )
   }
 
   const QA_TIMESTAMP = '2026-09-26T00:00:00.000Z';

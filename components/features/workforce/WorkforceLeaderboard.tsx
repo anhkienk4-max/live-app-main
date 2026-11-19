@@ -13,32 +13,43 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { useTranslation } from '@/lib/i18n'
 import type { LeaderboardEntry, WorkforceRole } from '@/lib/services/workforceService'
 
 interface WorkforceLeaderboardProps {
   leaderboard: LeaderboardEntry[]
   isConfigured: boolean
-  month: string
+  period: string
   role: WorkforceRole
+  search?: string
+  staffFilter?: string
   loading?: boolean
   error?: string | null
+  onRetry?: () => void
 }
 
 export function WorkforceLeaderboard({
   leaderboard,
   isConfigured,
-  month,
+  period,
   role,
+  search = '',
+  staffFilter = '',
   loading = false,
   error = null,
+  onRetry,
 }: WorkforceLeaderboardProps) {
+  const { language } = useTranslation()
+  const en = language === 'en'
   const pagination = useListPagination('workforce_leaderboard', 10)
-  const range = pageRange(leaderboard.length, pagination.page, pagination.pageSize)
-  const pageRows = leaderboard.slice((range.page - 1) * pagination.pageSize, range.page * pagination.pageSize)
+  const visible = leaderboard.filter(entry => (!staffFilter || entry.staff_id === staffFilter)
+    && (!search || [entry.staff_id, entry.name].some(value => value?.toLocaleLowerCase().includes(search.toLocaleLowerCase()))))
+  const range = pageRange(visible.length, pagination.page, pagination.pageSize)
+  const pageRows = visible.slice((range.page - 1) * pagination.pageSize, range.page * pagination.pageSize)
   const roleLabels: Record<WorkforceRole, string> = {
     host: 'Host Livestream',
-    support: 'Trợ lý phiên Live',
-    technical: 'Kỹ thuật viên',
+    support: en ? 'Support' : 'Trợ lý phiên Live',
+    technical: en ? 'Technical' : 'Kỹ thuật viên',
   }
 
   const rankBadges = [
@@ -56,10 +67,10 @@ export function WorkforceLeaderboard({
           </div>
           <div>
             <CardTitle className="text-base font-bold text-slate-900">
-              Bảng xếp hạng hiệu suất & Kỷ luật ({roleLabels[role]})
+              {en ? 'Verified performance ranking' : 'Bảng xếp hạng hiệu suất & Kỷ luật'} ({roleLabels[role]})
             </CardTitle>
             <p className="mt-0.5 text-xs text-slate-500">
-              Tháng {month} • Xếp hạng minh bạch dựa trên tỷ lệ đúng giờ và khối lượng công việc được xác thực.
+              {en ? `Period ${period} • Ranked by verified timeliness and approved workload.` : `Kỳ ${period} • Xếp hạng minh bạch dựa trên tỷ lệ đúng giờ và khối lượng công việc được xác thực.`}
             </p>
           </div>
         </div>
@@ -76,43 +87,44 @@ export function WorkforceLeaderboard({
           <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-6 text-center">
             <AlertTriangle className="mx-auto h-8 w-8 text-rose-600" />
             <h4 className="mt-2 text-sm font-semibold text-rose-900">
-              Không thể tải bảng xếp hạng
+              {en ? 'Could not load ranking' : 'Không thể tải bảng xếp hạng'}
             </h4>
             <p className="mx-auto mt-1 max-w-md text-xs text-rose-600 leading-relaxed">
               {error}
             </p>
+            {onRetry && <button type="button" className="mt-3 rounded border px-3 py-2 text-sm" onClick={onRetry}>{en ? 'Retry' : 'Thử lại'}</button>}
           </div>
         ) : !isConfigured ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-6 text-center">
             <Info className="mx-auto h-8 w-8 text-slate-400" />
             <h4 className="mt-2 text-sm font-semibold text-slate-800">
-              Chưa kích hoạt ngưỡng mẫu tối thiểu
+              {en ? 'Ranking policy is not configured' : 'Chưa kích hoạt ngưỡng mẫu tối thiểu'}
             </h4>
             <p className="mx-auto mt-1 max-w-md text-xs text-slate-500 leading-relaxed">
-              Biến môi trường <code>WORKFORCE_LEADERBOARD_MIN_VERIFIED_SHIFTS</code> chưa được cấu hình trên máy chủ. Bảng xếp hạng tạm thời ẩn để tránh sai lệch thống kê và đảm bảo đánh giá công bằng.
+              {en ? 'The minimum verified-shift threshold has not been approved. Ranking stays hidden until it is configured.' : 'Ngưỡng số ca đã xác minh tối thiểu chưa được cấu hình. Bảng xếp hạng được ẩn để tránh đánh giá sai lệch.'}
             </p>
           </div>
-        ) : leaderboard.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-6 text-center">
             <Award className="mx-auto h-8 w-8 text-slate-400" />
             <h4 className="mt-2 text-sm font-semibold text-slate-800">
-              Chưa có nhân sự đủ điều kiện xếp hạng
+              {en ? 'No eligible staff in this scope' : 'Chưa có nhân sự đủ điều kiện xếp hạng'}
             </h4>
             <p className="mx-auto mt-1 max-w-md text-xs text-slate-500 leading-relaxed">
-              Để xuất hiện trên bảng xếp hạng, nhân sự cần có <strong>100% hồ sơ chấm công hoàn tất</strong> trong tháng và đạt số ca làm việc tối thiểu theo quy định.
+              {en ? 'Staff need complete approved attendance and the configured minimum verified shifts.' : <>Để xuất hiện trên bảng xếp hạng, nhân sự cần có <strong>100% hồ sơ chấm công hoàn tất</strong> trong kỳ và đạt số ca làm việc tối thiểu theo quy định.</>}
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-slate-200">
+          <div role="region" aria-label={en ? 'Scrollable ranking table' : 'Bảng xếp hạng có thể cuộn ngang'} tabIndex={0} className="max-w-full overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <table className="w-full text-left text-xs">
               <thead className="border-b bg-slate-50 font-semibold text-slate-600">
                 <tr>
-                  <th className="px-3 py-2.5 text-center w-16">Thứ hạng</th>
-                  <th className="px-3 py-2.5">Nhân sự</th>
-                  <th className="px-3 py-2.5 text-center">Số ca đã duyệt</th>
-                  <th className="px-3 py-2.5 text-right">Tổng giờ thực tế</th>
-                  <th className="px-3 py-2.5 text-right font-bold">Tỷ lệ đúng giờ</th>
-                  <th className="px-3 py-2.5 text-center">Minh chứng</th>
+                  <th className="px-3 py-2.5 text-center w-16">{en ? 'Rank' : 'Thứ hạng'}</th>
+                  <th className="px-3 py-2.5">{en ? 'Staff' : 'Nhân sự'}</th>
+                  <th className="px-3 py-2.5 text-center">{en ? 'Approved shifts' : 'Số ca đã duyệt'}</th>
+                  <th className="px-3 py-2.5 text-right">{en ? 'Approved time' : 'Tổng giờ thực tế'}</th>
+                  <th className="px-3 py-2.5 text-right font-bold">{en ? 'Timeliness' : 'Tỷ lệ đúng giờ'}</th>
+                  <th className="px-3 py-2.5 text-center">{en ? 'Evidence' : 'Minh chứng'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -155,7 +167,7 @@ export function WorkforceLeaderboard({
                         </div>
                       </td>
                       <td className="px-3 py-2.5 text-center font-mono text-slate-700">
-                        {entry.approved_worked_shifts} ca
+                          {entry.approved_worked_shifts} {en ? 'shifts' : 'ca'}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-slate-900">
                         {hours}h {mins}p
@@ -166,7 +178,7 @@ export function WorkforceLeaderboard({
                       <td className="px-3 py-2.5 text-center">
                         <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
                           <ShieldCheck className="h-3 w-3 mr-1" />
-                          100% Xác thực
+                          {en ? 'Verified' : '100% Xác thực'}
                         </Badge>
                       </td>
                     </tr>
@@ -179,15 +191,15 @@ export function WorkforceLeaderboard({
 
         {/* Fairness Policy Note */}
         <div className="rounded-md bg-slate-50 p-3 text-[11px] text-slate-500 border border-slate-200 space-y-1">
-          <p className="font-semibold text-slate-700">Nguyên tắc xếp hạng khoa học & minh bạch:</p>
+          <p className="font-semibold text-slate-700">{en ? 'Ranking rules:' : 'Nguyên tắc xếp hạng khoa học & minh bạch:'}</p>
           <ul className="list-disc pl-4 space-y-0.5">
-            <li>Không xếp hạng chéo giữa các vai trò khác nhau (Host, Trợ lý, Kỹ thuật có tiêu chí riêng).</li>
-            <li>Không gán điểm số AI giả định hay phân bổ doanh thu GMV khi chưa có xác nhận ca.</li>
-            <li>Ưu tiên xếp hạng theo <strong>Tỷ lệ đúng giờ</strong>, sau đó đến <strong>Số ca làm việc thực tế</strong> và <strong>Tổng giờ làm việc</strong>.</li>
+            <li>{en ? 'Staff are ranked only within the same operational role.' : 'Không xếp hạng chéo giữa các vai trò khác nhau (Host, Trợ lý, Kỹ thuật có tiêu chí riêng).'}</li>
+            <li>{en ? 'Only approved attendance contributes; there are no inferred AI or revenue scores.' : 'Không gán điểm số AI giả định hay phân bổ doanh thu GMV khi chưa có xác nhận ca.'}</li>
+            <li>{en ? 'Order: timeliness, approved worked shifts, then approved actual minutes.' : <>Ưu tiên xếp hạng theo <strong>Tỷ lệ đúng giờ</strong>, sau đó đến <strong>Số ca làm việc thực tế</strong> và <strong>Tổng giờ làm việc</strong>.</>}</li>
           </ul>
         </div>
 
-        <HistoryPagination page={range.page} pageSize={pagination.pageSize} total={leaderboard.length} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+        <HistoryPagination page={range.page} pageSize={pagination.pageSize} total={visible.length} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
 </CardContent>
     </Card>
   )

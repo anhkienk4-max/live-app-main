@@ -105,7 +105,7 @@ test('imports derive Agency from Studio while rejecting an invalid explicit sour
   assert.doesNotMatch(derived.rows[0].row.warnings.join(' '), /remain unclassified/)
   const invalid = parseScheduleRows([{ ...source, 'Execution Source': 'Vendor' }], maps)
   assert.equal(invalid.invalidRows, 1)
-  assert.match(invalid.rows[0].row.errors.join(' '), /must be Internal or Agency/)
+  assert.match(invalid.rows[0].row.errors.join(' '), /must be Internal or External/)
 })
 
 test('static route configuration validates strictly and resolves exact normalized labels', async () => {
@@ -384,6 +384,10 @@ function compatHarness(options: {
     async read(reference: { provider: string; external_file_id: string }) {
       storageCalls.push(`read:${reference.provider}:${reference.external_file_id}`)
       return new Uint8Array([1, 2, 3])
+    },
+    async getMetadata(reference: { provider: string; external_file_id: string }) {
+      storageCalls.push(`metadata:${reference.provider}:${reference.external_file_id}`)
+      return { id: reference.external_file_id, name: 'compat.png', parent_ids: [] }
     },
     async delete(reference: { provider: string; external_file_id: string }) {
       storageCalls.push(`delete:${reference.provider}:${reference.external_file_id}`)

@@ -1,0 +1,84 @@
+﻿name: RC19 Attendance #130 evidence review source gate
+
+on:
+  push:
+    branches:
+      - feat/rc19-attendance-evidence-review-130
+  pull_request:
+    branches:
+      - fix/rc19-attendance-photo-issue74
+
+permissions:
+  contents: read
+
+jobs:
+  attendance-evidence-review-source-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact PR source SHA is checked out
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          git merge-base --is-ancestor "$SOURCE_SHA" HEAD
+          test "$(git rev-parse "$SOURCE_SHA")" = "$SOURCE_SHA"
+          echo "Source head: $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checked out: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Start isolated PostgreSQL 17 server
+        run: |
+          docker run --detach --rm --name rc19-attendance-postgres17 \
+            --network none --label codex.disposable=true \
+            -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17.11-bookworm
+          for attempt in $(seq 1 30); do
+            if docker exec rc19-attendance-postgres17 pg_isready -U postgres -d postgres >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          docker logs rc19-attendance-postgres17
+          exit 1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install pinned pnpm and dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+          pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: ESLint
+        run: pnpm run lint
+      - name: PostgreSQL 17 evidence review contract and security
+        env:
+          ATTENDANCE_PG_CONTAINER: rc19-attendance-postgres17
+          ATTENDANCE_PG_MAJOR: '17'
+        run: node tests/rc19-attendance-photo-postgres17.integration.mjs
+      - name: Focused API and attendance regressions
+        run: node --import ./tests/typescript-alias-loader.mjs --test tests/rc19-attendance-evidence-review-api.test.ts tests/rc19-self-attendance-contract.test.ts tests/rc17c-attendance-api-integration.test.ts tests/rc17c-attendance-atomic-rpc-boundary.test.ts
+      - name: Full Node regression including PGlite
+        env:
+          SHOPEE_SCREENSHOT: e2e/fixtures/shopee-dashboard.jpg
+          TIKTOK_SCREENSHOT: e2e/fixtures/tiktok-dashboard.jpg
+        run: node scripts/run-final-regression.mjs
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Existing check-in/check-out camera and picker matrix
+        run: pnpm exec playwright test --config playwright.rc19-attendance-photo.config.ts --reporter=line
+      - name: Admin, Leader, Member review and correction photo matrix
+        run: pnpm exec playwright test --config playwright.rc19-attendance-review.config.ts --reporter=line
+      - name: Guarded production build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ''
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+          SUPABASE_URL: ''
+          SUPABASE_SECRET_KEY: ''
+          FEATURE_ACTUAL_STAFFING: 'false'
+          FEATURE_PAYROLL: 'false'
+          OPERATIONAL_STORAGE_ROUTING_MODE: database
+        run: pnpm run build
+      - name: Stop disposable PostgreSQL
+        if: always()
+        run: docker stop rc19-attendance-postgres17 || true

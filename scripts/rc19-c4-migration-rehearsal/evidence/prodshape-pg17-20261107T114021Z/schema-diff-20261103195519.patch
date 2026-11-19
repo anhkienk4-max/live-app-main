@@ -1,0 +1,659 @@
+--- before-20261103195519
++++ after-20261103195519
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict Ce57sA4xDyKsaEo5nyognccscqfCv2fN5NXhpb136fkgxGsSLogs3jXabknTsse
++\restrict RHGSoixxhBLhkEzTcHuI6IiI7QYY201WEPl3H2De4v5PWbRP4D6aVeS2QArSbMW
+ 
+ -- Dumped from database version 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+ -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+@@ -748,6 +748,8 @@
+   action_name := case
+     when tg_table_name = 'storage_resources' then 'resource_' || lower(tg_op)
+     when tg_table_name = 'storage_resource_scopes' then 'scope_' || lower(tg_op)
++    when tg_table_name = 'storage_resource_user_grants' then 'grant_' || lower(tg_op)
++    when tg_table_name = 'storage_resource_edit_grants' then 'edit_grant_' || lower(tg_op)
+     else 'grant_' || lower(tg_op)
+   end;
+   insert into public.storage_resource_audit_events(resource_id, action, actor_id, before_data, after_data)
+@@ -1470,6 +1472,45 @@
+     and business_user.archived_at is null
+     and business_user.deleted_at is null
+   limit 1;
++$$;
++
++
++--
++-- Name: current_user_can_edit_storage_resource(text); Type: FUNCTION; Schema: private; Owner: -
++--
++
++CREATE FUNCTION private.current_user_can_edit_storage_resource(p_resource_id text) RETURNS boolean
++    LANGUAGE sql STABLE SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++  select private.current_business_user_is_active()
++    and private.current_system_permission() in ('admin', 'leader', 'member')
++    and exists (
++      select 1 from public.storage_resource_edit_grants g
++      join public.storage_resources r on r.id = g.resource_id
++      where g.resource_id = p_resource_id
++        and g.user_id = private.current_business_user_id()
++        and g.decision = 'allow'
++        and g.revoked_at is null
++        and r.is_active
++        and r.resource_type <> 'attendance_evidence'
++        and r.visibility <> 'admin_only'
++        and (
++          r.visibility = 'public'
++          or (r.visibility = 'owner_only' and r.owner_id = private.current_business_user_id())
++          or (r.visibility = 'granted_users' and (
++            r.owner_id = private.current_business_user_id()
++            or private.current_user_has_storage_resource_grant(r.id)
++          ))
++        )
++    )
++    and not exists (
++      select 1 from public.storage_resource_edit_grants g
++      where g.resource_id = p_resource_id
++        and g.user_id = private.current_business_user_id()
++        and g.decision = 'deny'
++        and g.revoked_at is null
++    )
+ $$;
+ 
+ 
+@@ -3343,6 +3384,32 @@
+ 
+ 
+ --
++-- Name: acquire_operational_storage_folder_lock(text, uuid, integer); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.acquire_operational_storage_folder_lock(p_lock_key text, p_owner uuid, p_lease_seconds integer) RETURNS boolean
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $_$
++declare changed integer;
++begin
++  if p_lock_key !~ '^[0-9a-f]{64}$' or p_owner is null
++     or p_lease_seconds is null or p_lease_seconds not between 5 and 180 then
++    raise exception using errcode = '22023', message = 'STORAGE_FOLDER_LOCK_INPUT_INVALID';
++  end if;
++  insert into public.operational_storage_folder_locks as current_lock(lock_key, lock_owner, expires_at)
++    values (p_lock_key, p_owner, clock_timestamp() + make_interval(secs => p_lease_seconds))
++    on conflict (lock_key) do update
++      set lock_owner = excluded.lock_owner, expires_at = excluded.expires_at
++      where current_lock.expires_at <= clock_timestamp()
++        or current_lock.lock_owner = excluded.lock_owner;
++  get diagnostics changed = row_count;
++  return changed = 1;
++end;
++$_$;
++
++
++--
+ -- Name: account_requests; Type: TABLE; Schema: public; Owner: -
+ --
+ 
+@@ -8566,6 +8633,22 @@
+ 
+ 
+ --
++-- Name: release_operational_storage_folder_lock(text, uuid); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.release_operational_storage_folder_lock(p_lock_key text, p_owner uuid) RETURNS boolean
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++begin
++  delete from public.operational_storage_folder_locks
++    where lock_key = p_lock_key and lock_owner = p_owner;
++  return found;
++end;
++$$;
++
++
++--
+ -- Name: remove_live_report_image(text); Type: FUNCTION; Schema: public; Owner: -
+ --
+ 
+@@ -9911,6 +9994,158 @@
+ 
+ 
+ --
++-- Name: storage_resources; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.storage_resources (
++    id text DEFAULT (gen_random_uuid())::text NOT NULL,
++    provider text NOT NULL,
++    canonical_id text NOT NULL,
++    canonical_url text NOT NULL,
++    title text NOT NULL,
++    resource_type text NOT NULL,
++    owner_id text NOT NULL,
++    visibility text NOT NULL,
++    verification_status text DEFAULT 'unverified'::text NOT NULL,
++    verification_checked_at timestamp with time zone,
++    verification_error_code text,
++    is_active boolean DEFAULT true NOT NULL,
++    created_by text NOT NULL,
++    updated_by text NOT NULL,
++    created_at timestamp with time zone DEFAULT now() NOT NULL,
++    updated_at timestamp with time zone DEFAULT now() NOT NULL,
++    CONSTRAINT storage_resources_attendance_visibility CHECK (((resource_type <> 'attendance_evidence'::text) OR (visibility = 'owner_only'::text))),
++    CONSTRAINT storage_resources_canonical_id_check CHECK (((btrim(canonical_id) <> ''::text) AND (canonical_id !~ '[/\\?#]'::text))),
++    CONSTRAINT storage_resources_canonical_url_check CHECK (((canonical_url ~ '^https://(www\.)?(drive\.google\.com|docs\.google\.com|onedrive\.live\.com|[A-Za-z0-9-]+\.sharepoint\.com)/'::text) AND (canonical_url !~ '[?#@]'::text))),
++    CONSTRAINT storage_resources_provider_check CHECK ((provider = ANY (ARRAY['google_drive'::text, 'onedrive'::text]))),
++    CONSTRAINT storage_resources_resource_type_check CHECK ((resource_type = ANY (ARRAY['root_folder'::text, 'google_sheet'::text, 'report_data'::text, 'product_document'::text, 'sku_document'::text, 'kv'::text, 'image'::text, 'livecut'::text, 'marketing_asset'::text, 'campaign_scheme'::text, 'script'::text, 'guideline'::text, 'contract'::text, 'acceptance'::text, 'attendance_evidence'::text, 'other'::text]))),
++    CONSTRAINT storage_resources_title_check CHECK (((btrim(title) <> ''::text) AND (length(title) <= 200))),
++    CONSTRAINT storage_resources_verification_pair CHECK ((((verification_status = 'unverified'::text) AND (verification_checked_at IS NULL)) OR ((verification_status <> 'unverified'::text) AND (verification_checked_at IS NOT NULL)))),
++    CONSTRAINT storage_resources_verification_status_check CHECK ((verification_status = ANY (ARRAY['unverified'::text, 'verified_metadata'::text, 'broken'::text, 'verification_error'::text]))),
++    CONSTRAINT storage_resources_visibility_check CHECK ((visibility = ANY (ARRAY['admin_only'::text, 'owner_only'::text, 'granted_users'::text, 'public'::text])))
++);
++
++
++--
++-- Name: TABLE storage_resources; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON TABLE public.storage_resources IS 'Metadata-only provider resource registry. Provider binaries are never stored here; registry visibility does not imply provider access.';
++
++
++--
++-- Name: storage_resource_registry_edit(text, text); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.storage_resource_registry_edit(p_resource_id text, p_title text) RETURNS public.storage_resources
++    LANGUAGE plpgsql SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++declare
++  actor_id text := private.current_business_user_id();
++  target public.storage_resources;
++begin
++  if not private.current_business_user_is_active()
++    or private.current_system_permission() not in ('admin', 'leader', 'member')
++    or not private.is_admin() and not private.current_user_can_edit_storage_resource(p_resource_id) then
++    raise exception using errcode = '42501', message = 'STORAGE_RESOURCE_EDIT_DENIED';
++  end if;
++  if p_resource_id is null or p_title is null or btrim(p_title) = '' or length(p_title) > 200 then
++    raise exception using errcode = '22023', message = 'STORAGE_RESOURCE_INPUT_INVALID';
++  end if;
++  select * into target from public.storage_resources where id = p_resource_id for update;
++  if not found then raise exception using errcode = 'P0002', message = 'STORAGE_RESOURCE_NOT_FOUND'; end if;
++  if target.resource_type = 'attendance_evidence' then
++    raise exception using errcode = '42501', message = 'ATTENDANCE_RESOURCE_OWNER_ONLY';
++  end if;
++  update public.storage_resources set title = btrim(p_title), updated_by = actor_id, updated_at = statement_timestamp()
++    where id = p_resource_id returning * into target;
++  return target;
++end;
++$$;
++
++
++--
++-- Name: storage_resource_registry_editable_ids(); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.storage_resource_registry_editable_ids() RETURNS TABLE(resource_id text)
++    LANGUAGE sql STABLE SECURITY DEFINER
++    SET search_path TO ''
++    AS $$
++  select g.resource_id
++  from public.storage_resource_edit_grants g
++  join public.storage_resources r on r.id = g.resource_id
++  where g.user_id = private.current_business_user_id()
++    and g.decision = 'allow' and g.revoked_at is null
++    and r.is_active and r.resource_type <> 'attendance_evidence' and r.visibility <> 'admin_only'
++    and private.current_business_user_is_active()
++    and private.current_system_permission() in ('admin', 'leader', 'member')
++    and (
++      r.visibility = 'public'
++      or (r.visibility = 'owner_only' and r.owner_id = private.current_business_user_id())
++      or (r.visibility = 'granted_users' and (
++        r.owner_id = private.current_business_user_id()
++        or private.current_user_has_storage_resource_grant(r.id)
++      ))
++    )
++    and not exists (
++      select 1 from public.storage_resource_edit_grants denied
++      where denied.resource_id = g.resource_id and denied.user_id = g.user_id
++        and denied.decision = 'deny' and denied.revoked_at is null
++    )
++$$;
++
++
++--
++-- Name: storage_resource_registry_set_edit_grant(text, text, text); Type: FUNCTION; Schema: public; Owner: -
++--
++
++CREATE FUNCTION public.storage_resource_registry_set_edit_grant(p_resource_id text, p_user_id text, p_decision text) RETURNS jsonb
++    LANGUAGE plpgsql
++    SET search_path TO ''
++    AS $$
++declare
++  actor_id text := private.current_business_user_id();
++  target public.storage_resources;
++  changed_grant public.storage_resource_edit_grants;
++begin
++  if not private.current_business_user_is_active() or not private.is_admin() then
++    raise exception using errcode = '42501', message = 'STORAGE_RESOURCE_ADMIN_REQUIRED';
++  end if;
++  if p_resource_id is null or p_user_id is null or (p_decision is not null and p_decision not in ('allow', 'deny')) then
++    raise exception using errcode = '22023', message = 'STORAGE_RESOURCE_INPUT_INVALID';
++  end if;
++  select * into target from public.storage_resources where id = p_resource_id for update;
++  if not found then raise exception using errcode = 'P0002', message = 'STORAGE_RESOURCE_NOT_FOUND'; end if;
++  if not exists (select 1 from public.business_users where id = p_user_id) then
++    raise exception using errcode = '23503', message = 'STORAGE_RESOURCE_EDIT_TARGET_NOT_FOUND';
++  end if;
++  if p_decision = 'allow' and (
++    target.resource_type = 'attendance_evidence'
++    or target.visibility = 'admin_only'
++    or (target.visibility = 'owner_only' and target.owner_id <> p_user_id)
++  ) then
++    raise exception using errcode = '23514', message = 'STORAGE_RESOURCE_EDIT_TARGET_NOT_GRANTABLE';
++  end if;
++  if p_decision is null then
++    update public.storage_resource_edit_grants set revoked_at = statement_timestamp()
++      where resource_id = p_resource_id and user_id = p_user_id and revoked_at is null
++      returning * into changed_grant;
++  else
++    insert into public.storage_resource_edit_grants(resource_id, user_id, decision, granted_by, revoked_at)
++      values (p_resource_id, p_user_id, p_decision, actor_id, null)
++      on conflict (resource_id, user_id) do update
++        set decision = excluded.decision, granted_by = excluded.granted_by, revoked_at = null
++      returning * into changed_grant;
++  end if;
++  return jsonb_build_object('resource_id', p_resource_id,
++    'grant', case when changed_grant.resource_id is null then null else to_jsonb(changed_grant) end);
++end;
++$$;
++
++
++--
+ -- Name: storage_resource_registry_set_grant(text, text, boolean); Type: FUNCTION; Schema: public; Owner: -
+ --
+ 
+@@ -9938,6 +10173,9 @@
+   if p_active then
+     if target.resource_type = 'attendance_evidence' then
+       raise exception using errcode = '23514', message = 'ATTENDANCE_RESOURCE_OWNER_ONLY';
++    end if;
++    if target.visibility = 'public' then
++      raise exception using errcode = '23514', message = 'STORAGE_RESOURCE_PUBLIC_ALREADY_VISIBLE';
+     end if;
+     update public.storage_resources set visibility = 'granted_users', updated_by = actor_id
+       where id = p_resource_id returning * into target;
+@@ -12731,6 +12969,37 @@
+ 
+ 
+ --
++-- Name: attendance_photo_drive_folders; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.attendance_photo_drive_folders (
++    shift_id text NOT NULL,
++    event_kind text NOT NULL,
++    operational_role text NOT NULL,
++    provider text NOT NULL,
++    folder_id text NOT NULL,
++    parent_folder_id text NOT NULL,
++    logical_path text NOT NULL,
++    last_materialized_by text NOT NULL,
++    created_at timestamp with time zone DEFAULT now() NOT NULL,
++    last_verified_at timestamp with time zone DEFAULT now() NOT NULL,
++    CONSTRAINT attendance_photo_drive_folders_event_kind_check CHECK ((event_kind = ANY (ARRAY['check_in'::text, 'check_out'::text]))),
++    CONSTRAINT attendance_photo_drive_folders_folder_id_check CHECK ((btrim(folder_id) <> ''::text)),
++    CONSTRAINT attendance_photo_drive_folders_logical_path_check CHECK ((btrim(logical_path) <> ''::text)),
++    CONSTRAINT attendance_photo_drive_folders_operational_role_check CHECK ((operational_role = ANY (ARRAY['host'::text, 'support'::text, 'technical'::text]))),
++    CONSTRAINT attendance_photo_drive_folders_parent_folder_id_check CHECK ((btrim(parent_folder_id) <> ''::text)),
++    CONSTRAINT attendance_photo_drive_folders_provider_check CHECK ((provider = 'google_drive'::text))
++);
++
++
++--
++-- Name: TABLE attendance_photo_drive_folders; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON TABLE public.attendance_photo_drive_folders IS 'Persisted Google Drive folder IDs for a confirmed Shift and role/event destination; server-role access only.';
++
++
++--
+ -- Name: audit_logs; Type: TABLE; Schema: public; Owner: -
+ --
+ 
+@@ -13224,6 +13493,18 @@
+ 
+ 
+ --
++-- Name: operational_storage_folder_locks; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.operational_storage_folder_locks (
++    lock_key text NOT NULL,
++    lock_owner uuid NOT NULL,
++    expires_at timestamp with time zone NOT NULL,
++    CONSTRAINT operational_storage_folder_locks_lock_key_check CHECK ((lock_key ~ '^[0-9a-f]{64}$'::text))
++);
++
++
++--
+ -- Name: operational_storage_routes; Type: TABLE; Schema: public; Owner: -
+ --
+ 
+@@ -13451,7 +13732,7 @@
+     before_data jsonb,
+     after_data jsonb,
+     created_at timestamp with time zone DEFAULT now() NOT NULL,
+-    CONSTRAINT storage_resource_audit_events_action_check CHECK ((action = ANY (ARRAY['resource_insert'::text, 'resource_update'::text, 'resource_delete'::text, 'scope_insert'::text, 'scope_update'::text, 'scope_delete'::text, 'grant_insert'::text, 'grant_update'::text, 'grant_delete'::text])))
++    CONSTRAINT storage_resource_audit_events_action_check CHECK ((action = ANY (ARRAY['resource_insert'::text, 'resource_update'::text, 'resource_delete'::text, 'scope_insert'::text, 'scope_update'::text, 'scope_delete'::text, 'grant_insert'::text, 'grant_update'::text, 'grant_delete'::text, 'edit_grant_insert'::text, 'edit_grant_update'::text, 'edit_grant_delete'::text])))
+ );
+ 
+ 
+@@ -13467,6 +13748,28 @@
+     NO MAXVALUE
+     CACHE 1
+ );
++
++
++--
++-- Name: storage_resource_edit_grants; Type: TABLE; Schema: public; Owner: -
++--
++
++CREATE TABLE public.storage_resource_edit_grants (
++    resource_id text NOT NULL,
++    user_id text NOT NULL,
++    decision text NOT NULL,
++    granted_by text NOT NULL,
++    created_at timestamp with time zone DEFAULT now() NOT NULL,
++    revoked_at timestamp with time zone,
++    CONSTRAINT storage_resource_edit_grants_decision_check CHECK ((decision = ANY (ARRAY['allow'::text, 'deny'::text])))
++);
++
++
++--
++-- Name: TABLE storage_resource_edit_grants; Type: COMMENT; Schema: public; Owner: -
++--
++
++COMMENT ON TABLE public.storage_resource_edit_grants IS 'Account-level in-app edit decisions for one resource; does not change external Drive ACLs or public viewing.';
+ 
+ 
+ --
+@@ -13511,46 +13814,6 @@
+     created_at timestamp with time zone DEFAULT now() NOT NULL,
+     revoked_at timestamp with time zone
+ );
+-
+-
+---
+--- Name: storage_resources; Type: TABLE; Schema: public; Owner: -
+---
+-
+-CREATE TABLE public.storage_resources (
+-    id text DEFAULT (gen_random_uuid())::text NOT NULL,
+-    provider text NOT NULL,
+-    canonical_id text NOT NULL,
+-    canonical_url text NOT NULL,
+-    title text NOT NULL,
+-    resource_type text NOT NULL,
+-    owner_id text NOT NULL,
+-    visibility text NOT NULL,
+-    verification_status text DEFAULT 'unverified'::text NOT NULL,
+-    verification_checked_at timestamp with time zone,
+-    verification_error_code text,
+-    is_active boolean DEFAULT true NOT NULL,
+-    created_by text NOT NULL,
+-    updated_by text NOT NULL,
+-    created_at timestamp with time zone DEFAULT now() NOT NULL,
+-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+-    CONSTRAINT storage_resources_attendance_visibility CHECK (((resource_type <> 'attendance_evidence'::text) OR (visibility = 'owner_only'::text))),
+-    CONSTRAINT storage_resources_canonical_id_check CHECK (((btrim(canonical_id) <> ''::text) AND (canonical_id !~ '[/\\?#]'::text))),
+-    CONSTRAINT storage_resources_canonical_url_check CHECK (((canonical_url ~ '^https://(www\.)?(drive\.google\.com|docs\.google\.com|onedrive\.live\.com|[A-Za-z0-9-]+\.sharepoint\.com)/'::text) AND (canonical_url !~ '[?#@]'::text))),
+-    CONSTRAINT storage_resources_provider_check CHECK ((provider = ANY (ARRAY['google_drive'::text, 'onedrive'::text]))),
+-    CONSTRAINT storage_resources_resource_type_check CHECK ((resource_type = ANY (ARRAY['root_folder'::text, 'google_sheet'::text, 'report_data'::text, 'product_document'::text, 'sku_document'::text, 'kv'::text, 'image'::text, 'livecut'::text, 'marketing_asset'::text, 'campaign_scheme'::text, 'script'::text, 'guideline'::text, 'contract'::text, 'acceptance'::text, 'attendance_evidence'::text, 'other'::text]))),
+-    CONSTRAINT storage_resources_title_check CHECK (((btrim(title) <> ''::text) AND (length(title) <= 200))),
+-    CONSTRAINT storage_resources_verification_pair CHECK ((((verification_status = 'unverified'::text) AND (verification_checked_at IS NULL)) OR ((verification_status <> 'unverified'::text) AND (verification_checked_at IS NOT NULL)))),
+-    CONSTRAINT storage_resources_verification_status_check CHECK ((verification_status = ANY (ARRAY['unverified'::text, 'verified_metadata'::text, 'broken'::text, 'verification_error'::text]))),
+-    CONSTRAINT storage_resources_visibility_check CHECK ((visibility = ANY (ARRAY['admin_only'::text, 'owner_only'::text, 'granted_users'::text])))
+-);
+-
+-
+---
+--- Name: TABLE storage_resources; Type: COMMENT; Schema: public; Owner: -
+---
+-
+-COMMENT ON TABLE public.storage_resources IS 'Metadata-only provider resource registry. Provider binaries are never stored here; registry visibility does not imply provider access.';
+ 
+ 
+ --
+@@ -13896,6 +14159,22 @@
+ 
+ 
+ --
++-- Name: attendance_photo_drive_folders attendance_photo_drive_folders_folder_id_key; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.attendance_photo_drive_folders
++    ADD CONSTRAINT attendance_photo_drive_folders_folder_id_key UNIQUE (folder_id);
++
++
++--
++-- Name: attendance_photo_drive_folders attendance_photo_drive_folders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.attendance_photo_drive_folders
++    ADD CONSTRAINT attendance_photo_drive_folders_pkey PRIMARY KEY (shift_id, event_kind, operational_role);
++
++
++--
+ -- Name: audit_log_reviews audit_log_reviews_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -14200,6 +14479,14 @@
+ 
+ 
+ --
++-- Name: operational_storage_folder_locks operational_storage_folder_locks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.operational_storage_folder_locks
++    ADD CONSTRAINT operational_storage_folder_locks_pkey PRIMARY KEY (lock_key);
++
++
++--
+ -- Name: operational_storage_routes operational_storage_routes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -14352,6 +14639,14 @@
+ 
+ 
+ --
++-- Name: storage_resource_edit_grants storage_resource_edit_grants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.storage_resource_edit_grants
++    ADD CONSTRAINT storage_resource_edit_grants_pkey PRIMARY KEY (resource_id, user_id);
++
++
++--
+ -- Name: storage_resource_scopes storage_resource_scopes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -14549,6 +14844,13 @@
+ 
+ 
+ --
++-- Name: attendance_photo_drive_folders_shift_idx; Type: INDEX; Schema: public; Owner: -
++--
++
++CREATE INDEX attendance_photo_drive_folders_shift_idx ON public.attendance_photo_drive_folders USING btree (shift_id);
++
++
++--
+ -- Name: audit_log_reviews_updated_at_idx; Type: INDEX; Schema: public; Owner: -
+ --
+ 
+@@ -15235,6 +15537,13 @@
+ 
+ 
+ --
++-- Name: storage_resource_edit_grants_user_idx; Type: INDEX; Schema: public; Owner: -
++--
++
++CREATE INDEX storage_resource_edit_grants_user_idx ON public.storage_resource_edit_grants USING btree (user_id, resource_id, decision) WHERE (revoked_at IS NULL);
++
++
++--
+ -- Name: storage_resource_grants_user_idx; Type: INDEX; Schema: public; Owner: -
+ --
+ 
+@@ -15848,6 +16157,13 @@
+ --
+ 
+ CREATE TRIGGER shifts_set_updated_at BEFORE UPDATE ON public.shifts FOR EACH ROW EXECUTE FUNCTION private.set_updated_at();
++
++
++--
++-- Name: storage_resource_edit_grants storage_resource_edit_grants_audit; Type: TRIGGER; Schema: public; Owner: -
++--
++
++CREATE TRIGGER storage_resource_edit_grants_audit AFTER INSERT OR DELETE OR UPDATE ON public.storage_resource_edit_grants FOR EACH ROW EXECUTE FUNCTION private.audit_storage_resource_change();
+ 
+ 
+ --
+@@ -16002,6 +16318,22 @@
+ 
+ 
+ --
++-- Name: attendance_photo_drive_folders attendance_photo_drive_folders_last_materialized_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.attendance_photo_drive_folders
++    ADD CONSTRAINT attendance_photo_drive_folders_last_materialized_by_fkey FOREIGN KEY (last_materialized_by) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: attendance_photo_drive_folders attendance_photo_drive_folders_shift_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.attendance_photo_drive_folders
++    ADD CONSTRAINT attendance_photo_drive_folders_shift_id_fkey FOREIGN KEY (shift_id) REFERENCES public.shifts(id) ON DELETE CASCADE;
++
++
++--
+ -- Name: audit_log_reviews audit_log_reviews_audit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -16906,6 +17238,30 @@
+ 
+ 
+ --
++-- Name: storage_resource_edit_grants storage_resource_edit_grants_granted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.storage_resource_edit_grants
++    ADD CONSTRAINT storage_resource_edit_grants_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
++-- Name: storage_resource_edit_grants storage_resource_edit_grants_resource_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.storage_resource_edit_grants
++    ADD CONSTRAINT storage_resource_edit_grants_resource_id_fkey FOREIGN KEY (resource_id) REFERENCES public.storage_resources(id) ON DELETE CASCADE;
++
++
++--
++-- Name: storage_resource_edit_grants storage_resource_edit_grants_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
++--
++
++ALTER TABLE ONLY public.storage_resource_edit_grants
++    ADD CONSTRAINT storage_resource_edit_grants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.business_users(id) ON DELETE RESTRICT;
++
++
++--
+ -- Name: storage_resource_scopes storage_resource_scopes_brand_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+ --
+ 
+@@ -17371,6 +17727,12 @@
+ --
+ 
+ ALTER TABLE public.account_requests ENABLE ROW LEVEL SECURITY;
++
++--
++-- Name: attendance_photo_drive_folders; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.attendance_photo_drive_folders ENABLE ROW LEVEL SECURITY;
+ 
+ --
+ -- Name: audit_log_reviews; Type: ROW SECURITY; Schema: public; Owner: -
+@@ -17885,6 +18247,12 @@
+ ALTER TABLE public.operational_storage_drive_probe_runs ENABLE ROW LEVEL SECURITY;
+ 
+ --
++-- Name: operational_storage_folder_locks; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.operational_storage_folder_locks ENABLE ROW LEVEL SECURITY;
++
++--
+ -- Name: operational_storage_routes; Type: ROW SECURITY; Schema: public; Owner: -
+ --
+ 
+@@ -18052,6 +18420,33 @@
+ ALTER TABLE public.storage_resource_audit_events ENABLE ROW LEVEL SECURITY;
+ 
+ --
++-- Name: storage_resource_edit_grants; Type: ROW SECURITY; Schema: public; Owner: -
++--
++
++ALTER TABLE public.storage_resource_edit_grants ENABLE ROW LEVEL SECURITY;
++
++--
++-- Name: storage_resource_edit_grants storage_resource_edit_grants_admin_insert; Type: POLICY; Schema: public; Owner: -
++--
++
++CREATE POLICY storage_resource_edit_grants_admin_insert ON public.storage_resource_edit_grants FOR INSERT TO authenticated WITH CHECK ((private.is_admin() AND (granted_by = private.current_business_user_id())));
++
++
++--
++-- Name: storage_resource_edit_grants storage_resource_edit_grants_admin_read; Type: POLICY; Schema: public; Owner: -
++--
++
++CREATE POLICY storage_resource_edit_grants_admin_read ON public.storage_resource_edit_grants FOR SELECT TO authenticated USING (private.is_admin());
++
++
++--
++-- Name: storage_resource_edit_grants storage_resource_edit_grants_admin_update; Type: POLICY; Schema: public; Owner: -
++--
++
++CREATE POLICY storage_resource_edit_grants_admin_update ON public.storage_resource_edit_grants FOR UPDATE TO authenticated USING (private.is_admin()) WITH CHECK (private.is_admin());
++
++
++--
+ -- Name: storage_resource_user_grants storage_resource_grants_admin_insert; Type: POLICY; Schema: public; Owner: -
+ --
+ 
+@@ -18131,7 +18526,7 @@
+ -- Name: storage_resources storage_resources_read_allowed; Type: POLICY; Schema: public; Owner: -
+ --
+ 
+-CREATE POLICY storage_resources_read_allowed ON public.storage_resources FOR SELECT TO authenticated USING ((private.current_business_user_is_active() AND (private.is_admin() OR (is_active AND (visibility = ANY (ARRAY['owner_only'::text, 'granted_users'::text])) AND (owner_id = private.current_business_user_id())) OR (is_active AND (visibility = 'granted_users'::text) AND private.current_user_has_storage_resource_grant(id)))));
++CREATE POLICY storage_resources_read_allowed ON public.storage_resources FOR SELECT TO authenticated USING ((private.current_business_user_is_active() AND (private.is_admin() OR (is_active AND (visibility = 'public'::text)) OR (is_active AND (visibility = ANY (ARRAY['owner_only'::text, 'granted_users'::text])) AND (owner_id = private.current_business_user_id())) OR (is_active AND (visibility = 'granted_users'::text) AND private.current_user_has_storage_resource_grant(id)))));
+ 
+ 
+ --
+@@ -18337,5 +18732,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict Ce57sA4xDyKsaEo5nyognccscqfCv2fN5NXhpb136fkgxGsSLogs3jXabknTsse
+-
++\unrestrict RHGSoixxhBLhkEzTcHuI6IiI7QYY201WEPl3H2De4v5PWbRP4D6aVeS2QArSbMW
++

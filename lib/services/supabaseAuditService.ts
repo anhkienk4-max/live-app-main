@@ -36,7 +36,17 @@ type AuditReviewRow = {
   handling_reason: string | null
 }
 
-type AuditRepositoryFilters = Record<string, string | readonly string[]>
+type AuditRepositoryFilters = Record<string, string | readonly string[] | undefined>
+
+export type AuditHistoryCursor = { created_at: string; id: string; snapshot_at: string }
+export type AuditHistoryPage = {
+  items: AuditLog[]
+  actors: Array<{ id: string; name: string }>
+  nextCursor: AuditHistoryCursor | null
+  hasMore: boolean
+  pageSize: number
+  range: { from: string; to: string }
+}
 
 type SupabaseErrorShape = { code?: string; message?: string; details?: string; hint?: string }
 
@@ -97,7 +107,7 @@ function auditFromRow(row: AuditRow): AuditLog {
 }
 
 function requestError(operation: string, error: SupabaseErrorShape): Error {
-  return new Error(error.message?.trim() || `Supabase ${operation} failed.`)
+  return Object.assign(new Error(error.message?.trim() || `Supabase ${operation} failed.`), { code: error.code })
 }
 
 export type SupabaseAuditRepository = {
@@ -109,16 +119,25 @@ export type SupabaseAuditRepository = {
     filters?: AuditRepositoryFilters
     sort?: 'newest' | 'oldest'
   }): Promise<{ items: AuditLog[]; total: number; page: number; pageSize: number; totalPages: number; actors: Array<{ id: string; name: string }> }>
+  getAuditHistoryPage(input: {
+    cursor?: AuditHistoryCursor | null
+    pageSize?: number
+    filters?: AuditRepositoryFilters
+    sort?: 'newest' | 'oldest'
+    signal?: AbortSignal
+  }): Promise<AuditHistoryPage>
   getById(id: string): Promise<AuditLog | null>
   addAdministrativeReview(id: string, data: Pick<AuditLog, 'admin_note' | 'review_status' | 'handling_reason'>): Promise<AuditLog>
   exportAll(user: Pick<User, 'role' | 'system_permission'>): Promise<AuditLog[]>
 }
 
 export function createSupabaseAuditRepository(client: SupabaseClient): SupabaseAuditRepository {
-  const loadReview = async (rows: AuditRow[]) => {
+  const loadReview = async (rows: AuditRow[], signal?: AbortSignal) => {
     if (!rows.length) return rows
     const ids = rows.map(row => row.id)
-    const result = await client.from('audit_log_reviews').select('audit_id,admin_note,review_status,handling_reason').in('audit_id', ids)
+    let request = client.from('audit_log_reviews').select('audit_id,admin_note,review_status,handling_reason').in('audit_id', ids)
+    if (signal) request = request.abortSignal(signal)
+    const result = await request
     if (result.error) throw requestError('audit review read', result.error)
     const reviews = new Map((result.data ?? []).map(review => [review.audit_id as string, review as AuditReviewRow]))
     return rows.map(row => ({ ...row, audit_log_reviews: reviews.get(row.id) ?? null }))
@@ -193,6 +212,73 @@ export function createSupabaseAuditRepository(client: SupabaseClient): SupabaseA
         pageSize: result.pageSize,
         totalPages,
         actors,
+      }
+    },
+    async getAuditHistoryPage({ cursor, pageSize = 20, filters = {}, sort = 'newest', signal }) {
+      const safePageSize = [10, 20, 50].includes(pageSize) ? pageSize : 20
+      const scalarKeys = ['from', 'to', 'entity_type', 'entity_id', 'query'] as const
+      const arrayKeys = ['actor', 'brand_id', 'role', 'module', 'action', 'status', 'source'] as const
+      const normalizedFilters: Record<string, string | string[]> = {}
+      for (const key of scalarKeys) {
+        const raw = filters[key]
+        const text = typeof raw === 'string' ? raw.trim() : ''
+        if (text && text !== 'all') normalizedFilters[key] = text
+      }
+      for (const key of arrayKeys) {
+        const raw = filters[key]
+        const items = (Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : [])
+          .filter((item): item is string => typeof item === 'string')
+          .map(item => item.trim())
+          .filter(item => item.length > 0 && item !== 'all')
+          .map(item => key === 'status' ? (['failed', 'retryable'].includes(item) ? 'failed' : 'success') : item)
+        const deduped = [...new Set(items)]
+        if (deduped.length) normalizedFilters[key] = deduped
+      }
+      let request = client.rpc('get_audit_history_page', {
+        p_filters: normalizedFilters,
+        p_cursor_created_at: cursor?.created_at ?? null,
+        p_cursor_id: cursor?.id ?? null,
+        p_snapshot_at: cursor?.snapshot_at ?? null,
+        p_page_size: safePageSize,
+        p_sort: sort,
+      })
+      if (signal) request = request.abortSignal(signal)
+      const result = await request
+      if (result.error) {
+        if (result.error.code === 'PGRST202' || result.error.code === '42883') {
+          throw Object.assign(new Error('AUDIT_HISTORY_ENDPOINT_UNAVAILABLE'), { code: result.error.code })
+        }
+        throw requestError('audit history page read', result.error)
+      }
+      const data = result.data as {
+        items?: unknown
+        has_more?: unknown
+        next_cursor?: unknown
+        page_size?: unknown
+        range?: unknown
+      } | null
+      if (!data || !Array.isArray(data.items) || typeof data.has_more !== 'boolean'
+        || data.page_size !== safePageSize || !data.range || typeof data.range !== 'object') {
+        throw new Error('AUDIT_HISTORY_RESPONSE_INVALID')
+      }
+      const next = data.next_cursor as Partial<AuditHistoryCursor> | null
+      if (data.has_more && (!next || typeof next.created_at !== 'string' || typeof next.id !== 'string' || typeof next.snapshot_at !== 'string')) {
+        throw new Error('AUDIT_HISTORY_CURSOR_INVALID')
+      }
+      const rows = await loadReview(data.items as AuditRow[], signal)
+      const items = rows.map(auditFromRow)
+      const actors = [...new Map(items.filter(item => item.actor_id !== 'system').map(item => [item.actor_id, item.actor_name]))]
+        .map(([id, name]) => ({ id, name }))
+        .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
+      const range = data.range as { from?: unknown; to?: unknown }
+      if (typeof range.from !== 'string' || typeof range.to !== 'string') throw new Error('AUDIT_HISTORY_RESPONSE_INVALID')
+      return {
+        items,
+        actors,
+        nextCursor: data.has_more ? next as AuditHistoryCursor : null,
+        hasMore: data.has_more,
+        pageSize: safePageSize,
+        range: { from: range.from, to: range.to },
       }
     },
     async getById(id) {

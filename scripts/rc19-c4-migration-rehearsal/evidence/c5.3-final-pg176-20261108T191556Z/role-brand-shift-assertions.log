@@ -1,0 +1,13 @@
+(1,c4-rehearsal-leader,c53-brand-a,reports.read,active,"2026-11-08 19:16:04.301056+00",,,1,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.301056+00","2026-11-08 19:16:04.301056+00")
+(2,c4-rehearsal-leader,c53-brand-a,reports.export,active,"2026-11-08 19:16:04.30607+00",,,1,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.30607+00","2026-11-08 19:16:04.30607+00")
+(3,c4-rehearsal-leader,c53-brand-a,shifts.read,active,"2026-11-08 19:16:04.30997+00",,,1,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.30997+00","2026-11-08 19:16:04.30997+00")
+(4,c4-rehearsal-leader,c53-brand-a,shifts.manage,active,"2026-11-08 19:16:04.312783+00",,,1,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.312783+00","2026-11-08 19:16:04.312783+00")
+(5,c4-rehearsal-leader,c53-brand-b,reports.read,active,"2026-11-08 17:16:04.316411+00","2026-11-08 18:16:04.316411+00",,1,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.316411+00","2026-11-08 19:16:04.316411+00")
+(6,c4-rehearsal-leader,c53-brand-b,reports.export,active,"2026-11-08 17:16:04.31997+00","2026-11-08 18:16:04.31997+00",,1,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.31997+00","2026-11-08 19:16:04.31997+00")
+(7,c4-rehearsal-leader,c53-brand-c,reports.read,active,"2026-11-08 19:16:04.322815+00",,,1,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.322815+00","2026-11-08 19:16:04.322815+00")
+(8,c4-rehearsal-leader,c53-brand-c,reports.export,active,"2026-11-08 19:16:04.325229+00",,,1,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.325229+00","2026-11-08 19:16:04.325229+00")
+(7,c4-rehearsal-leader,c53-brand-c,reports.read,revoked,"2026-11-08 19:16:04.322815+00",,"2026-11-08 19:16:04.327699+00",2,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.322815+00","2026-11-08 19:16:04.327699+00")
+(8,c4-rehearsal-leader,c53-brand-c,reports.export,revoked,"2026-11-08 19:16:04.325229+00",,"2026-11-08 19:16:04.330489+00",2,c4-rehearsal-admin,c4-rehearsal-admin,"2026-11-08 19:16:04.325229+00","2026-11-08 19:16:04.330489+00")
+(144be60e-dc13-48df-b9d7-01334224eb21,c53-open-shift-a,2026-11-11,2026-11-11,normal,"C5.3 synthetic note",c4-rehearsal-admin,"C4 Synthetic Admin",admin,"2026-11-08 19:16:04.332866+00","2026-11-08 19:16:04.332866+00",host,c4-rehearsal-member,1,"2026-11-08 19:16:04.332866+00","2026-11-08 19:16:04.332866+00",)
+C5_3_C3_REPORT_RLS_EXPORT_ROLES: PASS
+C5_3_SHIFT_NOTES_OPEN_SELECTION_STAFFING_SCOPE: PASS

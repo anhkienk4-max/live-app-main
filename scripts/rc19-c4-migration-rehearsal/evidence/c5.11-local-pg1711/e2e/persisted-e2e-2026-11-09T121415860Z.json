@@ -1,0 +1,81 @@
+{
+  "result": "BLOCKED",
+  "source_sha": "4eb7ee5bd5d801629bf92665fafa5c3ce901361b",
+  "postgres": "170011",
+  "database": "rc19_c511_e2e_20261109121340",
+  "isolation": "local Docker PostgreSQL 17, dedicated marked DB; Auth/PostgREST loopback only",
+  "migration_sha256": "d7abbe6cce5356af5a134fb2cbf97b3d0d295a50bd737bd2737db7977d41bce0",
+  "runtime_auth_users_before": 0,
+  "storage_objects_before": 0,
+  "repeatable_authenticated_staffing_runs": 2,
+  "service_role_used_only_for_fixture_and_server_handler_backend": true,
+  "staffing_persistence": "PASS",
+  "attendance_persistence": "BLOCKED",
+  "payroll_persistence": "BLOCKED",
+  "blocker": "Attendance check-in requires a verified Google Drive photo receipt. Drive I/O is excluded from this task and no local Drive-compatible provider is configured.",
+  "production_accessed": false,
+  "production_credentials_used": false,
+  "drive_io": false,
+  "evidence_records": [
+    {
+      "run": 1,
+      "shift_id": "6661346b-158c-4fb0-882b-7f7251ef4427",
+      "segment_ids": [
+        "881a2f49-5a3e-45aa-8067-2a8a29dbefb7",
+        "d0375184-420b-498e-a8a7-eced621e419c"
+      ],
+      "imported_via": "parseScheduleRows -> SupabaseShiftRepository.create -> authenticated RPC"
+    },
+    {
+      "run": 1,
+      "shift_id": "695175a9-577b-4bd9-843d-14948a682a3e",
+      "segment_ids": [
+        "7655da91-83d1-431d-b4c7-1e9ae1664eb2",
+        "430ffa66-b7f7-400b-a085-261e546c78e7"
+      ],
+      "imported_via": "parseScheduleRows -> SupabaseShiftRepository.create -> authenticated RPC"
+    },
+    {
+      "run": 1,
+      "shift_id": "6661346b-158c-4fb0-882b-7f7251ef4427",
+      "segment_ids": [
+        "881a2f49-5a3e-45aa-8067-2a8a29dbefb7",
+        "d0375184-420b-498e-a8a7-eced621e419c"
+      ],
+      "staffing_persistence": "PASS",
+      "attendance_persistence": "BLOCKED",
+      "payroll_persistence": "BLOCKED",
+      "attendance_blocker": "ATTENDANCE_PHOTO_REQUIRED: Drive-only photo handler requires an approved provider runtime"
+    },
+    {
+      "run": 2,
+      "shift_id": "dc3db228-3590-4191-979d-bedfcf93cc92",
+      "segment_ids": [
+        "aaa7f50f-3ed2-477b-a888-0c7a00f473e3",
+        "b4ffd4c1-a108-41e9-837d-c5ff2629f946"
+      ],
+      "imported_via": "parseScheduleRows -> SupabaseShiftRepository.create -> authenticated RPC"
+    },
+    {
+      "run": 2,
+      "shift_id": "f562d12c-4eb9-4a5f-a077-cfee1b6e3bc2",
+      "segment_ids": [
+        "f8ba9c00-ab3f-426c-82a2-e83e9b6aadfe",
+        "f02f2267-a384-4bce-9769-20eff73ab9e2"
+      ],
+      "imported_via": "parseScheduleRows -> SupabaseShiftRepository.create -> authenticated RPC"
+    },
+    {
+      "run": 2,
+      "shift_id": "dc3db228-3590-4191-979d-bedfcf93cc92",
+      "segment_ids": [
+        "aaa7f50f-3ed2-477b-a888-0c7a00f473e3",
+        "b4ffd4c1-a108-41e9-837d-c5ff2629f946"
+      ],
+      "staffing_persistence": "PASS",
+      "attendance_persistence": "BLOCKED",
+      "payroll_persistence": "BLOCKED",
+      "attendance_blocker": "ATTENDANCE_PHOTO_REQUIRED: Drive-only photo handler requires an approved provider runtime"
+    }
+  ]
+}

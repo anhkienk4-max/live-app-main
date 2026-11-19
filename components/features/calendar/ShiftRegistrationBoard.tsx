@@ -1,8 +1,10 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import * as React from 'react'
-import { format } from 'date-fns'
-import { Download, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
+import { addMonths, endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
+import { enUS, vi } from 'date-fns/locale'
+import { CalendarDays, Camera, ChevronLeft, ChevronRight, Download, FileText, Filter, LayoutGrid, List, Lock, LockOpen, RotateCcw, Search, Table2, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   shiftRegistrationService,
   shiftService,
@@ -24,6 +26,7 @@ import {
 } from '@/lib/types/database.types'
 import { hasPermission } from '@/lib/permissions'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
 import { useListPagination } from '@/lib/hooks/useListPagination'
 import { HistoryPagination } from '@/components/ui/history-pagination'
@@ -46,9 +49,13 @@ import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { PageLoadError } from '@/components/ui/page-load-error'
 import { ShiftDetailModal } from '@/components/features/shifts/ShiftDetailModal'
 import { ShiftRegistrationActions } from '@/components/features/calendar/ShiftRegistrationActions'
+import { formatRegistrationErrorMessage } from '@/lib/utils/shiftRegistration'
+import { withReturnTo } from '@/lib/utils/returnContext'
 import { deriveStaffingAttention } from '@/lib/ui/operational-attention'
 import { AttentionBanner } from '@/components/ui/operational-status'
 import { ContentSkeleton } from '@/components/ui/content-skeleton'
+import { MonthView } from '@/components/features/calendar/MonthView'
+import { readCalendarWindow } from '@/lib/services/calendarWindow'
 import {
   buildStudioFilterOptions,
   calendarTimeScope,
@@ -70,7 +77,7 @@ type Filters = {
   registrationStatuses: RegistrationStatus[]
 }
 type CapacityMap = Record<string, ShiftRoleCapacity[]>
-type ViewMode = 'card' | 'compact' | 'table'
+type ViewMode = 'card' | 'compact' | 'table' | 'calendar'
 
 const initialFilters: Filters = {
   search: '',
@@ -112,9 +119,16 @@ function useOperationalLoadState() {
   return { getLatest, isActive, isCurrent, nextVersion, setLatest }
 }
 
-export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
+export function ShiftRegistrationBoard({
+  mode,
+  defaultDetailTab,
+}: {
+  mode: Mode
+  defaultDetailTab?: string
+}) {
+  const router = useRouter()
   const { currentUser, loading: userLoading } = useCurrentUser()
-  const { t } = useTranslation()
+  const { language, t } = useTranslation()
   const { toast } = useToast()
   const [shifts, setShifts] = React.useState<Shift[]>([])
   const [registrations, setRegistrations] = React.useState<ShiftRegistration[]>([])
@@ -127,6 +141,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const pagination = useListPagination(mode, 10)
   const { params, navigate, page, pageSize } = pagination
   const rawFilters = params.get(mode + '_filters') ?? ''
+  const calendarMonthValue = params.get(mode + '_calendar_month')
   const filters = React.useMemo((): Filters => {
     try {
       const parsed = JSON.parse(rawFilters)
@@ -173,12 +188,57 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [removalTarget, setRemovalTarget] = React.useState<{ registration: ShiftRegistration; kind: 'cancel' | 'unassign' } | null>(null)
   const viewValue = params.get(mode + '_view')
-  const viewMode: ViewMode = viewValue === 'table' || viewValue === 'card' ? viewValue : 'compact'
+  const viewMode: ViewMode = viewValue === 'table' || viewValue === 'card' || viewValue === 'calendar' ? viewValue : 'compact'
+  const calendarMonth = React.useMemo(() => {
+    const match = calendarMonthValue?.match(/^(\d{4})-(0[1-9]|1[0-2])$/)
+    return match ? new Date(Number(match[1]), Number(match[2]) - 1, 1) : startOfMonth(new Date(currentTime))
+  }, [calendarMonthValue, currentTime])
+  const calendarRange = React.useMemo(() => {
+    const monthStart = format(startOfMonth(calendarMonth), 'yyyy-MM-dd')
+    const monthEnd = format(endOfMonth(calendarMonth), 'yyyy-MM-dd')
+    return {
+      from: timeScope.from && timeScope.from > monthStart ? timeScope.from : monthStart,
+      to: timeScope.to && timeScope.to < monthEnd ? timeScope.to : monthEnd,
+    }
+  }, [calendarMonth, timeScope.from, timeScope.to])
+  const calendarFilters = React.useMemo(() => ({ ...JSON.parse(queryFilters) as ListFilters, ...calendarRange }), [calendarRange, queryFilters])
+  const [calendarRetry, setCalendarRetry] = React.useState(0)
+  const calendarRequestKey = identity + ':' + mode + ':' + JSON.stringify(calendarFilters) + ':' + calendarRetry
+  const [calendarResult, setCalendarResult] = React.useState<
+    { key: string; data: OperationalLoadResult } | { key: string; error: unknown } | null
+  >(null)
+  const calendarRangeInvalid = !timeScope.valid || calendarRange.from > calendarRange.to
+  const currentCalendarResult = calendarResult?.key === calendarRequestKey ? calendarResult : null
+  const calendarData = currentCalendarResult && 'data' in currentCalendarResult ? currentCalendarResult.data : null
+  const calendarError = currentCalendarResult && 'error' in currentCalendarResult ? currentCalendarResult.error : null
+  const calendarLoading = !calendarRangeInvalid && !currentCalendarResult
   const [detailShift, setDetailShift] = React.useState<Shift | null>(null)
+  const [detailInitialTab, setDetailInitialTab] = React.useState<string | undefined>(undefined)
+
+  const handleOpenDetail = (shift: Shift, initialTab?: string) => {
+    setDetailInitialTab(initialTab)
+    if (!initialTab && defaultDetailTab) setDetailInitialTab(defaultDetailTab)
+    setDetailShift(shift)
+  }
   const [exportShiftId, setExportShiftId] = React.useState<string | null>(null)
   const [exportOpen, setExportOpen] = React.useState(false)
   const [showFilters, setShowFilters] = React.useState(false)
   const { getLatest, isActive, isCurrent, nextVersion, setLatest } = useOperationalLoadState()
+
+  React.useEffect(() => {
+    if (viewMode !== 'calendar' || calendarRangeInvalid) return
+    const controller = new AbortController()
+    let active = true
+    void readCalendarWindow(calendarFilters, controller.signal, undefined, mode)
+      .then(result => {
+        if (!active) return
+        setCalendarResult({ key: calendarRequestKey, data: { shifts: result.items, registrations: result.registrations } })
+      })
+      .catch(error => {
+        if (active && !(error instanceof Error && error.name === 'AbortError')) setCalendarResult({ key: calendarRequestKey, error })
+      })
+    return () => { active = false; controller.abort() }
+  }, [calendarFilters, calendarRangeInvalid, calendarRequestKey, mode, viewMode])
 
   const referenceVersion = React.useRef(0)
   const loadReferenceData = React.useCallback(async () => {
@@ -238,6 +298,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     setLoading(true)
     await Promise.all([loadReferenceData(), loadRegistrationOperationalData(signal)])
   }, [loadReferenceData, loadRegistrationOperationalData])
+  useShiftChangeRefresh(() => loadData())
 
   React.useEffect(() => {
     const controller = new AbortController()
@@ -265,7 +326,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     navigate({ [mode + '_view']: next, [mode + '_page']: null, [mode + '_size']: next === 'table' ? '20' : '10', [mode + '_pending']: null })
   }
 
-  const runAction = async (id: string, action: () => Promise<unknown>, success: string, openShiftId?: string) => {
+  const runAction = async (id: string, action: () => Promise<unknown>, success: string, openShiftId?: string, throwAfterToast = false) => {
     setBusyId(id)
     try {
       await action()
@@ -278,9 +339,10 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     } catch (error) {
       toast({
         title: t('error'),
-        description: error instanceof Error ? error.message : t('validationError'),
+        description: error instanceof Error ? formatRegistrationErrorMessage(error.message) : t('validationError'),
         variant: 'destructive',
       })
+      if (throwAfterToast) throw error
     } finally {
       setBusyId(null)
     }
@@ -311,8 +373,26 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
       setRemovalTarget(null)
       await loadRegistrationOperationalData()
     } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      toast({ title: t('error'), description: error instanceof Error ? formatRegistrationErrorMessage(error.message) : t('validationError'), variant: 'destructive' })
       throw error
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const cancelRegistration = async (registrationId: string) => {
+    if (!currentUser) return
+    setBusyId(registrationId)
+    try {
+      await shiftRegistrationService.cancel(registrationId, currentUser.id, 'Tự hủy đăng ký')
+      toast({ title: t('success'), description: t('registrationCancelled'), variant: 'success' })
+      await loadRegistrationOperationalData()
+    } catch (error) {
+      toast({
+        title: t('error'),
+        description: error instanceof Error ? formatRegistrationErrorMessage(error.message) : t('validationError'),
+        variant: 'destructive',
+      })
     } finally {
       setBusyId(null)
     }
@@ -341,10 +421,10 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
     visibleShifts.some(shift => shift.id === registration.shift_id)
   )
 
-  if (userLoading || !currentUser) return <ContentSkeleton />
+  if (userLoading || !currentUser) return <div data-route-readiness="pending"><ContentSkeleton /></div>
 
   return (
-    <div ref={boardRoot} className="space-y-4">
+    <div ref={boardRoot} className="space-y-4" data-route-readiness={loadError ? 'error' : loadedKey !== requestKey ? 'pending' : 'ready'}>
       <CalendarExportDialog open={exportOpen} onOpenChange={setExportOpen} shiftId={exportShiftId ?? undefined} selectedIds={exportShiftId ? [exportShiftId] : []} filters={JSON.parse(queryFilters)} listScope={mode} />
       {!!loadError && <PageLoadError error={loadError} onRetry={() => { setLoading(true); void loadData() }} />}
       <Card className="border-none bg-background p-2 shadow-sm sm:p-3">
@@ -423,11 +503,12 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
 
       {(mode === 'open' || mode === 'mine') && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{total} {mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}</p>
+          <p aria-live="polite" aria-busy={loadedKey !== requestKey && !loadError} className="text-sm text-muted-foreground">{loadedKey === requestKey ? `${total} ${mode === 'mine' ? t('myShifts').toLowerCase() : t('openShifts').toLowerCase()}` : loadError ? t('error') : t('loading')}</p>
           <div className="inline-flex rounded-lg border bg-background p-1" aria-label={mode === 'mine' ? 'My shift view' : 'Open shift view'}>
             <ViewButton active={viewMode === 'card'} onClick={() => changeViewMode('card')} icon={<LayoutGrid className="h-4 w-4" />} label={t('cardView')} />
             <ViewButton active={viewMode === 'compact'} onClick={() => changeViewMode('compact')} icon={<List className="h-4 w-4" />} label={t('compactView')} />
             <ViewButton active={viewMode === 'table'} onClick={() => changeViewMode('table')} icon={<Table2 className="h-4 w-4" />} label={t('tableView')} />
+            <ViewButton active={viewMode === 'calendar'} onClick={() => changeViewMode('calendar')} icon={<CalendarDays className="h-4 w-4" />} label={t('month')} />
           </div>
         </div>
       )}
@@ -475,21 +556,40 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
         </Card>
       )}
 
-      {(mode === 'mine' ? visibleMyEntries.length === 0 : visibleShifts.length === 0) ? (
+      {viewMode === 'calendar' ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 px-4 py-3">
+            <CardTitle className="text-base">{format(calendarMonth, 'MMMM yyyy', { locale: language === 'vi' ? vi : enUS })}</CardTitle>
+            <div className="flex items-center gap-1">
+              <Button aria-label={t('previousPage')} onClick={() => navigate({ [mode + '_calendar_month']: format(subMonths(calendarMonth, 1), 'yyyy-MM') })} size="sm" variant="outline"><ChevronLeft className="h-4 w-4" /></Button>
+              <Button onClick={() => navigate({ [mode + '_calendar_month']: format(startOfMonth(new Date()), 'yyyy-MM') })} size="sm" variant="outline">{t('today')}</Button>
+              <Button aria-label={t('nextPage')} onClick={() => navigate({ [mode + '_calendar_month']: format(addMonths(calendarMonth, 1), 'yyyy-MM') })} size="sm" variant="outline"><ChevronRight className="h-4 w-4" /></Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 px-3 pb-3 sm:px-4">
+            {calendarRangeInvalid
+              ? <MonthView currentDate={calendarMonth} shifts={[]} brands={brands} platforms={platforms} onShiftClick={setDetailShift} />
+              : calendarError ? <PageLoadError error={calendarError} onRetry={() => setCalendarRetry(value => value + 1)} />
+                : calendarLoading ? <ContentSkeleton />
+                  : <MonthView currentDate={calendarMonth} shifts={calendarData?.shifts ?? []} brands={brands} platforms={platforms} registrations={calendarData?.registrations ?? []} onShiftClick={setDetailShift} />}
+          </CardContent>
+        </Card>
+      ) : (mode === 'mine' ? visibleMyEntries.length === 0 : visibleShifts.length === 0) ? (
         <Card><CardContent className="py-12 text-center text-muted-foreground">{mode === 'open' ? t('noOpenShifts') : t('noMyShifts')}</CardContent></Card>
       ) : mode === 'mine' ? (
         viewMode === 'table' ? (
-          <MyShiftTable entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftTable entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={handleOpenDetail} />
         ) : viewMode === 'compact' ? (
-          <MyShiftCompactList entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCompactList entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={handleOpenDetail} />
         ) : (
-          <MyShiftCards entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={setDetailShift} />
+          <MyShiftCards entries={visibleMyEntries} brands={brands} platforms={platforms} campaigns={campaigns} onManage={handleOpenDetail} />
         )
       ) : viewMode === 'table' ? (
         <ShiftSummaryTable
           allShifts={shifts}
           currentUser={currentUser}
-          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
+          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId, true)}
+          onCancelRegistration={reg => setRemovalTarget({ registration: reg, kind: 'cancel' })}
           shifts={visibleShifts}
           registrations={registrations}
           roleFilter={filters.roles}
@@ -505,7 +605,7 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           capacities={capacities}
           currentUser={currentUser}
           onManage={setDetailShift}
-          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId)}
+          onRegister={(shiftId, role) => runAction(`${shiftId}-${role}`, () => shiftRegistrationService.register(shiftId, currentUser.id, role), t('registrationPending'), shiftId, true)}
           platforms={platforms}
           registrations={registrations}
           roleFilter={filters.roles}
@@ -559,9 +659,12 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
                     </Button>
                     <ShiftRegistrationActions
                       allShifts={shifts}
+                      brandName={brandName(brands, shift.brand_id)}
+                      platformName={platformName(platforms, shift.platform_id)}
                       compact
                       currentUser={currentUser}
-                      onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'), shift.id)}
+                      onRegister={role => runAction(`${shift.id}-${role}`, () => shiftRegistrationService.register(shift.id, currentUser.id, role), t('registrationPending'), shift.id, true)}
+                      onCancel={cancelRegistration}
                       registrations={registrations}
                       shift={shift}
                     />
@@ -600,34 +703,43 @@ export function ShiftRegistrationBoard({ mode }: { mode: Mode }) {
           })}
         </div>
       )}
-      <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />
+      {viewMode !== 'calendar' && <HistoryPagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.setPage} onPageSizeChange={pagination.setPageSize} />}
       </>}
       {detailShift && loadedKey === requestKey && (
         <ShiftDetailModal
           open
-          onOpenChange={open => { if (!open) setDetailShift(null) }}
+          onOpenChange={open => { if (!open) { setDetailShift(null); setDetailInitialTab(undefined) } }}
           shift={detailShift}
+          initialTab={detailInitialTab}
           brands={brands}
           platforms={platforms}
           campaigns={campaigns}
           users={users}
-          allShifts={shifts}
-          allRegistrations={registrations}
+          allShifts={viewMode === 'calendar' ? calendarData?.shifts ?? [] : shifts}
+          allRegistrations={viewMode === 'calendar' ? calendarData?.registrations ?? [] : registrations}
           onUpdate={(updatedShift?: Shift) => {
             void (async () => {
               if (updatedShift) {
                 setDetailShift(updatedShift)
                 await loadRegistrationOperationalData()
+                if (viewMode === 'calendar') setCalendarRetry(value => value + 1)
               } else {
                 const refreshed = await loadRegistrationOperationalData()
                 const refreshedShift = refreshed?.shifts.find(shift => shift.id === detailShift.id)
                 if (refreshedShift) setDetailShift({ ...refreshedShift })
+                if (viewMode === 'calendar') setCalendarRetry(value => value + 1)
               }
             })()
+          }}
+          onEdit={() => {
+            const shiftId = detailShift.id
+            setDetailShift(null)
+            router.push(withReturnTo(`/shifts?edit_shift_id=${encodeURIComponent(shiftId)}`, window.location.pathname + window.location.search))
           }}
           onDelete={() => {
             setDetailShift(null)
             void loadRegistrationOperationalData()
+            if (viewMode === 'calendar') setCalendarRetry(value => value + 1)
           }}
         />
       )}
@@ -650,41 +762,136 @@ type MyShiftViewProps = {
   brands: Brand[]
   platforms: Platform[]
   campaigns: Campaign[]
-  onManage: (shift: Shift) => void
+  onManage: (shift: Shift, initialTab?: string) => void
 }
 
 function MyShiftCards({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
-  const { t } = useTranslation()
+  const { language, t } = useTranslation()
   return <div className="grid grid-cols-1 gap-5 2xl:grid-cols-2 min-[1900px]:grid-cols-3">
-    {entries.map(({ shift, registrations }) => <Card key={shift.id} data-testid={`my-shift-card-${shift.id}`}>
-      <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div>
-        <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
-        <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}</p>
-      </div><div className="flex flex-wrap gap-1">{registrations.map(registration => <Badge key={registration.id} variant="secondary">{t(registration.operational_role)}</Badge>)}</div></div></CardHeader>
-      <CardContent className="space-y-3"><div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
-        <Info label={t('brand')} value={brandName(brands, shift.brand_id)} /><Info label={t('platform')} value={platformName(platforms, shift.platform_id)} />
-        <Info label={t('campaign')} value={campaignName(campaigns, shift.campaign_id)} /><Info label={t('status')} value={registrations.map(registration => registrationLabel(registration, t)).join(', ')} />
-      </div><div className="flex justify-end"><Button data-testid={`open-my-shift-detail-card-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewShiftDetail')}</Button></div></CardContent>
-    </Card>)}
+    {entries.map(({ shift, registrations }) => {
+      const isStaffed = registrations.some(r =>
+        ['approved', 'manually_assigned'].includes(r.status) &&
+        ['host', 'support', 'technical'].includes(r.operational_role)
+      )
+      return (
+        <Card key={shift.id} data-testid={`my-shift-card-${shift.id}`}>
+          <CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div>
+            <CardTitle className="text-lg">{shift.title || `${brandName(brands, shift.brand_id)} live`}</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">{format(new Date(`${shift.date}T00:00:00`), 'dd/MM/yyyy')} · {formatShiftTimeRange(shift)}</p>
+          </div><div className="flex flex-wrap gap-1">{registrations.map(registration => <Badge key={registration.id} variant="secondary">{t(registration.operational_role)}</Badge>)}</div></div></CardHeader>
+          <CardContent className="space-y-3"><div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+            <Info label={t('brand')} value={brandName(brands, shift.brand_id)} /><Info label={t('platform')} value={platformName(platforms, shift.platform_id)} />
+            <Info label={t('campaign')} value={campaignName(campaigns, shift.campaign_id)} /><Info label={t('status')} value={registrations.map(registration => registrationLabel(registration, t)).join(', ')} />
+          </div><div className="flex flex-wrap items-center justify-end gap-2">
+            {isStaffed && (
+              <Button
+                data-testid={`open-my-shift-attendance-${shift.id}`}
+                size="sm"
+                variant="default"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => onManage(shift, 'attendance')}
+              >
+                <Camera className="mr-1.5 h-3.5 w-3.5" />
+                {language === 'en' ? 'Attendance' : 'Chấm công'}
+              </Button>
+            )}
+            <Button
+              data-testid={`open-my-shift-notes-${shift.id}`}
+              size="sm"
+              variant="outline"
+              onClick={() => onManage(shift, 'notes')}
+            >
+              <FileText className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
+              {language === 'en' ? 'Notes' : 'Ghi chú'}
+            </Button>
+            <Button data-testid={`open-my-shift-detail-card-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewShiftDetail')}</Button>
+          </div></CardContent>
+        </Card>
+      )
+    })}
   </div>
 }
 
 function MyShiftCompactList({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
-  const { t } = useTranslation()
-  return <div className="space-y-3">{entries.map(({ shift, registrations }) => <Card key={shift.id} data-testid={`my-shift-compact-${shift.id}`}><CardContent className="grid gap-3 pt-5 md:grid-cols-[minmax(220px,1.5fr)_minmax(100px,.7fr)_minmax(120px,.8fr)_auto] md:items-center">
-    <div className="min-w-0"><p className="truncate font-semibold">{shift.title || `${brandName(brands, shift.brand_id)} live`}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {platformName(platforms, shift.platform_id)}</p><p className="truncate text-xs text-muted-foreground">{campaignName(campaigns, shift.campaign_id)}</p></div>
-    <Info label={t('role')} value={registrations.map(registration => t(registration.operational_role)).join(', ')} /><Info label={t('status')} value={registrations.map(registration => registrationLabel(registration, t)).join(', ')} />
-    <div className="flex items-center gap-2 md:justify-end"><Button data-testid={`open-my-shift-detail-compact-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div>
-  </CardContent></Card>)}</div>
+  const { language, t } = useTranslation()
+  return <div className="space-y-3">{entries.map(({ shift, registrations }) => {
+    const isStaffed = registrations.some(r =>
+      ['approved', 'manually_assigned'].includes(r.status) &&
+      ['host', 'support', 'technical'].includes(r.operational_role)
+    )
+    return (
+      <Card key={shift.id} data-testid={`my-shift-compact-${shift.id}`}><CardContent className="grid gap-3 pt-5 md:grid-cols-[minmax(220px,1.5fr)_minmax(100px,.7fr)_minmax(120px,.8fr)_auto] md:items-center">
+        <div className="min-w-0"><p className="truncate font-semibold">{shift.title || `${brandName(brands, shift.brand_id)} live`}</p><p className="text-sm text-muted-foreground">{shift.date} · {formatShiftTimeRange(shift)} · {platformName(platforms, shift.platform_id)}</p><p className="truncate text-xs text-muted-foreground">{campaignName(campaigns, shift.campaign_id)}</p></div>
+        <Info label={t('role')} value={registrations.map(registration => t(registration.operational_role)).join(', ')} /><Info label={t('status')} value={registrations.map(registration => registrationLabel(registration, t)).join(', ')} />
+        <div className="flex items-center gap-2 md:justify-end">
+          {isStaffed && (
+            <Button
+              data-testid={`open-my-shift-attendance-compact-${shift.id}`}
+              size="sm"
+              variant="default"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => onManage(shift, 'attendance')}
+            >
+              <Camera className="mr-1.5 h-3.5 w-3.5" />
+              {language === 'en' ? 'Attendance' : 'Chấm công'}
+            </Button>
+          )}
+          <Button
+            data-testid={`open-my-shift-notes-compact-${shift.id}`}
+            size="sm"
+            variant="outline"
+            onClick={() => onManage(shift, 'notes')}
+          >
+            <FileText className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
+            {language === 'en' ? 'Notes' : 'Ghi chú'}
+          </Button>
+          <Button data-testid={`open-my-shift-detail-compact-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button>
+        </div>
+      </CardContent></Card>
+    )
+  })}</div>
 }
 
 function MyShiftTable({ entries, brands, platforms, campaigns, onManage }: MyShiftViewProps) {
-  const { t } = useTranslation()
+  const { language, t } = useTranslation()
   return <Card><CardContent className="overflow-x-auto pt-5"><table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b text-left">
     <th className="p-2">{t('date')}</th><th className="p-2">{t('shiftTitle')}</th><th className="p-2">{t('brand')}</th><th className="p-2">{t('platform')}</th><th className="p-2">{t('campaign')}</th><th className="p-2">{t('role')}</th><th className="p-2">{t('status')}</th><th className="p-2">{t('actions')}</th>
-  </tr></thead><tbody>{entries.map(({ shift, registrations }) => <tr className="border-b" key={shift.id} data-testid={`my-shift-row-${shift.id}`}>
-    <td className="whitespace-nowrap p-2">{shift.date} · {formatShiftTimeRange(shift)}</td><td className="p-2 font-medium">{shift.title || '—'}</td><td className="p-2">{brandName(brands, shift.brand_id)}</td><td className="p-2">{platformName(platforms, shift.platform_id)}</td><td className="p-2">{campaignName(campaigns, shift.campaign_id)}</td><td className="p-2">{registrations.map(registration => t(registration.operational_role)).join(', ')}</td><td className="p-2">{registrations.map(registration => <Badge className="mr-1" key={registration.id} variant="outline">{registrationLabel(registration, t)}</Badge>)}</td><td className="p-2"><Button data-testid={`open-my-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></td>
-  </tr>)}</tbody></table></CardContent></Card>
+  </tr></thead><tbody>{entries.map(({ shift, registrations }) => {
+    const isStaffed = registrations.some(r =>
+      ['approved', 'manually_assigned'].includes(r.status) &&
+      ['host', 'support', 'technical'].includes(r.operational_role)
+    )
+    return (
+      <tr className="border-b" key={shift.id} data-testid={`my-shift-row-${shift.id}`}>
+        <td className="whitespace-nowrap p-2">{shift.date} · {formatShiftTimeRange(shift)}</td><td className="p-2 font-medium">{shift.title || '—'}</td><td className="p-2">{brandName(brands, shift.brand_id)}</td><td className="p-2">{platformName(platforms, shift.platform_id)}</td><td className="p-2">{campaignName(campaigns, shift.campaign_id)}</td><td className="p-2">{registrations.map(registration => t(registration.operational_role)).join(', ')}</td><td className="p-2">{registrations.map(registration => <Badge className="mr-1" key={registration.id} variant="outline">{registrationLabel(registration, t)}</Badge>)}</td><td className="p-2">
+          <div className="flex items-center gap-1.5">
+            {isStaffed && (
+              <Button
+                data-testid={`open-my-shift-attendance-table-${shift.id}`}
+                size="sm"
+                variant="default"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => onManage(shift, 'attendance')}
+              >
+                <Camera className="mr-1 h-3.5 w-3.5" />
+                {language === 'en' ? 'Attendance' : 'Chấm công'}
+              </Button>
+            )}
+            <Button
+                data-testid={`open-my-shift-notes-table-${shift.id}`}
+                size="sm"
+                variant="outline"
+                onClick={() => onManage(shift, 'notes')}
+              >
+                <FileText className="mr-1 h-3.5 w-3.5 text-blue-600" />
+                {language === 'en' ? 'Notes' : 'Ghi chú'}
+              </Button>
+              <Button data-testid={`open-my-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button>
+          </div>
+        </td>
+      </tr>
+    )
+  })}</tbody></table></CardContent></Card>
 }
 
 
@@ -858,9 +1065,15 @@ function CompactShiftList({
 
                   <ShiftRegistrationActions
                     allShifts={allShifts}
+                    brandName={brandName(brands, shift.brand_id)}
+                    platformName={platformName(platforms, shift.platform_id)}
                     compact
                     currentUser={currentUser}
                     onRegister={role => onRegister(shift.id, role)}
+                    onCancel={onCancelRegistration ? async regId => {
+                      const reg = registrations.find(r => r.id === regId)
+                      if (reg) onCancelRegistration(reg)
+                    } : undefined}
                     registrations={registrations}
                     shift={shift}
                   />
@@ -970,6 +1183,7 @@ function ShiftSummaryTable({
   allShifts,
   currentUser,
   onRegister,
+  onCancelRegistration,
   shifts,
   registrations,
   roleFilter,
@@ -980,6 +1194,7 @@ function ShiftSummaryTable({
   allShifts: Shift[]
   currentUser: User
   onRegister: (shiftId: string, role: OperationalRole) => Promise<void>
+  onCancelRegistration?: (registration: ShiftRegistration) => void
   shifts: Shift[]
   registrations: ShiftRegistration[]
   roleFilter: RoleSelection
@@ -999,7 +1214,10 @@ function ShiftSummaryTable({
         <td className="p-2">{platformName(platforms, shift.platform_id)}</td>
         <td className="p-2">{visibleCapacities.map(capacity => t(capacity.role)).join(', ')}</td>
         <td className="p-2">{visibleCapacities.map(capacity => `${t(capacity.role)} ${capacity.approved}/${capacity.required}`).join(' · ')}</td>
-        <td className="p-2"><div className="flex items-center gap-2"><ShiftRegistrationActions allShifts={allShifts} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div></td>
+        <td className="p-2"><div className="flex items-center gap-2"><ShiftRegistrationActions allShifts={allShifts} brandName={brandName(brands, shift.brand_id)} platformName={platformName(platforms, shift.platform_id)} compact currentUser={currentUser} onRegister={role => onRegister(shift.id, role)} onCancel={onCancelRegistration ? async regId => {
+          const reg = registrations.find(r => r.id === regId)
+          if (reg) onCancelRegistration(reg)
+        } : undefined} registrations={registrations} shift={shift} /><Button data-testid={`open-shift-detail-table-${shift.id}`} size="sm" variant="outline" onClick={() => onManage(shift)}>{t('viewDetails')}</Button></div></td>
       </tr>
     })}</tbody>
   </table></CardContent></Card>

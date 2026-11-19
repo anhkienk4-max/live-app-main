@@ -15,7 +15,7 @@ import { CalendarFilterContext } from '@/lib/utils/calendarFilters'
 export interface ShiftCardProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   shift: Shift
   users?: User[]
-  variant?: 'compact' | 'standard' | 'expanded' | 'embedded'
+  variant?: 'compact' | 'month' | 'standard' | 'expanded' | 'embedded'
   context?: CalendarFilterContext
   isToday?: boolean
   showDate?: boolean
@@ -37,7 +37,40 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
     const platformName = platforms.find(p => p.id === shift.platform_id)?.name ?? ''
     const displayTitle = shift.title || (brandName + ' · ' + platformName)
 
+    if (variant === 'month') {
+      const missingStaff = getShiftRoleCapacities(
+        shift, registrations.filter(registration => registration.shift_id === shift.id),
+      ).some(capacity => capacity.remaining > 0)
+      return (
+        <button
+          ref={ref}
+          className={cn(
+            'flex w-full min-w-0 flex-col items-start gap-0.5 rounded-sm border border-l-[3px] bg-background px-1.5 py-1 text-left text-[11px] leading-tight transition-colors',
+            'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            selected && 'bg-primary/10',
+            className,
+          )}
+          {...props}
+        >
+          <span data-calendar-field="time" className="block w-full font-semibold tabular-nums text-foreground">
+            {formatShiftTimeRange(shift)}
+          </span>
+          {shift.title && <span data-calendar-field="title" className="block w-full break-words font-medium text-foreground">{shift.title}</span>}
+          {brandName && <span data-calendar-field="brand" className="block w-full break-words text-foreground">{brandName}</span>}
+          {platformName && <span data-calendar-field="platform" className="block w-full break-words text-muted-foreground">{platformName}</span>}
+          {shift.studio && <span data-calendar-field="studio" className="block w-full break-words text-muted-foreground">{shift.studio}</span>}
+          <span className="flex w-full flex-wrap items-center gap-1">
+            {missingStaff && <span role="img" aria-label={t('needsStaffing')} title={t('needsStaffing')} className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-amber-100 text-[10px] font-bold text-amber-900 dark:bg-amber-900/30 dark:text-amber-300">!</span>}
+            <span data-calendar-field="status" className="inline-flex max-w-full"><ShiftStatusBadge status={shift.status} className="h-auto max-w-full whitespace-normal px-1 py-0.5 text-micro" /></span>
+          </span>
+        </button>
+      )
+    }
+
     if (variant === 'compact') {
+      const missingStaff = getShiftRoleCapacities(
+        shift, registrations.filter(registration => registration.shift_id === shift.id),
+      ).some(capacity => capacity.remaining > 0)
       return (
         <button
           ref={ref}
@@ -55,6 +88,7 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
           <span className='min-w-0 flex-1 truncate whitespace-nowrap text-foreground'>
             {displayTitle}
           </span>
+          {missingStaff && <span role="img" aria-label={t('needsStaffing')} title={t('needsStaffing')} className='flex h-4 w-4 shrink-0 items-center justify-center rounded bg-amber-100 text-[10px] font-bold text-amber-900 dark:bg-amber-900/30 dark:text-amber-300'>!</span>}
           <ShiftStatusBadge status={shift.status} className='shrink-0 text-micro h-4 px-1 py-0 border-none scale-90 origin-right' />
         </button>
       )
@@ -97,14 +131,15 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
         <button
           ref={ref}
           className={cn(
-            'w-full text-left block p-4 border rounded-lg transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'w-full min-w-0 text-left block p-4 [overflow-wrap:anywhere] border rounded-lg transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             selected ? 'border-primary bg-primary/[0.02]' : 'bg-card',
             className
           )}
           {...props}
         >
-          <div className='flex items-center justify-between mb-2'>
-            <div className='flex flex-wrap items-center gap-x-6 gap-y-2 flex-1'>
+          {shift.title && <p className="mb-3 text-sm font-semibold">{shift.title}</p>}
+          <div className='flex flex-wrap items-start justify-between gap-3 mb-2'>
+            <div className='flex flex-wrap items-center gap-x-6 gap-y-2 min-w-0 flex-1'>
               {showDate && (
                 <div className='text-sm font-semibold min-w-[110px] text-foreground'>
                   {shift.date}
@@ -128,10 +163,15 @@ export const ShiftCard = React.forwardRef<HTMLButtonElement, ShiftCardProps>(
                 <span className='font-medium mr-1'>{t('importTechnicalNames')}:</span> {techName}
               </div>
             </div>
-            <div className='ml-4 shrink-0'>
+            <div className='shrink-0'>
               <ShiftStatusBadge status={shift.status} />
             </div>
           </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" data-testid={'shift-staffing-' + shift.id}>
+            <span className="font-medium">{t('staffing')}: {t(capacities.some(capacity => capacity.remaining > 0) ? 'needsStaffing' : 'fullyStaffed')}</span>
+            {capacities.map(capacity => <span key={capacity.role}>{t(capacity.role)}: {capacity.approved}/{capacity.required}</span>)}
+          </div>
+          <span className="mt-3 block text-xs font-semibold text-primary">{t('viewDetails')} →</span>
           {attention.length > 0 && (
             <div className='mt-3 pr-4'>
               <OperationalStatusStrip items={attention} compact />

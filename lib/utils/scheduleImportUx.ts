@@ -17,6 +17,7 @@ export interface ImportPresentationCounts {
 
 export function previewPresentationStatus(preview: ImportPreviewRow): ImportPreviewPresentationStatus {
   if (preview.row.errors.length > 0) return 'invalid'
+  if (preview.isInFileDuplicate) return 'duplicate'
   if (!preview.shift && preview.duplicateCandidate) {
     const reference = preview.duplicateReference
     if (!reference || !hasScheduleImportEnrichment(reference, preview.duplicateCandidate, preview.row.source_presence)) return 'duplicate'

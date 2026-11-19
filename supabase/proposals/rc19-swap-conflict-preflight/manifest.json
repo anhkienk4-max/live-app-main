@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "change": "RC19 SWAP-01 conflict preflight",
+  "status": "REVIEW_ONLY_NOT_APPLIED",
+  "auto_apply": false,
+  "target_environment": null,
+  "migration_proposal": "supabase/proposals/rc19-swap-conflict-preflight/20261030103157_rc19_swap_conflict_preflight.sql",
+  "approval_required_before_release": true,
+  "release_requirements": [
+    "Owner-approved migration artifact and exact checksum",
+    "PostgreSQL 17 authorization, privacy, conflict and compatibility review",
+    "Confirm the authoritative create/approval path retains conflict validation",
+    "Explicit Production migration approval and rollback plan"
+  ]
+}

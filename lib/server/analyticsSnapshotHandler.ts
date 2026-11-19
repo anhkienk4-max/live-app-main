@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { operationsResponseOwnerKey } from '@/lib/server/operationsResponseOwnerKey'
 import { requireUser, isAuthorizationError, authorizationErrorResponse, type ServerUserResolver } from '@/lib/server/authGuards'
 import { listFiltersSchema } from '@/lib/server/operationsCollectionHandler'
 
@@ -16,7 +17,7 @@ export function createAnalyticsSnapshotHandler(dependencies: { resolveUser?: Ser
       const client = dependencies.createClient ? await dependencies.createClient() : await (await import('@/lib/supabase/server')).createClient()
       const result = await client.rpc('get_analytics_snapshot', { p_filters: parsed.data })
       if (result.error) throw result.error
-      return Response.json({ snapshot: result.data, ownerKey: user.id + ':' + user.systemPermission }, { headers: { 'Cache-Control': 'private, no-store' } })
+      return Response.json({ snapshot: result.data, ownerKey: operationsResponseOwnerKey(user) }, { headers: { 'Cache-Control': 'private, no-store' } })
     } catch (error) {
       if (isAuthorizationError(error)) return authorizationErrorResponse(error)
       const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''

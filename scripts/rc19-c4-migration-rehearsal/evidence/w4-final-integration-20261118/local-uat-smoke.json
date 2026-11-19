@@ -1,0 +1,102 @@
+{
+  "status": "PASS",
+  "verified_at_utc": "2026-11-18T11:17:29.047Z",
+  "web_base": "http://127.0.0.1:3102",
+  "database": "rc19_c511_e2e_20261118084955",
+  "database_marker": "CODEX_DISPOSABLE_RC19_C5_11_E2E_ONLY",
+  "roles": [
+    {
+      "role": "admin",
+      "email": "w4.admin@c511.invalid",
+      "login_ok": true,
+      "routes": [
+        {
+          "route": "/calendar",
+          "final_path": "/calendar",
+          "text_length": 1653,
+          "has_brand_a_shift_text": true,
+          "has_brand_b_shift_text": true
+        },
+        {
+          "route": "/swaps",
+          "final_path": "/swaps",
+          "text_length": 1043,
+          "has_brand_a_shift_text": false,
+          "has_brand_b_shift_text": false
+        },
+        {
+          "route": "/payroll?tab=personal",
+          "final_path": "/payroll?tab=personal",
+          "text_length": 1056,
+          "has_brand_a_shift_text": false,
+          "has_brand_b_shift_text": false
+        }
+      ],
+      "my_payslip_api_status": 200,
+      "proxy_2xx_calls": 58,
+      "server_5xx_count": 0
+    },
+    {
+      "role": "leader",
+      "email": "w4.leader@c511.invalid",
+      "login_ok": true,
+      "routes": [
+        {
+          "route": "/calendar",
+          "final_path": "/calendar",
+          "text_length": 1106,
+          "has_brand_a_shift_text": true,
+          "has_brand_b_shift_text": false
+        },
+        {
+          "route": "/swaps",
+          "final_path": "/swaps",
+          "text_length": 1063,
+          "has_brand_a_shift_text": false,
+          "has_brand_b_shift_text": false
+        },
+        {
+          "route": "/payroll?tab=personal",
+          "final_path": "/payroll?tab=personal",
+          "text_length": 976,
+          "has_brand_a_shift_text": false,
+          "has_brand_b_shift_text": false
+        }
+      ],
+      "my_payslip_api_status": 200,
+      "proxy_2xx_calls": 61,
+      "server_5xx_count": 0
+    },
+    {
+      "role": "member_host",
+      "email": "w4.member.host@c511.invalid",
+      "login_ok": true,
+      "routes": [
+        {
+          "route": "/calendar",
+          "final_path": "/calendar",
+          "text_length": 921,
+          "has_brand_a_shift_text": true,
+          "has_brand_b_shift_text": false
+        },
+        {
+          "route": "/swaps",
+          "final_path": "/swaps",
+          "text_length": 994,
+          "has_brand_a_shift_text": false,
+          "has_brand_b_shift_text": false
+        },
+        {
+          "route": "/payroll?tab=personal",
+          "final_path": "/payroll?tab=personal",
+          "text_length": 970,
+          "has_brand_a_shift_text": false,
+          "has_brand_b_shift_text": false
+        }
+      ],
+      "my_payslip_api_status": 200,
+      "proxy_2xx_calls": 58,
+      "server_5xx_count": 0
+    }
+  ]
+}

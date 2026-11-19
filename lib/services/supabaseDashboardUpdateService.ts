@@ -9,6 +9,9 @@ type DashboardUpdateRepository = {
 }
 
 export function dashboardUpdateFromRow(row: Record<string, unknown>): DashboardUpdate {
+  const screenshotUrl = row.screenshot_file_id || !row.screenshot_storage_path
+    ? row.screenshot_url
+    : `/api/dashboard-screenshots?storage_path=${encodeURIComponent(String(row.screenshot_storage_path))}`
   return {
     ...(row as unknown as DashboardUpdate),
     id: String(row.id),
@@ -20,6 +23,7 @@ export function dashboardUpdateFromRow(row: Record<string, unknown>): DashboardU
     current_viewers: Number(row.current_viewers || 0),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+    screenshot_url: typeof screenshotUrl === 'string' ? screenshotUrl : undefined,
   }
 }
 

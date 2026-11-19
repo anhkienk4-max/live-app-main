@@ -1,0 +1,20 @@
+{
+  "result": "INSPECTED",
+  "title": "W4 UI Atomic Replace ui_1794890074612_22ec09ce",
+  "tabs": [
+    "Tổng quan",
+    "Điều phối ca",
+    "Chi tiết",
+    "Chấm công thực tế",
+    "Ghi chú"
+  ],
+  "buttons": [
+    "Xuất danh sách nhân sự",
+    "Mở lại đăng ký",
+    "Đóng",
+    "Xóa",
+    "Sửa",
+    "Close"
+  ],
+  "text": "Đã lên lịch W4 UI Atomic Replace ui_1794890074612_22ec09ce W4 UI Test Brand ui_1794890074612_22ec09ce • W4 UI Test Platform ui_1794890074612_22ec09ce 22 thg 11 năm 2026 10:00 – 11:00 synthetic Xuất danh sách nhân sự Mở lại đăng ký Đã lên lịch Tự động Thông tin chi tiết và thao tác cho ca livestream này. Tổng quan Điều phối ca Chi tiết Chấm công thực tế Ghi chú TỔNG QUAN Thương hiệu W4 UI Test Brand ui_1794890074612_22ec09ce Nền tảng W4 UI Test Platform ui_1794890074612_22ec09ce Chiến dịch Chưa cung cấp Studio synthetic Nguồn thực hiện Nội bộ Agency Chưa cung cấp Ngày Chủ Nhật, 22 thg 11 năm 2026 Thời gian 10:00 – 11:00 Múi giờ Asia/Ho_Chi_Minh Duration 60 min Mã ca d5e4caee-99a0-417b-83b2-16d99519f64f Phiên bản 7 Ca đơn (Toàn bộ khung giờ 10:00 – 11:00) Bấm \"Sửa ca\" để thêm khung giờ (segments) GHI CHÚ SẢN PHẨM Chưa cung cấp TRẠNG THÁI Đã lên lịch Status mode auto Đăng ký ca Đã khóa đăng ký ĐIỀU PHỐI CA Host 1/1 UiReplacement W4 UI synthetic (Đã duyệt) Hỗ trợ 0/0 Chưa phân công Kỹ thuật 0/0 Chưa phân công Đóng Xóa Sửa Close"
+}

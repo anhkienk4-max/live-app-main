@@ -11,7 +11,8 @@ const MAX_ENTRIES = 48
 type Entry = { expires: number; value: unknown }
 const entries = new Map<string, Entry>()
 let invalidationEpoch = 0
-export function currentPageCacheGeneration(): number { return invalidationEpoch }
+const namespaceEpochs = new Map<string, number>()
+export function currentPageCacheGeneration(namespace?: string): number { return invalidationEpoch + (namespace ? namespaceEpochs.get(namespace) ?? 0 : 0) }
 
 export function pageCacheKey(identity: string, namespace: string, query: unknown): string {
   return JSON.stringify([identity, namespace, query])
@@ -40,14 +41,16 @@ export function writePageCache<T>(key: string, value: T): void {
   }
 }
 
-export function invalidatePageCache(identity?: string, namespace?: string): void {
+export function invalidatePageCache(identity?: string, namespace?: string | readonly string[]): void {
   // In-flight reads from before a mutation must never repopulate stale rows.
-  invalidationEpoch++
-  if (!identity) { entries.clear(); return }
+  const namespaces = namespace === undefined ? undefined : new Set(typeof namespace === 'string' ? [namespace] : namespace)
+  if (!namespaces) invalidationEpoch++
+  else for (const scope of namespaces) namespaceEpochs.set(scope, (namespaceEpochs.get(scope) ?? 0) + 1)
+  if (!identity && !namespaces) { entries.clear(); return }
   for (const key of entries.keys()) {
     try {
       const [owner, scope] = JSON.parse(key) as [string, string]
-      if (owner === identity && (!namespace || scope === namespace)) entries.delete(key)
+      if ((!identity || owner === identity) && (!namespaces || namespaces.has(scope))) entries.delete(key)
     } catch { entries.delete(key) }
   }
 }
@@ -62,11 +65,36 @@ export async function readCachedListPage<T>(
 ): Promise<ListPage<T>> {
   const key = pageCacheKey(identity, namespace, query)
   const previous = readPageCache<ListPage<T>>(key)
-  if (previous) return previous
-  const epoch = invalidationEpoch
+  const cacheEpoch = currentPageCacheGeneration(namespace)
+  const actorIsCurrent = async (): Promise<boolean> => {
+    if (!stillSameActor) return true
+    try {
+      return (await stillSameActor()) === true
+    } catch {
+      // Logout can unbind currentUserService between the request and response.
+      // Never turn an identity lookup failure into permission to use a cache.
+      return false
+    }
+  }
+  // Even a cache hit requires verified actor ownership. If an invalidation
+  // happens while the async verification is pending, discard the old hit
+  // and fetch again rather than returning a stale pre-mutation snapshot.
+  if (previous) {
+    if (!(await actorIsCurrent())) {
+      console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', { stage: 'cache_actor_changed_on_hit' })
+      invalidatePageCache(identity, namespace)
+      throw new Error('LIST_IDENTITY_CHANGED')
+    }
+    if (!signal?.aborted && cacheEpoch === currentPageCacheGeneration(namespace)) return previous
+  }
+  const epoch = currentPageCacheGeneration(namespace)
   const result = await service.getPage(query, signal)
-  if (stillSameActor && !(await stillSameActor())) throw new Error('LIST_IDENTITY_CHANGED')
-  if (!signal?.aborted && epoch === invalidationEpoch) writePageCache(key, result)
+  if (!(await actorIsCurrent())) {
+    console.warn('OPS_LIST_IDENTITY_DIAGNOSTIC', { stage: 'cache_actor_changed_after_read' })
+    invalidatePageCache(identity, namespace)
+    throw new Error('LIST_IDENTITY_CHANGED')
+  }
+  if (!signal?.aborted && epoch === currentPageCacheGeneration(namespace)) writePageCache(key, result)
   return result
 }
 

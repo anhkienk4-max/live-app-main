@@ -86,6 +86,11 @@ export interface FileProviderMetadata {
   checksum_sha256?: string
   parent_ids?: string[]
   kind?: 'file' | 'folder'
+  trashed?: boolean
+  capabilities?: {
+    canAddChildren?: boolean | null
+    canEdit?: boolean | null
+  }
   provider_metadata?: Record<string, unknown>
 }
 

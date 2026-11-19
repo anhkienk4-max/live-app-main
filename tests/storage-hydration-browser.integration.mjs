@@ -24,6 +24,8 @@ try {
       compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext,
         target: ts.ScriptTarget.ES2022 }, fileName: this.resourcePath
     }).outputText; };`)
+  const realtimeBridge = join(temp, 'shift-change-bridge.cjs')
+  await writeFile(realtimeBridge, 'exports.ShiftChangeBridge = function ShiftChangeBridge() { return null }')
   const webpack = require('next/dist/compiled/webpack/webpack').webpack
   await new Promise((accept, reject) => webpack({
     mode: 'production', target: 'web', context: root,
@@ -32,6 +34,7 @@ try {
     resolve: {
       extensions: ['.tsx', '.ts', '.js'],
       alias: {
+        '@/components/providers/ShiftChangeBridge$': realtimeBridge,
         '@': root,
         'next/navigation$': resolve('tests/next-navigation-test-shim.mjs'),
         'next/link$': resolve('tests/next-link-test-shim.mjs'),
@@ -94,7 +97,11 @@ try {
         if (load === 'initial') await page.goto(origin)
         else await page.reload()
         await page.waitForFunction(language => document.documentElement.lang === language, saved)
-        await page.getByRole('heading', { name: saved === 'vi' ? 'Kho file vận hành' : 'Operational file storage' }).waitFor()
+        try {
+          await page.getByRole('heading', { name: saved === 'vi' ? 'Kho file vận hành' : 'Operational file storage' }).waitFor()
+        } catch (error) {
+          throw new Error(`Workspace heading did not render: ${JSON.stringify({ body: await page.locator('body').innerText(), errors, networkErrors })}`, { cause: error })
+        }
         assert.equal(await page.getByTestId('shared-label').textContent(), saved === 'vi' ? 'Lưu' : 'Save')
         assert.equal(await page.getByTestId('untranslated-data').textContent(), 'All', 'The provider must not rewrite unrelated React-owned text')
         await page.screenshot({ path: join(evidence, `storage-fixture-${width}-${saved}-${load}.png`), fullPage: true })

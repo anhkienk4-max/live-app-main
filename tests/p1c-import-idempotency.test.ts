@@ -204,7 +204,7 @@ test('concurrent confirmation of the same row yields one active shift and an ide
   assert.equal(first.imported + second.imported + first.recovered + second.recovered, 2)
 })
 
-test('campaign or studio differences cannot bypass the canonical slot duplicate', async () => {
+test('a distinct campaign or studio is a separate operational shift within the same slot', async () => {
   const existing = shift('external-slot', 'other-batch', { campaign_id: 'other-campaign', studio: 'Studio B' })
   let createCalls = 0
   const outcomes: Array<{ outcome: string; shiftId?: string }> = []
@@ -220,7 +220,8 @@ test('campaign or studio differences cannot bypass the canonical slot duplicate'
     refreshShifts: async () => [existing],
     recordOutcome: async item => outcomes.push({ outcome: item.outcome, shiftId: item.shiftId }),
   })
-  assert.equal(createCalls, 0)
-  assert.equal(result.duplicateSkipped, 1)
-  assert.deepEqual(outcomes, [{ outcome: 'duplicate_skipped', shiftId: existing.id }])
+  assert.equal(createCalls, 1)
+  assert.equal(result.imported, 1)
+  assert.equal(result.duplicateSkipped, 0)
+  assert.deepEqual(outcomes, [{ outcome: 'imported', shiftId: 'unexpected' }])
 })

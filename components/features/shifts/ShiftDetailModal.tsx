@@ -1,5 +1,6 @@
 'use client'
 
+import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 import { format, isValid, parseISO } from 'date-fns'
 import { enUS, vi } from 'date-fns/locale'
@@ -7,6 +8,7 @@ import {
   isStaffedRegistration,
   shiftRegistrationService,
   shiftService,
+  swapRequestService,
   type ShiftRoleCapacity,
 } from '@/lib/services/dataService'
 import type {
@@ -17,10 +19,14 @@ import type {
   Platform,
   Shift,
   ShiftRegistration,
+  SupplementalShiftField,
+  SupplementalShiftFields,
   ShiftStaffIdentityMatchMethod,
   ShiftStatus,
   User,
+  SwapRequest,
 } from '@/lib/types/database.types'
+import { formatRegistrationErrorMessage, canSelfCancelRegistration } from '@/lib/utils/shiftRegistration'
 import {
   Dialog,
   DialogBody,
@@ -31,6 +37,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -52,14 +59,20 @@ import {
   UserPlus,
   X,
   Info,
+  RefreshCw,
+  Layers,
+  ShieldAlert,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { hasPermission } from '@/lib/permissions'
+import { hasPermission, resolveSystemPermission } from '@/lib/permissions'
 import { CalendarExportDialog } from './CalendarExportDialog'
+import { SelfAttendancePanel } from '@/components/features/attendance/SelfAttendancePanel'
+import { AdminProxyAttendanceModal } from '@/components/features/attendance/AdminProxyAttendanceModal'
 import type { ListFilters } from '@/lib/services/operationsPageService'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
 import { getCurrentBusinessDate, resolveShiftDateTime } from '@/lib/utils/shiftUtils'
+import { agencyDisplayLabel, executionSourceDisplayLabel } from '@/lib/utils/executionSource'
 import { LifecycleActionDialog } from '@/components/ui/lifecycle-action-dialog'
 import { HistoryPagination } from '@/components/ui/history-pagination'
 import { normalizeStaffingDisplayNames } from '@/lib/utils/scheduleImportPreview'
@@ -71,7 +84,10 @@ import { OperationalStatusStrip } from '@/components/ui/operational-status'
 import { ShiftLifecycleActions } from './ShiftLifecycleActions'
 import { resolveStaffingLabelsForRole, StaffingLabel } from '@/lib/utils/staffingResolver'
 import { ActualStaffingPanel } from './ActualStaffingPanel'
+import { AttendancePhotoReviewPanel } from '@/components/features/attendance/AttendancePhotoReviewPanel'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
+import { ShiftOperationalNotesSection } from './ShiftOperationalNotesSection'
+import { AtomicStaffingReplacementDialog } from '@/components/features/calendar/AtomicStaffingReplacementDialog'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
 
@@ -407,6 +423,8 @@ const statusStyles: Record<ShiftStatus, string> = {
 
 
 interface ShiftDetailModalProps {
+  initialTab?: 'overview' | 'staffing' | 'details' | 'attendance' | string
+  onTabChange?: (tab: string) => void
   exportFilters?: ListFilters
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -483,6 +501,8 @@ export function ShiftDetailActions({
 }
 
 export function ShiftDetailModal({
+  initialTab,
+  onTabChange,
   exportFilters,
   open,
   onOpenChange,
@@ -510,51 +530,113 @@ export function ShiftDetailModal({
   const [busy, setBusy] = React.useState(false)
   const [staffingLoading, setStaffingLoading] = React.useState(false)
   const [staffingError, setStaffingError] = React.useState(false)
+  const [staffingActorId, setStaffingActorId] = React.useState<string | undefined>()
+  const staffingRead = React.useRef(0)
   const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
+  const [activeShift, setActiveShift] = React.useState<Shift>(shift)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate active shift from incoming props
+  React.useEffect(() => { setActiveShift(shift) }, [shift])
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
   const [showSwapDialog, setShowSwapDialog] = React.useState(false)
+  const [replacingRegistration, setReplacingRegistration] = React.useState<ShiftRegistration | null>(null)
+  const [shiftSwaps, setShiftSwaps] = React.useState<SwapRequest[]>([])
+  const [supplementalDraft, setSupplementalDraft] = React.useState<Record<string, string>>({})
+  const [adminProxyOpen, setAdminProxyOpen] = React.useState(false)
+  const searchParams = useSearchParams()
+  const initialParamTab = searchParams?.get('shift_tab')
+  const validTabs = React.useMemo(() => ['overview', 'staffing', 'details', 'attendance', 'notes'], [])
+  const resolvedInitialTab = initialTab && validTabs.includes(initialTab)
+    ? initialTab
+    : initialParamTab && validTabs.includes(initialParamTab)
+      ? initialParamTab
+      : 'overview'
+  const [tabOverride, setTabOverride] = React.useState<string | null>(null)
+  const [lastShiftId, setLastShiftId] = React.useState(shift.id)
+  if (shift.id !== lastShiftId) {
+    setLastShiftId(shift.id)
+    setTabOverride(null)
+  }
+  const currentTab = tabOverride ?? resolvedInitialTab
+
+  const handleTabChange = (nextTab: string) => {
+    setTabOverride(nextTab)
+    onTabChange?.(nextTab)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('shift_tab', nextTab)
+      window.history.replaceState(null, '', url.toString())
+    }
+  }
   const canDeleteShift = Boolean(currentUser && hasPermission(currentUser, 'shifts.delete'))
-  const canEditStaffingLabels = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
+  const canEdit = Boolean(currentUser && hasPermission(currentUser, 'shifts.edit'))
+  const canEditStaffingLabels = canEdit
   const canAssignStaff = Boolean(currentUser && hasPermission(currentUser, 'shifts.assign_staff'))
   const registrationTotalPages = Math.max(1, Math.ceil(registrations.length / registrationPageSize))
   const safeRegistrationPage = Math.min(registrationPage, registrationTotalPages)
-  const visibleRegistrations = registrations.slice(
+  const sortedRegistrations = [...registrations].sort((left, right) =>
+    operationalRoles.indexOf(left.operational_role) - operationalRoles.indexOf(right.operational_role) ||
+    left.requested_at.localeCompare(right.requested_at) ||
+    left.id.localeCompare(right.id),
+  )
+  const visibleRegistrations = sortedRegistrations.slice(
     (safeRegistrationPage - 1) * registrationPageSize,
     safeRegistrationPage * registrationPageSize,
   )
 
+  const actorId = currentUser?.id
   const loadStaffing = React.useCallback(async () => {
+    const sequence = ++staffingRead.current
+    setStaffingActorId(undefined)
     setStaffingLoading(true)
     setStaffingError(false)
     try {
-      const [loadedRegistrations, loadedCapacities, updatedShift] = await Promise.all([
+      const [loadedRegistrations, loadedCapacities, updatedShift, loadedSwaps] = await Promise.all([
         shiftRegistrationService.getForShift(shift.id),
         shiftRegistrationService.getCapacity(shift.id),
         shiftService.getById(shift.id),
+        swapRequestService.getAllFiltered({ shiftIds: [shift.id] }).catch(() => []),
       ])
+      if (sequence !== staffingRead.current) return
       setRegistrations(loadedRegistrations)
+      setStaffingActorId(actorId)
       setCapacities(loadedCapacities)
       setIsLocked(Boolean(updatedShift?.registration_locked))
+      if (updatedShift) {
+        setActiveShift(updatedShift)
+      }
+      setShiftSwaps(loadedSwaps)
     } catch {
-      setStaffingError(true)
+      if (sequence === staffingRead.current) setStaffingError(true)
     } finally {
-      setStaffingLoading(false)
+      if (sequence === staffingRead.current) setStaffingLoading(false)
     }
-  }, [shift.id])
+  }, [shift.id, actorId])
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- required immediate staffing refresh contract
     if (open) void loadStaffing()
+    return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- this sequence is intentionally invalidated in cleanup
+      staffingRead.current++
+    }
   }, [loadStaffing, open])
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- required immediate shift-state reconciliation contract
     setRegistrationPage(1)
     setIsLocked(Boolean(shift.registration_locked))
   }, [shift.id, shift.registration_locked])
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate the editor when the persisted Shift revision changes
+    setSupplementalDraft(Object.fromEntries(Object.entries(shift.supplemental_fields ?? {}).map(([key, field]) => [key, String(field.value)])))
+  }, [shift.id, shift.updated_at, shift.supplemental_fields])
 
 
-  const myRegistration = React.useMemo(() => registrations.find(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r)), [registrations, currentUser?.id, shift.id])
+  const myRegistration = staffingActorId === currentUser?.id && currentUser
+    ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id && isStaffedRegistration(r)) : undefined
+  const myAttendanceRegistration = myRegistration ?? (staffingActorId === currentUser?.id && currentUser
+    ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id) : undefined)
+  const attendanceShiftEligible = !shift.deleted_at && !shift.archived_at && ['scheduled', 'preparing', 'live', 'paused', 'completed'].includes(shift.status)
   const registrationContext = allRegistrations ?? registrations
   const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
   const dateTime = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
@@ -629,7 +711,7 @@ export function ShiftDetailModal({
     }
   }
 
-  const runStaffingAction = async (action: () => Promise<unknown>, message: string) => {
+  const runStaffingAction = async (action: () => Promise<unknown>, message: string, throwAfterToast = false) => {
     if (!currentUser) return
     setBusy(true)
     try {
@@ -638,7 +720,8 @@ export function ShiftDetailModal({
       await loadStaffing()
       onUpdate()
     } catch (error) {
-      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+      toast({ title: t('error'), description: error instanceof Error ? formatRegistrationErrorMessage(error.message) : t('validationError'), variant: 'destructive' })
+      if (throwAfterToast) throw error
     } finally {
       setBusy(false)
     }
@@ -658,6 +741,41 @@ export function ShiftDetailModal({
         variant: 'destructive',
       })
       throw error
+    }
+  }
+
+  const saveSupplementalFields = async () => {
+    if (!currentUser || !hasPermission(currentUser, 'shifts.edit')) return
+    const next: SupplementalShiftFields = {}
+    for (const [key, field] of Object.entries(shift.supplemental_fields ?? {}) as Array<[string, SupplementalShiftField]>) {
+      const raw = supplementalDraft[key] ?? ''
+      if (!raw.trim()) continue
+      let value: string | number | boolean = raw
+      if (field.type === 'number') {
+        if (!/^-?(?:\d+|\d*\.\d+)$/.test(raw.trim()) || !Number.isFinite(Number(raw))) {
+          toast({ title: t('error'), description: `${field.label}: enter a valid number.`, variant: 'destructive' })
+          return
+        }
+        value = Number(raw)
+      } else if (field.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        toast({ title: t('error'), description: `${field.label}: use YYYY-MM-DD.`, variant: 'destructive' })
+        return
+      } else if (field.type === 'time' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(raw)) {
+        toast({ title: t('error'), description: `${field.label}: use HH:MM.`, variant: 'destructive' })
+        return
+      } else if (field.type === 'boolean') value = raw === 'true'
+      next[key] = { ...field, value }
+    }
+    setBusy(true)
+    try {
+      const saved = await shiftService.update(shift.id, { supplemental_fields: next, version: shift.version }, currentUser.id)
+      if (!saved) throw new Error(t('validationError'))
+      toast({ title: t('success'), description: t('shiftUpdated'), variant: 'success' })
+      onUpdate()
+    } catch (error) {
+      toast({ title: t('error'), description: error instanceof Error ? error.message : t('validationError'), variant: 'destructive' })
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -687,16 +805,24 @@ export function ShiftDetailModal({
     await runStaffingAction(
       () => shiftRegistrationService.register(shift.id, currentUser.id, role),
       t('registrationPending'),
+      true,
     )
   }
 
   return (
     <>
       <CalendarExportDialog open={exportOpen} onOpenChange={setExportOpen} shiftId={shift.id} selectedIds={[shift.id]} filters={exportFilters} />
+      <AdminProxyAttendanceModal
+        open={adminProxyOpen}
+        onOpenChange={setAdminProxyOpen}
+        shift={shift}
+        registrations={registrations}
+        users={users}
+      />
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           size="xl"
-          className="h-auto grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden max-w-5xl gap-0 p-0"
+          className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-5xl h-auto grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden gap-0 p-0"
           data-testid="shift-detail-modal"
         >
           {/* A. COMMAND HEADER */}
@@ -770,12 +896,17 @@ export function ShiftDetailModal({
           </DialogHeader>
 
           <DialogBody className="mx-0 pb-1 bg-muted/5 p-0 overflow-y-auto">
-            <Tabs defaultValue="overview" className="min-w-0">
-              <TabsList className="mx-4 mt-4 grid group-data-[orientation=horizontal]/tabs:h-auto w-auto grid-cols-4 sm:mx-6">
+            <Tabs key={`${shift.id}:${currentUser?.id ?? ''}`} value={currentTab} onValueChange={handleTabChange} className="min-w-0">
+              <TabsList className="mx-4 mt-4 grid w-auto grid-cols-5 sm:mx-6" data-testid="shift-detail-permanent-tabs">
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="overview">{t('shiftOverview')}</TabsTrigger>
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="staffing">{t('staffing')}</TabsTrigger>
-                {capabilities?.actual_staffing && <TabsTrigger className="min-h-11 min-w-0 whitespace-normal px-2 text-xs sm:text-sm" value="actual">Chấm công thực tế</TabsTrigger>}
                 <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="details">{t('additionalInfo')}</TabsTrigger>
+                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="attendance" data-testid="tab-attendance">
+                  {myAttendanceRegistration ? 'Check-in / Check-out' : language === 'en' ? 'Attendance' : 'Chấm công thực tế'}
+                </TabsTrigger>
+                <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="notes" data-testid="tab-operational-notes">
+                  {language === 'en' ? 'Notes' : 'Ghi chú'}
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="overview" className="space-y-6 p-4 sm:p-6">
@@ -788,6 +919,18 @@ export function ShiftDetailModal({
                         <div><dt className="text-xs text-muted-foreground">{t('platform')}</dt><dd className="mt-1 font-medium">{platform?.name || fallback}</dd></div>
                         <div><dt className="text-xs text-muted-foreground">{t('campaign')}</dt><dd className="mt-1 font-medium">{campaign?.name || fallback}</dd></div>
                         <div><dt className="text-xs text-muted-foreground">{t('studio')}</dt><dd className="mt-1 font-medium">{shift.studio?.trim() || fallback}</dd></div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}</dt>
+                          <dd className="mt-1 font-medium">
+                            {executionSourceDisplayLabel(shift.execution_source, language) || fallback}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">Agency</dt>
+                          <dd className="mt-1 font-medium">
+                            {shift.agency_code ? agencyDisplayLabel(shift.agency_code) : fallback}
+                          </dd>
+                        </div>
                         <div><dt className="text-xs text-muted-foreground">{t('date')}</dt><dd className="mt-1 font-medium">{safeFormatShiftDate(shift.date, 'EEEE, PP', language, fallback)}</dd></div>
                         <div><dt className="text-xs text-muted-foreground">{t('time')}</dt><dd className="mt-1 font-medium">{shift.start_time || fallback} – {shift.end_time || fallback}{dateTime?.valid && dateTime.crossesMidnight && <span className="mt-1 block text-xs font-semibold text-indigo-700" data-testid="shift-detail-overnight">{t('endsNextDay')}: {safeFormatShiftDate(dateTime.endDate, 'MMM d', language, fallback)}</span>}</dd></div>
                         <div><dt className="text-xs text-muted-foreground">{t('timezone')}</dt><dd className="mt-1 break-all font-medium">{shift.timezone || fallback}</dd></div>
@@ -796,6 +939,89 @@ export function ShiftDetailModal({
                         <div><dt className="text-xs text-muted-foreground">{t('version')}</dt><dd className="mt-1 font-medium">{shift.version ?? fallback}</dd></div>
                       </dl>
                     </section>
+
+                    {/* Staffing Segments View (if present) */}
+                    {shift.staffing_segments && shift.staffing_segments.length > 0 ? (
+                      <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3" data-testid="shift-detail-segments-section">
+                        <div className="flex items-center justify-between border-b pb-2">
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                            <Layers className="h-3.5 w-3.5 text-indigo-600" />
+                            {language === 'vi' ? 'Khung giờ chi tiết (Staffing Segments)' : 'Staffing Segments'}
+                          </h3>
+                          <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold">
+                            {shift.staffing_segments.length} {language === 'vi' ? 'khung giờ' : 'segments'}
+                          </Badge>
+                        </div>
+                        <div className="divide-y divide-slate-100 space-y-3 pt-1">
+                          {shift.staffing_segments.map(seg => {
+                            const segDuration = resolveShiftDateTime('2000-01-01', seg.start_time, seg.end_time)?.durationMinutes ?? 0
+                            return (
+                              <div key={seg.segment_index} className="pt-2.5 first:pt-0" data-testid={`detail-segment-row-${seg.segment_index}`}>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex items-center rounded bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
+                                      K0{seg.segment_index}
+                                    </span>
+                                    <span className="font-semibold text-slate-800 text-xs">
+                                      {seg.start_time} – {seg.end_time}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500">
+                                      ({segDuration > 0 ? `${segDuration} min` : '—'})
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-[11px] font-medium text-slate-600">Định biên:</span>
+                                    <Badge variant="secondary" className="text-[10px] py-0 px-1.5">H: {seg.required_host_count}</Badge>
+                                    <Badge variant="secondary" className="text-[10px] py-0 px-1.5">S: {seg.required_support_count}</Badge>
+                                    <Badge variant="secondary" className="text-[10px] py-0 px-1.5">T: {seg.required_technical_count}</Badge>
+                                  </div>
+                                </div>
+
+                                {/* Planned Names (Display Only) */}
+                                {((seg.planned_host_names && seg.planned_host_names.length > 0) ||
+                                  (seg.planned_support_names && seg.planned_support_names.length > 0) ||
+                                  (seg.planned_technical_names && seg.planned_technical_names.length > 0)) && (
+                                  <div className="mt-2 rounded bg-amber-50/70 p-2 border border-amber-200/60 text-xs space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-semibold text-amber-900 uppercase tracking-wide">
+                                        Nhân sự dự kiến (Chưa duyệt / Display-only)
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {seg.planned_host_names?.map((name, i) => (
+                                        <Badge key={`host-${i}`} variant="outline" className="border-amber-300 bg-white text-amber-900 text-[10px]">
+                                          Host: {name}
+                                        </Badge>
+                                      ))}
+                                      {seg.planned_support_names?.map((name, i) => (
+                                        <Badge key={`sup-${i}`} variant="outline" className="border-amber-300 bg-white text-amber-900 text-[10px]">
+                                          Trợ: {name}
+                                        </Badge>
+                                      ))}
+                                      {seg.planned_technical_names?.map((name, i) => (
+                                        <Badge key={`tech-${i}`} variant="outline" className="border-amber-300 bg-white text-amber-900 text-[10px]">
+                                          Tech: {name}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </section>
+                    ) : (
+                      <section className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-3 text-xs text-slate-500">
+                        <div className="flex items-center justify-between">
+                          <span>Ca đơn (Toàn bộ khung giờ {shift.start_time} – {shift.end_time})</span>
+                          {canEdit && (
+                            <span className="text-indigo-600 font-medium">Bấm &quot;Sửa ca&quot; để thêm khung giờ (segments)</span>
+                          )}
+                        </div>
+                      </section>
+                    )}
+
                     <section className="rounded-lg border bg-white p-4 shadow-sm">
                       <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('productNotes')}</h3>
                       <p className="whitespace-pre-wrap break-words text-sm">{shift.product_notes?.trim() || fallback}</p>
@@ -823,13 +1049,177 @@ export function ShiftDetailModal({
                 </div>
               </TabsContent>
 
-              {capabilities?.actual_staffing && <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
-                <ActualStaffingPanel shift={shift} currentUser={currentUser} />
-              </TabsContent>}
+              {/* TAB 4: UNIFIED ATTENDANCE (Permanent 4-tab architecture, Issue #163) */}
+              <TabsContent value="attendance" className="min-w-0 p-4 sm:p-6 space-y-6">
+                {/* 0. Admin Proxy Attendance Trigger */}
+                {currentUser && resolveSystemPermission(currentUser) === 'admin' && (
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="text-xs font-medium"
+                      onClick={() => setAdminProxyOpen(true)}
+                      data-testid="open-admin-proxy-attendance-btn"
+                    >
+                      <ShieldAlert className="mr-1.5 h-3.5 w-3.5 text-indigo-600" />
+                      {language === 'en' ? 'Admin Proxy Attendance' : 'Bổ sung chấm công (Admin)'}
+                    </Button>
+                  </div>
+                )}
+
+                {/* 1. Self Attendance for assigned personnel */}
+                {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && attendanceShiftEligible ? (
+                  <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        {language === 'en' ? 'Personal Check-in / Check-out' : 'Chấm công cá nhân (Check-in / Check-out)'}
+                      </h3>
+                      <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-[10px] text-emerald-800 uppercase font-bold">
+                        {myRegistration.operational_role}
+                      </Badge>
+                    </div>
+                    <SelfAttendancePanel
+                      key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
+                      actorId={currentUser!.id}
+                      shiftId={shift.id}
+                      role={myRegistration.operational_role}
+                      shiftContext={{
+                        date: shift.date,
+                        start_time: shift.start_time,
+                        end_time: shift.end_time,
+                        brand: brand?.name ?? shift.brand_id,
+                        platform: platform?.name ?? shift.platform_id,
+                        title: shift.title,
+                        studio: shift.studio,
+                        crossesMidnight: dateTime?.valid && dateTime.crossesMidnight,
+                        staffName: currentUser?.full_name || 'Nhân sự',
+                        segmentSummary: shift.staffing_segments && shift.staffing_segments.length > 0
+                          ? `${shift.staffing_segments.length} khung (${shift.staffing_segments.map(s => `K0${s.segment_index}: ${s.start_time}-${s.end_time}`).join(', ')}) · Gán cá nhân: Chờ C5 backend contract`
+                          : 'Ca đơn (Toàn ca)',
+                      }}
+                    />
+                  </section>
+                ) : myRegistration && process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE !== 'true' ? (
+                  <div role="status" className="rounded-md border border-amber-200 bg-amber-50/50 p-4 text-sm text-amber-900" data-testid="self-attendance-unavailable">
+                    <p className="font-medium">
+                      {language === 'en'
+                        ? 'Personal Check-in / Check-out is disabled in this environment.'
+                        : 'Tính năng Chấm công cá nhân (Check-in / Check-out) chưa khả dụng trong môi trường này.'}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      {language === 'en'
+                        ? 'Feature flag NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE is disabled. Attendance photo persistence requires verified Google Drive configuration.'
+                        : 'Cấu hình NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE đang tắt. Chấm công ảnh yêu cầu định tuyến Google Drive đã xác thực.'}
+                    </p>
+                  </div>
+                ) : myRegistration && !attendanceShiftEligible ? (
+                  <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
+                    {language === 'en'
+                      ? 'This shift is not eligible for check-in / check-out.'
+                      : 'Ca này không đủ điều kiện check-in / check-out.'}
+                  </div>
+                ) : myAttendanceRegistration && !myRegistration ? (
+                  <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
+                    {language === 'en'
+                      ? 'Check-in / Check-out is unavailable until your shift assignment is approved.'
+                      : 'Chưa thể check-in / check-out khi ca chưa được phân công chính thức.'}
+                  </div>
+                ) : null}
+
+                {/* 2. Photo Review for Admin/Leader */}
+                {capabilities?.self_attendance_review && (
+                  <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        {language === 'en' ? 'Evidence Photo Review (Check-in / Check-out)' : 'Đối soát minh chứng ảnh (Check-in / Check-out)'}
+                      </h3>
+                      <Badge variant="outline" className="text-[10px] text-slate-500">
+                        Photo Review
+                      </Badge>
+                    </div>
+                    <AttendancePhotoReviewPanel key={`${shift.id}:${currentUser?.id ?? ''}`} shiftId={shift.id} currentUser={currentUser} />
+                  </section>
+                )}
+
+                {/* 3. Actual Staffing / Final Approved Hours for Admin/Leader */}
+                {capabilities?.actual_staffing && (
+                  <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        {language === 'en' ? 'Approved Actual Hours & Attendance' : 'Chấm công thực tế & Phê duyệt giờ'}
+                      </h3>
+                      <Badge variant="outline" className="text-[10px] text-slate-500">
+                        Final Approved Hours
+                      </Badge>
+                    </div>
+                    <ActualStaffingPanel shift={shift} currentUser={currentUser} />
+                  </section>
+                )}
+
+                {/* Non-assigned member fallback */}
+                {!myAttendanceRegistration && !capabilities?.actual_staffing && !capabilities?.self_attendance_review && (
+                  <div role="status" className="rounded-md border bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+                    {language === 'en'
+                      ? 'No attendance actions required for your account on this shift.'
+                      : 'Bạn không được phân công trên ca trực này nên không cần chấm công hoặc đối soát.'}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Legacy Tab Fallbacks for contract parity */}
+              {myAttendanceRegistration && (
+                <TabsContent value="self-attendance" className="min-w-0 p-4 sm:p-6">
+                  {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && attendanceShiftEligible ? (
+                    <SelfAttendancePanel
+                      key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
+                      actorId={currentUser!.id}
+                      shiftId={shift.id}
+                      role={myRegistration.operational_role}
+                      shiftContext={{
+                        date: shift.date,
+                        start_time: shift.start_time,
+                        end_time: shift.end_time,
+                        brand: brand?.name ?? shift.brand_id,
+                        platform: platform?.name ?? shift.platform_id,
+                        title: shift.title,
+                        studio: shift.studio,
+                        crossesMidnight: dateTime?.valid && dateTime.crossesMidnight,
+                        staffName: currentUser?.full_name || 'Nhân sự',
+                        segmentSummary: shift.staffing_segments && shift.staffing_segments.length > 0
+                          ? `${shift.staffing_segments.length} khung (${shift.staffing_segments.map(s => `K0${s.segment_index}: ${s.start_time}-${s.end_time}`).join(', ')}) · Gán cá nhân: Chờ C5 backend contract`
+                          : 'Ca đơn (Toàn ca)',
+                      }}
+                    />
+                  ) : (
+                    <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
+                      {!myRegistration
+                        ? (language === 'en' ? 'Check-in / Check-out is unavailable until your shift assignment is approved.' : 'Chưa thể check-in / check-out khi ca chưa được phân công chính thức.')
+                        : !attendanceShiftEligible
+                        ? (language === 'en' ? 'This shift is not eligible for check-in / check-out.' : 'Ca này không đủ điều kiện check-in / check-out.')
+                        : (language === 'en' ? 'Check-in / Check-out is not available in this environment.' : 'Check-in / Check-out chưa khả dụng trong môi trường này.')}
+                    </div>
+                  )}
+                </TabsContent>
+              )}
+
+              {capabilities?.actual_staffing && (
+                <TabsContent value="actual" className="min-w-0 p-4 sm:p-6">
+                  <ActualStaffingPanel shift={shift} currentUser={currentUser} />
+                </TabsContent>
+              )}
+
+              {capabilities?.self_attendance_review && (
+                <TabsContent value="attendance-review" className="min-w-0 p-4 sm:p-6">
+                  <AttendancePhotoReviewPanel key={`${shift.id}:${currentUser?.id ?? ''}`} shiftId={shift.id} />
+                </TabsContent>
+              )}
 
               <TabsContent value="details" className="space-y-4 p-4 sm:p-6">
                 <dl className="grid gap-3 rounded-lg border bg-white p-4 text-xs sm:grid-cols-3" data-testid="shift-production-provenance">{[
                   ['Mã ca', shift.id], ['Múi giờ', shift.timezone], ['Ngày kết thúc', shift.end_date],
+                  ['Nguồn thực hiện', executionSourceDisplayLabel(shift.execution_source, 'vi') || undefined],
+                  ['Agency', shift.agency_code ? agencyDisplayLabel(shift.agency_code) : undefined],
                   ['Thời lượng', dateTime?.valid ? dateTime.durationMinutes + ' phút' : undefined],
                   ['Chế độ trạng thái', shift.status_mode], ['Lô nhập', shift.import_batch_id],
                   ['Phiên bản', shift.version], ['Bắt đầu (UTC)', shift.start_at], ['Kết thúc (UTC)', shift.end_at],
@@ -877,6 +1267,28 @@ export function ShiftDetailModal({
                       </div>
                    </div>
                   </section>
+                  {Object.keys(shift.supplemental_fields ?? {}).length > 0 && (
+                    <section className="rounded-lg border bg-card p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{language === 'vi' ? 'Thông tin bổ sung từ nguồn nhập' : 'Imported supplemental fields'}</h3>
+                        {currentUser && hasPermission(currentUser, 'shifts.edit') && <Button size="sm" disabled={busy} onClick={() => void saveSupplementalFields()}>{language === 'vi' ? 'Lưu' : 'Save'}</Button>}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {Object.entries(shift.supplemental_fields ?? {}).map(([key, field]) => (
+                          <label key={key} className="space-y-1 text-sm">
+                            <span className="text-muted-foreground">{field.label} <span className="text-xs">({field.type})</span></span>
+                            {currentUser && hasPermission(currentUser, 'shifts.edit') ? field.type === 'boolean' ? (
+                              <Select value={supplementalDraft[key] ?? ''} onValueChange={value => setSupplementalDraft(current => ({ ...current, [key]: value }))}>
+                                <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="true">Yes</SelectItem><SelectItem value="false">No</SelectItem></SelectContent>
+                              </Select>
+                            ) : <Input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'time' ? 'time' : 'text'} value={supplementalDraft[key] ?? ''} onChange={event => setSupplementalDraft(current => ({ ...current, [key]: event.target.value }))} />
+                              : <span className="block break-words font-medium">{String(field.value)}</span>}
+                          </label>
+                        ))}
+                      </div>
+                      {currentUser && hasPermission(currentUser, 'shifts.edit') && <p className="mt-2 text-xs text-muted-foreground">{language === 'vi' ? 'Để trống để xóa giá trị.' : 'Leave a field blank to remove it.'}</p>}
+                    </section>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="staffing" className="space-y-6 p-4 sm:p-6">
@@ -933,18 +1345,45 @@ export function ShiftDetailModal({
                  {/* D. REGISTRATION / WORKFLOW STATE */}
                  <section className="space-y-4">
                     <ShiftRegistrationActions
-                      allShifts={allShifts ?? [shift]}
+                      allShifts={allShifts ?? [activeShift]}
+                      brandName={brand?.name}
+                      platformName={platform?.name}
+                      disabled={busy}
                       currentUser={currentUser}
                       onRegister={registerForRole}
+                      onCancel={async (regId) => {
+                        const targetReg = registrations.find(r => r.id === regId)
+                        await runStaffingAction(
+                          () => shiftRegistrationService.cancel(regId, currentUser!.id, 'Tự hủy đăng ký', targetReg?.version),
+                          t('registrationCancelled'),
+                        )
+                      }}
                       registrations={registrationContext}
-                      shift={shift}
+                      shift={activeShift}
                     />
 
+                    {shiftSwaps.length > 0 && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs space-y-1.5" data-testid="shift-swaps-summary">
+                        <div className="font-semibold text-blue-900 flex items-center justify-between">
+                          <span>Yêu cầu đổi ca / PASS liên quan ({shiftSwaps.length}) · Đang chờ xử lý (Chưa hoàn tất)</span>
+                          <Badge variant="outline" className="text-[10px] uppercase">{shiftSwaps[0].status}</Badge>
+                        </div>
+                        {shiftSwaps.map(swap => (
+                          <div key={swap.id} className="flex items-center justify-between gap-2 border-t border-blue-100 pt-1 text-[11px] text-blue-800">
+                            <span>
+                              <strong>{userName(swap.requester_id)}</strong> ({t(swap.operational_role || 'host')})
+                              {swap.counterpart_id ? ` ⇄ ${userName(swap.counterpart_id)}` : swap.replacement_staff_id ? ` → ${userName(swap.replacement_staff_id)}` : ''}
+                            </span>
+                            <span className="font-medium capitalize">{swap.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {canRequestSwap && myRegistration && (
                       <Card><CardContent className="pt-5 flex justify-end"><Button variant="outline" onClick={() => setShowSwapDialog(true)}>Đổi ca</Button></CardContent></Card>
                     )}
                     {canRequestSwap && myRegistration && (
-                      <SwapRequestDialog open={showSwapDialog} onOpenChange={setShowSwapDialog} sourceShift={shift} sourceRegistration={myRegistration} shifts={[]} users={users} currentUser={currentUser!} onSuccess={loadStaffing} />
+                      <SwapRequestDialog open={showSwapDialog} onOpenChange={setShowSwapDialog} sourceShift={shift} sourceRegistration={myRegistration} shifts={allShifts || []} users={users} currentUser={currentUser!} onSuccess={loadStaffing} />
                     )}
 
                     {canEditStaffingLabels ? (
@@ -1008,8 +1447,16 @@ export function ShiftDetailModal({
                         </div>
                         <div className="p-0">
                           <div className="max-h-[400px] overflow-auto p-2 space-y-2">
-                            {visibleRegistrations.map(registration => (
-                              <div key={registration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-muted/50 bg-background p-3 hover:bg-muted/10 transition-colors">
+                            {visibleRegistrations.map((registration, index) => (
+                              <React.Fragment key={registration.id}>
+                              {(index === 0 || visibleRegistrations[index - 1].operational_role !== registration.operational_role) && (
+                                <div className="rounded-md bg-muted/30 px-3 py-2 text-xs font-semibold" data-testid={`reg02-role-group-${registration.operational_role}`}>
+                                  {t(registration.operational_role)} · Định biên {capacities.find(item => item.role === registration.operational_role)?.required ?? 0}
+                                  {' / Đã duyệt '}{capacities.find(item => item.role === registration.operational_role)?.approved ?? 0}
+                                  {' / Chờ duyệt '}{capacities.find(item => item.role === registration.operational_role)?.pending ?? 0}
+                                </div>
+                              )}
+                              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-muted/50 bg-background p-3 hover:bg-muted/10 transition-colors">
                                 <div className="min-w-0">
                                   <p className="break-words font-medium text-sm text-foreground">
                                     {userName(registration.user_id)}
@@ -1029,12 +1476,75 @@ export function ShiftDetailModal({
                                   </Badge>
                                   {registration.status === 'pending' && currentUser && hasPermission(currentUser, 'shifts.approve_registration') ? (
                                     <>
-                                      <Button size="sm" variant="outline" className="h-7 text-xs border-green-200 text-green-700 hover:bg-green-50" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version), t('registrationApproved'))}><Check className="mr-1 h-3 w-3" />{t('approve')}</Button>
-                                      <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version), t('rejected'))}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
+                                      <Button size="sm" variant="outline" className="h-7 text-xs border-green-200 text-green-700 hover:bg-green-50" disabled={busy} onClick={() => { if (window.confirm(`Xác nhận duyệt ${userName(registration.user_id)} cho vai trò ${t(registration.operational_role)}?`)) void runStaffingAction(() => shiftRegistrationService.approve(registration.id, currentUser.id, undefined, registration.version), t('registrationApproved')) }}><Check className="mr-1 h-3 w-3" />{t('approve')}</Button>
+                                      <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => { if (window.confirm(`Xác nhận từ chối ${userName(registration.user_id)} cho vai trò ${t(registration.operational_role)}?`)) void runStaffingAction(() => shiftRegistrationService.reject(registration.id, currentUser.id, undefined, registration.version), t('rejected')) }}><X className="mr-1 h-3 w-3" />{t('reject')}</Button>
                                     </>
+                                  ) : null}
+                                  {(registration.status === 'approved' || registration.status === 'manually_assigned') && currentUser && hasPermission(currentUser, 'shifts.assign_staff') ? (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs border-amber-200 text-amber-700 hover:bg-amber-50"
+                                        disabled={busy}
+                                        data-testid={`replace-staffing-${registration.id}`}
+                                        onClick={() => {
+                                          setReplacingRegistration(registration)
+                                        }}
+                                      >
+                                        <RefreshCw className="mr-1 h-3 w-3" />
+                                        Thay người
+                                      </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                                      disabled={busy}
+                                      data-testid={`remove-staffing-${registration.id}`}
+                                      onClick={() => {
+                                        const reason = window.prompt(`Lý do gỡ phân công ${userName(registration.user_id)}?`, 'Điều chỉnh nhân sự vận hành')
+                                        if (reason !== null) {
+                                          void runStaffingAction(
+                                            () => shiftRegistrationService.removeAssignment(registration.id, currentUser.id, reason.trim() || undefined, registration.version),
+                                            'Đã gỡ phân công nhân sự',
+                                          )
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className="mr-1 h-3 w-3" />
+                                      {t('removeAssignment')}
+                                      </Button>
+                                    </>
+                                  ) : null}
+                                  {currentUser && currentUser.id === registration.user_id && (registration.status === 'pending' || registration.status === 'approved' || registration.status === 'manually_assigned') ? (
+                                    canSelfCancelRegistration(registration, activeShift) ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                                        disabled={busy}
+                                        data-testid={`cancel-registration-${registration.id}`}
+                                        onClick={() => {
+                                          if (window.confirm('Bạn có chắc chắn muốn hủy đăng ký ca này?')) {
+                                            void runStaffingAction(
+                                              () => shiftRegistrationService.cancel(registration.id, currentUser.id, 'Tự hủy đăng ký', registration.version),
+                                              t('registrationCancelled'),
+                                            )
+                                          }
+                                        }}
+                                      >
+                                        <X className="mr-1 h-3 w-3" />
+                                        {t('cancelRegistration')}
+                                      </Button>
+                                    ) : (registration.source === 'manual_assignment' || registration.status === 'manually_assigned') ? (
+                                      <span className="text-[11px] text-muted-foreground italic" data-testid={`manual-assignment-notice-${registration.id}`}>
+                                        Chỉ định (cần Quản lý gỡ)
+                                      </span>
+                                    ) : null
                                   ) : null}
                                 </div>
                               </div>
+                              </React.Fragment>
                             ))}
                           </div>
                           {registrations.length > registrationPageSize && (
@@ -1058,6 +1568,15 @@ export function ShiftDetailModal({
 
                 </div>
                 </TabsContent>
+                <TabsContent value="notes" className="m-0 focus-visible:outline-none">
+                  <div className="p-4 sm:p-6 space-y-4">
+                    <ShiftOperationalNotesSection
+                      shift={activeShift}
+                      currentUser={currentUser}
+                      registrations={registrations}
+                    />
+                  </div>
+                </TabsContent>
               </Tabs>
           </DialogBody>
 
@@ -1075,6 +1594,20 @@ export function ShiftDetailModal({
           </div>
         </DialogContent>
       </Dialog>
+
+      {replacingRegistration && currentUser && <AtomicStaffingReplacementDialog
+        open
+        shift={activeShift}
+        registration={replacingRegistration}
+        registrations={registrations}
+        users={users}
+        currentUser={currentUser}
+        onOpenChange={isOpen => { if (!isOpen) setReplacingRegistration(null) }}
+        onUpdated={async () => {
+          await loadStaffing()
+          onUpdate()
+        }}
+      />}
 
       <LifecycleActionDialog
         open={Boolean(deleteImpact)}

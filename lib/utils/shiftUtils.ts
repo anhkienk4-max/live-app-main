@@ -1,4 +1,4 @@
-import type { Shift, ShiftStatus } from '@/lib/types/database.types'
+import type { Shift, ShiftStatus, PlannedStaffingSegmentDraft } from '../types/database.types'
 import { addDays, addMonths, format, parseISO, isAfter } from 'date-fns'
 
 export interface RecurrenceRule {
@@ -139,6 +139,19 @@ export function resolveShiftDateTime(
   }
 }
 
+export function hasShiftTimeConflict(
+  shifts: readonly Pick<Shift, 'id' | 'status' | 'date' | 'start_time' | 'end_time' | 'timezone' | 'deleted_at' | 'archived_at'>[],
+  startAt: Date,
+  endAt: Date,
+  excludedShiftIds: readonly string[] = [],
+): boolean {
+  return shifts.some(shift => {
+    if (excludedShiftIds.includes(shift.id) || shift.status === 'cancelled' || shift.deleted_at || shift.archived_at) return false
+    const other = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+    return Boolean(other?.valid && other.startAt < endAt && other.endAt > startAt)
+  })
+}
+
 export function shiftDateTimeFields(date: string, startTime: string, endTime: string, timezone = DEFAULT_BUSINESS_TIMEZONE) {
   const resolved = resolveShiftDateTime(date, startTime, endTime, timezone)
   if (!resolved?.valid) return null
@@ -169,10 +182,24 @@ export function deriveAutomaticShiftStatus(
   return 'scheduled'
 }
 
+const timezoneFormatters = new Map<string, Intl.DateTimeFormat>()
+
+function timezoneFormatter(timezone: string): Intl.DateTimeFormat {
+  let formatter = timezoneFormatters.get(timezone)
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    })
+    timezoneFormatters.set(timezone, formatter)
+  }
+  return formatter
+}
+
 export function isValidIanaTimeZone(value: unknown): value is string {
   if (typeof value !== 'string' || !value.trim()) return false
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: value }).format()
+    timezoneFormatter(value).format()
     return true
   } catch {
     return false
@@ -230,10 +257,7 @@ export function zonedWallTimeToUtc(date: string, time: string, timezone: string)
   const wallTimestamp = Date.UTC(year, month - 1, day, hour, minute)
   let candidate = new Date(wallTimestamp)
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-    }).formatToParts(candidate)
+    const parts = timezoneFormatter(timezone).formatToParts(candidate)
     const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)]))
     const representedWallTimestamp = Date.UTC(values.year, values.month - 1, values.day, values.hour, values.minute)
     const offset = representedWallTimestamp - candidate.getTime()
@@ -408,4 +432,167 @@ export function formatDuration(minutes: number): string {
   if (hours === 0) return `${mins}m`
   if (mins === 0) return `${hours}h`
   return `${hours}h ${mins}m`
+}
+
+export interface ResolvedSegmentDateTime {
+  valid: boolean
+  startAt?: Date
+  endAt?: Date
+  durationMinutes?: number
+  segmentStartDate?: string
+  segmentEndDate?: string
+  error?: string
+}
+
+export function resolveSegmentDateTime(
+  parentDate: string,
+  parentStartTime: string,
+  parentEndTime: string,
+  segmentStartTime: string,
+  segmentEndTime: string,
+  timezone = DEFAULT_BUSINESS_TIMEZONE,
+): ResolvedSegmentDateTime {
+  const parentResolved = resolveShiftDateTime(parentDate, parentStartTime, parentEndTime, timezone)
+  if (!parentResolved || !parentResolved.valid) {
+    return { valid: false, error: 'Thời gian ca chính không hợp lệ.' }
+  }
+
+  const startMatch = segmentStartTime.match(TIME_PATTERN)
+  const endMatch = segmentEndTime.match(TIME_PATTERN)
+  if (!startMatch || !endMatch) {
+    return { valid: false, error: 'Định dạng giờ khung không hợp lệ (HH:mm).' }
+  }
+
+  // start_date is parentDate + 1 day if segment starts past midnight in an overnight parent shift
+  const isStartNextDay = parentResolved.crossesMidnight && segmentStartTime < parentStartTime
+  const segmentStartDate = addCalendarDays(parentDate, isStartNextDay ? 1 : 0)
+
+  // end_date is segmentStartDate + 1 day if segment end time <= start time
+  const isEndNextDay = segmentEndTime <= segmentStartTime
+  const segmentEndDate = addCalendarDays(segmentStartDate, isEndNextDay ? 1 : 0)
+
+  const startAt = zonedWallTimeToUtc(segmentStartDate, segmentStartTime, timezone)
+  const endAt = zonedWallTimeToUtc(segmentEndDate, segmentEndTime, timezone)
+
+  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+    return { valid: false, error: 'Thời gian khung giờ không hợp lệ.' }
+  }
+
+  if (endAt.getTime() <= startAt.getTime()) {
+    return { valid: false, error: 'Giờ kết thúc khung phải sau giờ bắt đầu.' }
+  }
+
+  if (startAt.getTime() < parentResolved.startAt.getTime() || endAt.getTime() > parentResolved.endAt.getTime()) {
+    return {
+      valid: false,
+      error: `Khung giờ (${segmentStartTime} – ${segmentEndTime}) phải nằm trong thời gian ca chính (${parentStartTime} – ${parentEndTime}).`,
+    }
+  }
+
+  const durationMinutes = Math.round((endAt.getTime() - startAt.getTime()) / 60_000)
+
+  return {
+    valid: true,
+    startAt,
+    endAt,
+    durationMinutes,
+    segmentStartDate,
+    segmentEndDate,
+  }
+}
+
+export interface StaffingSegmentsValidationResult {
+  valid: boolean
+  errors: Record<number, string>
+  generalErrors: string[]
+}
+
+export function validateStaffingSegments(
+  parentDate: string,
+  parentStartTime: string,
+  parentEndTime: string,
+  parentTimezone: string,
+  segments: readonly PlannedStaffingSegmentDraft[],
+): StaffingSegmentsValidationResult {
+  const errors: Record<number, string> = {}
+  const generalErrors: string[] = []
+
+  if (!segments || segments.length === 0) {
+    return { valid: true, errors, generalErrors }
+  }
+
+  const parentResolved = resolveShiftDateTime(parentDate, parentStartTime, parentEndTime, parentTimezone)
+  if (!parentResolved || !parentResolved.valid) {
+    generalErrors.push('Thời gian ca chính không hợp lệ.')
+    return { valid: false, errors, generalErrors }
+  }
+
+  const seenIndexes = new Set<number>()
+  const resolvedList: Array<{
+    segmentIndex: number
+    startAt: Date
+    endAt: Date
+  }> = []
+
+  for (const seg of segments) {
+    if (seenIndexes.has(seg.segment_index)) {
+      errors[seg.segment_index] = `Mã khung K0${seg.segment_index} bị trùng lặp.`
+      continue
+    }
+    seenIndexes.add(seg.segment_index)
+
+    if (
+      seg.required_host_count < 0 ||
+      seg.required_support_count < 0 ||
+      seg.required_technical_count < 0 ||
+      !Number.isInteger(seg.required_host_count) ||
+      !Number.isInteger(seg.required_support_count) ||
+      !Number.isInteger(seg.required_technical_count) ||
+      seg.required_host_count > MAX_SHIFT_CAPACITY ||
+      seg.required_support_count > MAX_SHIFT_CAPACITY ||
+      seg.required_technical_count > MAX_SHIFT_CAPACITY
+    ) {
+      errors[seg.segment_index] = `Định biên nhân sự phải là số nguyên không âm từ 0 đến ${MAX_SHIFT_CAPACITY}.`
+      continue
+    }
+
+    const res = resolveSegmentDateTime(
+      parentDate,
+      parentStartTime,
+      parentEndTime,
+      seg.start_time,
+      seg.end_time,
+      parentTimezone,
+    )
+
+    if (!res.valid) {
+      errors[seg.segment_index] = res.error || 'Khung giờ không hợp lệ.'
+      continue
+    }
+
+    resolvedList.push({
+      segmentIndex: seg.segment_index,
+      startAt: res.startAt!,
+      endAt: res.endAt!,
+    })
+  }
+
+  // Check inter-segment overlaps using half-open [start, end)
+  for (let i = 0; i < resolvedList.length; i++) {
+    for (let j = i + 1; j < resolvedList.length; j++) {
+      const a = resolvedList[i]
+      const b = resolvedList[j]
+      if (a.startAt.getTime() < b.endAt.getTime() && a.endAt.getTime() > b.startAt.getTime()) {
+        const msg = `Khung K0${a.segmentIndex} và K0${b.segmentIndex} bị trùng lặp thời gian.`
+        errors[a.segmentIndex] = msg
+        errors[b.segmentIndex] = msg
+      }
+    }
+  }
+
+  return {
+    valid: Object.keys(errors).length === 0 && generalErrors.length === 0,
+    errors,
+    generalErrors,
+  }
 }

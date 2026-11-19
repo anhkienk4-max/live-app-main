@@ -68,7 +68,7 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
       <CardHeader className="border-b border-slate-100 pb-4">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-50 text-blue-600">
             <History className="h-4 w-4" />
           </div>
@@ -108,7 +108,7 @@ export function PayrollAuditTimeline({ audit }: PayrollAuditTimelineProps) {
                   <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2 text-xs">
                     {/* Header line */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className={`text-[11px] ${config.badgeClass}`}>
                           <span className="flex items-center">
                             {config.icon}

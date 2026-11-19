@@ -25,8 +25,8 @@ const sourceRow = {
   'Shift title': 'Morning',
 }
 
-test('Internal and Agency are the only controlled import execution sources', () => {
-  for (const [value, expected] of [[' Internal ', 'internal'], ['AGENCY', 'agency']] as const) {
+test('Internal and External are the controlled import execution sources, with Agency kept as a legacy alias', () => {
+  for (const [value, expected] of [[' Internal ', 'internal'], ['EXTERNAL', 'agency'], ['AGENCY', 'agency']] as const) {
     const result = parseScheduleRows([{ ...sourceRow, 'Execution Source': value }], maps)
     assert.equal(result.validRows, 1)
     assert.equal(result.rows[0].row.execution_source, expected)
@@ -34,7 +34,19 @@ test('Internal and Agency are the only controlled import execution sources', () 
   }
   const invalid = parseScheduleRows([{ ...sourceRow, 'Execution Source': 'studio' }], maps)
   assert.equal(invalid.invalidRows, 1)
-  assert.match(invalid.rows[0].row.errors.join(' '), /Execution Source must be Internal or Agency/)
+  assert.match(invalid.rows[0].row.errors.join(' '), /Execution Source must be Internal or External/)
+})
+
+test('Agency partner labels map to their Owner-approved Agency and Execution Source values', () => {
+  for (const [agency, code, source] of [['ADA', 'ada', 'internal'], ['SNAP', 'snap', 'agency'], ['AI', 'live_ai', 'agency']] as const) {
+    const result = parseScheduleRows([{ ...sourceRow, Agency: agency }], maps)
+    assert.equal(result.validRows, 1, agency)
+    assert.equal(result.rows[0].row.agency_code, code, agency)
+    assert.equal(result.rows[0].row.execution_source, source, agency)
+    assert.equal(result.validShifts[0].agency_code, code, agency)
+    assert.equal(result.validShifts[0].execution_source, source, agency)
+    assert.equal(result.rows[0].row.custom_fields?.Agency, agency)
+  }
 })
 
 test('old import rows derive Internal from Studio semantics and preview round-trip preserves explicit values', () => {
@@ -42,10 +54,10 @@ test('old import rows derive Internal from Studio semantics and preview round-tr
   assert.equal(old.validRows, 1)
   assert.equal(old.validShifts[0].execution_source, 'internal')
   assert.doesNotMatch(old.rows[0].row.warnings.join(' '), /remain unclassified/)
-  for (const value of ['Internal', 'Agency']) {
+  for (const [value, expected] of [['Internal', 'internal'], ['External', 'agency'], ['Agency', 'agency']] as const) {
     const first = parseScheduleRows([{ ...sourceRow, 'Execution Source': value }], maps)
     const reparsed = parseScheduleRows([buildScheduleImportPreviewSourceRow(first.rows[0].row)], maps)
-    assert.equal(reparsed.validShifts[0].execution_source, value.toLowerCase())
+    assert.equal(reparsed.validShifts[0].execution_source, expected)
   }
 })
 

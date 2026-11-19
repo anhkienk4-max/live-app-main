@@ -45,6 +45,18 @@ State explicitly:
 
 If session context conflicts with live Git or PROJECT_STATE.md: STOP. Report `STALE SESSION CONTEXT`. Do not continue the old TODO automatically.
 
+## Owner Rule — Recover Without Repeating Blockers (2026-11-19)
+
+This supplements, but NEVER bypasses, the mandatory stale-session STOP and write-safety checks.
+
+1. **STOP the stale plan, not all progress forever.** When live Git differs from a resumed checkpoint, report `STALE SESSION CONTEXT`, discard the stale assumptions, reread the current Owner task and authoritative files, and establish a new explicit preflight. Once that is verified, resume permitted, independent work without waiting for the obsolete SHA to reappear. Never silently execute the old TODO.
+2. **Live Git wins over generated metadata.** `project-memory/current-state.json`, `PROJECT_STATE.md`, and session notes may contain an older branch/HEAD due to projection or commit timing. Report the mismatch. Do not overwrite canonical business rules or manually fake the recorded HEAD to clear the warning. Update derived memory using the documented validation/sync workflow at a verified, conflict-free checkpoint. Stale metadata alone must not prevent read-only investigation.
+3. **Dirty worktree is a scope boundary, not an automatic global deadlock.** Inventory changed/untracked paths, inspect their diffs and recent commits, identify file ownership, and preserve every WIP byte. Do not touch an unowned/conflicting file, stage it, stash it, reset it, or silently commit it. Continue read-only work and tasks demonstrably independent of those paths; block only overlapping writes or unsafe executions until ownership is resolved.
+4. **No empty-database migration proof.** A CLI dry-run or empty/disposable PG database does NOT prove Production migration readiness. The rehearsal must use a verified Production-compatible baseline (schema, dependencies, roles/ACL/default ACL, triggers/event triggers, RLS and existing ledger), record actual execution/rollback/retry evidence, and label missing proof accurately. Fix specific export/connectivity errors (for example, check IPv4/direct versus pooler routing) rather than repeatedly retrying an already-failed method or declaring an empty baseline sufficient.
+5. **Do the repair, then verify it.** For each blocker, identify a root cause, the smallest permitted corrective action, an accountable existing agent, and objective acceptance evidence. Do not invent new audit lanes, worktrees, projects, Preview or Staging deployments, or repeat already-passing tests just to produce another `BLOCKED` report. Distinguish missing access/Owner authorization from a code defect; never fabricate PASS.
+6. **Owner Production-only deployment policy remains in force.** The deployment target is the existing Production app and database. Offline tests and isolated local PostgreSQL rehearsal are allowed, but are not Production UAT and must not be promoted or deployed as extra environments. No Production SQL writes, migration, ACL changes, merge, or deployment without the existing release gates and specific authorization.
+7. **Existing ownership:** Codex owns independent migration-parity/proof work; Gemini/Antigravity owns the current Attendance ACL, Drive G11, backup/recovery and migration-runner source patch. Coordinate before changing any shared file. New remote commits change the candidate SHA; recheck live HEAD/CI and do not treat old-SHA evidence as proof of new code.
+
 ## Git Safety (non-negotiable)
 
 - **Never** `git add .` or `git add -A`
