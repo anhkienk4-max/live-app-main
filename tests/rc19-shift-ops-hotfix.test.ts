@@ -288,15 +288,16 @@ test('RC19 Shift Ops: Overnight Shifts Calendar Visibility', async (t) => {
 })
 
 test('RC19 Shift Ops: Registration, Cancellation, and Staff Assignment Removal with Lock Emulation', async (t) => {
+  const fixtureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const testShift = makeShift({
     id: 'shift-registration-flow-r2',
     title: 'Ca Test Đăng ký & Gỡ R2',
-    date: '2026-11-25',
+    date: fixtureDate,
     start_time: '14:00',
     end_time: '17:00',
-    start_at: '2026-11-25T07:00:00.000Z',
-    end_at: '2026-11-25T10:00:00.000Z',
-    registration_cutoff_at: '2026-11-25T06:00:00.000Z',
+    start_at: `${fixtureDate}T07:00:00.000Z`,
+    end_at: `${fixtureDate}T10:00:00.000Z`,
+    registration_cutoff_at: `${fixtureDate}T06:00:00.000Z`,
     required_host_count: 1,
     required_support_count: 1,
     required_technical_count: 0,
