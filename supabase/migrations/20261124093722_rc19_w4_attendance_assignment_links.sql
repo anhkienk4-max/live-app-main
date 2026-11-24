@@ -529,4 +529,83 @@ $function$;
 REVOKE ALL ON FUNCTION public.get_my_self_attendance(text,integer) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.get_my_self_attendance(text,integer) TO authenticated;
 
+-- Prevent ambiguous segment evidence from releasing payroll.
+create or replace function private.rc19_c515_required_payroll_evidence(p_segment_id text)
+returns text[] language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_segment public.workforce_actual_segments%rowtype;
+  v_shift public.shifts%rowtype;
+  v_report public.reports%rowtype;
+  v_missing text[] := '{}';
+  v_kind text;
+  v_event public.self_attendance_events%rowtype;
+  v_photo_request uuid;
+  v_photo_revision integer;
+  v_review public.self_attendance_photo_review_events%rowtype;
+begin
+  select * into v_segment from public.workforce_actual_segments where id=p_segment_id;
+  if not found or v_segment.event_kind<>'worked' then return array['approved_worked_segment']; end if;
+  select * into v_shift from public.shifts where id=v_segment.shift_id and deleted_at is null;
+  if not found then return array['active_shift']; end if;
+
+  select * into v_report from public.reports
+    where shift_id=v_segment.shift_id and deleted_at is null and archived_at is null;
+  if not found or v_report.status<>'confirmed' or not v_report.metrics_confirmed then
+    v_missing:=array_append(v_missing,'final_report');
+  end if;
+  if not found or not exists (
+    select 1 from public.live_report_images image
+    where image.report_id=v_report.id and image.category='key_visual'
+      and image.provider in ('google_drive','onedrive')
+      and nullif(btrim(image.external_file_id),'') is not null
+      and nullif(btrim(image.external_parent_id),'') is not null
+      and image.checksum_sha256 ~ '^[a-f0-9]{64}$'
+  ) then
+    v_missing:=array_append(v_missing,'visibility_kv');
+  end if;
+
+  if v_segment.operational_role in ('host','support') then
+    -- Actual-work rows do not yet identify an assignment: ambiguous evidence must remain on hold.
+    IF EXISTS (
+      SELECT 1 FROM public.self_attendance_events e
+      WHERE e.shift_id=v_segment.shift_id AND e.staff_id=v_segment.staff_id
+        AND e.operational_role=v_segment.operational_role AND e.assignment_id IS NOT NULL
+    ) THEN
+      RETURN array_append(v_missing,'assignment_evidence_mapping_required');
+    END IF;
+    foreach v_kind in array array['check_in','check_out'] loop
+      select * into v_event from public.self_attendance_events
+       where shift_id=v_segment.shift_id and staff_id=v_segment.staff_id
+         and operational_role=v_segment.operational_role and event_kind=v_kind;
+      if not found then
+        v_missing:=array_append(v_missing,v_kind||'_photo_review');
+        continue;
+      end if;
+      select request_id into v_photo_request from public.self_attendance_photo_evidence
+       where request_id=v_event.request_id and shift_id=v_segment.shift_id
+         and staff_id=v_segment.staff_id and operational_role=v_segment.operational_role;
+      if not found then
+        v_missing:=array_append(v_missing,v_kind||'_photo_receipt');
+        continue;
+      end if;
+      select revision,request_id into v_photo_revision,v_photo_request
+        from public.self_attendance_photo_evidence_revisions
+       where attendance_event_id=v_event.id order by revision desc limit 1;
+      if not found then
+        v_photo_revision:=1;
+        v_photo_request:=v_event.request_id;
+      end if;
+      select * into v_review from public.self_attendance_photo_review_events
+       where attendance_event_id=v_event.id order by version desc limit 1;
+      if not found or v_review.decision<>'approved'
+        or v_review.evidence_request_id<>v_photo_request
+        or v_review.evidence_revision<>v_photo_revision then
+        v_missing:=array_append(v_missing,v_kind||'_photo_review');
+      end if;
+    end loop;
+  end if;
+  return v_missing;
+end;
+$$;
+
 COMMIT;

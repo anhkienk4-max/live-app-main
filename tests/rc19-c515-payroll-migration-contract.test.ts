@@ -3,6 +3,16 @@ import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 
+test('assignment-linked attendance holds payroll until actual-work evidence can be mapped',()=>{
+  const delta=readFileSync(new URL('../supabase/migrations/20261124093722_rc19_w4_attendance_assignment_links.sql',import.meta.url),'utf8')
+  const start=delta.lastIndexOf('create or replace function private.rc19_c515_required_payroll_evidence(')
+  assert.ok(start>=0)
+  const guard=delta.slice(start)
+  assert.match(guard,/e\.shift_id=v_segment\.shift_id AND e\.staff_id=v_segment\.staff_id/)
+  assert.match(guard,/e\.operational_role=v_segment\.operational_role AND e\.assignment_id IS NOT NULL/)
+  assert.match(guard,/RETURN array_append\(v_missing,'assignment_evidence_mapping_required'\)/)
+})
+
 const migrationPath=new URL('../supabase/migrations/20261110115529_rc19_c515_payroll_second_precision.sql',import.meta.url)
 const migrationBytes=readFileSync(migrationPath)
 const migration=migrationBytes.toString('utf8')
