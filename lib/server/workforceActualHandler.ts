@@ -16,6 +16,7 @@ const record = z.object({
   shift_id: id,
   staff_id: id,
   operational_role: z.enum(['host', 'support', 'technical']),
+  assignment_id: id.nullable().optional(),
   event_kind: z.enum(['worked', 'no_show']),
   coverage_kind: z.enum(['planned', 'cover', 'replacement', 'extra']),
   actual_start_at: time.nullable(),
@@ -411,7 +412,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
         const [segmentsRes, regsRes, swapsRes, attendanceRes, photoEvidenceRes,
           cancelledRegistrationsRes, periodsRes, cancellationReceiptsRes] = await Promise.all([
           client.from('workforce_actual_segments')
-            .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
+            .select('id,shift_id,staff_id,operational_role,assignment_id,event_kind,coverage_kind,actual_start_at,actual_end_at,review_status,evidence_note,review_note,created_by,reviewed_by,reviewed_at,version,created_at')
             .eq('shift_id', shiftId).order('created_at', { ascending: true }).limit(201),
           client.from('shift_registrations')
             .select('id,user_id,operational_role,status')
@@ -423,7 +424,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           // Leave existing Workforce reads fully functional unless explicitly enabled.
           attendanceReviewEnabled
             ? client.from('self_attendance_events')
-              .select('id,request_id,shift_id,staff_id,operational_role,event_kind,recorded_at,verification_status')
+              .select('id,request_id,shift_id,staff_id,operational_role,assignment_id,event_kind,recorded_at,verification_status')
               .eq('shift_id', shiftId).order('recorded_at', {ascending: true}).limit(201)
             : Promise.resolve({data: [], error: null}),
           attendanceReviewEnabled
@@ -527,7 +528,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           // Raw request UUID is a private linkage key, never an API response.
           attendance_events: (attendanceRes.data ?? []).map(ev=>({
             id:ev.id,shift_id:ev.shift_id,staff_id:ev.staff_id,
-            operational_role:ev.operational_role,event_kind:ev.event_kind,
+            operational_role:ev.operational_role,assignment_id:ev.assignment_id,event_kind:ev.event_kind,
             recorded_at:ev.recorded_at,verification_status:ev.verification_status,
             photo_available:((photoEvidenceRes.data??[]) as Array<{request_id:string}>)
               .some(photo=>photo.request_id===ev.request_id),
@@ -749,7 +750,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           if (finalScopeDenial) return finalScopeDenial
 
           const { data, error } = await client.from('workforce_actual_segments').insert({
-            shift_id: action.shift_id, staff_id: action.staff_id,
+            shift_id: action.shift_id, staff_id: action.staff_id, assignment_id: action.assignment_id ?? null,
             operational_role: action.operational_role, event_kind: action.event_kind,
             coverage_kind: action.coverage_kind, actual_start_at: action.actual_start_at,
             actual_end_at: action.actual_end_at, evidence_note: storedEvidenceNote,
@@ -784,7 +785,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
 
         // Review is optimistic and only draft evidence can be decided.
         const { data: current, error: lookup } = await client.from('workforce_actual_segments')
-          .select('id,shift_id,staff_id,operational_role,event_kind,coverage_kind,evidence_note,actual_start_at,actual_end_at,review_status,version,created_by')
+          .select('id,shift_id,staff_id,operational_role,assignment_id,event_kind,coverage_kind,evidence_note,actual_start_at,actual_end_at,review_status,version,created_by')
           .eq('id', action.segment_id).maybeSingle()
         if (lookup) return fail('WORKFORCE_ACTUAL_READ_FAILED', 503)
         if (!current || current.shift_id !== target.data.shift_id || current.review_status !== 'draft' || current.version !== action.expected_version)
