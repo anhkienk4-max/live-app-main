@@ -96,15 +96,17 @@ export function SelfAttendancePanel({
   shiftId,
   role,
   shiftContext,
+  assignmentId,
 }: {
   actorId: string
   shiftId: string
   role: AttendanceRole
   shiftContext: SelfAttendanceShiftContext
+  assignmentId?: string
 }) {
   const { language } = useTranslation()
   const en = language === 'en'
-  const key = actorId + ':' + shiftId + ':' + role
+  const key = actorId + ':' + shiftId + ':' + role + ':' + (assignmentId ?? 'legacy')
   const [nonce, setNonce] = React.useState(0)
   const [snapshot, setSnapshot] = React.useState<{
     key: string
@@ -183,7 +185,7 @@ export function SelfAttendancePanel({
   }, [actorId, shiftId, key, nonce])
 
   const ready = snapshot?.key === key && !snapshot.error
-  const rows = ready ? snapshot.items.filter(r => r.role === role) : []
+  const rows = ready ? snapshot.items.filter(r => r.role === role && (r.assignment_id ?? null) === (assignmentId ?? null)) : []
   const checkedIn = rows.find(row => row.event === 'check_in')
   const checkedOut = rows.find(row => row.event === 'check_out')
 
@@ -281,7 +283,8 @@ export function SelfAttendancePanel({
         role,
         requestIds.current[kind]!,
         photoCheckIn,
-        photoSourceCheckIn
+        photoSourceCheckIn,
+        assignmentId
       )
       requestIds.current[kind] = undefined
       setPhotoCheckIn(null)
@@ -328,7 +331,8 @@ export function SelfAttendancePanel({
         role,
         requestIds.current[kind]!,
         photoCheckOut,
-        photoSourceCheckOut
+        photoSourceCheckOut,
+        assignmentId
       )
       requestIds.current[kind] = undefined
       setPhotoCheckOut(null)
@@ -360,9 +364,9 @@ export function SelfAttendancePanel({
     requestIds.current[kind] = requestId
     try {
       if (kind === 'check_in') {
-        await recoverSelfAttendancePhotoCheckIn(shiftId, role, requestId)
+        await recoverSelfAttendancePhotoCheckIn(shiftId, role, requestId, assignmentId)
       } else {
-        await recoverSelfAttendancePhotoCheckOut(shiftId, role, requestId)
+        await recoverSelfAttendancePhotoCheckOut(shiftId, role, requestId, assignmentId)
       }
       requestIds.current[kind] = undefined
       setSnapshot(null)

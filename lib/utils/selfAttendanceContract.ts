@@ -2,6 +2,7 @@ export type AttendanceEventKind = 'check_in' | 'check_out'
 export type AttendanceRole = 'host' | 'support' | 'technical'
 
 export interface SelfAttendanceEvent {
+  assignment_id?: string | null
   event_id: string
   shift_id: string
   staff_id: string
@@ -22,6 +23,7 @@ export function decodeSelfAttendanceEvent(data: unknown): SelfAttendanceEvent {
       v.verification_status !== 'pending_verification' ||
       !Number.isFinite(Date.parse(v.recorded_at as string)) ||
       (v.photo_available!==undefined && typeof v.photo_available!=='boolean') ||
+      (v.assignment_id!==undefined && v.assignment_id!==null && (typeof v.assignment_id!=='string' || !v.assignment_id.trim())) ||
       (v.replayed!==undefined && typeof v.replayed!=='boolean')) throw new Error('ATTENDANCE_RESPONSE_INVALID')
   return v as unknown as SelfAttendanceEvent
 }

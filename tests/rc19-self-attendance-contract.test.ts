@@ -24,7 +24,9 @@ test('staff id is absent from RPC write arguments, retries keep their token',()=
 test('attendance UI is opt-in and bound to the current approved registration',()=>{
   const modal=readFileSync(new URL('../components/features/shifts/ShiftDetailModal.tsx',import.meta.url),'utf8')
   assert.match(modal,/NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration/)
-  assert.match(modal,/role=\{myRegistration\.operational_role\}/)
+  assert.match(modal,/r\.user_id === currentUser\?\.id && r\.shift_id === shift\.id && isStaffedRegistration\(r\)/)
+  assert.match(modal,/role=\{registration\.operational_role\} assignmentId=\{segment \? registration\.id : undefined\}/)
+  assert.match(modal,/segmented && \(!registration\.staffing_segment_id \|\| !segment\)/)
 })
 
 test('manager actual staffing read presents raw check-in evidence independently from approved segments',()=>{
@@ -188,7 +190,11 @@ test('self attendance photo handler gates evidence by session, Drive root and or
   assert.match(handler,/authorize: request => requirePermission\(request, 'attendance\.record_own'\)/)
   assert.match(handler,/const actor=await dependencies\.authorize\(request\)/)
   assert.match(handler,/actor\.businessUserId/)
-  assert.match(handler,/get_self_attendance_photo_context/)
+  const assignmentMigration=readFileSync(new URL('../supabase/migrations/20261124093722_rc19_w4_attendance_assignment_links.sql',import.meta.url),'utf8')
+  assert.match(handler,/get_self_attendance_legacy_context/)
+  assert.match(handler,/get_self_attendance_assignment_context/)
+  assert.match(assignmentMigration,/ATTENDANCE_ASSIGNMENT_REQUIRED/)
+  assert.match(assignmentMigration,/public\.get_self_attendance_photo_context\(p_shift_id, p_operational_role, p_event_kind\)/)
   assert.match(photoDrive,/createGoogleDriveFileProvider/)
   assert.match(photoDrive,/resolveGoogleDriveAuthMode\(env\)/)
   assert.match(photoDrive,/GOOGLE_DRIVE_CLIENT_ID/)

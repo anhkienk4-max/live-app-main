@@ -644,6 +644,25 @@ export function ShiftDetailModal({
   const brand = brands.find(item => item.id === shift.brand_id)
   const platform = platforms.find(item => item.id === shift.platform_id)
   const campaign = shift.campaign_id ? campaigns.find(item => item.id === shift.campaign_id) : undefined
+  const renderMyAttendancePanels = () => {
+    const mine = registrations.filter(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r))
+    const segmented = Boolean(shift.persisted_staffing_segments?.length || shift.staffing_segments?.length || mine.some(r => r.staffing_segment_id))
+    const localTime = (value: string) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value))
+    return mine.map(registration => {
+      const segment = shift.persisted_staffing_segments?.find(item => item.id === registration.staffing_segment_id)
+      if (segmented && (!registration.staffing_segment_id || !segment)) {
+        return <div key={registration.id} role="status" className="rounded-md border p-3 text-sm">{language === 'en' ? 'Assigned segment details are unavailable. Please refresh or contact an administrator.' : 'Không có thông tin khung đã phân công. Vui lòng tải lại hoặc liên hệ quản trị viên.'}</div>
+      }
+      return <SelfAttendancePanel key={registration.id} actorId={currentUser!.id} shiftId={shift.id}
+        role={registration.operational_role} assignmentId={segment ? registration.id : undefined}
+        shiftContext={{ date: shift.date, start_time: segment ? localTime(segment.start_at) : shift.start_time,
+          end_time: segment ? localTime(segment.end_at) : shift.end_time, brand: brand?.name ?? shift.brand_id,
+          platform: platform?.name ?? shift.platform_id, title: shift.title, studio: shift.studio,
+          crossesMidnight: segment ? localTime(segment.end_at) < localTime(segment.start_at) : Boolean(dateTime?.valid && dateTime.crossesMidnight),
+          staffName: currentUser?.full_name || 'Nhân sự', segmentIndex: segment ? `K${segment.segment_index}` : null,
+          segmentTime: segment ? `${localTime(segment.start_at)}–${localTime(segment.end_at)}` : null }} />
+    })
+  }
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || fallback : fallback
   const statusKey: TranslationKey = shift.status === 'live' ? 'liveStatus' : shift.status
   const overviewStaffing = operationalRoles.map(role => ({
@@ -1079,26 +1098,7 @@ export function ShiftDetailModal({
                         {myRegistration.operational_role}
                       </Badge>
                     </div>
-                    <SelfAttendancePanel
-                      key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
-                      actorId={currentUser!.id}
-                      shiftId={shift.id}
-                      role={myRegistration.operational_role}
-                      shiftContext={{
-                        date: shift.date,
-                        start_time: shift.start_time,
-                        end_time: shift.end_time,
-                        brand: brand?.name ?? shift.brand_id,
-                        platform: platform?.name ?? shift.platform_id,
-                        title: shift.title,
-                        studio: shift.studio,
-                        crossesMidnight: dateTime?.valid && dateTime.crossesMidnight,
-                        staffName: currentUser?.full_name || 'Nhân sự',
-                        segmentSummary: shift.staffing_segments && shift.staffing_segments.length > 0
-                          ? `${shift.staffing_segments.length} khung (${shift.staffing_segments.map(s => `K0${s.segment_index}: ${s.start_time}-${s.end_time}`).join(', ')}) · Gán cá nhân: Chờ C5 backend contract`
-                          : 'Ca đơn (Toàn ca)',
-                      }}
-                    />
+                    {renderMyAttendancePanels()}
                   </section>
                 ) : myRegistration && process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE !== 'true' ? (
                   <div role="status" className="rounded-md border border-amber-200 bg-amber-50/50 p-4 text-sm text-amber-900" data-testid="self-attendance-unavailable">
@@ -1171,26 +1171,7 @@ export function ShiftDetailModal({
               {myAttendanceRegistration && (
                 <TabsContent value="self-attendance" className="min-w-0 p-4 sm:p-6">
                   {process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && attendanceShiftEligible ? (
-                    <SelfAttendancePanel
-                      key={shift.id + ':' + currentUser?.id + ':' + myRegistration.operational_role}
-                      actorId={currentUser!.id}
-                      shiftId={shift.id}
-                      role={myRegistration.operational_role}
-                      shiftContext={{
-                        date: shift.date,
-                        start_time: shift.start_time,
-                        end_time: shift.end_time,
-                        brand: brand?.name ?? shift.brand_id,
-                        platform: platform?.name ?? shift.platform_id,
-                        title: shift.title,
-                        studio: shift.studio,
-                        crossesMidnight: dateTime?.valid && dateTime.crossesMidnight,
-                        staffName: currentUser?.full_name || 'Nhân sự',
-                        segmentSummary: shift.staffing_segments && shift.staffing_segments.length > 0
-                          ? `${shift.staffing_segments.length} khung (${shift.staffing_segments.map(s => `K0${s.segment_index}: ${s.start_time}-${s.end_time}`).join(', ')}) · Gán cá nhân: Chờ C5 backend contract`
-                          : 'Ca đơn (Toàn ca)',
-                      }}
-                    />
+                    renderMyAttendancePanels()
                   ) : (
                     <div role="status" className="rounded-md border bg-muted/30 p-4 text-sm" data-testid="self-attendance-unavailable">
                       {!myRegistration

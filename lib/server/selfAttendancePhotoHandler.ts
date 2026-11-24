@@ -32,6 +32,7 @@ const correctionContextSchema=contextSchema.extend({
 })
 type ExistingEvidence = {
   request_id:string;shift_id:string;staff_id:string;operational_role:string;event_kind?:string
+  assignment_id?:string|null
   external_file_id:string;external_parent_id:string;file_name:string;mime_type:string
   size_bytes:number;checksum_sha256:string
 }
@@ -109,6 +110,7 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
     const eventKind=z.enum(['check_in','check_out']).parse(form.get('event_kind')??'check_in')
     currentEventKind=eventKind
     const requestId=UUID.parse(form.get('request_id'))
+    const assignmentId=form.has('assignment_id')?id.parse(form.get('assignment_id')):null
     const correctionEventId=form.has('correction_event_id')?UUID.parse(form.get('correction_event_id')):null
     const recoverOnly=form.get('recover_only')==='true'
     if(correctionEventId&&(!isFeatureEnabled('self_attendance_review')||recoverOnly))
@@ -126,9 +128,28 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
 
     const admin=dependencies.createAdmin()
     const session=await dependencies.createSession(request)
-    const evidenceColumns='request_id,shift_id,staff_id,operational_role,event_kind,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256'
+    const evidenceColumns='request_id,shift_id,staff_id,operational_role,event_kind,assignment_id,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256'
     let existingData:ExistingEvidence|null=null
     let correctionContext:z.infer<typeof correctionContextSchema>|null=null
+    let assignmentContext:z.infer<typeof contextSchema>|null=null
+    let replayOnly=false
+    if(assignmentId&&!correctionEventId) {
+      const preflight=await session.rpc('get_self_attendance_assignment_context',{
+        p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,p_assignment_id:assignmentId,
+      })
+      if(preflight.error) {
+        const replay=await session.rpc('can_replay_self_attendance_assignment',{
+          p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,p_assignment_id:assignmentId,p_request_id:requestId,
+        })
+        if(replay.error||replay.data!==true)return failed('ATTENDANCE_PHOTO_SHIFT_NOT_ELIGIBLE',403)
+        replayOnly=true
+      } else {
+        const parsed=contextSchema.safeParse(preflight.data)
+        if(!parsed.success||parsed.data.staff_id!==actor.businessUserId||parsed.data.shift_id!==shiftId||parsed.data.role!==kind)
+          return failed('ATTENDANCE_PHOTO_CONTEXT_INVALID',409)
+        assignmentContext=parsed.data
+      }
+    }
     if(correctionEventId) {
       const retry=await admin.from('self_attendance_photo_evidence_revisions')
         .select('request_id,attendance_event_id,submitted_by,external_file_id,external_parent_id,file_name,mime_type,size_bytes,checksum_sha256,revision')
@@ -158,23 +179,27 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
         return failed('ATTENDANCE_PHOTO_CONTEXT_INVALID',409)
       correctionContext=parsed.data
     } else {
+      const scopedEvidence=admin.from('self_attendance_photo_evidence')
+        .select(evidenceColumns).eq('shift_id',shiftId)
+        .eq('staff_id',actor.businessUserId).eq('operational_role',kind).eq('event_kind',eventKind)
       const [byRequest,byAssignment]=await Promise.all([
         admin.from('self_attendance_photo_evidence')
           .select(evidenceColumns).eq('request_id',requestId).maybeSingle(),
-        admin.from('self_attendance_photo_evidence')
-          .select(evidenceColumns).eq('shift_id',shiftId)
-          .eq('staff_id',actor.businessUserId).eq('operational_role',kind).eq('event_kind',eventKind).maybeSingle(),
+        (assignmentId?scopedEvidence.eq('assignment_id',assignmentId):scopedEvidence.is('assignment_id',null)).maybeSingle(),
       ])
       if(byRequest.error||byAssignment.error)return failed('ATTENDANCE_PHOTO_STORAGE_UNAVAILABLE',503)
       if(byRequest.data&&
         (byRequest.data.staff_id!==actor.businessUserId||byRequest.data.shift_id!==shiftId||
-         byRequest.data.operational_role!==kind||(byRequest.data.event_kind&&byRequest.data.event_kind!==eventKind)))
+         byRequest.data.operational_role!==kind||(byRequest.data.event_kind&&byRequest.data.event_kind!==eventKind)||
+         (byRequest.data.assignment_id??null)!==assignmentId))
         return failed('ATTENDANCE_PHOTO_REQUEST_REUSED',409)
       existingData=byAssignment.data??byRequest.data
     }
     // Recover a reserved photo after a page reload/network timeout. The server
     // reuses the original request UUID without accepting a client-supplied foreign photo ID.
     const existing={data:existingData}
+    if(replayOnly&&(!existing.data||existing.data.request_id!==requestId))
+      return failed('ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE',409)
     const committedRequestId=existing.data?.request_id??requestId
     if(recoverOnly&&!existing.data)
       return failed('ATTENDANCE_PHOTO_RECOVERY_UNAVAILABLE',404)
@@ -196,7 +221,7 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
         return failed('ATTENDANCE_PHOTO_RETRY_INTEGRITY_FAILED',409)
     }
 
-    let prepared: z.infer<typeof contextSchema>|null=correctionContext
+    let prepared: z.infer<typeof contextSchema>|null=correctionContext??assignmentContext
     if(!existing.data) {
       if(!(file instanceof File)||!captureSource)
         return failed('ATTENDANCE_PHOTO_REQUIRED',400)
@@ -219,7 +244,7 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
       if(cleanBytes.byteLength<1||cleanBytes.byteLength>LIMIT)
         return failed('ATTENDANCE_PHOTO_TOO_LARGE',413)
       if(!prepared) {
-        const preflight=await session.rpc('get_self_attendance_photo_context',{
+        const preflight=await session.rpc('get_self_attendance_legacy_context',{
           p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,
         })
         if(preflight.error)return failed('ATTENDANCE_PHOTO_SHIFT_NOT_ELIGIBLE',403)
@@ -239,13 +264,13 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
       })
       const hash=createHash('sha256').update(cleanBytes).digest('hex')
       const oppositeEventKind=eventKind==='check_in'?'check_out':'check_in'
-      const oppositeEvidence=await admin.from('self_attendance_photo_evidence')
+      const oppositeQuery=admin.from('self_attendance_photo_evidence')
         .select('checksum_sha256')
         .eq('shift_id',shiftId)
         .eq('staff_id',actor.businessUserId)
         .eq('operational_role',kind)
         .eq('event_kind',oppositeEventKind)
-        .maybeSingle()
+      const oppositeEvidence=await (assignmentId?oppositeQuery.eq('assignment_id',assignmentId):oppositeQuery.is('assignment_id',null)).maybeSingle()
       if(oppositeEvidence.data&&oppositeEvidence.data.checksum_sha256===hash) {
         return failed('ATTENDANCE_PHOTO_DUPLICATE_ACROSS_EVENTS',409)
       }
@@ -328,7 +353,7 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
         return Response.json({ok:true,correction:saved.data},{headers:ERROR_HEADERS})
       }
       const saved=await admin.from('self_attendance_photo_evidence').insert({
-        request_id:requestId,shift_id:shiftId,staff_id:actor.businessUserId,
+        request_id:requestId,shift_id:shiftId,staff_id:actor.businessUserId,assignment_id:assignmentId,
         operational_role:kind,event_kind:eventKind,provider:'google_drive',external_file_id:uploadedId,
         external_parent_id:destination.parentId,file_name:fileName,mime_type:'image/jpeg',
         size_bytes:cleanBytes.byteLength,checksum_sha256:hash,
@@ -338,21 +363,27 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
       committedMetadata=true
     }
 
-    const recorded=await session.rpc('self_attendance_record',{
-      p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,
-      p_request_id:committedRequestId,p_evidence_note:null,
-    })
+    const recorded=assignmentId
+      ?await session.rpc('self_attendance_record_assignment',{
+        p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,
+        p_request_id:committedRequestId,p_assignment_id:assignmentId,
+      })
+      :await session.rpc('self_attendance_record',{
+        p_shift_id:shiftId,p_operational_role:kind,p_event_kind:eventKind,
+        p_request_id:committedRequestId,p_evidence_note:null,
+      })
     if(recorded.error) {
       const code=eventKind==='check_out'?'ATTENDANCE_PHOTO_CHECKOUT_PENDING_RECONCILIATION':'ATTENDANCE_PHOTO_CHECKIN_PENDING_RECONCILIATION'
       return failed(code,409)
     }
     const event=decodeSelfAttendanceEvent(recorded.data)
     if(event.staff_id!==actor.businessUserId||event.shift_id!==shiftId||
-      event.role!==kind||event.event!==eventKind) {
+      event.role!==kind||event.event!==eventKind||
+      (assignmentId&&recorded.data?.assignment_id!==assignmentId)) {
       const code=eventKind==='check_out'?'ATTENDANCE_PHOTO_CHECKOUT_RESPONSE_MISMATCH':'ATTENDANCE_PHOTO_CHECKIN_RESPONSE_MISMATCH'
       return failed(code,409)
     }
-    return Response.json({ok:true,event:{...event,photo_available:true}},
+    return Response.json({ok:true,event:{...event,assignment_id:assignmentId,photo_available:true}},
       {headers:ERROR_HEADERS})
   } catch(error) {
     if(uploadedId&&!committedMetadata&&drive) {
