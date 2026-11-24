@@ -1,7 +1,8 @@
-import type { ScheduleImportRow, Shift } from '@/lib/types/database.types'
+import type { PlannedStaffingSegmentDraft, ScheduleImportRow, Shift } from '@/lib/types/database.types'
 import type { ImportResult } from '@/lib/utils/excelUtils'
 import { DEFAULT_SHIFT_STAFFING, MAX_SHIFT_CAPACITY } from '@/lib/utils/shiftUtils'
 import { agencyDisplayLabel } from '@/lib/utils/executionSource'
+import { normalizeShiftSegments, segmentDraftToCanonicalLines } from '@/lib/utils/staffingSemantics'
 
 export type PreviewStaffingField = 'required_host_count' | 'required_support_count' | 'required_technical_count'
 export type PreviewStaffingValues = Record<PreviewStaffingField, number | string>
@@ -33,7 +34,53 @@ type ScheduleImportEnrichmentShape = Pick<Shift,
   | 'host_names'
   | 'assistant_names'
   | 'technical_names'
->
+> & Partial<Pick<Shift,
+  | 'date'
+  | 'start_time'
+  | 'end_time'
+  | 'timezone'
+  | 'staffing_segments'
+  | 'persisted_staffing_segments'
+>>
+
+const canonicalSegmentSignature = (segments: readonly PlannedStaffingSegmentDraft[]) =>
+  [...segments]
+    .sort((a, b) => a.segment_index - b.segment_index)
+    .map(seg => ({
+      segment_index: seg.segment_index,
+      start_time: seg.start_time,
+      end_time: seg.end_time,
+      required_host_count: seg.required_host_count ?? 0,
+      required_support_count: seg.required_support_count ?? 0,
+      required_technical_count: seg.required_technical_count ?? 0,
+      planned_host_names: [...new Set((seg.planned_host_names ?? []).map(n => n.trim()).filter(Boolean))],
+      planned_support_names: [...new Set((seg.planned_support_names ?? []).map(n => n.trim()).filter(Boolean))],
+      planned_technical_names: [...new Set((seg.planned_technical_names ?? []).map(n => n.trim()).filter(Boolean))],
+    }))
+
+const existingSegmentDraftsForComparison = (shape: ScheduleImportEnrichmentShape): PlannedStaffingSegmentDraft[] => {
+  if (shape.persisted_staffing_segments?.length && shape.date && shape.start_time && shape.end_time) {
+    return normalizeShiftSegments({
+      date: shape.date,
+      start_time: shape.start_time,
+      end_time: shape.end_time,
+      timezone: shape.timezone,
+      persisted_staffing_segments: shape.persisted_staffing_segments,
+      staffing_segments: shape.staffing_segments,
+    }).map(seg => ({
+      segment_index: seg.segment_index,
+      start_time: seg.start_time,
+      end_time: seg.end_time,
+      required_host_count: seg.required_host_count,
+      required_support_count: seg.required_support_count,
+      required_technical_count: seg.required_technical_count,
+      planned_host_names: seg.planned_host_names,
+      planned_support_names: seg.planned_support_names,
+      planned_technical_names: seg.planned_technical_names,
+    }))
+  }
+  return shape.staffing_segments ?? []
+}
 
 const sourceValueProvided = (value: boolean | undefined, fallback: boolean) =>
   value === undefined ? fallback : value
@@ -122,11 +169,18 @@ export function hasScheduleImportEnrichment(
 ): boolean {
   if (Object.keys(buildScheduleImportEnrichmentPatch(existing, imported, sourcePresence)).length > 0) return true
   const staffingFields = ['host_names', 'assistant_names', 'technical_names'] as const
-  return staffingFields.some(field =>
+  if (staffingFields.some(field =>
     sourceValueProvided(sourcePresence[field], Boolean(imported[field]?.length))
     && Boolean(imported[field]?.length)
     && !namesEqual(existing[field], imported[field]),
-  )
+  )) return true
+  const existingSegs = existingSegmentDraftsForComparison(existing)
+  const importedSegs = imported.staffing_segments
+  if (importedSegs && (importedSegs.length > 0 || existingSegs.length > 0)) {
+    return JSON.stringify(canonicalSegmentSignature(existingSegs))
+      !== JSON.stringify(canonicalSegmentSignature(importedSegs))
+  }
+  return false
 }
 
 export const previewStaffingFields = [
@@ -423,9 +477,34 @@ export function normalizeScheduleImportSourceRow(
 }
 
 export function buildScheduleImportPreviewSourceRow(row: ScheduleImportRow) {
-  return normalizeScheduleImportSourceRow({
+  const customFields = { ...(row.custom_fields ?? {}) }
+  let hostNamesValue = row.host_names?.join(', ') || ''
+  let assistantNamesValue = row.assistant_names?.join(', ') || ''
+  let technicalNamesValue = row.technical_names?.join(', ') || ''
+
+  if (row.staffing_segments && row.staffing_segments.length > 0) {
+    customFields['Số khung'] = String(row.staffing_segments.length)
+    customFields['Khung nhân sự'] = segmentDraftToCanonicalLines(row.staffing_segments)
+    const formatBySlot = (getter: (seg: PlannedStaffingSegmentDraft) => string[] | undefined) => {
+      const lines = row.staffing_segments!
+        .map(seg => {
+          const names = getter(seg) ?? []
+          return names.length > 0 ? `K${String(seg.segment_index).padStart(2, '0')}: ${names.join(', ')}` : ''
+        })
+        .filter(Boolean)
+      return lines.join('\n')
+    }
+    const slotHost = formatBySlot(seg => seg.planned_host_names)
+    const slotSupport = formatBySlot(seg => seg.planned_support_names)
+    const slotTech = formatBySlot(seg => seg.planned_technical_names)
+    if (slotHost || !hostNamesValue || row.staffing_segments.length > 1) hostNamesValue = slotHost
+    if (slotSupport || !assistantNamesValue || row.staffing_segments.length > 1) assistantNamesValue = slotSupport
+    if (slotTech || !technicalNamesValue || row.staffing_segments.length > 1) technicalNamesValue = slotTech
+  }
+
+  const normalizedSource = normalizeScheduleImportSourceRow({
     'Execution Source': row.execution_source || '',
-    Agency: row.agency_code ? agencyDisplayLabel(row.agency_code) : (row.custom_fields?.Agency || ''),
+    Agency: row.agency_code ? agencyDisplayLabel(row.agency_code) : (customFields.Agency || ''),
     Date: row.date,
     'Start time': row.start_time,
     'End time': row.end_time,
@@ -434,16 +513,27 @@ export function buildScheduleImportPreviewSourceRow(row: ScheduleImportRow) {
     Campaign: row.campaign_name || '',
     'Shift title': row.title,
     Studio: row.studio || '',
-    host_names: row.host_names?.join(', ') || '',
-    assistant_names: row.assistant_names?.join(', ') || '',
-    technical_names: row.technical_names?.join(', ') || '',
+    host_names: hostNamesValue,
+    assistant_names: assistantNamesValue,
+    technical_names: technicalNamesValue,
     required_host_count: row.required_host_count,
     required_support_count: row.required_support_count,
     required_technical_count: row.required_technical_count,
     Notes: row.notes || '',
-    custom_fields: row.custom_fields ?? {},
+    custom_fields: customFields,
     source_presence: row.source_presence,
   })
+
+  if (row.staffing_segments && row.staffing_segments.length > 0) {
+    return {
+      ...normalizedSource,
+      host_names: hostNamesValue as unknown as string[],
+      assistant_names: assistantNamesValue as unknown as string[],
+      technical_names: technicalNamesValue as unknown as string[],
+    }
+  }
+
+  return normalizedSource
 }
 
 export function toCanonicalScheduleImportPreviewRow(
@@ -451,6 +541,7 @@ export function toCanonicalScheduleImportPreviewRow(
 ): ScheduleImportRow {
   const canonical = normalizeScheduleImportSourceRow(row as Record<string, unknown>)
   const studio = typeof canonical.studio === 'string' ? canonical.studio.trim() : ''
+  const segments = (row as ScheduleImportRow).staffing_segments
 
   return {
     ...canonical,
@@ -459,6 +550,7 @@ export function toCanonicalScheduleImportPreviewRow(
     host_names: canonical.host_names,
     assistant_names: canonical.assistant_names,
     technical_names: canonical.technical_names,
+    ...(segments ? { staffing_segments: segments } : {}),
     required_host_count: canonical.required_host_count,
     required_support_count: canonical.required_support_count,
     required_technical_count: canonical.required_technical_count,
@@ -470,6 +562,48 @@ export function normalizeScheduleImportResult(result: ImportResult): ImportResul
   const rows = result.rows.map(preview => {
     const row = toCanonicalScheduleImportPreviewRow(preview.row)
     const staffing = validateStaffingValues(row)
+    const activeSegments = preview.shift?.staffing_segments
+      ?? preview.duplicateCandidate?.staffing_segments
+      ?? row.staffing_segments
+
+    if (activeSegments && activeSegments.length > 0) {
+      const peakHost = Math.max(...activeSegments.map(segment => segment.required_host_count))
+      const peakSupport = Math.max(...activeSegments.map(segment => segment.required_support_count))
+      const peakTechnical = Math.max(...activeSegments.map(segment => segment.required_technical_count))
+      row.staffing_segments = activeSegments
+      row.required_host_count = peakHost
+      row.required_support_count = peakSupport
+      row.required_technical_count = peakTechnical
+      const shift = preview.shift
+        ? {
+            ...preview.shift,
+            execution_source: row.execution_source,
+            agency_code: row.agency_code,
+            studio: row.studio,
+            host_names: row.host_names ?? [],
+            assistant_names: row.assistant_names ?? [],
+            technical_names: row.technical_names ?? [],
+            staffing_segments: activeSegments,
+            required_host_count: peakHost,
+            required_support_count: peakSupport,
+            required_technical_count: peakTechnical,
+          }
+        : preview.shift
+      const duplicateCandidate = preview.duplicateCandidate
+        ? {
+            ...preview.duplicateCandidate,
+            execution_source: row.execution_source,
+            agency_code: row.agency_code,
+            studio: row.studio,
+            staffing_segments: activeSegments,
+            required_host_count: peakHost,
+            required_support_count: peakSupport,
+            required_technical_count: peakTechnical,
+          }
+        : preview.duplicateCandidate
+      return { ...preview, row, shift, duplicateCandidate }
+    }
+
     const shift = preview.shift && previewStaffingFields.every(field => staffing[field] !== null)
       ? {
           ...preview.shift,

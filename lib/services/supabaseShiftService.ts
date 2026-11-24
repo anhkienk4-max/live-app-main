@@ -1,12 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { requestAttendanceFolderMaterialization } from '@/lib/services/attendanceFolderMaterializationClient'
-import { withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
+import {
+  readShiftStaffingSegments,
+  readShiftStaffingSummary,
+  withShiftStaffingSummary,
+} from '@/lib/services/supabaseStaffingReadService'
 
 import { createClient } from '@/lib/supabase/client'
 import type {
   AgencyCode,
   DeletionImpact,
   LifecycleMetadata,
+  PersistedStaffingSegment,
   Shift,
   ShiftStatus,
   ShiftStatusMode,
@@ -14,6 +19,8 @@ import type {
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE } from '@/lib/utils/shiftUtils'
 import { executionSourceForAgency, resolveExecutionSource } from '@/lib/utils/executionSource'
 import type { PersistedScheduleImportResult } from '@/lib/utils/scheduleImportRecovery'
+import { verifyImportedShiftReadback } from '@/lib/utils/scheduleImportReadback'
+import { persistedSegmentToDraft, type StaffingRegistrationLike } from '@/lib/utils/staffingSemantics'
 
 const shiftColumns = [
   'id',
@@ -307,6 +314,12 @@ export interface SupabaseShiftRepository {
   getDeletionImpact(id: string): Promise<DeletionImpact | null>
   create(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<Shift>
   createFromImport(batchId: string, rowNumber: number, data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<PersistedScheduleImportResult>
+  reconcileFromImport?(
+    batchId: string,
+    rowNumber: number,
+    data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>,
+    options?: { allowSafeUpdate?: boolean },
+  ): Promise<PersistedScheduleImportResult>
   update(id: string, data: Partial<Shift>, confirmImpact?: boolean, expectedVersion?: number): Promise<Shift | null>
   updateStaffingLabels(id: string, labels: ShiftStaffingLabels, expectedVersion?: number): Promise<Shift | null>
   setRegistrationLock(id: string, locked: boolean, expectedVersion?: number): Promise<Shift | null>
@@ -537,6 +550,150 @@ export function createSupabaseShiftRepository(
         console.warn('ATTENDANCE_FOLDER_MATERIALIZATION_PENDING')
       }
       return { kind: 'created', shift, outcome: response.outcome }
+    },
+
+    async reconcileFromImport(batchId, rowNumber, data, options) {
+      const agencySource = executionSourceForAgency(data.agency_code)
+      if (data.agency_code && data.execution_source && data.execution_source !== agencySource) {
+        throw new ShiftRequestError('SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT', 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT')
+      }
+      const effectiveData = { ...data, execution_source: data.execution_source ?? agencySource }
+      const payload = createPayload(effectiveData, routingMode)
+      const result = await client.rpc('reconcile_schedule_import_shift', {
+        p_batch_id: batchId,
+        p_row_number: rowNumber,
+        p_data: Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'staffing_segments')),
+        p_segments: effectiveData.staffing_segments ?? [],
+        p_allow_safe_update: options?.allowSafeUpdate ?? true,
+      }).single()
+      const response = requiredRow('schedule import shift reconcile', result) as unknown as {
+        status?: 'created' | 'updated' | 'unchanged' | 'conflict'
+        outcome: 'imported' | 'warning' | 'duplicate_skipped' | 'retryable'
+        shift?: ShiftRow
+        segments?: PersistedStaffingSegment[]
+        shift_id?: string | null
+        failure_code?: string | null
+      }
+      if (response.status === 'conflict' || response.outcome === 'retryable') {
+        return {
+          kind: 'review_required',
+          failureCode: response.failure_code ?? 'IMPORT_SOURCE_REVIEW_REQUIRED',
+          shiftId: response.shift_id ?? undefined,
+          batchRowRecorded: true,
+        }
+      }
+      if (response.status === 'unchanged' || response.outcome === 'duplicate_skipped') {
+        const unchangedSegments = [...(response.segments ?? [])].sort(
+          (a, b) => a.segment_index - b.segment_index || a.start_at.localeCompare(b.start_at) || a.id.localeCompare(b.id),
+        )
+        const baseUnchanged = response.shift
+          ? shiftFromRow(response.shift, routingMode, effectiveData.execution_source)
+          : undefined
+        const shift = baseUnchanged
+          ? {
+              ...baseUnchanged,
+              ...(unchangedSegments.length > 0
+                ? {
+                    persisted_staffing_segments: unchangedSegments,
+                    staffing_segments: unchangedSegments.map(seg =>
+                      persistedSegmentToDraft(seg, baseUnchanged.timezone),
+                    ),
+                  }
+                : {}),
+            }
+          : undefined
+        return {
+          kind: 'duplicate_skipped',
+          shift,
+          shiftId: response.shift_id ?? shift?.id,
+          batchRowRecorded: true,
+        }
+      }
+
+      const shiftId = response.shift?.id ?? response.shift_id ?? undefined
+      if (!shiftId) throw new ShiftRequestError('IMPORT_PERSISTED_SHIFT_MISSING', 'IMPORT_PERSISTED_SHIFT_MISSING')
+
+      let rawShiftRow = response.shift
+      let persistedSegments: PersistedStaffingSegment[] = response.segments ?? []
+      let staffingSummary: NonNullable<Shift['staffing_summary']> = []
+      let registrations: StaffingRegistrationLike[] = []
+
+      if (typeof client.from === 'function') {
+        const [shiftReadResult, segmentsRead, summaryRead, regsReadResult] = await Promise.all([
+          selectShifts().eq('id', shiftId).maybeSingle(),
+          readShiftStaffingSegments(client, [shiftId]),
+          readShiftStaffingSummary(client, [shiftId]),
+          client
+            .from('shift_registrations')
+            .select('id,shift_id,staffing_segment_id,user_id,operational_role,status')
+            .eq('shift_id', shiftId),
+        ])
+        if (shiftReadResult.error) {
+          throw requestError('schedule import shift readback', shiftReadResult.error)
+        }
+        if (regsReadResult.error) {
+          throw requestError('schedule import registrations readback', regsReadResult.error)
+        }
+        rawShiftRow = (shiftReadResult.data as ShiftRow | null) ?? response.shift
+        persistedSegments = segmentsRead
+        staffingSummary = summaryRead
+        registrations = (regsReadResult.data ?? []) as StaffingRegistrationLike[]
+      }
+
+      if (!rawShiftRow) {
+        throw new ShiftRequestError('IMPORT_PERSISTED_SHIFT_MISSING', 'IMPORT_PERSISTED_SHIFT_MISSING')
+      }
+
+      const sortedSegments = [...persistedSegments].sort(
+        (a, b) => a.segment_index - b.segment_index || a.start_at.localeCompare(b.start_at) || a.id.localeCompare(b.id),
+      )
+      const baseShift = shiftFromRow(rawShiftRow, routingMode, effectiveData.execution_source)
+      const persistedShift: Shift = {
+        ...baseShift,
+        staffing_summary: staffingSummary,
+        ...(sortedSegments.length > 0
+          ? {
+              persisted_staffing_segments: sortedSegments,
+              staffing_segments: sortedSegments.map(seg =>
+                persistedSegmentToDraft(seg, baseShift.timezone),
+              ),
+            }
+          : {}),
+      }
+
+      const verification = verifyImportedShiftReadback({
+        expected: effectiveData,
+        persisted: persistedShift,
+        persistedSegments: sortedSegments,
+        registrations,
+        staffingSummary,
+      })
+
+      if (!verification.ok) {
+        return {
+          kind: 'readback_mismatch',
+          shift: persistedShift,
+          shiftId: persistedShift.id,
+          failureCode: 'IMPORT_DB_READBACK_MISMATCH',
+          mismatches: verification.mismatches,
+          verification,
+          batchRowRecorded: true,
+        }
+      }
+
+      const outcome: 'imported' | 'warning' = response.outcome === 'warning' ? 'warning' : 'imported'
+      if (response.status !== 'updated' && outcome === 'imported' && typeof window !== 'undefined'
+        && !await requestAttendanceFolderMaterialization([persistedShift.id])) {
+        console.warn('ATTENDANCE_FOLDER_MATERIALIZATION_PENDING')
+      }
+
+      return {
+        kind: response.status === 'updated' ? 'updated' : 'created',
+        shift: persistedShift,
+        outcome,
+        verification,
+        batchRowRecorded: true,
+      }
     },
 
     async update(id, data, confirmImpact = false, expectedVersion) {

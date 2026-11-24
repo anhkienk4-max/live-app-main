@@ -261,6 +261,53 @@ export interface ShiftStaffingSummary {
   approved_staff: Array<{ name: string; avatar_url: string | null; imported_only: boolean }>
 }
 
+export interface ShiftRoleStaffingMetrics {
+  role: OperationalRole
+  peak_concurrent_required: number
+  total_positions_required: number
+  unique_assigned_people: number
+  approved_assignments: number
+  pending_assignments: number
+  remaining_vacancies: number
+  required_staff_hours: number
+}
+
+export interface SegmentRoleStaffingCounts {
+  role: OperationalRole
+  required: number
+  approved: number
+  pending: number
+  remaining: number
+  unique_people: number
+  approved_registration_ids: string[]
+  approved_user_ids: string[]
+  pending_registration_ids: string[]
+}
+
+export interface PersistedSegmentStaffingBreakdown {
+  segment_id?: string
+  segment_index: number
+  start_time: string
+  end_time: string
+  start_at: string
+  end_at: string
+  duration_minutes: number
+  duration_hours: number
+  planned_host_names: string[]
+  planned_support_names: string[]
+  planned_technical_names: string[]
+  roles: Record<OperationalRole, SegmentRoleStaffingCounts>
+}
+
+export interface ShiftStaffingMetrics {
+  shift_id: string
+  has_segments: boolean
+  segment_count: number
+  roles: Record<OperationalRole, ShiftRoleStaffingMetrics>
+  totals: Omit<ShiftRoleStaffingMetrics, 'role'>
+  segments: PersistedSegmentStaffingBreakdown[]
+}
+
 export interface SwapExchangeCandidate {
   registration_id: string
   user_id: string
@@ -977,6 +1024,7 @@ export interface ScheduleImportRow {
   host_names?: string[]
   assistant_names?: string[]
   technical_names?: string[]
+  staffing_segments?: PlannedStaffingSegmentDraft[]
   required_host_count: number | string
   required_support_count: number | string
   required_technical_count: number | string
