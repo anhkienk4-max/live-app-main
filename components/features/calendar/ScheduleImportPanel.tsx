@@ -2077,13 +2077,9 @@ function ImportCompletionCard({
   const attention = counts.warning + counts.duplicate + counts.invalid + counts.retryable + (rec?.readbackFailed ?? 0)
 
   let state: 'SUCCESS' | 'PARTIAL' | 'ACTION_REQUIRED' = 'SUCCESS'
-  if (rec?.readbackFailed && rec.readbackFailed > 0) {
-    state = persistedCount === 0 ? 'ACTION_REQUIRED' : 'PARTIAL'
-  } else if (persistedCount === 0 && (counts.duplicate + counts.invalid + counts.retryable) > 0) {
-    state = 'ACTION_REQUIRED'
-  } else if (persistedCount > 0 && attention > 0) {
-    state = 'PARTIAL'
-  }
+  if (persistedCount === 0 && (counts.duplicate + counts.invalid + counts.retryable) > 0) state = 'ACTION_REQUIRED'
+  else if (persistedCount > 0 && attention > 0) state = 'PARTIAL'
+  else if (rec?.readbackFailed && rec.readbackFailed > 0) state = persistedCount === 0 ? 'ACTION_REQUIRED' : 'PARTIAL'
 
   const borderClass = state === 'SUCCESS' ? 'border-emerald-200' : state === 'PARTIAL' ? 'border-amber-200' : 'border-red-200'
   const headerClass = state === 'SUCCESS' ? 'bg-emerald-50/60 text-emerald-950' : state === 'PARTIAL' ? 'bg-amber-50/60 text-amber-950' : 'bg-red-50/60 text-red-950'

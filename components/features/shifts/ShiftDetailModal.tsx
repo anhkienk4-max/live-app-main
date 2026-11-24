@@ -88,6 +88,7 @@ import { AttendancePhotoReviewPanel } from '@/components/features/attendance/Att
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { ShiftOperationalNotesSection } from './ShiftOperationalNotesSection'
 import { ShiftStaffingSegmentsPanel } from './ShiftStaffingSegmentsPanel'
+import { persistedSegmentToDraft } from '@/lib/utils/staffingSemantics'
 import { AtomicStaffingReplacementDialog } from '@/components/features/calendar/AtomicStaffingReplacementDialog'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
@@ -592,11 +593,12 @@ export function ShiftDetailModal({
     setStaffingLoading(true)
     setStaffingError(false)
     try {
-      const [loadedRegistrations, loadedCapacities, updatedShift, loadedSwaps] = await Promise.all([
+      const [loadedRegistrations, loadedCapacities, updatedShift, loadedSwaps, loadedSegments] = await Promise.all([
         shiftRegistrationService.getForShift(shift.id),
         shiftRegistrationService.getCapacity(shift.id),
         shiftService.getById(shift.id),
         swapRequestService.getAllFiltered({ shiftIds: [shift.id] }).catch(() => []),
+        shiftRegistrationService.getSegmentsForShift(shift.id).catch(() => []),
       ])
       if (sequence !== staffingRead.current) return
       setRegistrations(loadedRegistrations)
@@ -604,7 +606,43 @@ export function ShiftDetailModal({
       setCapacities(loadedCapacities)
       setIsLocked(Boolean(updatedShift?.registration_locked))
       if (updatedShift) {
-        setActiveShift(updatedShift)
+        setActiveShift(prev => {
+          const prevPersisted = prev.id === updatedShift.id ? prev.persisted_staffing_segments : undefined
+          const prevDrafts = prev.id === updatedShift.id ? prev.staffing_segments : undefined
+          const prevById = new Map((prevPersisted ?? []).map(seg => [seg.id, seg]))
+          const resolvedPersisted = updatedShift.persisted_staffing_segments?.length
+            ? updatedShift.persisted_staffing_segments
+            : loadedSegments.length > 0
+              ? loadedSegments.map(seg => {
+                  const prior = prevById.get(seg.id)
+                  return {
+                    id: seg.id,
+                    shift_id: updatedShift.id,
+                    segment_index: seg.segment_index,
+                    start_at: seg.start_at,
+                    end_at: seg.end_at,
+                    required_host_count: seg.required_host_count,
+                    required_support_count: seg.required_support_count,
+                    required_technical_count: seg.required_technical_count,
+                    planned_host_names: prior?.planned_host_names ?? [],
+                    planned_support_names: prior?.planned_support_names ?? [],
+                    planned_technical_names: prior?.planned_technical_names ?? [],
+                  }
+                })
+              : prevPersisted?.length
+                ? prevPersisted
+                : undefined
+          const resolvedDrafts = updatedShift.staffing_segments?.length
+            ? updatedShift.staffing_segments
+            : resolvedPersisted?.length
+              ? resolvedPersisted.map(seg => persistedSegmentToDraft(seg, updatedShift.timezone))
+              : prevDrafts
+          return {
+            ...updatedShift,
+            ...(resolvedPersisted ? { persisted_staffing_segments: resolvedPersisted } : {}),
+            ...(resolvedDrafts ? { staffing_segments: resolvedDrafts } : {}),
+          }
+        })
       }
       setShiftSwaps(loadedSwaps)
     } catch {

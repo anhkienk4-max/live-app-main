@@ -44,6 +44,14 @@ export async function readShiftStaffingSegments(
 
 export async function withShiftStaffingSummary<T extends Shift>(client: SupabaseClient, shifts: T[]): Promise<T[]> {
   if (!shifts.length) return []
+  const summary = await readShiftStaffingSummary(client, shifts.map(shift => shift.id))
+  const byShift = new Map<string, ShiftStaffingSummary[]>()
+  for (const row of summary) byShift.set(row.shift_id, [...(byShift.get(row.shift_id) ?? []), row])
+  return shifts.map(shift => ({ ...shift, staffing_summary: byShift.get(shift.id) ?? [] }))
+}
+
+export async function withShiftStaffingSummaryAndSegments<T extends Shift>(client: SupabaseClient, shifts: T[]): Promise<T[]> {
+  if (!shifts.length) return []
   const shiftIds = shifts.map(shift => shift.id)
   const [summary, segments] = await Promise.all([
     readShiftStaffingSummary(client, shiftIds),
