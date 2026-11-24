@@ -267,11 +267,10 @@ function inferSlashDateOrder(sourceRows: ScheduleSheetRow[]): {
     const second = Number(match[2])
     const row = sourceRowNumberFor(source, index)
 
+    // Invalid calendar components (e.g. 32/13/2026 or 00/11/2026) belong to that
+    // specific row's validation errors rather than poisoning the whole sheet.
     if (first < 1 || second < 1 || (first > 12 && second > 12)) {
-      return {
-        order: inferred ?? 'day-first',
-        error: { row, field: 'date_format', message: `Date "${text}" is not a valid DD/MM/YYYY or MM/DD/YYYY date.` },
-      }
+      continue
     }
 
     const evidence: SlashDateOrder | undefined = first > 12
@@ -317,17 +316,32 @@ const resolveExcelDateFormatter = (): ExcelDateFormatter | undefined => {
 const parseExcelDateCode = (value: number): ExcelDateParts | undefined =>
   resolveExcelDateFormatter()?.parse_date_code?.(value)
 
+const isValidExcelSerialDate = (value: number): boolean =>
+  Number.isFinite(value) && value >= 1 && value <= 2958465 && Math.floor(value) !== 60
+
 const normalizeDate = (value: unknown, slashDateOrder: SlashDateOrder): string => {
   if (typeof value === 'number') {
+    if (!isValidExcelSerialDate(value)) return ''
     const parsed = parseExcelDateCode(value)
-    if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`
+    if (!parsed) return ''
+    const iso = `${String(parsed.y).padStart(4, '0')}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`
+    return validIsoDate(iso) ? iso : ''
   }
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    const date = value
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    return `${String(value.getUTCFullYear()).padStart(4, '0')}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`
   }
   const text = String(value ?? '').trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
+  if (/^\d{5}(?:\.\d+)?$/.test(text)) {
+    const serial = Number(text)
+    if (isValidExcelSerialDate(serial) && serial >= 30000 && serial <= 100000) {
+      const parsed = parseExcelDateCode(serial)
+      if (parsed) {
+        const iso = `${String(parsed.y).padStart(4, '0')}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`
+        if (validIsoDate(iso)) return iso
+      }
+    }
+  }
   const match = text.match(SLASH_DATE_PATTERN)
   if (match) {
     const first = match[1].padStart(2, '0')
@@ -401,7 +415,11 @@ function resolveImportDate(
   let date = ''
   const match = text.match(SLASH_DATE_PATTERN)
   if (match && !inferredOrder) {
-    let candidates = slashDateCandidates(text)
+    const rawCandidates = slashDateCandidates(text)
+    if (rawCandidates.length === 0) {
+      return { date: '', error: `Date "${text}" is invalid (neither DD/MM/YYYY nor MM/DD/YYYY).` }
+    }
+    let candidates = rawCandidates
     if (weekday !== undefined) candidates = candidates.filter(candidate => new Date(`${candidate}T00:00:00Z`).getUTCDay() === weekday)
     if (external) candidates = candidates.filter(candidate => candidate === external.date)
     if (candidates.length === 1) date = candidates[0]
@@ -411,7 +429,13 @@ function resolveImportDate(
     date = normalizeDate(rawValue, inferredOrder ?? 'day-first')
   }
 
-  if (!validIsoDate(date)) return { date, error: `Date "${text}" is invalid or ambiguous.` }
+  if (!validIsoDate(date)) {
+    if (match) {
+      const slashOrder = (inferredOrder ?? 'day-first') === 'month-first' ? 'MM/DD/YYYY' : 'DD/MM/YYYY'
+      return { date, error: `Date "${text}" is invalid using the inferred ${slashOrder} order.` }
+    }
+    return { date, error: `Date "${text}" is invalid or ambiguous.` }
+  }
   if (external && external.date !== date) return { date, error: `Date "${text}" does not match External Shift ID date ${external.date}.` }
   if (weekday !== undefined && new Date(`${date}T00:00:00Z`).getUTCDay() !== weekday) {
     return { date, error: `Date ${date} does not match source weekday "${String(sourceWeekday).trim()}".` }
@@ -512,7 +536,7 @@ function parseKaoStaffingSlots(value: unknown, declaredCount: unknown): { slots:
 }
 
 function parseNamesBySlot(value: unknown, slots: KaoStaffingSlot[]): { names: Map<number, string[]>; error?: string } {
-  const text = String(value ?? '').trim()
+  const text = (Array.isArray(value) ? value.join('\n') : String(value ?? '')).trim()
   const names = new Map<number, string[]>()
   if (!text || !slots.length) return { names }
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
@@ -554,9 +578,13 @@ const normalizeTimeRange = (value: unknown): [string, string] => {
 }
 
 const validIsoDate = (value: string) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-  const date = new Date(`${value}T00:00:00`)
-  return !Number.isNaN(date.getTime()) && format(date, 'yyyy-MM-dd') === value
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
 }
 
 const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
@@ -784,7 +812,7 @@ export function parseScheduleRows(
     }
 
     if (!date && !dateResolution.error) rowErrors.push('Date is required.')
-    else if (!validIsoDate(date)) {
+    else if (!dateResolution.error && !validIsoDate(date)) {
       const slashOrder = dateOrder.order === 'month-first' ? 'MM/DD/YYYY' : 'DD/MM/YYYY'
       rowErrors.push(String(rawDate ?? '').trim().match(SLASH_DATE_PATTERN)
         ? `Date "${String(rawDate).trim()}" is invalid using the inferred ${slashOrder} order.`
@@ -898,9 +926,17 @@ export function parseScheduleRows(
             segment_index: segment.segmentIndex,
             start_time: segment.startTime,
             end_time: segment.endTime,
-            required_host_count: Math.max(validatedStaffing.required_host_count ?? 0, hostNames.length),
-            required_support_count: Math.max(validatedStaffing.required_support_count ?? 0, supportNames.length),
-            required_technical_count: Math.max(validatedStaffing.required_technical_count ?? 0, technicalNames.length),
+            required_host_count: Math.max(
+              sourcePresence.required_host_count ? (validatedStaffing.required_host_count ?? 0) : (validatedStaffing.required_host_count ?? 0),
+              hostNames.length,
+            ),
+            required_support_count: Math.max(
+              sourcePresence.required_support_count ? (validatedStaffing.required_support_count ?? 0) : (validatedStaffing.required_support_count ?? 0),
+              supportNames.length,
+            ),
+            required_technical_count: sourcePresence.required_technical_count
+              ? Math.max(validatedStaffing.required_technical_count ?? 0, technicalNames.length)
+              : technicalNames.length,
             planned_host_names: hostNames,
             planned_support_names: supportNames,
             planned_technical_names: technicalNames,
@@ -1039,6 +1075,14 @@ export function parseScheduleRows(
       }
     }
 
+    const previewStaffingValues = staffingSegments?.length
+      ? {
+          required_host_count: Math.max(...staffingSegments.map(segment => segment.required_host_count)),
+          required_support_count: Math.max(...staffingSegments.map(segment => segment.required_support_count)),
+          required_technical_count: Math.max(...staffingSegments.map(segment => segment.required_technical_count)),
+        }
+      : staffingValues
+
     rowErrors.forEach(message => errors.push({ row: rowNumber, field: 'row', message }))
     rowWarnings.forEach(message => warnings.push({ row: rowNumber, field: 'duplicate', message }))
     previews.push({
@@ -1059,7 +1103,8 @@ export function parseScheduleRows(
         title,
         studio: studio || undefined,
         ...staffingNames,
-        ...staffingValues,
+        ...(staffingSegments ? { staffing_segments: staffingSegments } : {}),
+        ...previewStaffingValues,
         notes: notes || undefined,
         source_presence: sourcePresence,
         warnings: rowWarnings,

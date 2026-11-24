@@ -38,11 +38,13 @@ import {
   ReportRevision,
   LiveReportImage,
   StoredFileArtifact,
+  PersistedStaffingSegment,
+  PlannedStaffingSegmentDraft,
 } from '@/lib/types/database.types'
 import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@/lib/utils/ocrMetrics'
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
 import { addDays, format, parseISO } from 'date-fns'
-import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, hasShiftTimeConflict, normalizeCapacity, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, hasShiftTimeConflict, normalizeCapacity, resolveSegmentDateTime, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
 import { validateSwapTiming, validateSwapApprovalTiming } from '@/lib/utils/swapValidation'
 import {
   normalizeStaffingDisplayNames,
@@ -76,7 +78,18 @@ import { getSupabaseSwapRequestRepository } from '@/lib/services/supabaseSwapReq
 import { getSupabaseSettingsRepository } from '@/lib/services/supabaseSettingsService'
 import { getSupabaseDashboardUpdateRepository } from '@/lib/services/supabaseDashboardUpdateService'
 import { getMissingFinalReportMetricKeys } from '@/lib/utils/ocrMetricSerialization'
-import type { PersistedScheduleImportResult } from '@/lib/utils/scheduleImportRecovery'
+import {
+  hasExactScheduleImportIdentity,
+  normalizeShiftQualifier,
+  type PersistedScheduleImportResult,
+} from '@/lib/utils/scheduleImportRecovery'
+import { verifyImportedShiftReadback } from '@/lib/utils/scheduleImportReadback'
+import {
+  computePeakConcurrentRequired,
+  computeShiftStaffingMetrics,
+  persistedSegmentToDraft,
+} from '@/lib/utils/staffingSemantics'
+import { executionSourceForAgency } from '@/lib/utils/executionSource'
 import type { MetricState } from '@/lib/utils/ocrCanonical'
 import { reportQueueState } from '@/lib/utils/reportQueue'
 import {
@@ -1280,6 +1293,144 @@ export const campaignService = {
 // Supabase repository (RLS + RPC). The in-memory `shifts` array is maintained
 // as a read projection so the not-yet-cut-over shiftRegistrationService keeps
 // seeing the same rows it mutates. Mock mode keeps the existing in-memory flow.
+function materializeMockShiftSegments(input: {
+  shiftId: string
+  date: string
+  startTime: string
+  endTime: string
+  timezone: string
+  incomingDrafts?: PlannedStaffingSegmentDraft[]
+  existingSegments?: PersistedStaffingSegment[]
+  registrations?: ShiftRegistration[]
+}): {
+  persistedSegments?: PersistedStaffingSegment[]
+  staffingSegments?: PlannedStaffingSegmentDraft[]
+  peaks?: { required_host_count: number; required_support_count: number; required_technical_count: number }
+} {
+  const {
+    shiftId,
+    date,
+    startTime,
+    endTime,
+    timezone,
+    incomingDrafts,
+    existingSegments = [],
+    registrations = [],
+  } = input
+  const sortedDrafts = [...(incomingDrafts ?? [])].sort((a, b) => a.segment_index - b.segment_index)
+  const resolvedRows = sortedDrafts.map(draft => {
+    const resolved = resolveSegmentDateTime(date, startTime, endTime, draft.start_time, draft.end_time, timezone)
+    if (!resolved.valid || !resolved.startAt || !resolved.endAt) {
+      throw new Error('STAFFING_SEGMENT_OUTSIDE_SHIFT')
+    }
+    return {
+      draft,
+      startMs: resolved.startAt.getTime(),
+      endMs: resolved.endAt.getTime(),
+      startAtIso: resolved.startAt.toISOString(),
+      endAtIso: resolved.endAt.toISOString(),
+    }
+  })
+
+  for (let i = 0; i < resolvedRows.length; i += 1) {
+    for (let j = i + 1; j < resolvedRows.length; j += 1) {
+      if (resolvedRows[i].startMs < resolvedRows[j].endMs && resolvedRows[i].endMs > resolvedRows[j].startMs) {
+        throw new Error('STAFFING_SEGMENTS_OVERLAP')
+      }
+    }
+  }
+
+  const matchedIds = new Array<string | undefined>(resolvedRows.length)
+  const keptIdSet = new Set<string>()
+  for (let i = 0; i < resolvedRows.length; i += 1) {
+    const row = resolvedRows[i]
+    const match = existingSegments.find(
+      seg =>
+        !keptIdSet.has(seg.id)
+        && new Date(seg.start_at).toISOString() === row.startAtIso
+        && new Date(seg.end_at).toISOString() === row.endAtIso,
+    )
+    if (match) {
+      matchedIds[i] = match.id
+      keptIdSet.add(match.id)
+    }
+  }
+
+  const incomingIndices = new Set(resolvedRows.map(row => row.draft.segment_index))
+  for (const existingSeg of existingSegments) {
+    if (keptIdSet.has(existingSeg.id)) continue
+    const hasReferencedReg = registrations.some(
+      reg => reg.shift_id === shiftId && reg.staffing_segment_id === existingSeg.id,
+    )
+    if (hasReferencedReg) {
+      throw new Error(
+        incomingIndices.has(existingSeg.segment_index)
+          ? 'STAFFING_SEGMENT_TIME_CHANGE_CONFLICT'
+          : 'STAFFING_SEGMENT_DELETE_CONFLICT',
+      )
+    }
+  }
+
+  for (let i = 0; i < resolvedRows.length; i += 1) {
+    const segId = matchedIds[i]
+    if (!segId) continue
+    const draft = resolvedRows[i].draft
+    const checks: Array<[OperationalRole, number]> = [
+      ['host', Math.max(0, Math.trunc(draft.required_host_count ?? 0))],
+      ['support', Math.max(0, Math.trunc(draft.required_support_count ?? 0))],
+      ['technical', Math.max(0, Math.trunc(draft.required_technical_count ?? 0))],
+    ]
+    for (const [role, requested] of checks) {
+      const approved = registrations.filter(
+        reg =>
+          reg.shift_id === shiftId
+          && reg.staffing_segment_id === segId
+          && reg.operational_role === role
+          && isStaffedRegistration(reg),
+      ).length
+      if (requested < approved) {
+        throw new Error(`STAFFING_CAPACITY_BELOW_APPROVED_COUNT:${role}:approved=${approved}:requested=${requested}`)
+      }
+    }
+  }
+
+  if (resolvedRows.length === 0) {
+    return { persistedSegments: undefined, staffingSegments: undefined, peaks: undefined }
+  }
+
+  const persistedSegments: PersistedStaffingSegment[] = resolvedRows.map((row, idx) => ({
+    id: matchedIds[idx] ?? generateId(),
+    shift_id: shiftId,
+    segment_index: row.draft.segment_index,
+    start_at: row.startAtIso,
+    end_at: row.endAtIso,
+    required_host_count: Math.max(0, Math.trunc(row.draft.required_host_count ?? 0)),
+    required_support_count: Math.max(0, Math.trunc(row.draft.required_support_count ?? 0)),
+    required_technical_count: Math.max(0, Math.trunc(row.draft.required_technical_count ?? 0)),
+    planned_host_names: normalizeStaffingDisplayNames(row.draft.planned_host_names ?? []),
+    planned_support_names: normalizeStaffingDisplayNames(row.draft.planned_support_names ?? []),
+    planned_technical_names: normalizeStaffingDisplayNames(row.draft.planned_technical_names ?? []),
+  }))
+
+  const peaks = {
+    required_host_count: computePeakConcurrentRequired(
+      resolvedRows.map(r => ({ startMs: r.startMs, endMs: r.endMs, count: Math.max(0, r.draft.required_host_count ?? 0) })),
+    ),
+    required_support_count: computePeakConcurrentRequired(
+      resolvedRows.map(r => ({ startMs: r.startMs, endMs: r.endMs, count: Math.max(0, r.draft.required_support_count ?? 0) })),
+    ),
+    required_technical_count: computePeakConcurrentRequired(
+      resolvedRows.map(r => ({ startMs: r.startMs, endMs: r.endMs, count: Math.max(0, r.draft.required_technical_count ?? 0) })),
+    ),
+  }
+
+  return {
+    persistedSegments,
+    staffingSegments: persistedSegments.map(seg => persistedSegmentToDraft(seg, timezone)),
+    peaks,
+  }
+}
+
 const upsertShiftProjection = (shift: Shift) => {
   const index = shifts.findIndex(candidate => candidate.id === shift.id)
   if (index === -1) {
@@ -1464,6 +1615,17 @@ export const shiftService = {
     if (requiredHostCount === null || requiredSupportCount === null || requiredTechnicalCount === null) {
       throw new Error('Required staffing counts must be non-negative whole numbers within the allowed capacity.')
     }
+    const shiftId = generateId()
+    const materialized = createData.staffing_segments && createData.staffing_segments.length > 0
+      ? materializeMockShiftSegments({
+          shiftId,
+          date: createData.date,
+          startTime: createData.start_time,
+          endTime: createData.end_time,
+          timezone,
+          incomingDrafts: createData.staffing_segments,
+        })
+      : undefined
     const newShift: Shift = {
       registration_locked: false,
       allow_multi_role: operationalSettings.allow_multi_role_per_shift,
@@ -1473,11 +1635,17 @@ export const shiftService = {
       host_names: createData.host_names ?? [],
       assistant_names: createData.assistant_names ?? [],
       technical_names: createData.technical_names ?? [],
-      required_host_count: requiredHostCount,
-      required_support_count: requiredSupportCount,
-      required_technical_count: requiredTechnicalCount,
+      required_host_count: materialized?.peaks?.required_host_count ?? requiredHostCount,
+      required_support_count: materialized?.peaks?.required_support_count ?? requiredSupportCount,
+      required_technical_count: materialized?.peaks?.required_technical_count ?? requiredTechnicalCount,
+      ...(materialized?.persistedSegments
+        ? {
+            persisted_staffing_segments: materialized.persistedSegments,
+            staffing_segments: materialized.staffingSegments,
+          }
+        : {}),
       ...dateTime,
-      id: generateId(),
+      id: shiftId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       version: 1,
@@ -1533,6 +1701,332 @@ export const shiftService = {
       })
     }
     return result
+  },
+
+  async reconcileFromImport(
+    batchId: string,
+    rowNumber: number,
+    data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>,
+    options?: { allowSafeUpdate?: boolean },
+  ): Promise<PersistedScheduleImportResult> {
+    if (getAuthMode() === 'supabase') {
+      const repository = getSupabaseShiftRepository()
+      const before = undefined
+      const result = repository.reconcileFromImport
+        ? await repository.reconcileFromImport(batchId, rowNumber, data, options)
+        : await repository.createFromImport(batchId, rowNumber, data)
+      if (result.kind === 'created' || result.kind === 'updated') {
+        const persisted = result.shift
+        const source = scheduleImports.find(batch => batch.id === batchId)?.source === 'google_sheets'
+          ? 'google_sheets'
+          : 'excel_import'
+        upsertShiftProjection(persisted)
+        recordScheduleChange(result.kind === 'created' ? 'create' : 'edit', persisted.id, before, { ...persisted }, { source })
+        audit('calendar', result.kind === 'created' ? 'create' : 'update', 'shift', persisted.id, persisted.title || `${persisted.date} ${persisted.start_time}`, {
+          after: { ...persisted }, source,
+        })
+      }
+      return result
+    }
+
+    const agencySource = executionSourceForAgency(data.agency_code)
+    if (data.agency_code && data.execution_source && data.execution_source !== agencySource) {
+      return { kind: 'review_required', failureCode: 'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT', batchRowRecorded: false }
+    }
+    const effectiveData: Omit<Shift, 'id' | 'created_at' | 'updated_at'> = {
+      ...data,
+      execution_source: data.execution_source ?? agencySource,
+      timezone: data.timezone || DEFAULT_BUSINESS_TIMEZONE,
+    }
+
+    const readbackAndVerify = (
+      targetShiftId: string,
+      prevRegs?: ShiftRegistration[],
+      prevSegs?: PersistedStaffingSegment[],
+    ) => {
+      const persisted = shifts.find(s => s.id === targetShiftId)
+      if (!persisted) {
+        return {
+          ok: false as const,
+          persisted: undefined,
+          mismatches: ['missing_persisted_shift'],
+          verification: undefined,
+        }
+      }
+      const regs = shiftRegistrations.filter(r => r.shift_id === targetShiftId)
+      const capacities = getShiftRoleCapacities(persisted, shiftRegistrations)
+      const summary = capacities.map(c => ({
+        shift_id: persisted.id,
+        role: c.role,
+        required: c.required,
+        approved: c.approved,
+        pending: c.pending,
+        remaining: c.remaining,
+        approved_staff: [],
+      }))
+      const hydrated: Shift = { ...persisted, staffing_summary: summary }
+      const verification = verifyImportedShiftReadback({
+        expected: effectiveData,
+        persisted: hydrated,
+        persistedSegments: persisted.persisted_staffing_segments,
+        registrations: regs,
+        staffingSummary: summary,
+        previousRegistrations: prevRegs,
+        previousSegments: prevSegs,
+      })
+      return { ok: verification.ok, persisted: hydrated, mismatches: verification.mismatches, verification }
+    }
+
+    const slotCandidates = shifts.filter(s =>
+      !s.deleted_at
+      && !s.archived_at
+      && s.brand_id === effectiveData.brand_id
+      && s.platform_id === effectiveData.platform_id
+      && s.date === effectiveData.date
+      && s.start_time.slice(0, 5) === effectiveData.start_time.slice(0, 5)
+      && s.end_time.slice(0, 5) === effectiveData.end_time.slice(0, 5),
+    )
+    const exactMatches = slotCandidates.filter(s => hasExactScheduleImportIdentity(s, effectiveData))
+    const ambiguousMatches = slotCandidates.filter(s => {
+      if (hasExactScheduleImportIdentity(s, effectiveData)) return false
+      const studioDistinct = Boolean(
+        normalizeShiftQualifier(s.studio)
+        && normalizeShiftQualifier(effectiveData.studio)
+        && normalizeShiftQualifier(s.studio) !== normalizeShiftQualifier(effectiveData.studio),
+      )
+      const campaignDistinct = Boolean(
+        normalizeShiftQualifier(s.campaign_id)
+        && normalizeShiftQualifier(effectiveData.campaign_id)
+        && normalizeShiftQualifier(s.campaign_id) !== normalizeShiftQualifier(effectiveData.campaign_id),
+      )
+      return !(studioDistinct || campaignDistinct)
+    })
+
+    if (exactMatches.length > 1 || ambiguousMatches.length > 0) {
+      return {
+        kind: 'review_required',
+        failureCode: 'IMPORT_SLOT_IDENTITY_AMBIGUOUS_REVIEW_REQUIRED',
+        batchRowRecorded: false,
+      }
+    }
+
+    if (exactMatches.length === 0) {
+      const created = await this.create({
+        ...effectiveData,
+        import_batch_id: batchId,
+        registration_locked: false,
+      })
+      const rb = readbackAndVerify(created.id)
+      if (!rb.ok || !rb.persisted) {
+        return {
+          kind: 'readback_mismatch',
+          shift: rb.persisted,
+          shiftId: created.id,
+          failureCode: 'IMPORT_DB_READBACK_MISMATCH',
+          mismatches: rb.mismatches,
+          verification: rb.verification,
+          batchRowRecorded: false,
+        }
+      }
+      return {
+        kind: 'created',
+        shift: rb.persisted,
+        outcome: 'imported',
+        verification: rb.verification,
+        batchRowRecorded: false,
+      }
+    }
+
+    const existing = exactMatches[0]
+    const existingIndex = shifts.findIndex(s => s.id === existing.id)
+    const prevRegs = shiftRegistrations
+      .filter(r => r.shift_id === existing.id)
+      .map(r => ({ ...r }))
+    const prevSegs = (existing.persisted_staffing_segments ?? []).map(s => ({ ...s }))
+
+    if (effectiveData.agency_code && existing.agency_code && existing.agency_code !== effectiveData.agency_code) {
+      return {
+        kind: 'review_required',
+        failureCode: 'IMPORT_CROSS_AGENCY_CONFLICT',
+        shiftId: existing.id,
+        batchRowRecorded: false,
+      }
+    }
+
+    const tz = existing.timezone || effectiveData.timezone || DEFAULT_BUSINESS_TIMEZONE
+    const effAgency = effectiveData.agency_code ?? existing.agency_code
+    const effSource = effectiveData.execution_source ?? executionSourceForAgency(effAgency) ?? existing.execution_source
+    const effTitle = effectiveData.title?.trim() ? effectiveData.title : existing.title
+    const effNotes = effectiveData.product_notes?.trim() ? effectiveData.product_notes : existing.product_notes
+    const effHosts = effectiveData.host_names && effectiveData.host_names.length > 0 ? effectiveData.host_names : (existing.host_names ?? [])
+    const effSupports = effectiveData.assistant_names && effectiveData.assistant_names.length > 0 ? effectiveData.assistant_names : (existing.assistant_names ?? [])
+    const effTechs = effectiveData.technical_names && effectiveData.technical_names.length > 0 ? effectiveData.technical_names : (existing.technical_names ?? [])
+    const effSupp = { ...(existing.supplemental_fields ?? {}), ...(effectiveData.supplemental_fields ?? {}) }
+
+    const incomingDraftSegs = effectiveData.staffing_segments ?? []
+    let materialized: ReturnType<typeof materializeMockShiftSegments> | undefined
+    try {
+      materialized = incomingDraftSegs.length > 0 || (existing.persisted_staffing_segments?.length ?? 0) > 0
+        ? materializeMockShiftSegments({
+            shiftId: existing.id,
+            date: existing.date,
+            startTime: existing.start_time,
+            endTime: existing.end_time,
+            timezone: tz,
+            incomingDrafts: incomingDraftSegs,
+            existingSegments: existing.persisted_staffing_segments ?? [],
+            registrations: shiftRegistrations,
+          })
+        : undefined
+    } catch (error) {
+      return {
+        kind: 'review_required',
+        failureCode: error instanceof Error ? error.message : 'STAFFING_SEGMENT_RECONCILIATION_CONFLICT',
+        shiftId: existing.id,
+        batchRowRecorded: false,
+      }
+    }
+
+    const nextHostReq = materialized?.peaks?.required_host_count
+      ?? normalizeCapacity(effectiveData.required_host_count, operationalSettings.default_host_count)
+      ?? existing.required_host_count
+    const nextSupportReq = materialized?.peaks?.required_support_count
+      ?? normalizeCapacity(effectiveData.required_support_count, operationalSettings.default_support_count)
+      ?? existing.required_support_count
+    const nextTechReq = materialized?.peaks?.required_technical_count
+      ?? normalizeCapacity(effectiveData.required_technical_count, operationalSettings.default_technical_count)
+      ?? existing.required_technical_count
+
+    const segFingerprint = (segs?: PersistedStaffingSegment[]) =>
+      JSON.stringify((segs ?? []).map(s => ({
+        segment_index: s.segment_index,
+        start_at: new Date(s.start_at).toISOString(),
+        end_at: new Date(s.end_at).toISOString(),
+        required_host_count: s.required_host_count,
+        required_support_count: s.required_support_count,
+        required_technical_count: s.required_technical_count,
+        planned_host_names: s.planned_host_names ?? [],
+        planned_support_names: s.planned_support_names ?? [],
+        planned_technical_names: s.planned_technical_names ?? [],
+      })))
+
+    const unchanged =
+      existing.required_host_count === nextHostReq
+      && existing.required_support_count === nextSupportReq
+      && existing.required_technical_count === nextTechReq
+      && segFingerprint(existing.persisted_staffing_segments) === segFingerprint(materialized?.persistedSegments)
+      && (existing.title ?? '') === (effTitle ?? '')
+      && (existing.product_notes ?? '') === (effNotes ?? '')
+      && (existing.agency_code ?? null) === (effAgency ?? null)
+      && (existing.execution_source ?? null) === (effSource ?? null)
+      && JSON.stringify(existing.host_names ?? []) === JSON.stringify(effHosts)
+      && JSON.stringify(existing.assistant_names ?? []) === JSON.stringify(effSupports)
+      && JSON.stringify(existing.technical_names ?? []) === JSON.stringify(effTechs)
+      && JSON.stringify(existing.supplemental_fields ?? {}) === JSON.stringify(effSupp)
+
+    if (unchanged) {
+      return {
+        kind: 'duplicate_skipped',
+        shift: existing,
+        shiftId: existing.id,
+        batchRowRecorded: false,
+      }
+    }
+
+    if (options?.allowSafeUpdate === false) {
+      return {
+        kind: 'review_required',
+        failureCode: 'IMPORT_SAFE_UPDATE_DISABLED',
+        shiftId: existing.id,
+        batchRowRecorded: false,
+      }
+    }
+
+    if (existing.status === 'completed' || existing.status === 'cancelled') {
+      return {
+        kind: 'review_required',
+        failureCode: 'IMPORT_SHIFT_STATUS_LOCKED',
+        shiftId: existing.id,
+        batchRowRecorded: false,
+      }
+    }
+
+    if (incomingDraftSegs.length === 0 && (existing.persisted_staffing_segments?.length ?? 0) === 0) {
+      const checks: Array<[OperationalRole, number]> = [
+        ['host', nextHostReq ?? 0],
+        ['support', nextSupportReq ?? 0],
+        ['technical', nextTechReq ?? 0],
+      ]
+      for (const [role, reqCount] of checks) {
+        const app = shiftRegistrations.filter(
+          r => r.shift_id === existing.id && r.operational_role === role && isStaffedRegistration(r) && !r.staffing_segment_id,
+        ).length
+        if (reqCount < app) {
+          return {
+            kind: 'review_required',
+            failureCode: `STAFFING_CAPACITY_BELOW_APPROVED_COUNT:${role}:approved=${app}:requested=${reqCount}`,
+            shiftId: existing.id,
+            batchRowRecorded: false,
+          }
+        }
+      }
+    }
+
+    const before = { ...existing }
+    const updatedShift: Shift = {
+      ...existing,
+      required_host_count: nextHostReq,
+      required_support_count: nextSupportReq,
+      required_technical_count: nextTechReq,
+      host_names: effHosts,
+      assistant_names: effSupports,
+      technical_names: effTechs,
+      title: effTitle,
+      product_notes: effNotes,
+      agency_code: effAgency,
+      execution_source: effSource,
+      supplemental_fields: effSupp,
+      persisted_staffing_segments: materialized?.persistedSegments,
+      staffing_segments: materialized?.staffingSegments,
+      updated_by: currentUserService.getId(),
+      updated_at: new Date().toISOString(),
+      version: nextVersion(existing.version),
+    }
+    const updatedCapacities = getShiftRoleCapacities(updatedShift, shiftRegistrations)
+    updatedShift.registration_locked = updatedCapacities.every(c => c.approved >= c.required)
+      ? existing.registration_locked
+      : false
+    shifts[existingIndex] = updatedShift
+
+    const batchSource = scheduleImports.find(batch => batch.id === batchId)?.source === 'google_sheets'
+      ? 'google_sheets'
+      : 'excel_import'
+    recordScheduleChange('edit', existing.id, before, { ...updatedShift }, { source: batchSource })
+    audit('calendar', 'update', 'shift', existing.id, updatedShift.title || `${updatedShift.date} ${updatedShift.start_time}`, {
+      before,
+      after: { ...updatedShift },
+      source: batchSource,
+    })
+
+    const rb = readbackAndVerify(existing.id, prevRegs, prevSegs)
+    if (!rb.ok || !rb.persisted) {
+      return {
+        kind: 'readback_mismatch',
+        shift: rb.persisted,
+        shiftId: existing.id,
+        failureCode: 'IMPORT_DB_READBACK_MISMATCH',
+        mismatches: rb.mismatches,
+        verification: rb.verification,
+        batchRowRecorded: false,
+      }
+    }
+    return {
+      kind: 'updated',
+      shift: rb.persisted,
+      outcome: 'imported',
+      verification: rb.verification,
+      batchRowRecorded: false,
+    }
   },
 
   async update(
@@ -1602,15 +2096,39 @@ export const shiftService = {
     if (requiredHostCount === null || requiredSupportCount === null || requiredTechnicalCount === null) {
       throw new Error('Required staffing counts must be non-negative whole numbers within the allowed capacity.')
     }
+    const shouldMaterializeSegments =
+      data.staffing_segments !== undefined
+      || (
+        Boolean(before.staffing_segments?.length)
+        && (data.date !== undefined || data.start_time !== undefined || data.end_time !== undefined)
+      )
+    const materialized = shouldMaterializeSegments
+      ? materializeMockShiftSegments({
+          shiftId: id,
+          date: candidate.date,
+          startTime: candidate.start_time,
+          endTime: candidate.end_time,
+          timezone,
+          incomingDrafts: data.staffing_segments !== undefined ? data.staffing_segments : before.staffing_segments,
+          existingSegments: before.persisted_staffing_segments ?? [],
+          registrations: shiftRegistrations,
+        })
+      : undefined
     shifts[index] = {
       ...candidate,
       status_mode: data.status !== undefined && data.status !== before.status
         ? 'manual'
         : (before.status_mode ?? 'auto'),
       timezone,
-      required_host_count: requiredHostCount,
-      required_support_count: requiredSupportCount,
-      required_technical_count: requiredTechnicalCount,
+      required_host_count: materialized?.peaks?.required_host_count ?? requiredHostCount,
+      required_support_count: materialized?.peaks?.required_support_count ?? requiredSupportCount,
+      required_technical_count: materialized?.peaks?.required_technical_count ?? requiredTechnicalCount,
+      ...(shouldMaterializeSegments
+        ? {
+            persisted_staffing_segments: materialized?.persistedSegments,
+            staffing_segments: materialized?.staffingSegments,
+          }
+        : {}),
       ...dateTime,
       updated_at: new Date().toISOString(),
       version: nextVersion(shifts[index].version),
@@ -2034,39 +2552,37 @@ export interface ShiftRoleCapacity {
 export const isStaffedRegistration = (registration: Pick<ShiftRegistration, 'status'>) =>
   registration.status === 'approved' || registration.status === 'manually_assigned'
 
-const capacityForRegistrations = (
-  shift: Shift,
-  registrations: ShiftRegistration[],
-  role: OperationalRole,
-): ShiftRoleCapacity => {
-  const roleRegistrations = registrations.filter(registration =>
-    registration.shift_id === shift.id &&
-    registration.operational_role === role &&
-    (isStaffedRegistration(registration) || registration.status === 'pending')
-  )
-  const required = shift[roleRequiredField[role]] ?? 1
-  const approved = roleRegistrations.filter(isStaffedRegistration).length
-  const pending = roleRegistrations.filter(registration => registration.status === 'pending').length
-  return {
-    role,
-    required,
-    approved,
-    pending,
-    remaining: Math.max(0, required - approved),
-  }
-}
-
 export const getShiftRoleCapacities = (
   shift: Shift,
   registrations: ShiftRegistration[],
-): ShiftRoleCapacity[] =>
-  shift.staffing_summary
-    ? shift.staffing_summary.map(({ role, required, approved, pending, remaining }) => ({ role, required, approved, pending, remaining }))
-    : (['host', 'support', 'technical'] as OperationalRole[])
-      .map(role => capacityForRegistrations(shift, registrations, role))
+): ShiftRoleCapacity[] => {
+  if (shift.staffing_summary && shift.staffing_summary.length > 0) {
+    return shift.staffing_summary.map(({ role, required, approved, pending, remaining }) => ({
+      role,
+      required,
+      approved,
+      pending,
+      remaining,
+    }))
+  }
+  const metrics = computeShiftStaffingMetrics(shift, registrations)
+  return (['host', 'support', 'technical'] as OperationalRole[]).map(role => ({
+    role,
+    required: metrics.roles[role].total_positions_required,
+    approved: metrics.roles[role].approved_assignments,
+    pending: metrics.roles[role].pending_assignments,
+    remaining: metrics.roles[role].remaining_vacancies,
+  }))
+}
 
 const capacityFor = (shift: Shift, role: OperationalRole): ShiftRoleCapacity =>
-  capacityForRegistrations(shift, shiftRegistrations, role)
+  getShiftRoleCapacities(shift, shiftRegistrations).find(item => item.role === role) ?? {
+    role,
+    required: 0,
+    approved: 0,
+    pending: 0,
+    remaining: 0,
+  }
 
 const isFullyStaffed = (shift: Shift) =>
   (['host', 'support', 'technical'] as OperationalRole[]).every(role => {
@@ -2766,7 +3282,21 @@ export const shiftRegistrationService = {
   },
 
   async getSegmentsForShift(shiftId: string): Promise<ShiftStaffingSegmentOption[]> {
-    if (getAuthMode() !== 'supabase') throw new Error('ATOMIC_REPLACEMENT_REQUIRES_PERSISTED_RUNTIME')
+    if (getAuthMode() !== 'supabase') {
+      const target = shifts.find(s => s.id === shiftId && !s.deleted_at && !s.archived_at)
+      if (!target?.persisted_staffing_segments?.length) return []
+      return [...target.persisted_staffing_segments]
+        .sort((a, b) => a.segment_index - b.segment_index || a.start_at.localeCompare(b.start_at) || a.id.localeCompare(b.id))
+        .map(seg => ({
+          id: seg.id,
+          segment_index: seg.segment_index,
+          start_at: seg.start_at,
+          end_at: seg.end_at,
+          required_host_count: seg.required_host_count,
+          required_support_count: seg.required_support_count,
+          required_technical_count: seg.required_technical_count,
+        }))
+    }
     return getSupabaseShiftRegistrationRepository().getSegmentsForShift(shiftId)
   },
 }

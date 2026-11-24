@@ -257,6 +257,8 @@
     "tests/rc19-w4-staffing-conflict-api.test.ts",
     "tests/rc19-w4-swap-brand-security-postgres17.test.ts",
     "tests/rc19-w4-swap-brand-security.test.ts",
+    "tests/rc19-w4-taskb-issue184-kao-regression.test.ts",
+    "tests/rc19-w4-taskb-staffing-semantics.test.ts",
     "tests/rc19-wave3-verification.test.ts",
     "tests/rc19-workforce-authority.test.ts",
     "tests/real-dashboard-ocr-smoke.test.ts",

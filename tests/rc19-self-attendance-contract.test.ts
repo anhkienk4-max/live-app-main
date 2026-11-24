@@ -29,6 +29,18 @@ test('attendance UI is opt-in and bound to the current approved registration',()
   assert.match(modal,/segmented && \(!registration\.staffing_segment_id \|\| !segment\)/)
 })
 
+test('segmented attendance waits for same-shift persisted segments and fails closed on read errors',()=>{
+  const modal=readFileSync(new URL('../components/features/shifts/ShiftDetailModal.tsx',import.meta.url),'utf8')
+  const renderer=modal.match(/const renderMyAttendancePanels = \(\) => \{([\s\S]*?)\r?\n  \}\r?\n  const userName/)?.[1]
+  assert.ok(renderer, 'attendance panel renderer exists')
+  assert.match(modal,/getSegmentsForShift\(shift\.id\)/)
+  assert.match(renderer,/segmentReadState === 'loading'/)
+  assert.match(renderer,/segmentReadState === 'error'/)
+  assert.match(renderer,/item\.shift_id === attendanceShift\.id && item\.id === registration\.staffing_segment_id/)
+  assert.match(renderer,/shiftContext=\{\{ date: attendanceShift\.date/)
+  assert.doesNotMatch(renderer,/shift\.persisted_staffing_segments/)
+})
+
 test('manager actual staffing read presents raw check-in evidence independently from approved segments',()=>{
   const source=readFileSync(new URL('../lib/server/workforceActualHandler.ts',import.meta.url),'utf8')
   const ui=readFileSync(new URL('../components/features/payroll/PayrollAttendanceLink.tsx',import.meta.url),'utf8')

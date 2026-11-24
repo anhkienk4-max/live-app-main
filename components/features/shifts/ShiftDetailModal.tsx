@@ -87,6 +87,8 @@ import { ActualStaffingPanel } from './ActualStaffingPanel'
 import { AttendancePhotoReviewPanel } from '@/components/features/attendance/AttendancePhotoReviewPanel'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { ShiftOperationalNotesSection } from './ShiftOperationalNotesSection'
+import { ShiftStaffingSegmentsPanel } from './ShiftStaffingSegmentsPanel'
+import { persistedSegmentToDraft } from '@/lib/utils/staffingSemantics'
 import { AtomicStaffingReplacementDialog } from '@/components/features/calendar/AtomicStaffingReplacementDialog'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
@@ -530,12 +532,13 @@ export function ShiftDetailModal({
   const [busy, setBusy] = React.useState(false)
   const [staffingLoading, setStaffingLoading] = React.useState(false)
   const [staffingError, setStaffingError] = React.useState(false)
+  const [segmentRead, setSegmentRead] = React.useState<{ shiftId: string; state: 'loading' | 'ready' | 'error' }>({ shiftId: shift.id, state: 'loading' })
+  const segmentReadState = segmentRead.shiftId === shift.id ? segmentRead.state : 'loading'
   const [staffingActorId, setStaffingActorId] = React.useState<string | undefined>()
   const staffingRead = React.useRef(0)
   const [deleteImpact, setDeleteImpact] = React.useState<DeletionImpact | null>(null)
-  const [activeShift, setActiveShift] = React.useState<Shift>(shift)
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate active shift from incoming props
-  React.useEffect(() => { setActiveShift(shift) }, [shift])
+  const [activeShiftState, setActiveShiftState] = React.useState<{ shiftId: string; value: Shift }>({ shiftId: shift.id, value: shift })
+  const activeShift = activeShiftState.shiftId === shift.id ? activeShiftState.value : shift
   const [registrationPage, setRegistrationPage] = React.useState(1)
   const [registrationPageSize, setRegistrationPageSize] = React.useState(20)
   const [showSwapDialog, setShowSwapDialog] = React.useState(false)
@@ -590,24 +593,74 @@ export function ShiftDetailModal({
     setStaffingActorId(undefined)
     setStaffingLoading(true)
     setStaffingError(false)
+    setSegmentRead({ shiftId: shift.id, state: 'loading' })
     try {
-      const [loadedRegistrations, loadedCapacities, updatedShift, loadedSwaps] = await Promise.all([
+      const [loadedRegistrations, loadedCapacities, updatedShift, loadedSwaps, segmentRead] = await Promise.all([
         shiftRegistrationService.getForShift(shift.id),
         shiftRegistrationService.getCapacity(shift.id),
         shiftService.getById(shift.id),
         swapRequestService.getAllFiltered({ shiftIds: [shift.id] }).catch(() => []),
+        shiftRegistrationService.getSegmentsForShift(shift.id)
+          .then(data => ({ data, failed: false as const }))
+          .catch(() => ({ data: [], failed: true as const })),
       ])
       if (sequence !== staffingRead.current) return
+      if (!updatedShift) {
+        setStaffingError(true)
+        setSegmentRead({ shiftId: shift.id, state: 'error' })
+        return
+      }
+      setSegmentRead({ shiftId: shift.id, state: segmentRead.failed ? 'error' : 'ready' })
       setRegistrations(loadedRegistrations)
       setStaffingActorId(actorId)
       setCapacities(loadedCapacities)
       setIsLocked(Boolean(updatedShift?.registration_locked))
-      if (updatedShift) {
-        setActiveShift(updatedShift)
-      }
+      setActiveShiftState(prev => {
+        const priorShift = prev.shiftId === updatedShift.id ? prev.value : undefined
+        const prevPersisted = priorShift?.persisted_staffing_segments
+        const prevDrafts = priorShift?.staffing_segments
+        const persistedById = new Map([
+          ...(prevPersisted ?? []).map(seg => [seg.id, seg] as const),
+          ...(updatedShift.persisted_staffing_segments ?? []).map(seg => [seg.id, seg] as const),
+        ])
+        const resolvedPersisted = !segmentRead.failed
+          ? segmentRead.data.map(seg => {
+              const prior = persistedById.get(seg.id)
+              return {
+                id: seg.id,
+                shift_id: updatedShift.id,
+                segment_index: seg.segment_index,
+                start_at: seg.start_at,
+                end_at: seg.end_at,
+                required_host_count: seg.required_host_count,
+                required_support_count: seg.required_support_count,
+                required_technical_count: seg.required_technical_count,
+                planned_host_names: prior?.planned_host_names ?? [],
+                planned_support_names: prior?.planned_support_names ?? [],
+                planned_technical_names: prior?.planned_technical_names ?? [],
+              }
+            })
+          : undefined
+        const resolvedDrafts = updatedShift.staffing_segments?.length
+          ? updatedShift.staffing_segments
+          : resolvedPersisted
+            ? resolvedPersisted.map(seg => persistedSegmentToDraft(seg, updatedShift.timezone))
+            : prevDrafts
+        return {
+          shiftId: updatedShift.id,
+          value: {
+            ...updatedShift,
+            ...(resolvedPersisted ? { persisted_staffing_segments: resolvedPersisted } : {}),
+            ...(resolvedDrafts ? { staffing_segments: resolvedDrafts } : {}),
+          },
+        }
+      })
       setShiftSwaps(loadedSwaps)
     } catch {
-      if (sequence === staffingRead.current) setStaffingError(true)
+      if (sequence === staffingRead.current) {
+        setStaffingError(true)
+        setSegmentRead({ shiftId: shift.id, state: 'error' })
+      }
     } finally {
       if (sequence === staffingRead.current) setStaffingLoading(false)
     }
@@ -636,7 +689,7 @@ export function ShiftDetailModal({
     ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id && isStaffedRegistration(r)) : undefined
   const myAttendanceRegistration = myRegistration ?? (staffingActorId === currentUser?.id && currentUser
     ? registrations.find(r => r.user_id === currentUser.id && r.shift_id === shift.id) : undefined)
-  const attendanceShiftEligible = !shift.deleted_at && !shift.archived_at && ['scheduled', 'preparing', 'live', 'paused', 'completed'].includes(shift.status)
+  const attendanceShiftEligible = activeShift.id === shift.id && !activeShift.deleted_at && !activeShift.archived_at && ['scheduled', 'preparing', 'live', 'paused', 'completed'].includes(activeShift.status)
   const registrationContext = allRegistrations ?? registrations
   const canRequestSwap = Boolean(myRegistration && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
   const dateTime = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
@@ -645,20 +698,32 @@ export function ShiftDetailModal({
   const platform = platforms.find(item => item.id === shift.platform_id)
   const campaign = shift.campaign_id ? campaigns.find(item => item.id === shift.campaign_id) : undefined
   const renderMyAttendancePanels = () => {
+    if (activeShift.id !== shift.id || segmentReadState === 'loading') {
+      return <p role="status" className="text-sm text-muted-foreground" data-testid="attendance-segments-loading">{language === 'en' ? 'Loading assigned segment details…' : 'Đang tải thông tin khung giờ được phân công…'}</p>
+    }
+    if (segmentReadState === 'error') {
+      return <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="attendance-segments-error">
+        <p>{language === 'en' ? 'Assigned segment details could not be loaded. Check-in is unavailable until they are verified.' : 'Không tải được khung giờ được phân công. Chấm công sẽ bị khóa đến khi xác minh được dữ liệu.'}</p>
+        <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => void loadStaffing()}>{language === 'en' ? 'Retry' : 'Thử lại'}</Button>
+      </div>
+    }
+    if (activeShift.id !== shift.id) return null
+    const attendanceShift = activeShift
     const mine = registrations.filter(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r))
-    const segmented = Boolean(shift.persisted_staffing_segments?.length || shift.staffing_segments?.length || mine.some(r => r.staffing_segment_id))
+    const segmented = Boolean(attendanceShift.persisted_staffing_segments?.length || attendanceShift.staffing_segments?.length || mine.some(r => r.staffing_segment_id))
     const localTime = (value: string) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value))
     return mine.map(registration => {
-      const segment = shift.persisted_staffing_segments?.find(item => item.id === registration.staffing_segment_id)
+      const segment = attendanceShift.persisted_staffing_segments?.find(item => item.shift_id === attendanceShift.id && item.id === registration.staffing_segment_id)
       if (segmented && (!registration.staffing_segment_id || !segment)) {
         return <div key={registration.id} role="status" className="rounded-md border p-3 text-sm">{language === 'en' ? 'Assigned segment details are unavailable. Please refresh or contact an administrator.' : 'Không có thông tin khung đã phân công. Vui lòng tải lại hoặc liên hệ quản trị viên.'}</div>
       }
-      return <SelfAttendancePanel key={registration.id} actorId={currentUser!.id} shiftId={shift.id}
+      const shiftDateTime = resolveShiftDateTime(attendanceShift.date, attendanceShift.start_time, attendanceShift.end_time, attendanceShift.timezone)
+      return <SelfAttendancePanel key={registration.id} actorId={currentUser!.id} shiftId={attendanceShift.id}
         role={registration.operational_role} assignmentId={segment ? registration.id : undefined}
-        shiftContext={{ date: shift.date, start_time: segment ? localTime(segment.start_at) : shift.start_time,
-          end_time: segment ? localTime(segment.end_at) : shift.end_time, brand: brand?.name ?? shift.brand_id,
-          platform: platform?.name ?? shift.platform_id, title: shift.title, studio: shift.studio,
-          crossesMidnight: segment ? localTime(segment.end_at) < localTime(segment.start_at) : Boolean(dateTime?.valid && dateTime.crossesMidnight),
+        shiftContext={{ date: attendanceShift.date, start_time: segment ? localTime(segment.start_at) : attendanceShift.start_time,
+          end_time: segment ? localTime(segment.end_at) : attendanceShift.end_time, brand: brands.find(item => item.id === attendanceShift.brand_id)?.name ?? attendanceShift.brand_id,
+          platform: platforms.find(item => item.id === attendanceShift.platform_id)?.name ?? attendanceShift.platform_id, title: attendanceShift.title, studio: attendanceShift.studio,
+          crossesMidnight: segment ? localTime(segment.end_at) < localTime(segment.start_at) : Boolean(shiftDateTime?.valid && shiftDateTime.crossesMidnight),
           staffName: currentUser?.full_name || 'Nhân sự', segmentIndex: segment ? `K${segment.segment_index}` : null,
           segmentTime: segment ? `${localTime(segment.start_at)}–${localTime(segment.end_at)}` : null }} />
     })
@@ -960,7 +1025,7 @@ export function ShiftDetailModal({
                     </section>
 
                     {/* Staffing Segments View (if present) */}
-                    {shift.staffing_segments && shift.staffing_segments.length > 0 ? (
+                    {activeShift.staffing_segments && activeShift.staffing_segments.length > 0 ? (
                       <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3" data-testid="shift-detail-segments-section">
                         <div className="flex items-center justify-between border-b pb-2">
                           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -968,18 +1033,18 @@ export function ShiftDetailModal({
                             {language === 'vi' ? 'Khung giờ chi tiết (Staffing Segments)' : 'Staffing Segments'}
                           </h3>
                           <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold">
-                            {shift.staffing_segments.length} {language === 'vi' ? 'khung giờ' : 'segments'}
+                            {activeShift.staffing_segments.length} {language === 'vi' ? 'khung giờ' : 'segments'}
                           </Badge>
                         </div>
                         <div className="divide-y divide-slate-100 space-y-3 pt-1">
-                          {shift.staffing_segments.map(seg => {
+                          {activeShift.staffing_segments.map(seg => {
                             const segDuration = resolveShiftDateTime('2000-01-01', seg.start_time, seg.end_time)?.durationMinutes ?? 0
                             return (
                               <div key={seg.segment_index} className="pt-2.5 first:pt-0" data-testid={`detail-segment-row-${seg.segment_index}`}>
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div className="flex items-center gap-2">
                                     <span className="inline-flex items-center rounded bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
-                                      K0{seg.segment_index}
+                                      K{String(seg.segment_index).padStart(2, '0')}
                                     </span>
                                     <span className="font-semibold text-slate-800 text-xs">
                                       {seg.start_time} – {seg.end_time}
@@ -1033,7 +1098,7 @@ export function ShiftDetailModal({
                     ) : (
                       <section className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-3 text-xs text-slate-500">
                         <div className="flex items-center justify-between">
-                          <span>Ca đơn (Toàn bộ khung giờ {shift.start_time} – {shift.end_time})</span>
+                          <span>Ca đơn (Toàn bộ khung giờ {activeShift.start_time} – {activeShift.end_time})</span>
                           {canEdit && (
                             <span className="text-indigo-600 font-medium">Bấm &quot;Sửa ca&quot; để thêm khung giờ (segments)</span>
                           )}
@@ -1310,18 +1375,25 @@ export function ShiftDetailModal({
                     <div className="space-y-3">
                       {operationalRoles.map(role => (
                         <RoleAssignments
-                          labels={resolveStaffingLabelsForRole(shift, registrations, users, role, t)}
+                          labels={resolveStaffingLabelsForRole(activeShift, registrations, users, role, t)}
                           key={role}
                           label={t(role)}
                           notAssignedLabel={t('notAssigned')}
-                          required={shift[roleRequiredField[role]]}
+                          required={activeShift[roleRequiredField[role]]}
                           requiredLabel={t('required')}
                           t={t}
                           testId={`shift-detail-role-${role}`}
                         />
                       ))}
                     </div>
-                 </section>
+
+                    <ShiftStaffingSegmentsPanel
+                      shift={activeShift}
+                      registrations={registrations}
+                      language={language}
+                      t={t}
+                    />
+                  </section>
 
                  {/* D. REGISTRATION / WORKFLOW STATE */}
                  <section className="space-y-4">

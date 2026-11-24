@@ -54,7 +54,15 @@ export function committedRowValue(row: ScheduleImportRow, field: DraftField): st
 
 export function seedRowDraft(row: ScheduleImportRow, field: DraftField, value: string): DraftRow {
   const seeded: DraftRow = {}
+  const hasSegmentedSlots = Boolean(row.staffing_segments && row.staffing_segments.length > 0)
   for (const candidate of draftFields) {
+    if (
+      hasSegmentedSlots
+      && candidate !== field
+      && (previewStaffingNameFields as readonly string[]).includes(candidate)
+    ) {
+      continue
+    }
     seeded[candidate] = committedRowValue(row, candidate)
   }
   for (const [name, value] of Object.entries(row.custom_fields ?? {})) seeded[`custom:${name}`] = value
