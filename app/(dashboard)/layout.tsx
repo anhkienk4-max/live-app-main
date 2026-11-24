@@ -3,6 +3,7 @@ import { connection } from 'next/server'
 import { headers } from 'next/headers'
 import { ProductionAppShell } from '@/components/layout/ProductionAppShell'
 import { RoleLensProvider } from '@/components/providers/RoleLensProvider'
+import { LiveTabPublisherProvider } from '@/components/features/live/LiveTabPublisherContext'
 
 import { getAuthMode, getSupabasePublicConfig } from '@/lib/auth/authMode'
 import { AuthIdentityProvider } from '@/lib/auth/AuthIdentityProvider'
@@ -123,7 +124,9 @@ export default async function DashboardLayout({
         className="contents"
       >
         <ProductionAppShell user={user || undefined}>
-          <RoleLensProvider>{children}</RoleLensProvider>
+          <RoleLensProvider>
+            <LiveTabPublisherProvider>{children}</LiveTabPublisherProvider>
+          </RoleLensProvider>
         </ProductionAppShell>
       </div>
     </AuthIdentityProvider>

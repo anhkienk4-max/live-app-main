@@ -252,6 +252,7 @@
     "tests/rc19-ui-functional-integration.test.tsx",
     "tests/rc19-unified-import-postgres17.test.ts",
     "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
+    "tests/rc19-w4-deltac-live-monitoring.test.ts",
     "tests/rc19-w4-legacy-segment-compatibility.test.ts",
     "tests/rc19-w4-production-cli-migration-runner.test.ts",
     "tests/rc19-w4-staffing-conflict-api.test.ts",
