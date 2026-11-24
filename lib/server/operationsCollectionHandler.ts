@@ -13,7 +13,6 @@ import { createSupabaseMasterDataRepository } from '@/lib/services/supabaseMaste
 import { shiftFromRow } from '@/lib/services/supabaseShiftService'
 import { registrationFromRow } from '@/lib/services/supabaseShiftRegistrationService'
 import { withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
-import type { PersistedStaffingSegment } from '@/lib/types/database.types'
 import type { ListQuery } from '@/lib/services/operationsPageService'
 
 const shiftFilterKeys = ['search','from','to','brandIds','platformIds','campaignIds','studios','roles','registrationStatuses','statuses','descending','assignedUserIds','hostIds','supportIds','technicalIds','operationalRoles','staffingStates','registrationStates','hasImportedStaffing','shiftIds']
@@ -96,23 +95,7 @@ export function createOperationsCollectionHandler(dependencies: { resolveUser?: 
         if (result.error) throw result.error
         const { rows, registrations, ...metadata } = result.data
         const shifts: Array<ReturnType<typeof shiftFromRow> & { registration_conflict: boolean }> = rows.map((row: Parameters<typeof shiftFromRow>[0]) => ({ ...shiftFromRow(row, 'database'), registration_conflict: row.registration_conflict === true }))
-        const [segments, summarizedShifts] = await Promise.all([
-          shifts.length && typeof client.from === 'function'
-            ? client.from('shift_staffing_segments')
-                .select('id,shift_id,segment_index,start_at,end_at,required_host_count,required_support_count,required_technical_count,planned_host_names,planned_support_names,planned_technical_names')
-                .in('shift_id', shifts.map(shift => shift.id)).order('start_at').order('id')
-            : Promise.resolve({ data: [], error: null }),
-          withShiftStaffingSummary(client, shifts),
-        ])
-        if (segments.error) throw segments.error
-        const segmentsByShift = new Map<string, PersistedStaffingSegment[]>()
-        for (const segment of segments.data ?? []) {
-          segmentsByShift.set(segment.shift_id, [...(segmentsByShift.get(segment.shift_id) ?? []), segment as PersistedStaffingSegment])
-        }
-        const items = summarizedShifts.map(shift => ({
-          ...shift,
-          ...(segmentsByShift.has(shift.id) ? { persisted_staffing_segments: segmentsByShift.get(shift.id) } : {}),
-        }))
+        const items = await withShiftStaffingSummary(client, shifts)
         return reply({ ...metadata, items, registrations: registrations.map(registrationFromRow), ...(entity==='live_shifts'?{updates:(metadata.updates??[]).map(dashboardUpdateFromRow)}:{}) })
       }
       if(entity==='archives'){

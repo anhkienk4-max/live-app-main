@@ -248,7 +248,10 @@ function isValidCalendarDate(year: number, month: number, day: number): boolean 
 }
 
 function addCalendarDays(date: string, days: number): string {
-  return format(addDays(parseISO(date), days), 'yyyy-MM-dd')
+  const match = date.match(DATE_PATTERN)
+  if (!match) return date
+  const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days))
+  return utc.toISOString().slice(0, 10)
 }
 
 export function zonedWallTimeToUtc(date: string, time: string, timezone: string): Date {

@@ -87,6 +87,7 @@ import { ActualStaffingPanel } from './ActualStaffingPanel'
 import { AttendancePhotoReviewPanel } from '@/components/features/attendance/AttendancePhotoReviewPanel'
 import { useWorkforceCapabilities } from '@/lib/hooks/useWorkforceCapabilities'
 import { ShiftOperationalNotesSection } from './ShiftOperationalNotesSection'
+import { ShiftStaffingSegmentsPanel } from './ShiftStaffingSegmentsPanel'
 import { AtomicStaffingReplacementDialog } from '@/components/features/calendar/AtomicStaffingReplacementDialog'
 
 const operationalRoles: OperationalRole[] = ['host', 'support', 'technical']
@@ -941,7 +942,7 @@ export function ShiftDetailModal({
                     </section>
 
                     {/* Staffing Segments View (if present) */}
-                    {shift.staffing_segments && shift.staffing_segments.length > 0 ? (
+                    {activeShift.staffing_segments && activeShift.staffing_segments.length > 0 ? (
                       <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3" data-testid="shift-detail-segments-section">
                         <div className="flex items-center justify-between border-b pb-2">
                           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -949,18 +950,18 @@ export function ShiftDetailModal({
                             {language === 'vi' ? 'Khung giờ chi tiết (Staffing Segments)' : 'Staffing Segments'}
                           </h3>
                           <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold">
-                            {shift.staffing_segments.length} {language === 'vi' ? 'khung giờ' : 'segments'}
+                            {activeShift.staffing_segments.length} {language === 'vi' ? 'khung giờ' : 'segments'}
                           </Badge>
                         </div>
                         <div className="divide-y divide-slate-100 space-y-3 pt-1">
-                          {shift.staffing_segments.map(seg => {
+                          {activeShift.staffing_segments.map(seg => {
                             const segDuration = resolveShiftDateTime('2000-01-01', seg.start_time, seg.end_time)?.durationMinutes ?? 0
                             return (
                               <div key={seg.segment_index} className="pt-2.5 first:pt-0" data-testid={`detail-segment-row-${seg.segment_index}`}>
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div className="flex items-center gap-2">
                                     <span className="inline-flex items-center rounded bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
-                                      K0{seg.segment_index}
+                                      K{String(seg.segment_index).padStart(2, '0')}
                                     </span>
                                     <span className="font-semibold text-slate-800 text-xs">
                                       {seg.start_time} – {seg.end_time}
@@ -1014,7 +1015,7 @@ export function ShiftDetailModal({
                     ) : (
                       <section className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-3 text-xs text-slate-500">
                         <div className="flex items-center justify-between">
-                          <span>Ca đơn (Toàn bộ khung giờ {shift.start_time} – {shift.end_time})</span>
+                          <span>Ca đơn (Toàn bộ khung giờ {activeShift.start_time} – {activeShift.end_time})</span>
                           {canEdit && (
                             <span className="text-indigo-600 font-medium">Bấm &quot;Sửa ca&quot; để thêm khung giờ (segments)</span>
                           )}
@@ -1329,18 +1330,25 @@ export function ShiftDetailModal({
                     <div className="space-y-3">
                       {operationalRoles.map(role => (
                         <RoleAssignments
-                          labels={resolveStaffingLabelsForRole(shift, registrations, users, role, t)}
+                          labels={resolveStaffingLabelsForRole(activeShift, registrations, users, role, t)}
                           key={role}
                           label={t(role)}
                           notAssignedLabel={t('notAssigned')}
-                          required={shift[roleRequiredField[role]]}
+                          required={activeShift[roleRequiredField[role]]}
                           requiredLabel={t('required')}
                           t={t}
                           testId={`shift-detail-role-${role}`}
                         />
                       ))}
                     </div>
-                 </section>
+
+                    <ShiftStaffingSegmentsPanel
+                      shift={activeShift}
+                      registrations={registrations}
+                      language={language}
+                      t={t}
+                    />
+                  </section>
 
                  {/* D. REGISTRATION / WORKFLOW STATE */}
                  <section className="space-y-4">

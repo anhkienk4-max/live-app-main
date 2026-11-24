@@ -1,5 +1,6 @@
 import type { ScheduleImportRow, Shift } from '@/lib/types/database.types'
 import type { ImportPreviewRow } from '@/lib/utils/excelUtils'
+import type { ReadbackVerificationResult } from '@/lib/utils/scheduleImportReadback'
 import type {
   ImportBatchRetryableRowStatus,
   ImportBatchRow,
@@ -229,10 +230,84 @@ export interface ScheduleImportRecoveryResult {
   finalizedSkipped: number
 }
 
+export interface ScheduleImportRowExecutionRecord {
+  rowNumber: number
+  status: 'created' | 'updated' | 'unchanged' | 'conflict' | 'failed'
+  shiftId?: string
+  failureCode?: string
+  readbackVerified: boolean
+  readbackMismatches?: string[]
+}
+
+export interface ScheduleImportExecutionSummary {
+  created: number
+  updated: number
+  unchanged: number
+  conflict: number
+  failed: number
+  readbackVerified: number
+  readbackFailed: number
+  rowResults: ScheduleImportRowExecutionRecord[]
+}
+
+export interface ScheduleImportDetailedResult
+  extends ScheduleImportRecoveryResult,
+    ScheduleImportExecutionSummary {}
+
 export type PersistedScheduleImportResult =
-  | { kind: 'created'; shift: Shift; outcome: 'imported' | 'warning' }
-  | { kind: 'duplicate_skipped'; shiftId?: string }
-  | { kind: 'review_required'; failureCode: string }
+  | {
+      kind: 'created'
+      shift: Shift
+      outcome: 'imported' | 'warning'
+      verification?: ReadbackVerificationResult
+      batchRowRecorded?: boolean
+    }
+  | {
+      kind: 'updated'
+      shift: Shift
+      outcome: 'imported' | 'warning'
+      verification?: ReadbackVerificationResult
+      batchRowRecorded?: boolean
+    }
+  | {
+      kind: 'duplicate_skipped'
+      shift?: Shift
+      shiftId?: string
+      verification?: ReadbackVerificationResult
+      batchRowRecorded?: boolean
+    }
+  | {
+      kind: 'review_required'
+      failureCode: string
+      shiftId?: string
+      batchRowRecorded?: boolean
+    }
+  | {
+      kind: 'readback_mismatch'
+      shift?: Shift
+      shiftId?: string
+      failureCode: string
+      mismatches: string[]
+      verification?: ReadbackVerificationResult
+      batchRowRecorded?: boolean
+    }
+
+const CONFLICT_FAILURE_CODES = new Set([
+  'IMPORT_CROSS_AGENCY_CONFLICT',
+  'IMPORT_SHIFT_STATUS_LOCKED',
+  'IMPORT_APPROVED_PAYROLL_LOCKED',
+  'IMPORT_SAFE_UPDATE_DISABLED',
+  'IMPORT_SLOT_IDENTITY_AMBIGUOUS_REVIEW_REQUIRED',
+  'IMPORT_RECONCILIATION_AMBIGUOUS',
+  'IMPORT_RECONCILIATION_REVIEW_REQUIRED',
+  'IMPORT_BATCH_SLOT_IDENTITY_CONFLICT',
+  'STAFFING_SEGMENT_TIME_CHANGE_CONFLICT',
+  'STAFFING_SEGMENT_DELETE_CONFLICT',
+  'SHIFT_AGENCY_EXECUTION_SOURCE_CONFLICT',
+])
+
+const isConflictFailureCode = (code: string): boolean =>
+  CONFLICT_FAILURE_CODES.has(code) || code.startsWith('STAFFING_CAPACITY_BELOW_APPROVED_COUNT')
 
 interface RecordOutcomeInput {
   rowNumber: number
@@ -250,6 +325,8 @@ interface ProcessScheduleImportRowsInput {
   createShift: (data: ShiftDraft) => Promise<Shift>
   /** Database-atomic Confirm path. It persists the row outcome with the parent. */
   createShiftFromImport?: (rowNumber: number, data: ShiftDraft) => Promise<PersistedScheduleImportResult>
+  /** Segment-aware reconciliation Confirm path with DB readback verification. */
+  reconcileShiftFromImport?: (rowNumber: number, data: ShiftDraft) => Promise<PersistedScheduleImportResult>
   refreshShifts: () => Promise<Shift[]>
   recordOutcome: (input: RecordOutcomeInput) => Promise<void>
   /** Update supported Shift metadata through the canonical CAS-aware service. */
@@ -259,6 +336,8 @@ interface ProcessScheduleImportRowsInput {
    * If not provided, staffing merge is skipped (e.g., tests without staffing).
    */
   updateStaffingLabels?: (shiftId: string, labels: ShiftStaffingLabels, expectedVersion?: number) => Promise<Shift | null>
+  onProgress?: (progress: { processed: number; total: number; rowNumber: number }) => void
+  onSummary?: (summary: ScheduleImportExecutionSummary) => void
 }
 
 export async function processScheduleImportRows({
@@ -268,10 +347,13 @@ export async function processScheduleImportRows({
   initialShifts,
   createShift,
   createShiftFromImport,
+  reconcileShiftFromImport,
   refreshShifts,
   recordOutcome,
   updateShift,
   updateStaffingLabels,
+  onProgress,
+  onSummary,
 }: ProcessScheduleImportRowsInput): Promise<ScheduleImportRecoveryResult> {
   const result: ScheduleImportRecoveryResult = {
     imported: 0,
@@ -280,8 +362,30 @@ export async function processScheduleImportRows({
     retryable: 0,
     finalizedSkipped: 0,
   }
+  const summary: ScheduleImportExecutionSummary = {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    conflict: 0,
+    failed: 0,
+    readbackVerified: 0,
+    readbackFailed: 0,
+    rowResults: [],
+  }
   const rowsByNumber = new Map(batchRows.map(row => [row.source_row_number, row]))
   let knownShifts = [...initialShifts]
+  const reconcileHandler = reconcileShiftFromImport ?? createShiftFromImport
+  const actionableTotal = previews.filter(preview => {
+    if (preview.row.errors.length > 0) return false
+    const row = rowsByNumber.get(preview.row.row_number)
+    return Boolean(row && isRowRetryable(row))
+  }).length
+  let processedActionable = 0
+
+  const notifyProgress = (rowNumber: number) => {
+    processedActionable += 1
+    onProgress?.({ processed: processedActionable, total: actionableTotal, rowNumber })
+  }
 
   const persistRetryable = async (
     rowNumber: number,
@@ -290,6 +394,13 @@ export async function processScheduleImportRows({
   ) => {
     await recordOutcome({ rowNumber, outcome: 'retryable', expectedOutcome, failureCode })
     result.retryable += 1
+    if (isConflictFailureCode(failureCode)) {
+      summary.conflict += 1
+      summary.rowResults.push({ rowNumber, status: 'conflict', failureCode, readbackVerified: false })
+    } else {
+      summary.failed += 1
+      summary.rowResults.push({ rowNumber, status: 'failed', failureCode, readbackVerified: false })
+    }
   }
 
   const replaceKnownShift = (updated: Shift) => {
@@ -359,6 +470,14 @@ export async function processScheduleImportRows({
         shiftId: enrichment.shift.id,
       })
       result.recovered += 1
+      summary.updated += 1
+      summary.readbackVerified += 1
+      summary.rowResults.push({
+        rowNumber: preview.row.row_number,
+        status: 'updated',
+        shiftId: enrichment.shift.id,
+        readbackVerified: true,
+      })
       return
     }
     await recordOutcome({
@@ -368,6 +487,13 @@ export async function processScheduleImportRows({
       shiftId: existing.id,
     })
     result.duplicateSkipped += 1
+    summary.unchanged += 1
+    summary.rowResults.push({
+      rowNumber: preview.row.row_number,
+      status: 'unchanged',
+      shiftId: existing.id,
+      readbackVerified: true,
+    })
   }
 
   for (const preview of previews) {
@@ -389,31 +515,141 @@ export async function processScheduleImportRows({
         expectedOutcome,
       })
       result.duplicateSkipped += 1
+      summary.unchanged += 1
+      summary.rowResults.push({
+        rowNumber: preview.row.row_number,
+        status: 'unchanged',
+        readbackVerified: true,
+      })
+      notifyProgress(preview.row.row_number)
       continue
     }
 
-    if (createShiftFromImport) {
+    if (reconcileHandler) {
       const importDraft = preview.shift ?? preview.duplicateCandidate
       if (!importDraft) {
         await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_RECONCILIATION_REVIEW_REQUIRED')
+        notifyProgress(preview.row.row_number)
         continue
       }
       try {
-        const persisted = await createShiftFromImport(preview.row.row_number, {
+        const persisted = await reconcileHandler(preview.row.row_number, {
           ...importDraft,
           registration_locked: false,
         })
         if (persisted.kind === 'created') {
           knownShifts.push(persisted.shift)
           result.imported += 1
+          summary.created += 1
+          const readbackOk = persisted.verification ? persisted.verification.ok : true
+          if (readbackOk) summary.readbackVerified += 1
+          else summary.readbackFailed += 1
+          if (persisted.batchRowRecorded === false) {
+            await recordOutcome({
+              rowNumber: preview.row.row_number,
+              outcome: persisted.outcome,
+              expectedOutcome,
+              shiftId: persisted.shift.id,
+            })
+          }
+          summary.rowResults.push({
+            rowNumber: preview.row.row_number,
+            status: 'created',
+            shiftId: persisted.shift.id,
+            readbackVerified: readbackOk,
+            ...(persisted.verification && !persisted.verification.ok
+              ? { readbackMismatches: persisted.verification.mismatches }
+              : {}),
+          })
+        } else if (persisted.kind === 'updated') {
+          replaceKnownShift(persisted.shift)
+          result.recovered += 1
+          summary.updated += 1
+          const readbackOk = persisted.verification ? persisted.verification.ok : true
+          if (readbackOk) summary.readbackVerified += 1
+          else summary.readbackFailed += 1
+          if (persisted.batchRowRecorded === false) {
+            await recordOutcome({
+              rowNumber: preview.row.row_number,
+              outcome: persisted.outcome,
+              expectedOutcome,
+              shiftId: persisted.shift.id,
+            })
+          }
+          summary.rowResults.push({
+            rowNumber: preview.row.row_number,
+            status: 'updated',
+            shiftId: persisted.shift.id,
+            readbackVerified: readbackOk,
+            ...(persisted.verification && !persisted.verification.ok
+              ? { readbackMismatches: persisted.verification.mismatches }
+              : {}),
+          })
         } else if (persisted.kind === 'duplicate_skipped') {
+          if (persisted.shift) replaceKnownShift(persisted.shift)
           result.duplicateSkipped += 1
+          summary.unchanged += 1
+          const readbackOk = persisted.verification ? persisted.verification.ok : true
+          if (persisted.verification) {
+            if (readbackOk) summary.readbackVerified += 1
+            else summary.readbackFailed += 1
+          }
+          if (persisted.batchRowRecorded === false) {
+            await recordOutcome({
+              rowNumber: preview.row.row_number,
+              outcome: 'duplicate_skipped',
+              expectedOutcome,
+            })
+          }
+          summary.rowResults.push({
+            rowNumber: preview.row.row_number,
+            status: 'unchanged',
+            shiftId: persisted.shiftId ?? persisted.shift?.id,
+            readbackVerified: readbackOk,
+          })
+        } else if (persisted.kind === 'readback_mismatch') {
+          result.retryable += 1
+          summary.failed += 1
+          summary.readbackFailed += 1
+          if (persisted.batchRowRecorded === false) {
+            await recordOutcome({
+              rowNumber: preview.row.row_number,
+              outcome: 'retryable',
+              expectedOutcome,
+              failureCode: persisted.failureCode,
+            })
+          }
+          summary.rowResults.push({
+            rowNumber: preview.row.row_number,
+            status: 'failed',
+            shiftId: persisted.shiftId ?? persisted.shift?.id,
+            failureCode: persisted.failureCode,
+            readbackVerified: false,
+            readbackMismatches: persisted.mismatches,
+          })
         } else {
           result.retryable += 1
+          summary.conflict += 1
+          if (persisted.batchRowRecorded === false) {
+            await recordOutcome({
+              rowNumber: preview.row.row_number,
+              outcome: 'retryable',
+              expectedOutcome,
+              failureCode: persisted.failureCode,
+            })
+          }
+          summary.rowResults.push({
+            rowNumber: preview.row.row_number,
+            status: 'conflict',
+            shiftId: persisted.shiftId,
+            failureCode: persisted.failureCode,
+            readbackVerified: false,
+          })
         }
       } catch (error) {
         await persistRetryable(preview.row.row_number, expectedOutcome, scheduleImportFailureCode(error))
       }
+      notifyProgress(preview.row.row_number)
       continue
     }
 
@@ -424,10 +660,12 @@ export async function processScheduleImportRows({
       const resolution = resolveDuplicateCandidateShift(preview, knownShifts)
       if (resolution.kind === 'unique') {
         await recordExisting(preview, resolution.shift, duplicateCandidate, expectedOutcome)
+        notifyProgress(preview.row.row_number)
         continue
       }
       if (resolution.kind === 'ambiguous') {
         await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_RECONCILIATION_AMBIGUOUS')
+        notifyProgress(preview.row.row_number)
         continue
       }
       // No unique candidate found (e.g., exact/slot none) — still record as duplicate_skipped without link
@@ -437,34 +675,49 @@ export async function processScheduleImportRows({
         expectedOutcome,
       })
       result.duplicateSkipped += 1
+      summary.unchanged += 1
+      summary.rowResults.push({
+        rowNumber: preview.row.row_number,
+        status: 'unchanged',
+        readbackVerified: true,
+      })
+      notifyProgress(preview.row.row_number)
       continue
     }
 
     const candidate = preview.shift
-    if (!candidate) continue
+    if (!candidate) {
+      notifyProgress(preview.row.row_number)
+      continue
+    }
 
     const finalOutcome = preview.row.warnings.length > 0 ? 'warning' : 'imported'
 
     const reconcile = reconcileScheduleImportShift(batchId, candidate, knownShifts)
     if (reconcile.kind === 'ambiguous') {
       await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_RECONCILIATION_AMBIGUOUS')
+      notifyProgress(preview.row.row_number)
       continue
     }
     if (reconcile.kind === 'recovered') {
       await recordExisting(preview, reconcile.shift, candidate, expectedOutcome, true)
+      notifyProgress(preview.row.row_number)
       continue
     }
     if (hasSameBatchSlotConflict(batchId, candidate, knownShifts)) {
       await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_BATCH_SLOT_IDENTITY_CONFLICT')
+      notifyProgress(preview.row.row_number)
       continue
     }
     const externalResolution = resolveExternalShift(batchId, candidate, knownShifts)
     if (externalResolution.kind === 'unique') {
       await recordExisting(preview, externalResolution.shift, candidate, expectedOutcome)
+      notifyProgress(preview.row.row_number)
       continue
     }
     if (externalResolution.kind === 'ambiguous') {
       await persistRetryable(preview.row.row_number, expectedOutcome, 'IMPORT_RECONCILIATION_AMBIGUOUS')
+      notifyProgress(preview.row.row_number)
       continue
     }
 
@@ -482,6 +735,14 @@ export async function processScheduleImportRows({
         shiftId: shift.id,
       })
       result.imported += 1
+      summary.created += 1
+      summary.readbackVerified += 1
+      summary.rowResults.push({
+        rowNumber: preview.row.row_number,
+        status: 'created',
+        shiftId: shift.id,
+        readbackVerified: true,
+      })
     } catch (error) {
       if (!isScheduleImportDuplicateError(error)) {
         await persistRetryable(
@@ -489,6 +750,7 @@ export async function processScheduleImportRows({
           expectedOutcome,
           scheduleImportFailureCode(error),
         )
+        notifyProgress(preview.row.row_number)
         continue
       }
 
@@ -520,7 +782,31 @@ export async function processScheduleImportRows({
         }
       }
     }
+    notifyProgress(preview.row.row_number)
   }
 
+  onSummary?.(summary)
   return result
+}
+
+export async function reconcileScheduleImportRows(
+  input: Omit<ProcessScheduleImportRowsInput, 'onSummary'>,
+): Promise<ScheduleImportDetailedResult> {
+  let captured: ScheduleImportExecutionSummary = {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    conflict: 0,
+    failed: 0,
+    readbackVerified: 0,
+    readbackFailed: 0,
+    rowResults: [],
+  }
+  const base = await processScheduleImportRows({
+    ...input,
+    onSummary: summary => {
+      captured = summary
+    },
+  })
+  return { ...base, ...captured }
 }

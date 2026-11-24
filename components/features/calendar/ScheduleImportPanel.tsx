@@ -80,7 +80,14 @@ import {
   type ImportResultPresentationStatus,
 } from '@/lib/utils/scheduleImportUx'
 import { scheduleArchiveFailureMessage } from '@/lib/utils/scheduleArchiveMessage'
-import { processScheduleImportRows } from '@/lib/utils/scheduleImportRecovery'
+import {
+  hasExactScheduleImportIdentity,
+  reconcileScheduleImportRows,
+  type ScheduleImportDetailedResult,
+} from '@/lib/utils/scheduleImportRecovery'
+import { computeShiftStaffingMetrics } from '@/lib/utils/staffingSemantics'
+import { invalidatePageCache } from '@/lib/services/operationsPageCache'
+import { SHIFT_DATA_CHANGED_EVENT } from '@/lib/services/shiftChangeSubscription'
 import { usePagedList } from '@/lib/hooks/usePagedList'
 import { scheduleImportBatchPort, scheduleImportHistoryService } from '@/lib/services/scheduleImportBatchPort'
 import { uploadScheduleSourceFile, verifyScheduleSourceFile } from '@/lib/services/scheduleSourceStorageService'
@@ -99,6 +106,7 @@ type CompletedImport = {
   rows: ImportBatchRow[]
   archiveStatus?: string
   archiveIncomplete?: boolean
+  reconciliation?: ScheduleImportDetailedResult
 }
 
 const importStatusLabelKey: Record<ImportResultPresentationStatus, TranslationKey> = {
@@ -196,6 +204,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
   const [batchAgency, setBatchAgency] = React.useState<AgencyCode | null>(null)
   const [completedImport, setCompletedImport] = React.useState<CompletedImport | null>(null)
   const [retryingArchive, setRetryingArchive] = React.useState(false)
+  const [importProgress, setImportProgress] = React.useState<{ processed: number; total: number } | null>(null)
 
   // Column filters state (Task 1: Issue #161 & Owner ID 05)
   const [filterBrand, setFilterBrand] = React.useState<string>('all')
@@ -684,6 +693,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       || (source.type === 'excel' && (sourceFileStatus !== 'saved' || !sourceFileId))) return
     const completedSource = source
     setBusy(true)
+    setImportProgress(null)
     try {
       if (completedSource.type === 'excel') {
         if (!sourceFileId) throw new Error('SCHEDULE_SOURCE_REQUIRED')
@@ -691,12 +701,13 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       }
       const batchRows = await scheduleImportBatchPort.listBatchRows(batch.id)
       const mappedImport = applyImportColumnMappings(result, columnMappings)
-      const importResult = await processScheduleImportRows({
+      const importResult = await reconcileScheduleImportRows({
         batchId: batch.id,
         previews: mappedImport.rows,
         batchRows,
         initialShifts: existingShifts,
         createShift: shiftService.create,
+        reconcileShiftFromImport: (rowNumber, shift) => shiftService.reconcileFromImport(batch.id, rowNumber, shift),
         ...(getAuthMode() === 'supabase' ? {
           createShiftFromImport: (rowNumber, shift) => shiftService.createFromImport(batch.id, rowNumber, shift),
         } : {}),
@@ -721,14 +732,37 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           if (updated) setExistingShifts(prev => prev.map(s => s.id === updated.id ? updated : s))
           return updated
         },
+        onProgress: ({ processed, total }) => {
+          setImportProgress({ processed, total })
+        },
       })
       const importedCount = importResult.imported + importResult.recovered
+      const notifyShiftDataChanged = () => {
+        invalidatePageCache()
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event(SHIFT_DATA_CHANGED_EVENT))
+          try {
+            window.localStorage.setItem(
+              `${SHIFT_DATA_CHANGED_EVENT}:storage`,
+              `${Date.now()}:${performance.now()}`,
+            )
+          } catch {
+            /* Same-tab refresh remains active. */
+          }
+        }
+      }
       let completedBatch: ScheduleImportBatch | null = null
-      if (importResult.retryable > 0) {
+      if (importResult.retryable > 0 || importResult.readbackFailed > 0) {
         completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed')
         const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
         const archive = await archiveCompletedSchedule(completedSource.type, batch.id, mappedImport.rows, importedCount)
-        setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'failed' }, rows: finalRows, ...archive })
+        setCompletedImport({
+          source: completedSource,
+          batch: completedBatch ?? { ...batch, status: 'failed' },
+          rows: finalRows,
+          ...archive,
+          reconciliation: importResult,
+        })
         setResult(null)
         setBatch(null)
         setSource(null)
@@ -740,6 +774,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
           description: `${importedCount} row(s) imported; ${importResult.retryable} row(s) were marked for retry.`,
           variant: 'destructive',
         })
+        notifyShiftDataChanged()
         setExistingShifts(await shiftService.getAll())
         onImported?.()
         return
@@ -747,7 +782,13 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       completedBatch = await scheduleImportBatchPort.markBatchStatus(batch.id, 'confirmed')
       const finalRows = await scheduleImportBatchPort.listBatchRows(batch.id)
       const archive = await archiveCompletedSchedule(completedSource.type, batch.id, mappedImport.rows, importedCount)
-      setCompletedImport({ source: completedSource, batch: completedBatch ?? { ...batch, status: 'confirmed' }, rows: finalRows, ...archive })
+      setCompletedImport({
+        source: completedSource,
+        batch: completedBatch ?? { ...batch, status: 'confirmed' },
+        rows: finalRows,
+        ...archive,
+        reconciliation: importResult,
+      })
       const finalCounts = batchPresentationCounts(finalRows)
       const attention = finalCounts.warning + finalCounts.invalid + finalCounts.duplicate + finalCounts.retryable
       toast({
@@ -761,12 +802,14 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
       setSourceFileStatus('not_required')
       setSourceFileId(null)
       setDraftRows({})
+      notifyShiftDataChanged()
       setExistingShifts(await shiftService.getAll())
       onImported?.()
     } catch (error) {
       await scheduleImportBatchPort.markBatchStatus(batch.id, 'failed').catch(() => undefined)
       toast({ title: t('error'), description: safeImportError(error, t('importPreviewLoadError')), variant: 'destructive' })
     } finally {
+      setImportProgress(null)
       setBusy(false)
     }
   }
@@ -1413,6 +1456,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     <th className="p-2">{t('requiredHostCount')}</th>
                     <th className="p-2">{t('requiredSupportCount')}</th>
                     <th className="p-2">{t('requiredTechnicalCount')}</th>
+                    <th className="min-w-64 p-2">{language === 'vi' ? 'Khung giờ & Định biên' : 'Segments & Metrics'}</th>
                     {customColumnNames.map(name => (
                       <th key={name} className="min-w-56 p-2">
                         <div className="flex items-center gap-1">
@@ -1464,6 +1508,28 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                     }
                     const entityValue = (field: DraftField, fallback: string) =>
                       editing ? rowDraftValue(draftRows, rowNumber, field, fallback) : fallback
+                    const previewSegments = preview.row.staffing_segments ?? []
+                    const previewCandidateShift = preview.shift ?? preview.duplicateCandidate
+                    const previewMetrics = previewCandidateShift
+                      ? computeShiftStaffingMetrics({
+                          ...previewCandidateShift,
+                          staffing_segments: previewSegments.length > 0 ? previewSegments : previewCandidateShift.staffing_segments,
+                        })
+                      : null
+                    const matchedExistingShift = previewCandidateShift
+                      ? existingShifts.find(s =>
+                          !s.deleted_at
+                          && !s.archived_at
+                          && hasExactScheduleImportIdentity(s, previewCandidateShift),
+                        )
+                      : undefined
+                    const matchedMetrics = matchedExistingShift ? computeShiftStaffingMetrics(matchedExistingShift) : null
+                    const hasExistingAgencyConflict = Boolean(
+                      matchedExistingShift?.agency_code
+                      && previewCandidateShift?.agency_code
+                      && matchedExistingShift.agency_code !== previewCandidateShift.agency_code,
+                    )
+                    const hasReconcileUpdate = Boolean(matchedExistingShift && preview.isEnrichment && !hasExistingAgencyConflict)
                     return (
                       <tr key={rowNumber} data-status={rowStatus} className={`border-b align-top${editing ? ' bg-amber-50/50' : ''}`}>
                         <td className="p-2">
@@ -1547,6 +1613,57 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                             />
                           </td>
                         ))}
+                        <td className="p-2 text-xs" data-testid="schedule-preview-segments">
+                          {previewSegments.length > 0 ? (
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-1">
+                                <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-800 text-[10px]">
+                                  {previewSegments.length} {language === 'vi' ? 'khung' : 'segs'}
+                                </Badge>
+                                {previewMetrics && (
+                                  <span className="text-[11px] font-medium text-slate-700 tabular-nums">
+                                    {language === 'vi' ? 'Đỉnh' : 'Peak'} {previewMetrics.roles.host.peak_concurrent_required}/{previewMetrics.roles.support.peak_concurrent_required}/{previewMetrics.roles.technical.peak_concurrent_required}
+                                    {' · '}
+                                    {language === 'vi' ? 'Vị trí' : 'Pos'} {previewMetrics.roles.host.total_positions_required}/{previewMetrics.roles.support.total_positions_required}/{previewMetrics.roles.technical.total_positions_required}
+                                    {' · '}
+                                    {previewMetrics.totals.required_staff_hours}h
+                                  </span>
+                                )}
+                              </div>
+                              <div className="space-y-0.5 font-mono text-[11px] text-slate-600">
+                                {previewSegments.map(seg => (
+                                  <div key={seg.segment_index}>
+                                    K{String(seg.segment_index).padStart(2, '0')} {seg.start_time}–{seg.end_time} · H:{seg.required_host_count} S:{seg.required_support_count} T:{seg.required_technical_count}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : previewMetrics ? (
+                            <span className="text-[11px] text-slate-600 tabular-nums">
+                              {language === 'vi' ? 'Ca đơn' : 'Single'} · H:{previewMetrics.roles.host.total_positions_required} S:{previewMetrics.roles.support.total_positions_required} T:{previewMetrics.roles.technical.total_positions_required} · {previewMetrics.totals.required_staff_hours}h
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                          {matchedExistingShift && (
+                            <div className="mt-1">
+                              {hasExistingAgencyConflict ? (
+                                <Badge variant="outline" className="border-red-300 bg-red-50 text-red-800 text-[10px]">
+                                  {language === 'vi' ? 'Xung đột Agency' : 'Agency Conflict'}: {matchedExistingShift.agency_code} → {previewCandidateShift?.agency_code}
+                                </Badge>
+                              ) : hasReconcileUpdate ? (
+                                <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900 text-[10px]">
+                                  {language === 'vi' ? 'Cập nhật an toàn' : 'Safe Update'}
+                                  {matchedMetrics && previewMetrics ? `: ${matchedMetrics.totals.total_positions_required} → ${previewMetrics.totals.total_positions_required}` : ''}
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700 text-[10px]">
+                                  {language === 'vi' ? 'Trùng không đổi' : 'Unchanged'}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                        </td>
                         {customColumnNames.map(name => {
                           const field = `custom:${name}` as DraftField
                           return <td className="p-2" key={name}><Input aria-label={`Row ${rowNumber} ${name}`} className="w-40" value={cellValue(field)} onChange={changeField(field)} onKeyDown={handleCellKeyDown} /></td>
@@ -1576,6 +1693,14 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
               {paginatedPreviews.map(preview => {
                 const status = previewStatusForRow(preview)
                 const rowNum = preview.row.row_number
+                const mobileSegments = preview.row.staffing_segments ?? []
+                const mobileCandidate = preview.shift ?? preview.duplicateCandidate
+                const mobileMetrics = mobileCandidate
+                  ? computeShiftStaffingMetrics({
+                      ...mobileCandidate,
+                      staffing_segments: mobileSegments.length > 0 ? mobileSegments : mobileCandidate.staffing_segments,
+                    })
+                  : null
                 const identity = [preview.row.date, `${preview.row.start_time}–${preview.row.end_time}`, preview.row.title || preview.row.brand_name].filter(Boolean).join(' · ')
                 return <div key={rowNum} className={`rounded-md border p-3 ${rowStatusClass(status)}`}>
                   <div className="flex items-start justify-between gap-2">
@@ -1615,6 +1740,13 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{preview.row.brand_name} · {preview.row.platform_name}{preview.row.campaign_name ? ` · ${preview.row.campaign_name}` : ''}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{language === 'vi' ? 'Nguồn thực hiện' : 'Execution Source'}: {executionSourceDisplayLabel(preview.row.execution_source, language) || (language === 'vi' ? 'Chưa phân loại' : 'Unclassified')}</p>
+                  {mobileMetrics && (
+                    <p className="mt-1 text-xs text-slate-700 tabular-nums" data-testid="schedule-mobile-preview-segments">
+                      {mobileSegments.length > 0
+                        ? `${mobileSegments.length} ${language === 'vi' ? 'khung' : 'segs'} · ${language === 'vi' ? 'Đỉnh' : 'Peak'} ${mobileMetrics.roles.host.peak_concurrent_required}/${mobileMetrics.roles.support.peak_concurrent_required}/${mobileMetrics.roles.technical.peak_concurrent_required} · ${mobileMetrics.totals.required_staff_hours}h`
+                        : `H:${mobileMetrics.roles.host.total_positions_required} S:${mobileMetrics.roles.support.total_positions_required} T:${mobileMetrics.roles.technical.total_positions_required} · ${mobileMetrics.totals.required_staff_hours}h`}
+                    </p>
+                  )}
                   {Object.entries(preview.row.custom_fields ?? {}).map(([name, value]) => <p key={name} className="mt-1 break-words text-xs text-muted-foreground"><span className="font-medium text-foreground">{name}:</span> {value || '—'}</p>)}
                   {preview.row.errors.map(message => <p key={message} className="mt-1 text-xs text-red-700">{message}</p>)}
                   {preview.row.warnings.map(message => <p key={message} className="mt-1 text-xs text-amber-700">{message}</p>)}
@@ -1648,6 +1780,13 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
                 {t('importSourceRetry')}
               </Button>}
             </div>}
+            {busy && importProgress && importProgress.total > 0 && (
+              <div className="rounded-md border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-xs font-medium text-indigo-900" data-testid="schedule-import-progress" role="status">
+                {language === 'vi'
+                  ? `Đang ghi và đối soát DB: ${importProgress.processed}/${importProgress.total} dòng...`
+                  : `Persisting and verifying DB state: ${importProgress.processed}/${importProgress.total} row(s)...`}
+              </div>
+            )}
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setCancelOpen(true)}>{t('cancel')}</Button>
               <Button onClick={confirmImport} disabled={busy || hasPendingDrafts || hasAgencySourceConflict || importableCount === 0 || (source?.type === 'excel' && (sourceFileStatus !== 'saved' || !sourceFileId))} aria-label={t('confirmImport')}>{busy ? t('loading') : t('confirmImport')}</Button>
@@ -1656,7 +1795,7 @@ export function ScheduleImportPanel({ onImported }: { onImported?: () => void })
         </Card>
       )}
       {completedImport && completedCounts && <div ref={completedImportRef} tabIndex={-1} className="space-y-3">
-        <ImportCompletionCard completed={completedImport} counts={completedCounts} t={t} />
+        <ImportCompletionCard completed={completedImport} counts={completedCounts} t={t} language={language} />
         {completedImport.archiveStatus && (
           <div className={`rounded-md border px-4 py-3 text-sm ${completedImport.archiveIncomplete ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-300 bg-emerald-50 text-emerald-900'}`}
             role="status" data-testid="schedule-import-drive-archive-status">
@@ -1911,7 +2050,17 @@ function ImportSummary({ counts, t, persistedCount }: { counts: ImportPresentati
   </div>
 }
 
-function ImportCompletionCard({ completed, counts, t }: { completed: CompletedImport; counts: ImportPresentationCounts; t: ImportTranslate }) {
+function ImportCompletionCard({
+  completed,
+  counts,
+  t,
+  language = 'vi',
+}: {
+  completed: CompletedImport
+  counts: ImportPresentationCounts
+  t: ImportTranslate
+  language?: 'vi' | 'en'
+}) {
   const [showAllValidation, setShowAllValidation] = React.useState(false)
   const [showAllRetryable, setShowAllRetryable] = React.useState(false)
   const [showAllWarnings, setShowAllWarnings] = React.useState(false)
@@ -1924,11 +2073,17 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
   const retryableErrors = notImportedRows.filter(row => row.status === 'retryable')
 
   const persistedCount = persistedImportCount(counts)
-  const attention = counts.warning + counts.duplicate + counts.invalid + counts.retryable
+  const rec = completed.reconciliation
+  const attention = counts.warning + counts.duplicate + counts.invalid + counts.retryable + (rec?.readbackFailed ?? 0)
 
   let state: 'SUCCESS' | 'PARTIAL' | 'ACTION_REQUIRED' = 'SUCCESS'
-  if (persistedCount === 0 && (counts.duplicate + counts.invalid + counts.retryable) > 0) state = 'ACTION_REQUIRED'
-  else if (persistedCount > 0 && attention > 0) state = 'PARTIAL'
+  if (rec?.readbackFailed && rec.readbackFailed > 0) {
+    state = persistedCount === 0 ? 'ACTION_REQUIRED' : 'PARTIAL'
+  } else if (persistedCount === 0 && (counts.duplicate + counts.invalid + counts.retryable) > 0) {
+    state = 'ACTION_REQUIRED'
+  } else if (persistedCount > 0 && attention > 0) {
+    state = 'PARTIAL'
+  }
 
   const borderClass = state === 'SUCCESS' ? 'border-emerald-200' : state === 'PARTIAL' ? 'border-amber-200' : 'border-red-200'
   const headerClass = state === 'SUCCESS' ? 'bg-emerald-50/60 text-emerald-950' : state === 'PARTIAL' ? 'bg-amber-50/60 text-amber-950' : 'bg-red-50/60 text-red-950'
@@ -1942,6 +2097,7 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
   const visibleValidation = showAllValidation ? validationErrors : validationErrors.slice(0, 10)
   const visibleRetryable = showAllRetryable ? retryableErrors : retryableErrors.slice(0, 10)
   const visibleWarnings = showAllWarnings ? warningRows : warningRows.slice(0, 10)
+  const mismatchRows = rec?.rowResults.filter(row => !row.readbackVerified && (row.readbackMismatches?.length ?? 0) > 0) ?? []
 
   return (
     <Card data-testid="schedule-import-result" role="status" aria-live="polite" className={`overflow-hidden ${borderClass}`}>
@@ -1953,6 +2109,58 @@ function ImportCompletionCard({ completed, counts, t }: { completed: CompletedIm
       </CardHeader>
       <CardContent className="space-y-6 p-5">
         <ImportSummary counts={counts} t={t} persistedCount={persistedCount} />
+
+        {rec && (
+          <div className="space-y-2 rounded-lg border bg-slate-50/70 p-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2" data-testid="schedule-import-outcome-breakdown">
+                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">
+                  Created: {rec.created}
+                </Badge>
+                <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-800">
+                  Updated: {rec.updated}
+                </Badge>
+                <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">
+                  Unchanged: {rec.unchanged}
+                </Badge>
+                <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+                  Conflict: {rec.conflict}
+                </Badge>
+                <Badge variant="outline" className="border-red-200 bg-red-50 text-red-800">
+                  Failed: {rec.failed}
+                </Badge>
+              </div>
+              {(rec.readbackVerified > 0 || rec.readbackFailed > 0) && (
+                <Badge
+                  data-testid="schedule-import-readback-status"
+                  variant="outline"
+                  className={
+                    rec.readbackFailed > 0
+                      ? 'border-red-300 bg-red-50 text-red-900 font-semibold'
+                      : 'border-emerald-300 bg-emerald-50 text-emerald-900 font-semibold'
+                  }
+                >
+                  {rec.readbackFailed > 0
+                    ? (language === 'vi'
+                        ? `DB Readback: Sai lệch (${rec.readbackFailed})`
+                        : `DB Readback: Mismatch (${rec.readbackFailed})`)
+                    : (language === 'vi'
+                        ? `DB Readback: Verified (${rec.readbackVerified})`
+                        : `DB Readback: Verified (${rec.readbackVerified})`)}
+                </Badge>
+              )}
+            </div>
+            {mismatchRows.length > 0 && (
+              <div className="rounded border border-red-200 bg-red-50/60 p-2 text-red-800">
+                {mismatchRows.map(row => (
+                  <p key={`rb-${row.rowNumber}`}>
+                    Row {row.rowNumber}: {row.readbackMismatches?.join(', ')}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {persistedCount === 0 && <p className="text-sm text-muted-foreground">{t('importNothingPersisted')}</p>}
         {notImportedRows.length > 0 && <section data-testid="schedule-import-not-imported-rows" className="space-y-3"><h3 className="text-sm font-semibold">{t('notImported')} ({notImportedRows.length})</h3>{duplicateRows.length > 0 && <details className="overflow-hidden rounded-lg border"><summary className="cursor-pointer bg-muted/30 px-3 py-2 text-sm font-medium">{t('importDuplicateSkipped')} ({duplicateRows.length})</summary><div className="max-h-[300px] overflow-auto"><table className="w-full text-left text-xs"><thead><tr><th className="p-2">{t('importSourceRow')}</th><th className="p-2">{t('shiftDetail')}</th><th className="p-2">{t('reason')}</th></tr></thead><tbody>{duplicateRows.map(row=><tr key={row.id} className="border-t"><td className="p-2">{row.source_row_number}</td><td className="p-2">{row.normalized_values.title || row.normalized_values.brand_name}<p className="text-muted-foreground">{row.normalized_values.date} · {row.normalized_values.start_time} – {row.normalized_values.end_time}</p>{row.duplicate_of_shift_id && <p>{row.duplicate_of_shift_id}</p>}</td><td className="p-2">{row.normalized_values.warnings.join('; ') || t('importDuplicate')}</td></tr>)}</tbody></table></div></details>}</section>}
