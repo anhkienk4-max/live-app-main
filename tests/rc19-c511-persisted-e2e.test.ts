@@ -102,19 +102,22 @@ async function seedUser(run: number, name: string, permission: 'admin' | 'leader
   const authId = crypto.randomUUID()
   const businessId = shortId(name, run)
   const email = `${businessId}@c511.invalid`
-  const inserted = await service.from('business_users').insert({
-    id: businessId, auth_user_id: authId, email, full_name: `${name} C5.11 ${run}`,
-    role: permission === 'member' ? 'staff' : permission,
-    system_permission: permission, operational_roles: roles,
-    status: 'active', account_status: 'active', email_verified: true, auth_provider: 'email',
-  }).select('id,auth_user_id,email,full_name,role,system_permission,operational_roles,status,account_status,email_verified,auth_provider,join_date,created_at,updated_at').single()
-  assert.ifError(inserted.error)
   const created = await service.auth.admin.createUser({
     id: authId, email, password: password!, email_confirm: true,
     app_metadata: { system_permission: permission, business_user_id: businessId },
     user_metadata: { full_name: `${name} C5.11 ${run}` },
   })
   assert.ifError(created.error)
+  const inserted = await service.from('business_users').insert({
+    id: businessId, auth_user_id: authId, email, full_name: `${name} C5.11 ${run}`,
+    role: permission === 'member' ? 'staff' : permission,
+    system_permission: permission, operational_roles: roles,
+    status: 'active', account_status: 'active', email_verified: true, auth_provider: 'email',
+  }).select('id,auth_user_id,email,full_name,role,system_permission,operational_roles,status,account_status,email_verified,auth_provider,join_date,created_at,updated_at').single()
+  if (inserted.error) {
+    await service.auth.admin.deleteUser(authId)
+    assert.ifError(inserted.error)
+  }
   return { authId, businessId, email, user: inserted.data }
 }
 
@@ -253,6 +256,7 @@ async function submitAttendancePhoto(
   token: string,
   shiftId: string,
   eventKind: 'check_in' | 'check_out',
+  assignmentId?: string,
   requestId = crypto.randomUUID(),
 ) {
   const background = eventKind === 'check_in' ? '#b84a32' : '#315ab8'
@@ -262,6 +266,7 @@ async function submitAttendancePhoto(
   form.set('role', 'host')
   form.set('event_kind', eventKind)
   form.set('request_id', requestId)
+  if (assignmentId) form.set('assignment_id', assignmentId)
   form.set('capture_source', eventKind === 'check_in' ? 'camera' : 'file_picker')
   form.set('file', new File([bytes], 'synthetic.jpg', { type: 'image/jpeg' }))
   const response = await handler(new Request('http://c511.local/api/workforce/self-attendance-photo', {
@@ -451,20 +456,23 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
 
   let reconciliationPayrollPeriodId: string | null = null
   const readOperationalSnapshot = async () => {
-    const parentSnapshot = requireOk(await adminClient.from('shifts')
+    const parentSnapshot = requireOk(await service.from('shifts')
       .select('id,date,start_time,end_time,start_at,end_at,version,title,status,required_host_count,required_support_count,required_technical_count')
       .eq('id', String(parent.id)).single(), 'KAO reconciliation parent snapshot')
-    const segmentSnapshot = requireOk(await adminClient.from('shift_staffing_segments')
+    const segmentSnapshot = requireOk(await service.from('shift_staffing_segments')
       .select('id,shift_id,segment_index,start_at,end_at,required_host_count,required_support_count,required_technical_count,planned_host_names,planned_support_names,planned_technical_names')
       .eq('shift_id', String(parent.id)).order('segment_index'), 'KAO reconciliation segment snapshot') as Array<Record<string, unknown>>
-    const registrationSnapshot = requireOk(await adminClient.from('shift_registrations')
+    const registrationSnapshot = requireOk(await service.from('shift_registrations')
       .select('id,status,user_id').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation staffing snapshot')
-    const actualSnapshot = requireOk(await adminClient.from('workforce_actual_segments')
+    // Preserve authenticated clients for all business actions. Direct history comparison
+    // uses the fixture verifier because several operational tables intentionally lack
+    // direct authenticated SELECT grants.
+    const actualSnapshot = requireOk(await service.from('workforce_actual_segments')
       .select('id,staff_id,review_status,actual_start_at,actual_end_at,version').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation actual snapshot') as Array<Record<string, unknown>>
     const actualIds = actualSnapshot.map(row => String(row.id))
-    const photoSnapshot = requireOk(await adminClient.from('self_attendance_photo_evidence')
+    const photoSnapshot = requireOk(await service.from('self_attendance_photo_evidence')
       .select('id,request_id,staff_id,event_kind,external_file_id,external_parent_id,checksum_sha256').eq('shift_id', String(parent.id)).order('id'), 'KAO reconciliation evidence snapshot')
-    const auditSnapshot = requireOk(await adminClient.from('audit_logs')
+    const auditSnapshot = requireOk(await service.from('audit_logs')
       .select('id,entity_id,entity_name,action').eq('entity_id', String(parent.id)).order('id'), 'KAO reconciliation audit snapshot')
     const reportSnapshot = requireOk(await service.from('reports')
       .select('id,shift_id,status,gmv,normalized_metrics,version_number').eq('shift_id', String(parent.id)).order('id'), 'KAO report and KPI snapshot') as Array<Record<string, unknown>>
@@ -700,7 +708,7 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
   const photoRequestId = crypto.randomUUID()
   requireOk(await service.from('self_attendance_photo_evidence').insert({
     request_id: photoRequestId, shift_id: String(parent.id), staff_id: protectedHost.businessId,
-    operational_role: 'host', event_kind: 'check_in', provider: 'google_drive',
+    operational_role: 'host', assignment_id: approvedRegistration.id, event_kind: 'check_in', provider: 'google_drive',
     external_file_id: `c6-synthetic-photo-${run}`, external_parent_id: `c6-synthetic-parent-${run}`,
     file_name: `C6 synthetic attendance ${run}.jpg`, mime_type: 'image/jpeg', size_bytes: 64,
     checksum_sha256: 'a'.repeat(64), shift_context: { synthetic_fixture: true }, capture_source: 'camera',
@@ -708,7 +716,7 @@ async function confirmKaoIssue184Shift(run: number, brandId: string, platformId:
   const actualId = `c6_actual_${run}_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`
   requireOk(await service.from('workforce_actual_segments').insert({
     id: actualId, shift_id: String(parent.id), staff_id: protectedHost.businessId, operational_role: 'host',
-    event_kind: 'worked', coverage_kind: 'planned', actual_start_at: '2026-11-01T03:00:00Z',
+    assignment_id: approvedRegistration.id, event_kind: 'worked', coverage_kind: 'planned', actual_start_at: '2026-11-01T03:00:00Z',
     actual_end_at: '2026-11-01T04:00:00Z', review_status: 'draft', evidence_note: 'C6 synthetic protected actual fixture',
     created_by: protectedHost.businessId,
   }).select('id').single(), 'C6 synthetic draft actual fixture')
@@ -1073,7 +1081,7 @@ async function runPersistedScenario(run: number) {
     body: new FormData(),
   }))
   assert.equal(missingPhoto.status, 400, 'missing evidence remains denied before the upload pipeline')
-  const checkInSubmission = await submitAttendancePhoto(photoAdapter.post, host1Auth.token, shift.id, 'check_in')
+  const checkInSubmission = await submitAttendancePhoto(photoAdapter.post, host1Auth.token, shift.id, 'check_in', registration1.id)
   assert.equal(checkInSubmission.response.status, 200, JSON.stringify(checkInSubmission.body))
   const checkIn = checkInSubmission.body.event!
   const checkInEventId = String(checkIn.event_id)
@@ -1089,7 +1097,7 @@ async function runPersistedScenario(run: number) {
   }))
   assert.equal(checkInReadback.status, 200)
   assert.equal(createHash('sha256').update(new Uint8Array(await checkInReadback.arrayBuffer())).digest('hex'), checkInReceipt.checksum_sha256)
-  const checkInRetry = await submitAttendancePhoto(photoAdapter.post, host1Auth.token, shift.id, 'check_in', checkInSubmission.requestId)
+  const checkInRetry = await submitAttendancePhoto(photoAdapter.post, host1Auth.token, shift.id, 'check_in', registration1.id, checkInSubmission.requestId)
   assert.equal(checkInRetry.response.status, 200, 'same request retries reuse the immutable photo receipt')
   assert.equal(String(checkInRetry.body.event?.event_id), checkInEventId)
   assert.equal(photoAdapter.photos.size, 1)
@@ -1098,7 +1106,7 @@ async function runPersistedScenario(run: number) {
   }))
   assert.equal(foreignPhotoRead.status, 403, 'foreign actor cannot read another member photo bytes')
 
-  const checkOutSubmission = await submitAttendancePhoto(photoAdapter.post, host1Auth.token, shift.id, 'check_out')
+  const checkOutSubmission = await submitAttendancePhoto(photoAdapter.post, host1Auth.token, shift.id, 'check_out', registration1.id)
   assert.equal(checkOutSubmission.response.status, 200, JSON.stringify(checkOutSubmission.body))
   const checkOut = checkOutSubmission.body.event!
   const checkOutEventId = String(checkOut.event_id)
@@ -1158,8 +1166,8 @@ async function runPersistedScenario(run: number) {
   assert.ok(reviewReadback.every(row => row.decision === 'approved' && row.reviewer_id === reviewer.businessId))
   const afterEvidenceReview = requireOk(await host1Auth.client.rpc('get_my_self_attendance', { p_shift_id: shift.id, p_limit: 10 }), 'attendance remains pending after evidence review') as Array<Record<string, unknown>>
   assert.ok(afterEvidenceReview.every(event => event.verification_status === 'pending_verification'))
-  const host2CheckIn = await submitAttendancePhoto(photoAdapter.post, host2Auth.token, shift.id, 'check_in')
-  const host2CheckOut = await submitAttendancePhoto(photoAdapter.post, host2Auth.token, shift.id, 'check_out')
+  const host2CheckIn = await submitAttendancePhoto(photoAdapter.post, host2Auth.token, shift.id, 'check_in', registration2.id)
+  const host2CheckOut = await submitAttendancePhoto(photoAdapter.post, host2Auth.token, shift.id, 'check_out', registration2.id)
   const host2Photos = [host2CheckIn, host2CheckOut]
   assert.ok(host2Photos.every(item => item.response.status === 200), JSON.stringify(host2Photos.map(item => ({ status: item.response.status, body: item.body }))))
   const storedHost2Events = requireOk(await service.from('self_attendance_events').select('id,event_kind').eq('shift_id', shift.id).eq('staff_id', host2.businessId), 'second Host attendance readback') as Array<Record<string, unknown>>
@@ -1200,7 +1208,7 @@ async function runPersistedScenario(run: number) {
   const actualStart = persistedStart(completed, 0)
   const actualEnd = persistedStart(completed, 15)
   const actual1Response = await apiPost(admin2Actually, '/api/workforce/actual', adminAuth.token, {
-    action: 'record', shift_id: shift.id, staff_id: host1.businessId, operational_role: 'host',
+    action: 'record', shift_id: shift.id, staff_id: host1.businessId, assignment_id: registration1.id, operational_role: 'host',
     event_kind: 'worked', coverage_kind: 'planned', actual_start_at: actualStart,
     actual_end_at: actualEnd, evidence_note: `C5.11 synthetic actual minutes; attendance=${checkInEventId},${checkOutEventId}`,
   })
@@ -1208,16 +1216,17 @@ async function runPersistedScenario(run: number) {
   const actual1 = (await actual1Response.json() as { segment: { id: string; version: number; review_status: string } }).segment
   assert.equal(actual1.review_status, 'draft')
   const actual2Response = await apiPost(admin2Actually, '/api/workforce/actual', adminAuth.token, {
-    action: 'record', shift_id: shift.id, staff_id: host2.businessId, operational_role: 'host',
+    action: 'record', shift_id: shift.id, staff_id: host2.businessId, assignment_id: registration2.id, operational_role: 'host',
     event_kind: 'worked', coverage_kind: 'planned', actual_start_at: actualStart,
     actual_end_at: actualEnd, evidence_note: 'C5.11 synthetic actual minutes without approved rate',
   })
   assert.equal(actual2Response.status, 201, await actual2Response.clone().text())
   const actual2 = (await actual2Response.json() as { segment: { id: string; version: number } }).segment
+  const supportActualStart = persistedStart({ start_at: String(segments[1].start_at) }, 0)
   const actualWithoutAttendance = await apiPost(admin2Actually, '/api/workforce/actual', adminAuth.token, {
-    action: 'record', shift_id: shift.id, staff_id: support.businessId, operational_role: 'support',
-    event_kind: 'worked', coverage_kind: 'planned', actual_start_at: actualStart,
-    actual_end_at: actualEnd, evidence_note: 'C5.11 synthetic support minutes without attendance evidence',
+    action: 'record', shift_id: shift.id, staff_id: support.businessId, assignment_id: supportRegistration.id, operational_role: 'support',
+    event_kind: 'worked', coverage_kind: 'planned', actual_start_at: supportActualStart,
+    actual_end_at: persistedStart({ start_at: supportActualStart }, 15), evidence_note: 'C5.11 synthetic support minutes without attendance evidence',
   })
   assert.equal(actualWithoutAttendance.status, 201, await actualWithoutAttendance.clone().text())
   const missingEvidenceSegment = (await actualWithoutAttendance.json() as { segment: { id: string; version: number } }).segment
@@ -1244,9 +1253,12 @@ async function runPersistedScenario(run: number) {
     is_cover: true, provider: 'google_drive', external_file_id: `c511-local-visibility-${run}`,
     external_parent_id: `c511-local-visibility-parent-${run}`, checksum_sha256: visibilityChecksum,
   } }), 'seed synthetic Visibility/KV receipt') as Record<string, unknown>
+  const reportBeforeConfirm = requireOk(await service.from('reports').select('version_number')
+    .eq('id', reportDraft.id).single(), 'read synthetic report version before confirmation') as { version_number: number }
   const report = requireOk(await adminAuth.client.rpc('update_report', {
     p_report_id: reportDraft.id,
     p_patch: { status: 'confirmed', metrics_confirmed: true, confirmed_at: new Date().toISOString(), confirmed_by: reviewer.businessId },
+    p_expected_version: Number(reportBeforeConfirm.version_number),
     p_reason: 'C5.15 synthetic report completeness fixture', p_event: 'confirm',
   }), 'confirm synthetic report fixture') as { id: string }
   const photoReceipts = requireOk(await service.from('self_attendance_photo_evidence')
@@ -1331,9 +1343,12 @@ async function runPersistedScenario(run: number) {
   }), 'Payroll Hold refresh after report reopened') as Array<{ segment_id: string; state: string; missing_evidence: string[]; verified_complete: boolean }>
   assert.equal(holdRefresh.length, 2)
   assert.ok(holdRefresh.every(gate => gate.state === 'payroll_hold' && gate.missing_evidence.includes('final_report') && !gate.verified_complete))
+  const reportBeforeRestore = requireOk(await service.from('reports').select('version_number')
+    .eq('id', report.id).single(), 'read reopened report version before restoration') as { version_number: number }
   requireOk(await reviewerAuth.client.rpc('update_report', {
     p_report_id: report.id,
     p_patch: { status: 'confirmed', metrics_confirmed: true, confirmed_at: new Date().toISOString(), confirmed_by: reviewer.businessId },
+    p_expected_version: Number(reportBeforeRestore.version_number),
     p_reason: 'C5.15 isolated report completeness restored', p_event: 'confirm',
   }), 'restore synthetic confirmed report')
   for (const segmentId of [actual1.id, actual2.id]) {
@@ -1408,8 +1423,13 @@ async function runPersistedScenario(run: number) {
   })
   assert.equal(postConfirmReject.status, 409)
   assert.equal((await postConfirmReject.json() as { error: { code: string } }).error.code, 'C515_OT_INVALID_TRANSITION')
+  const payrollPeriodEnd = (completed as { date: string }).date
+  // Keep the period scoped to this fixture's shift date. A wider range can pull in
+  // unrelated historical synthetic actuals (for example the C6 Nov 1 fixture),
+  // which correctly triggers the database's one-payroll-line-per-actual guard.
+  const periodStart = payrollPeriodEnd
   const periodResponse = await payrollPost(adminAuth.token, {
-    action: 'create_period', period_start: (completed as { date: string }).date, period_end: (completed as { date: string }).date,
+    action: 'create_period', period_start: periodStart, period_end: payrollPeriodEnd,
   })
   assert.equal(periodResponse.status, 201, await periodResponse.clone().text())
   const periodBody = await periodResponse.json() as { period: { id: string; status: string } }
@@ -1420,14 +1440,16 @@ async function runPersistedScenario(run: number) {
   assert.ok(firstCalc.skipped.some(row => row.segmentId === actual2.id && row.reason === 'WORKFORCE_RATE_NOT_APPROVED'))
   const afterFirst = requireOk(await service.from('workforce_payroll_lines').select('id,segment_id,staff_id,period_id,actual_minutes,actual_seconds,payable_seconds,overtime_seconds,overtime_request_id,overtime_multiplier_basis_points,gross_vnd,net_vnd').eq('period_id', periodBody.period.id), 'payroll line readback') as Array<Record<string, unknown>>
   assert.equal(afterFirst.length, 1)
-  assert.equal(afterFirst[0].segment_id, actual1.id)
-  assert.equal(afterFirst[0].staff_id, host1.businessId)
-  assert.equal(afterFirst[0].actual_seconds, 900)
-  assert.equal(afterFirst[0].payable_seconds, 900)
-  assert.equal(afterFirst[0].overtime_seconds, 300)
-  assert.equal(afterFirst[0].overtime_request_id, otRequest.id)
-  assert.equal(afterFirst[0].overtime_multiplier_basis_points, 15000)
-  assert.equal(afterFirst[0].gross_vnd, 35000)
+  const hostOneLine = afterFirst[0]
+  assert.equal(hostOneLine.segment_id, actual1.id)
+  assert.equal(afterFirst.some(line => line.segment_id === actual2.id), false, 'missing approved rate keeps current HostTwo actual out of Payroll')
+  assert.equal(hostOneLine.staff_id, host1.businessId)
+  assert.equal(hostOneLine.actual_seconds, 900)
+  assert.equal(hostOneLine.payable_seconds, 900)
+  assert.equal(hostOneLine.overtime_seconds, 300)
+  assert.equal(hostOneLine.overtime_request_id, otRequest.id)
+  assert.equal(hostOneLine.overtime_multiplier_basis_points, 15000)
+  assert.equal(hostOneLine.gross_vnd, 35000)
   const host2Rate = await payrollPost(adminAuth.token, {
     action: 'register_rate', staff_id: host2.businessId, operational_role: 'host',
     effective_from: (completed as { date: string }).date, effective_through: null,
@@ -1443,6 +1465,8 @@ async function runPersistedScenario(run: number) {
   assert.equal((await thirdCalculation.json() as { prepared_count: number }).prepared_count, 0)
   const afterRetry = requireOk(await service.from('workforce_payroll_lines').select('id,segment_id,period_id').eq('period_id', periodBody.period.id), 'payroll retry readback') as Array<Record<string, unknown>>
   assert.equal(afterRetry.length, 2)
+  assert.equal(afterRetry.filter(line => line.segment_id === actual1.id).length, 1)
+  assert.equal(afterRetry.filter(line => line.segment_id === actual2.id).length, 1)
   const cancellationPlatformId = `platform_cancel_${crypto.randomUUID().replaceAll('-', '').slice(0, 14)}`
   const cancellationPlatformName = `C5.15 cancellation platform ${run}`
   requireOk(await service.from('platforms').insert({ id: cancellationPlatformId, name: cancellationPlatformName, status: 'active' }).select('id').single(), 'seed cancellation platform')
@@ -1450,15 +1474,30 @@ async function runPersistedScenario(run: number) {
   const cancellationHost1Auth = await signIn(cancellationHost1)
   const cancellationHost2 = await seedUser(run, 'CancellationHostTwo', 'member', ['host'])
   const cancellationHost2Auth = await signIn(cancellationHost2)
-  const cancellationShiftSetup = await createImportedShift(run, brandA, `C5.11 Brand A ${run}`, cancellationPlatformId, cancellationPlatformName, runOffsetMinutes)
+  // Put the cancellation fixture's first segment in the recent past so the synthetic
+  // worked interval is both historically plausible and inside its approved assignment.
+  const cancellationShiftSetup = await createImportedShift(run, brandA, `C5.11 Brand A ${run}`, cancellationPlatformId, cancellationPlatformName, -90)
   const cancellationShift = cancellationShiftSetup.shift
   assert.notEqual(cancellationShift.id, shift.id)
-  const cancellationHost1Registration = await createSupabaseShiftRegistrationRepository(cancellationHost1Auth.client)
-    .registerForSegment(cancellationShiftSetup.segments[0].id as string, 'host')
-  const cancellationHost2Registration = await createSupabaseShiftRegistrationRepository(cancellationHost2Auth.client)
-    .registerForSegment(cancellationShiftSetup.segments[0].id as string, 'host')
-  await approvalRepo.approve(cancellationHost1Registration.id, 'C5.15 approved cancellation fixture HostOne', cancellationHost1Registration.version)
-  await approvalRepo.approve(cancellationHost2Registration.id, 'C5.15 approved cancellation fixture HostTwo', cancellationHost2Registration.version)
+  const cancellationAttendanceSegment = cancellationShiftSetup.segments[1]
+  assert.ok(cancellationAttendanceSegment)
+  // This fixture intentionally begins 90 minutes in the past so its attendance
+  // evidence fits the real check-in/out windows. Member registration is correctly
+  // closed at that point, so provision the approved roster through the supported
+  // Admin manual-assignment workflow instead of bypassing the registration guard.
+  const cancellationAssignments = createSupabaseShiftRegistrationRepository(adminAuth.client)
+  const cancellationHost1Current = await shiftRepo.getById(cancellationShift.id)
+  assert.ok(cancellationHost1Current)
+  const cancellationHost1Registration = await cancellationAssignments.assignManually(
+    cancellationShift.id, cancellationHost1.businessId, 'host', 'Synthetic cancellation actual-work fixture',
+    cancellationHost1Current.version, cancellationAttendanceSegment.id as string,
+  )
+  const cancellationHost2Current = await shiftRepo.getById(cancellationShift.id)
+  assert.ok(cancellationHost2Current)
+  const cancellationHost2Registration = await cancellationAssignments.assignManually(
+    cancellationShift.id, cancellationHost2.businessId, 'host', 'Synthetic cancellation actual-work fixture',
+    cancellationHost2Current.version, cancellationAttendanceSegment.id as string,
+  )
   const cancellationCurrent = await shiftRepo.getById(cancellationShift.id)
   assert.ok(cancellationCurrent)
   const cancellationDate = cancellationShift.date
@@ -1478,16 +1517,19 @@ async function runPersistedScenario(run: number) {
     is_cover: true, provider: 'google_drive', external_file_id: `c511-local-cancelled-kv-${run}`,
     external_parent_id: `c511-local-cancelled-kv-parent-${run}`, checksum_sha256: cancellationVisibilityChecksum,
   } }), 'seed cancelled shift Visibility receipt')
+  const cancellationReportBeforeConfirm = requireOk(await service.from('reports').select('version_number')
+    .eq('id', cancellationReportDraft.id).single(), 'read cancellation report version before confirmation') as { version_number: number }
   requireOk(await adminAuth.client.rpc('update_report', {
     p_report_id: cancellationReportDraft.id,
     p_patch: { status: 'confirmed', metrics_confirmed: true, confirmed_at: new Date().toISOString(), confirmed_by: reviewer.businessId },
+    p_expected_version: Number(cancellationReportBeforeConfirm.version_number),
     p_reason: 'C5.15 synthetic cancellation report completeness', p_event: 'confirm',
   }), 'confirm cancelled shift report before cancellation')
   const cancellationPhotos = [
-    await submitAttendancePhoto(photoAdapter.post, cancellationHost1Auth.token, cancellationShift.id, 'check_in'),
-    await submitAttendancePhoto(photoAdapter.post, cancellationHost1Auth.token, cancellationShift.id, 'check_out'),
-    await submitAttendancePhoto(photoAdapter.post, cancellationHost2Auth.token, cancellationShift.id, 'check_in'),
-    await submitAttendancePhoto(photoAdapter.post, cancellationHost2Auth.token, cancellationShift.id, 'check_out'),
+    await submitAttendancePhoto(photoAdapter.post, cancellationHost1Auth.token, cancellationShift.id, 'check_in', cancellationHost1Registration.id),
+    await submitAttendancePhoto(photoAdapter.post, cancellationHost1Auth.token, cancellationShift.id, 'check_out', cancellationHost1Registration.id),
+    await submitAttendancePhoto(photoAdapter.post, cancellationHost2Auth.token, cancellationShift.id, 'check_in', cancellationHost2Registration.id),
+    await submitAttendancePhoto(photoAdapter.post, cancellationHost2Auth.token, cancellationShift.id, 'check_out', cancellationHost2Registration.id),
   ]
   assert.ok(cancellationPhotos.every(photo => photo.response.status === 200), JSON.stringify(cancellationPhotos.map(photo => photo.body)))
   for (const photo of cancellationPhotos) {
@@ -1504,12 +1546,14 @@ async function runPersistedScenario(run: number) {
   assert.equal((await shiftRepo.getById(cancellationShift.id))?.status, 'live', 'Denied member call leaves the shift live')
   const cancelledShift = await shiftRepo.update(cancellationShift.id, { status: 'cancelled' }, false, cancellationLive!.version)
   assert.ok(cancelledShift)
-  const cancellationActualEndDate = new Date(Date.now() - 60_000)
-  const cancellationActualEnd = cancellationActualEndDate.toISOString()
-  const cancellationActualStart = new Date(cancellationActualEndDate.getTime() - 15 * 60_000).toISOString()
-  const cancellationActuals = await Promise.all([cancellationHost1, cancellationHost2].map(async (staff) => {
+  const cancellationActualStart = persistedStart({ start_at: String(cancellationAttendanceSegment.start_at) }, 0)
+  const cancellationActualEnd = persistedStart({ start_at: String(cancellationAttendanceSegment.start_at) }, 15)
+  const cancellationActuals = await Promise.all([
+    [cancellationHost1, cancellationHost1Registration], [cancellationHost2, cancellationHost2Registration],
+  ].map(async ([staff, registration]) => {
     const response = await apiPost(admin2Actually, '/api/workforce/actual', adminAuth.token, {
-      action: 'record', shift_id: cancellationShift.id, staff_id: staff.businessId, operational_role: 'host',
+      action: 'record', shift_id: cancellationShift.id, staff_id: staff.businessId,
+      assignment_id: registration.id, operational_role: 'host',
       event_kind: 'worked', coverage_kind: 'planned', actual_start_at: cancellationActualStart,
       actual_end_at: cancellationActualEnd, evidence_note: 'Synthetic approved work before Brand cancellation',
     })
@@ -1522,7 +1566,11 @@ async function runPersistedScenario(run: number) {
       decision: 'approved', review_note: 'Leader reviewed actual work before Brand cancellation',
     })))
   assert.ok(cancellationReviews.every(response => response.status === 200), await Promise.all(cancellationReviews.map(response => response.clone().text())))
-  const cancellationPeriod = periodBody.period
+  const cancellationPeriodResponse = await payrollPost(adminAuth.token, {
+    action: 'create_period', period_start: cancellationDate, period_end: cancellationDate,
+  })
+  assert.equal(cancellationPeriodResponse.status, 201, await cancellationPeriodResponse.clone().text())
+  const cancellationPeriod = (await cancellationPeriodResponse.json() as { period: { id: string; status: string } }).period
   assert.equal(cancellationPeriod.status, 'draft')
   for (const staff of [cancellationHost1, cancellationHost2]) {
     const cancellationRate = await payrollPost(adminAuth.token, {

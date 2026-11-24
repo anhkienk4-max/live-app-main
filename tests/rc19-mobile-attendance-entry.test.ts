@@ -43,7 +43,7 @@ test('ShiftDetailModal Tab 4 and Strict Assignment Permission Enforcements', () 
   // 2. Strict permission gating: SelfAttendancePanel is ONLY mounted for current user's approved/assigned registration
   assert.match(modalSrc, /process\.env\.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE === 'true' && myRegistration && attendanceShiftEligible/)
   assert.match(modalSrc, /actorId=\{currentUser!\.id\}/)
-  assert.match(modalSrc, /role=\{myRegistration\.operational_role\}/)
+  assert.match(modalSrc, /role=\{registration\.operational_role\} assignmentId=\{segment \? registration\.id : undefined\}/)
 
   // 3. Unassigned users (Admins or Members) CANNOT render SelfAttendancePanel for others
   assert.doesNotMatch(modalSrc, /<SelfAttendancePanel[\s\S]*?actorId=\{[^c][^u]/, 'Cannot pass arbitrary actorId')

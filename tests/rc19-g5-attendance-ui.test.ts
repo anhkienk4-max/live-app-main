@@ -216,8 +216,8 @@ test('G5-10: ShiftDetailModal & Cross-Lane Safety Regressions — G3 segments, G
   )
   assert.match(
     content,
-    /role=\{myRegistration\.operational_role\}/,
-    'Must pass operational role from registration'
+    /role=\{registration\.operational_role\} assignmentId=\{segment \? registration\.id : undefined\}/,
+    'Must bind each attendance panel to its own registration role and assignment'
   )
 
   // 2. Admin proxy attendance entry button in ShiftDetailModal
