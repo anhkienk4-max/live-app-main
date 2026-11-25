@@ -82,7 +82,7 @@ export function LiveOperationsConsole({ shift, updates, snapshotSummary, report,
         </div>
       </header>
 
-      <LiveStreamPanel key={shift.id + ':' + (shift.live_link ?? '')} shift={shift} onSaved={onStreamLinkSaved} />
+      <LiveStreamPanel key={shift.id + ':' + (shift.live_link ?? '')} shift={shift} registrations={registrations} onSaved={onStreamLinkSaved} />
 
       <section className="grid grid-cols-2 gap-2 border-b bg-white p-3 lg:grid-cols-6">
         {metrics.map(metric => (

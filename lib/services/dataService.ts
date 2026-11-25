@@ -45,6 +45,7 @@ import { buildDashboardOcrReviewFromRecognition, parseDashboardOcrText } from '@
 import { recognizeDashboardImage } from '@/lib/services/imageOcrService'
 import { addDays, format, parseISO } from 'date-fns'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE, DEFAULT_REQUIRED_STAFF_COUNT, deriveAutomaticShiftStatus, hasShiftTimeConflict, normalizeCapacity, resolveSegmentDateTime, resolveShiftDateTime, shiftDateTimeFields } from '@/lib/utils/shiftUtils'
+import { canManageShiftLiveLink, classifyLiveStreamLink } from '@/lib/utils/liveStreamLink'
 import { validateSwapTiming, validateSwapApprovalTiming } from '@/lib/utils/swapValidation'
 import {
   normalizeStaffingDisplayNames,
@@ -122,6 +123,39 @@ let shifts: Shift[] = mockShifts.map(shift => ({
   status_mode: 'manual',
   ...shiftDateTimeFields(shift.date, shift.start_time, shift.end_time),
 }))
+
+const MOCK_LIVE_LINKS_STORAGE_KEY = 'livestream-ops-mock-live-links-v1'
+const readMockLiveLinksOverlay = (): Record<string, { live_link?: string; version: number; updated_at: string }> => {
+  if (typeof window === 'undefined' || getAuthMode() !== 'mock') return {}
+  try {
+    const raw = window.localStorage.getItem(MOCK_LIVE_LINKS_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, { live_link?: string; version: number; updated_at: string }>) : {}
+  } catch {
+    return {}
+  }
+}
+const writeMockLiveLinkOverlay = (shiftId: string, liveLink: string | undefined, version: number, updatedAt: string) => {
+  if (typeof window === 'undefined' || getAuthMode() !== 'mock') return
+  try {
+    const current = readMockLiveLinksOverlay()
+    current[shiftId] = { live_link: liveLink, version, updated_at: updatedAt }
+    window.localStorage.setItem(MOCK_LIVE_LINKS_STORAGE_KEY, JSON.stringify(current))
+  } catch {
+    // Ignore storage errors in sandboxed/private browser modes.
+  }
+}
+const applyMockLiveLinkOverlay = (shift: Shift): Shift => {
+  const overlay = readMockLiveLinksOverlay()[shift.id]
+  if (!overlay) return shift
+  return {
+    ...shift,
+    live_link: overlay.live_link,
+    version: Math.max(shift.version ?? 1, overlay.version),
+    updated_at: overlay.updated_at,
+  }
+}
 const reports = [...mockReports]
 let reportImages: ReportImage[] = []
 let liveReportImages: LiveReportImage[] = []
@@ -1468,7 +1502,8 @@ export const shiftService = {
     if(getAuthMode()==='supabase')return await getCollectionPage<Shift>('live_shifts',query,signal) as ShiftListPage & {updates:DashboardUpdate[]}
     const actor=actorFor()
     const priority:Record<string,number>={live:0,paused:1,preparing:2,scheduled:3,completed:4,cancelled:5}
-    const matching=filterMockList(shifts,query.filters).filter(shift=>canReadMockPagedShift(shift,actor))
+    const hydratedShifts = shifts.map(applyMockLiveLinkOverlay)
+    const matching=filterMockList(hydratedShifts,query.filters).filter(shift=>canReadMockPagedShift(shift,actor))
       .sort((a,b)=>(priority[a.status]-priority[b.status])||a.date.localeCompare(b.date)||a.start_time.localeCompare(b.start_time)||a.id.localeCompare(b.id))
     const base=localListPage(matching,query)
     const result={...base,registrations:shiftRegistrations.filter(r=>base.items.some(s=>s.id===r.shift_id)&&(resolveSystemPermission(actor)!=='member'||r.user_id===actor.id)),pendingTotal:0,pendingPage:1,pendingIds:[],studios:[]}
@@ -1582,7 +1617,8 @@ export const shiftService = {
     if (getAuthMode() === 'supabase') {
       return getSupabaseShiftRepository().getById(id)
     }
-    return Promise.resolve(shifts.find(s => s.id === id) || null)
+    const found = shifts.find(s => s.id === id)
+    return Promise.resolve(found ? applyMockLiveLinkOverlay(found) : null)
   },
 
   async create(data: Omit<Shift, 'id' | 'created_at' | 'updated_at'>): Promise<Shift> {
@@ -2083,10 +2119,10 @@ export const shiftService = {
     }
     const index = shifts.findIndex(s => s.id === id)
     if (index === -1) return Promise.resolve(null)
-    assertExpectedVersion('Shift', shifts[index].version, data.version)
-    const before = { ...shifts[index] }
-    const candidate = { ...shifts[index], ...data }
-    assertShiftLifecycleTransition(shifts[index].status, candidate.status, shifts[index].status_mode)
+    const before = { ...applyMockLiveLinkOverlay(shifts[index]) }
+    assertExpectedVersion('Shift', before.version, data.version)
+    const candidate = { ...before, ...data }
+    assertShiftLifecycleTransition(before.status, candidate.status, before.status_mode)
     const timezone = candidate.timezone || DEFAULT_BUSINESS_TIMEZONE
     const dateTime = shiftDateTimeFields(candidate.date, candidate.start_time, candidate.end_time, timezone)
     if (!dateTime) throw new Error('Shift date or duration is invalid.')
@@ -2114,6 +2150,8 @@ export const shiftService = {
           registrations: shiftRegistrations,
         })
       : undefined
+    const nextShiftVersion = nextVersion(before.version)
+    const updatedTimestamp = new Date().toISOString()
     shifts[index] = {
       ...candidate,
       status_mode: data.status !== undefined && data.status !== before.status
@@ -2130,8 +2168,13 @@ export const shiftService = {
           }
         : {}),
       ...dateTime,
-      updated_at: new Date().toISOString(),
-      version: nextVersion(shifts[index].version),
+      updated_at: updatedTimestamp,
+      version: nextShiftVersion,
+    }
+    if ('live_link' in data) {
+      const persistedHref = candidate.live_link?.trim() || undefined
+      shifts[index].live_link = persistedHref
+      writeMockLiveLinkOverlay(id, persistedHref, nextShiftVersion, updatedTimestamp)
     }
     const action = data.registration_locked === true
       ? 'lock'
@@ -2148,6 +2191,78 @@ export const shiftService = {
       reason: options.reason,
     })
     return Promise.resolve(shifts[index])
+  },
+
+  async updateLiveLink(
+    id: string,
+    liveLink: string,
+    actorId = currentUserService.getId(),
+    expectedVersion?: number,
+  ): Promise<Shift | null> {
+    const clean = liveLink.trim()
+    let normalizedHref = ''
+    if (clean) {
+      const classified = classifyLiveStreamLink(clean)
+      if (classified.kind !== 'viewer') {
+        throw new Error('INVALID_LIVE_STREAM_LINK')
+      }
+      normalizedHref = classified.link.href
+    }
+
+    if (getAuthMode() === 'supabase') {
+      const repository = getSupabaseShiftRepository()
+      const persisted = repository.updateLiveLink
+        ? await repository.updateLiveLink(id, normalizedHref, expectedVersion)
+        : await repository.update(id, { live_link: normalizedHref, version: expectedVersion }, false, expectedVersion)
+      if (!persisted) return null
+      upsertShiftProjection(persisted)
+      recordScheduleChange('edit', id, undefined, { ...persisted }, {
+        actor_id: actorId,
+        reason: normalizedHref ? 'Updated live stream link' : 'Cleared live stream link',
+      })
+      audit('calendar', 'update', 'shift', id, persisted.title || `${persisted.date} ${persisted.start_time}`, {
+        actorId,
+        after: { ...persisted },
+        reason: normalizedHref ? 'Updated live stream link' : 'Cleared live stream link',
+      })
+      return persisted
+    }
+
+    const actor = requiredActorFor(actorId)
+    const index = shifts.findIndex(candidate => candidate.id === id)
+    if (index === -1) return null
+    const before = { ...applyMockLiveLinkOverlay(shifts[index]) }
+    if (!canManageShiftLiveLink(actor, before, shiftRegistrations)) {
+      throw new Error('OPERATION_NOT_ALLOWED')
+    }
+    const targetVersion = expectedVersion ?? before.version ?? 1
+    assertExpectedVersion('Shift', before.version, targetVersion)
+    const updatedTimestamp = nowIso()
+    const nextVer = nextVersion(before.version)
+    const nextValue = normalizedHref || undefined
+    shifts[index] = {
+      ...before,
+      live_link: nextValue,
+      updated_by: actor.id,
+      updated_at: updatedTimestamp,
+      version: nextVer,
+    }
+    writeMockLiveLinkOverlay(id, nextValue, nextVer, updatedTimestamp)
+    const verified = await this.getById(id)
+    if (!verified || (verified.live_link ?? '') !== normalizedHref) {
+      throw new Error('LIVE_LINK_READBACK_MISMATCH')
+    }
+    recordScheduleChange('edit', id, before, { ...verified }, {
+      actor_id: actor.id,
+      reason: normalizedHref ? 'Updated live stream link' : 'Cleared live stream link',
+    })
+    audit('calendar', 'update', 'shift', id, verified.title || `${verified.date} ${verified.start_time}`, {
+      actorId: actor.id,
+      before,
+      after: { ...verified },
+      reason: normalizedHref ? 'Updated live stream link' : 'Cleared live stream link',
+    })
+    return verified
   },
 
   async updateStaffingLabels(

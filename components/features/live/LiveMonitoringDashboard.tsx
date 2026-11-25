@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { MultiSelectFilter } from '@/components/ui/multi-select-filter'
 
 import { LiveSessionModal } from './LiveSessionModal'
+import { useOptionalLiveTabPublisher } from './LiveTabPublisherContext'
 import { PageLoadError } from '@/components/ui/page-load-error'
 
 export type LiveSessionStatus = Shift['status']
@@ -106,6 +107,7 @@ function getServerOnlineSnapshot() {
 export function LiveMonitoringDashboard() {
   const { t } = useTranslation()
   const { currentUser } = useCurrentUser()
+  const publisher = useOptionalLiveTabPublisher()
   const identity = currentUser ? operationalReferenceIdentity(currentUser) : ''
   const [loadedIdentity, setLoadedIdentity] = React.useState('')
   const lastLoadedScope = React.useRef('')
@@ -245,9 +247,43 @@ export function LiveMonitoringDashboard() {
   const handleShiftUpdate = React.useCallback(async (updatedShift?: Shift) => {
     // Shift mutations must invalidate the cross-page cache immediately.
     invalidatePageCache()
+    if (updatedShift) {
+      publisher?.reportShiftStatus(updatedShift.id, updatedShift.status)
+      setShifts(prev => prev.map(item => (item.id === updatedShift.id ? updatedShift : item)))
+      setSelectedShift(prev => (prev?.id === updatedShift.id ? updatedShift : prev))
+    }
     await loadData()
-    if (updatedShift) setSelectedShift(prev => prev?.id === updatedShift.id ? updatedShift : prev)
-  }, [loadData])
+    if (updatedShift) {
+      setShifts(prev => prev.map(item => (item.id === updatedShift.id ? updatedShift : item)))
+      setSelectedShift(prev => (prev?.id === updatedShift.id ? updatedShift : prev))
+    }
+  }, [loadData, publisher])
+
+  const handledInitialShiftQueryRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const selectShiftById = (targetId: string | null) => {
+      if (!targetId) return false
+      const matching = shifts.find(candidate => candidate.id === targetId)
+      if (!matching) return false
+      setSelectedShift(matching)
+      return true
+    }
+    if (!handledInitialShiftQueryRef.current && shifts.length > 0) {
+      const queryShift = new URLSearchParams(window.location.search).get('shift')
+      if (!queryShift || selectShiftById(queryShift)) {
+        handledInitialShiftQueryRef.current = true
+      }
+    }
+
+    const onSelectEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ shiftId?: string }>).detail
+      if (detail?.shiftId) selectShiftById(detail.shiftId)
+    }
+    window.addEventListener('ada:select-live-shift', onSelectEvent)
+    return () => window.removeEventListener('ada:select-live-shift', onSelectEvent)
+  }, [shifts])
 
   React.useEffect(() => {
     const tick=()=>{

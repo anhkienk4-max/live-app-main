@@ -17,6 +17,7 @@ import type {
   ShiftStatusMode,
 } from '@/lib/types/database.types'
 import { businessLocalDate, DEFAULT_BUSINESS_TIMEZONE } from '@/lib/utils/shiftUtils'
+import { classifyLiveStreamLink } from '@/lib/utils/liveStreamLink'
 import { executionSourceForAgency, resolveExecutionSource } from '@/lib/utils/executionSource'
 import type { PersistedScheduleImportResult } from '@/lib/utils/scheduleImportRecovery'
 import { verifyImportedShiftReadback } from '@/lib/utils/scheduleImportReadback'
@@ -321,6 +322,7 @@ export interface SupabaseShiftRepository {
     options?: { allowSafeUpdate?: boolean },
   ): Promise<PersistedScheduleImportResult>
   update(id: string, data: Partial<Shift>, confirmImpact?: boolean, expectedVersion?: number): Promise<Shift | null>
+  updateLiveLink?(id: string, liveLink: string, expectedVersion?: number): Promise<Shift | null>
   updateStaffingLabels(id: string, labels: ShiftStaffingLabels, expectedVersion?: number): Promise<Shift | null>
   setRegistrationLock(id: string, locked: boolean, expectedVersion?: number): Promise<Shift | null>
   remove(id: string, reason: string, expectedVersion?: number): Promise<DeletionImpact | null>
@@ -714,6 +716,30 @@ export function createSupabaseShiftRepository(
       }).single()
       if (result.error) throw requestError('shift update', result.error)
       return result.data ? shiftFromRow(result.data as unknown as ShiftRow, routingMode, effectiveData.execution_source) : null
+    },
+
+    async updateLiveLink(id, liveLink, expectedVersion) {
+      const clean = liveLink.trim()
+      let finalLink = ''
+      if (clean) {
+        const classified = classifyLiveStreamLink(clean)
+        if (classified.kind !== 'viewer') {
+          throw new ShiftRequestError('INVALID_LIVE_STREAM_LINK', 'INVALID_LIVE_STREAM_LINK')
+        }
+        finalLink = classified.link.href
+      }
+      const result = await client.rpc('update_shift_live_link', {
+        p_shift_id: id,
+        p_live_link: finalLink,
+        p_expected_version: expectedVersion ?? null,
+      }).single()
+      if (result.error) throw requestError('shift live link update', result.error)
+      const persisted = shiftFromRow(requiredRow('shift live link update', result) as unknown as ShiftRow, routingMode)
+      const readback = await this.getById(id)
+      if (!readback || (readback.live_link ?? '') !== finalLink) {
+        throw new ShiftRequestError('LIVE_LINK_READBACK_MISMATCH', 'LIVE_LINK_READBACK_MISMATCH')
+      }
+      return readback ?? persisted
     },
 
     async updateStaffingLabels(id, labels, expectedVersion) {
