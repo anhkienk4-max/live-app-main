@@ -1,0 +1,7 @@
+Delta D V1; baseline 0b7b6185c43540b7bd53455b136eb8dc0ac5a8f4
+Peer review issue #190 comment 7152785264
+3834d9476ac8cdcd6940830c4430545c16e627fe2e8333e12ee9356778632ff2  docs/rc19/W4_DELTA_D_BACKEND_PROPOSED_CONTRACT.md
+a62c9c181643f937912786a75c1983f77cd805d362b4a6c46199d1ede83adb5d  lib/types/shiftIncidentContract.ts
+83d5a8ef109ee0acd6d2661d40c7246628b82122fc747f16350b29f03865f5c3  openspec/changes/rc19-w4-delta-d-backend/proposal.md
+eaaba7c609664830ed800476e4c149c8f4a5ccabaf730a7fc4db9234c683faf4  openspec/changes/rc19-w4-delta-d-backend/design.md
+26e514918d3307d750aa306065c8ed970972bd3b618d246011698d122bff3745  openspec/changes/rc19-w4-delta-d-backend/tasks.md
