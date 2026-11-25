@@ -31,6 +31,7 @@ export function LiveSharedStreamViewer({
   const { currentUser } = useCurrentUser()
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
+  const remoteStreamRef = React.useRef<MediaStream | null>(null)
   const outputStreamRef = React.useRef<MediaStream | null>(null)
   const grantRef = React.useRef<ViewerSessionGrant | null>(null)
   const whepHandleRef = React.useRef<WhepSubscriberHandle | null>(null)
@@ -46,8 +47,9 @@ export function LiveSharedStreamViewer({
 
   React.useEffect(() => {
     const video = videoRef.current
-    if (status === 'active' && video && outputStreamRef.current && video.srcObject !== outputStreamRef.current) {
-      video.srcObject = outputStreamRef.current
+    const targetStream = remoteStreamRef.current || outputStreamRef.current
+    if (status === 'active' && video && targetStream && video.srcObject !== targetStream) {
+      video.srcObject = targetStream
       void video.play().catch(() => undefined)
     }
   }, [status])
@@ -57,6 +59,8 @@ export function LiveSharedStreamViewer({
     deniedRef.current = false
     if (!actorId || isLocalPublisher || !isEditableWindow) {
       grantRef.current = null
+      remoteStreamRef.current?.getTracks().forEach(track => track.stop())
+      remoteStreamRef.current = null
       outputStreamRef.current?.getTracks().forEach(track => track.stop())
       outputStreamRef.current = null
       if (videoEl) videoEl.srcObject = null
@@ -79,6 +83,8 @@ export function LiveSharedStreamViewer({
         void whepHandleRef.current.stop().catch(() => undefined)
         whepHandleRef.current = null
       }
+      remoteStreamRef.current?.getTracks().forEach(track => track.stop())
+      remoteStreamRef.current = null
       outputStreamRef.current?.getTracks().forEach(track => track.stop())
       outputStreamRef.current = null
       if (videoRef.current) videoRef.current.srcObject = null
@@ -146,6 +152,7 @@ export function LiveSharedStreamViewer({
               token: result.grant.token,
               signal: controller.signal,
               onTrack: (_track, stream) => {
+                remoteStreamRef.current = stream
                 if (videoRef.current) {
                   videoRef.current.srcObject = stream
                   void videoRef.current.play().catch(() => undefined)
@@ -160,6 +167,9 @@ export function LiveSharedStreamViewer({
             })
             if (!cancelled && grantRef.current) {
               whepHandleRef.current = handle
+              if (typeof window !== 'undefined') {
+                ;(window as unknown as { __adaViewerPc?: RTCPeerConnection }).__adaViewerPc = handle.pc
+              }
             } else {
               void handle.stop()
             }
@@ -267,6 +277,8 @@ export function LiveSharedStreamViewer({
         whepHandleRef.current = null
       }
       grantRef.current = null
+      remoteStreamRef.current?.getTracks().forEach(track => track.stop())
+      remoteStreamRef.current = null
       outputStreamRef.current?.getTracks().forEach(track => track.stop())
       outputStreamRef.current = null
       if (videoEl) videoEl.srcObject = null

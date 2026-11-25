@@ -50,6 +50,9 @@ const CANDIDATE_W4_FILES = [
   'supabase/migrations/20261117160000_rc19_w4_pass_recipient_visibility.sql',
   'supabase/migrations/20261118140000_rc19_w4_atomic_overtime_payroll_sync.sql',
   'supabase/migrations/20261118150000_rc19_w4_overtime_payroll_defect_fixes.sql',
+  'supabase/migrations/20261124093722_rc19_w4_attendance_assignment_links.sql',
+  'supabase/migrations/20261124104803_rc19_w4_actual_assignment_evidence.sql',
+  'supabase/migrations/20261124120000_rc19_w4_import_staffing_integrity.sql',
 ]
 
 const q = val => `'${String(val).replace(/'/g, "''")}'`
@@ -70,15 +73,22 @@ function psql(db, sql, { allowFailure = false, singleTransaction = false } = {})
     '-X', '-v', 'ON_ERROR_STOP=1', '-A', '-t',
   ]
   if (singleTransaction) args.push('--single-transaction')
-  const res = spawnSync('wsl.exe', args, {
-    input: sql.replace(/\r\n/g, '\n'),
-    encoding: 'utf8',
-    maxBuffer: 25 * 1024 * 1024,
-  })
-  if (!allowFailure && res.status !== 0) {
-    throw new Error(`psql failed (exit=${res.status}):\n${res.stderr}\n${res.stdout}`)
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const res = spawnSync('wsl.exe', args, {
+      input: sql.replace(/\r\n/g, '\n'),
+      encoding: 'utf8',
+      maxBuffer: 25 * 1024 * 1024,
+    })
+    const isWslTransient = res.status === 4294967295 || res.status === -1 || (res.stderr && res.stderr.includes('0x8007274c'))
+    if (isWslTransient && attempt < 4) {
+      spawnSync('wsl.exe', ['-d', WSL_DISTRO, '--', 'sleep', '0.3'])
+      continue
+    }
+    if (!allowFailure && res.status !== 0) {
+      throw new Error(`psql failed (exit=${res.status}):\n${res.stderr}\n${res.stdout}`)
+    }
+    return res
   }
-  return res
 }
 
 function actorSql(sub) {
@@ -184,9 +194,9 @@ try {
   psql(DB_NAME, `INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('20261111200000', '20261111200000') ON CONFLICT DO NOTHING;`)
 
   const countBefore = Number(psql(DB_NAME, 'SELECT count(*) FROM supabase_migrations.schema_migrations;').stdout.trim())
-  assert.equal(countBefore, 130, `Expected 130 baseline receipts before Delta C, got ${countBefore}`)
+  assert.equal(countBefore, 133, `Expected 133 baseline receipts before Delta C, got ${countBefore}`)
 
-  console.log('=== [2/5] Testing atomic rollback & clean apply of Delta C migration (130 -> 131) ===')
+  console.log('=== [2/5] Testing atomic rollback & clean apply of Delta C migration (133 -> 134) ===')
   const deltacSql = readFileSync(DELTAC_MIGRATION_PATH, 'utf8')
   const rollbackRes = psql(
     DB_NAME,
@@ -204,7 +214,7 @@ try {
   psql(DB_NAME, deltacSql, { singleTransaction: true })
   psql(DB_NAME, `INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('20261124150000', 'rc19_w4_deltac_live_monitoring_sharing');`)
   const countAfter = Number(psql(DB_NAME, 'SELECT count(*) FROM supabase_migrations.schema_migrations;').stdout.trim())
-  assert.equal(countAfter, 131)
+  assert.equal(countAfter, 134)
 
   const aclCheck = psql(DB_NAME, `
     SELECT

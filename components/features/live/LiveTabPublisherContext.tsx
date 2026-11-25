@@ -367,6 +367,9 @@ export function LiveTabPublisherProvider({ children }: { children: React.ReactNo
           })
           if (streamRef.current === incomingStream) {
             whipPublisherRef.current = whipHandle
+            if (typeof window !== 'undefined') {
+              ;(window as unknown as { __adaPublisherPc?: RTCPeerConnection }).__adaPublisherPc = whipHandle.pc
+            }
           } else {
             void whipHandle.stop()
           }
