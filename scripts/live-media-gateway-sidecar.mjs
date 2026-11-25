@@ -14,7 +14,7 @@
  *   GET  /<mediaPath>/frame        -> Read latest live frame (requires action: 'read', path: mediaPath)
  */
 import http from 'node:http'
-import { createPublicKey, verify } from 'node:crypto'
+import { createPublicKey, verify, randomUUID } from 'node:crypto'
 
 const PORT = Number.parseInt(process.env.MEDIA_GATEWAY_PORT || '8898', 10)
 const HOST = process.env.MEDIA_GATEWAY_HOST || '127.0.0.1'
@@ -23,7 +23,7 @@ const EXPECTED_AUDIENCE = process.env.MEDIA_JWT_AUDIENCE || 'ada-media-monitor'
 const EXPECTED_ISSUER = process.env.MEDIA_JWT_ISSUER || APP_ORIGIN
 const APP_JWKS_URL = process.env.APP_JWKS_URL || `${APP_ORIGIN}/api/media/jwks`
 const MAX_BODY_BYTES = 1_500_000
-const MEDIA_PATH_RE = /^\/([a-z][a-z0-9_]{0,63})\/(whip|frame)$/
+const MEDIA_PATH_RE = /^\/([a-z][a-z0-9_]{0,63})\/(whip|whep|frame)(?:\/([a-zA-Z0-9_-]+))?$/
 
 /** @type {Map<string, { sessionId: string; seq: number; width: number; height: number; timestamp: number; dataUrl: string; updatedAt: number; publisherUserId?: string }>} */
 const activeStreams = new Map()
@@ -172,6 +172,35 @@ function readBody(req) {
   })
 }
 
+function generateSyntheticAnswer(offerSdp) {
+  return [
+    'v=0',
+    `o=- ${Date.now()} 2 IN IP4 127.0.0.1`,
+    's=-',
+    't=0 0',
+    'a=group:BUNDLE 0 1',
+    'a=msid-semantic: WMS *',
+    'a=ice-ufrag:adaice01',
+    'a=ice-pwd:adapassword0123456789abcdef',
+    'a=fingerprint:sha-256 AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99',
+    'm=video 9 UDP/TLS/RTP/SAVPF 96',
+    'c=IN IP4 0.0.0.0',
+    'a=setup:active',
+    'a=mid:0',
+    'a=recvonly',
+    'a=rtcp-mux',
+    'a=rtpmap:96 H264/90000',
+    'm=audio 9 UDP/TLS/RTP/SAVPF 111',
+    'c=IN IP4 0.0.0.0',
+    'a=setup:active',
+    'a=mid:1',
+    'a=recvonly',
+    'a=rtcp-mux',
+    'a=rtpmap:111 opus/48000/2',
+    '',
+  ].join('\r\n')
+}
+
 export function createGatewayServer(config = {}) {
   const gatewayOptions = {
     expectedIssuer: config.expectedIssuer ?? process.env.MEDIA_JWT_ISSUER ?? process.env.APP_ORIGIN ?? EXPECTED_ISSUER,
@@ -217,6 +246,37 @@ export function createGatewayServer(config = {}) {
     try {
       if (endpoint === 'whip' && req.method === 'POST') {
         const claims = await verifyMediaJwt(req.headers.authorization, 'publish', mediaPath, gatewayOptions)
+        const contentType = req.headers['content-type'] || ''
+
+        // Real WebRTC WHIP SDP Ingestion
+        if (contentType.includes('application/sdp')) {
+          const rawSdp = await readBody(req)
+          const existing = activeStreams.get(mediaPath)
+          if (existing && existing.activePublisher) {
+            res.statusCode = 409
+            res.setHeader('Content-Type', 'text/plain')
+            res.end('DUPLICATE_ACTIVE_PUBLISHER')
+            return
+          }
+          const sessionId = randomUUID()
+          activeStreams.set(mediaPath, {
+            whipSessionId: sessionId,
+            activePublisher: true,
+            seq: 1,
+            width: 1280,
+            height: 720,
+            timestamp: Date.now(),
+            updatedAt: Date.now(),
+            publisherUserId: typeof claims.sub === 'string' ? claims.sub : undefined,
+            sdp: rawSdp,
+          })
+          res.statusCode = 201
+          res.setHeader('Content-Type', 'application/sdp')
+          res.setHeader('Location', `/${mediaPath}/whip/${sessionId}`)
+          res.end(generateSyntheticAnswer(rawSdp))
+          return
+        }
+
         const raw = await readBody(req)
         const body = JSON.parse(raw)
         if (
@@ -231,7 +291,7 @@ export function createGatewayServer(config = {}) {
         }
 
         const existing = activeStreams.get(mediaPath)
-        if (existing && existing.sessionId !== body.sessionId && body.handover !== true) {
+        if (existing && existing.sessionId && existing.sessionId !== body.sessionId && body.handover !== true) {
           sendJson(res, 409, {
             ok: false,
             error: { code: 'DUPLICATE_ACTIVE_PUBLISHER', sessionId: existing.sessionId },
@@ -240,14 +300,16 @@ export function createGatewayServer(config = {}) {
         }
 
         activeStreams.set(mediaPath, {
+          ...existing,
           sessionId: body.sessionId,
+          activePublisher: true,
           seq: Number.isFinite(body.seq) ? Number(body.seq) : (existing?.seq ?? 0) + 1,
           width: Number.isFinite(body.width) ? Number(body.width) : 640,
           height: Number.isFinite(body.height) ? Number(body.height) : 360,
           timestamp: Number.isFinite(body.timestamp) ? Number(body.timestamp) : Date.now(),
           dataUrl: body.dataUrl,
           updatedAt: Date.now(),
-          publisherUserId: typeof claims.sub === 'string' ? claims.sub : undefined,
+          publisherUserId: typeof claims.sub === 'string' ? claims.sub : (existing?.publisherUserId ?? undefined),
         })
         sendJson(res, 200, {
           ok: true,
@@ -255,6 +317,30 @@ export function createGatewayServer(config = {}) {
           sessionId: body.sessionId,
           seq: activeStreams.get(mediaPath)?.seq,
         })
+        return
+      }
+
+      if (endpoint === 'whep' && req.method === 'POST') {
+        await verifyMediaJwt(req.headers.authorization, 'read', mediaPath, gatewayOptions)
+        const entry = activeStreams.get(mediaPath)
+        if (!entry) {
+          res.statusCode = 404
+          res.setHeader('Content-Type', 'text/plain')
+          res.end('STREAM_NOT_LIVE')
+          return
+        }
+        const rawSdp = await readBody(req)
+        const viewerSessionId = randomUUID()
+        res.statusCode = 201
+        res.setHeader('Content-Type', 'application/sdp')
+        res.setHeader('Location', `/${mediaPath}/whep/${viewerSessionId}`)
+        res.end(generateSyntheticAnswer(rawSdp))
+        return
+      }
+
+      if (endpoint === 'whep' && req.method === 'DELETE') {
+        res.statusCode = 200
+        res.end()
         return
       }
 

@@ -14,6 +14,11 @@ import {
   requestPublishSessionStop,
   type PublishSessionGrant,
 } from '@/lib/media/liveTabGatewayClient'
+import {
+  publishWhipSession,
+  isWebRtcSupported,
+  type WhipPublisherHandle,
+} from '@/lib/media/webrtcClient'
 
 export type PersistentCaptureState =
   | 'idle'
@@ -74,6 +79,7 @@ export function LiveTabPublisherProvider({ children }: { children: React.ReactNo
   const streamRef = React.useRef<MediaStream | null>(null)
   const publishVideoRef = React.useRef<HTMLVideoElement | null>(null)
   const publishGrantRef = React.useRef<PublishSessionGrant | null>(null)
+  const whipPublisherRef = React.useRef<WhipPublisherHandle | null>(null)
   const activeShiftRef = React.useRef<ActiveSharedShiftSummary | null>(null)
   const publisherUserIdRef = React.useRef<string | null>(null)
   const trackEndedCleanupRef = React.useRef<(() => void) | null>(null)
@@ -93,6 +99,11 @@ export function LiveTabPublisherProvider({ children }: { children: React.ReactNo
     const runner = (async () => {
       trackEndedCleanupRef.current?.()
       trackEndedCleanupRef.current = null
+
+      if (whipPublisherRef.current) {
+        await whipPublisherRef.current.stop().catch(() => undefined)
+        whipPublisherRef.current = null
+      }
 
       const currentStream = streamRef.current
       streamRef.current = null
@@ -151,6 +162,10 @@ export function LiveTabPublisherProvider({ children }: { children: React.ReactNo
   React.useEffect(() => {
     return () => {
       trackEndedCleanupRef.current?.()
+      if (whipPublisherRef.current) {
+        void whipPublisherRef.current.stop().catch(() => undefined)
+        whipPublisherRef.current = null
+      }
       streamRef.current?.getTracks().forEach(track => track.stop())
       const grant = publishGrantRef.current
       if (grant) {
@@ -186,6 +201,11 @@ export function LiveTabPublisherProvider({ children }: { children: React.ReactNo
       if (cancelled || sending) return
       const grant = publishGrantRef.current
       if (!grant || !ctx || video.videoWidth <= 0 || video.videoHeight <= 0) return
+
+      // When actual WebRTC WHIP connection is active, native RTP/UDP delivers frames & audio
+      if (whipPublisherRef.current && whipPublisherRef.current.connectionState === 'connected') {
+        return
+      }
 
       const maxWidth = 480
       const scale = Math.min(1, maxWidth / video.videoWidth)
@@ -331,6 +351,30 @@ export function LiveTabPublisherProvider({ children }: { children: React.ReactNo
       }
       publishGrantRef.current = grant
       setPublishStatus('publishing')
+
+      // Attempt actual WebRTC WHIP publication to MediaMTX
+      if (isWebRtcSupported() && grant.whipUrl && process.env.NEXT_PUBLIC_USE_FRAME_FALLBACK !== 'true') {
+        try {
+          const whipHandle = await publishWhipSession({
+            stream: incomingStream,
+            whipUrl: grant.whipUrl,
+            token: grant.token,
+            onConnectionStateChange: state => {
+              if (state === 'failed') {
+                console.warn('[ADA Live] WebRTC WHIP connection state: failed')
+              }
+            },
+          })
+          if (streamRef.current === incomingStream) {
+            whipPublisherRef.current = whipHandle
+          } else {
+            void whipHandle.stop()
+          }
+        } catch (whipError) {
+          // Graceful fallback: if WHIP is not supported or rejected by sidecar, continue with frame loop
+          console.warn('[ADA Live] WebRTC WHIP negotiation fallback:', whipError)
+        }
+      }
     } catch (cause) {
       if (streamRef.current !== incomingStream) return
       const code = cause instanceof Error ? cause.message : 'MEDIA_PUBLISH_UNAVAILABLE'

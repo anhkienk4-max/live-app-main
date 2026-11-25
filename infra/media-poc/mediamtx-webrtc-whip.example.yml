@@ -37,7 +37,7 @@ hlsAddress: 127.0.0.1:8888
 hlsEncryption: false
 hlsAllowOrigins: ["https://ops5729.top"]
 hlsVariant: lowLatency
-hlsSegmentCount: 5
+hlsSegmentCount: 7
 hlsSegmentDuration: 1s
 hlsPartDuration: 200ms
 hlsDirectory: ""

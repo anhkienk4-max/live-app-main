@@ -10,6 +10,11 @@ import {
   requestViewerSessionGrant,
   type ViewerSessionGrant,
 } from '@/lib/media/liveTabGatewayClient'
+import {
+  subscribeWhepSession,
+  isWebRtcSupported,
+  type WhepSubscriberHandle,
+} from '@/lib/media/webrtcClient'
 
 /**
  * Authorized multi-account live tab stream viewer.
@@ -28,6 +33,7 @@ export function LiveSharedStreamViewer({
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const outputStreamRef = React.useRef<MediaStream | null>(null)
   const grantRef = React.useRef<ViewerSessionGrant | null>(null)
+  const whepHandleRef = React.useRef<WhepSubscriberHandle | null>(null)
   const hadActiveSessionRef = React.useRef(false)
   const deniedRef = React.useRef(false)
 
@@ -69,6 +75,10 @@ export function LiveSharedStreamViewer({
 
     const clearPlayback = (nextStatus: 'idle' | 'denied' | 'ended', message = '') => {
       grantRef.current = null
+      if (whepHandleRef.current) {
+        void whepHandleRef.current.stop().catch(() => undefined)
+        whepHandleRef.current = null
+      }
       outputStreamRef.current?.getTracks().forEach(track => track.stop())
       outputStreamRef.current = null
       if (videoRef.current) videoRef.current.srcObject = null
@@ -127,6 +137,37 @@ export function LiveSharedStreamViewer({
         grantRef.current = result.grant
         hadActiveSessionRef.current = true
         setPublisherLabel(result.grant.publisherBusinessUserId ?? '')
+
+        // Initiate real WebRTC WHEP connection if gateway and browser support it
+        if (result.grant.whepUrl && isWebRtcSupported() && !whepHandleRef.current && process.env.NEXT_PUBLIC_USE_FRAME_FALLBACK !== 'true') {
+          try {
+            const handle = await subscribeWhepSession({
+              whepUrl: result.grant.whepUrl,
+              token: result.grant.token,
+              signal: controller.signal,
+              onTrack: (_track, stream) => {
+                if (videoRef.current) {
+                  videoRef.current.srcObject = stream
+                  void videoRef.current.play().catch(() => undefined)
+                }
+                setStatus('active')
+              },
+              onConnectionStateChange: state => {
+                if (state === 'failed') {
+                  whepHandleRef.current = null
+                }
+              },
+            })
+            if (!cancelled && grantRef.current) {
+              whepHandleRef.current = handle
+            } else {
+              void handle.stop()
+            }
+          } catch (whepError) {
+            console.warn('[ADA Live] WebRTC WHEP subscription fallback to frames:', whepError)
+          }
+        }
+
         return result.grant
       } catch {
         return null
@@ -168,6 +209,10 @@ export function LiveSharedStreamViewer({
 
     const tick = async () => {
       if (cancelled || pollingFrame || deniedRef.current) return
+      // When WebRTC WHEP connection is active, media frames stream natively over RTP
+      if (whepHandleRef.current && whepHandleRef.current.connectionState === 'connected') {
+        return
+      }
       pollingFrame = true
       try {
         const grant = await ensureGrant()
@@ -217,6 +262,10 @@ export function LiveSharedStreamViewer({
       controller.abort()
       window.clearInterval(frameInterval)
       window.clearInterval(sessionInterval)
+      if (whepHandleRef.current) {
+        void whepHandleRef.current.stop().catch(() => undefined)
+        whepHandleRef.current = null
+      }
       grantRef.current = null
       outputStreamRef.current?.getTracks().forEach(track => track.stop())
       outputStreamRef.current = null

@@ -6,6 +6,8 @@ export type PublishSessionGrant = {
   mediaPath: string
   mediaOrigin: string
   whipUrl: string
+  whepUrl?: string
+  hlsUrl?: string
   token: string
   expiresAt: string
 }
@@ -15,7 +17,9 @@ export type ViewerSessionGrant = {
   shiftId: string
   mediaPath: string
   mediaOrigin: string
-  frameUrl: string
+  whepUrl?: string
+  hlsUrl?: string
+  frameUrl?: string
   token: string
   expiresAt: string
   publisherBusinessUserId?: string
@@ -218,7 +222,8 @@ export async function fetchAuthorizedGatewayFrame(input: {
   | { kind: 'ended' }
   | { kind: 'unauthorized'; status: number }
 > {
-  const response = await fetch(input.grant.frameUrl, {
+  const frameUrl = input.grant.frameUrl || `${input.grant.mediaOrigin}/${input.grant.mediaPath}/frame`
+  const response = await fetch(frameUrl, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${input.grant.token}`,
