@@ -62,7 +62,8 @@ export function createStaffingIncidentReplacementHandler(deps: Dependencies = {}
         const known = ['SHIFT_VERSION_CONFLICT', 'REGISTRATION_VERSION_CONFLICT', 'IDEMPOTENCY_KEY_REUSED',
           'EMERGENCY_EFFECTIVE_TIME_OUTSIDE_SEGMENT', 'REPLACEMENT_EFFECTIVE_TIME_INVALID',
           'INCIDENT_REQUEST_INVALID', 'INCIDENT_EVIDENCE_REFERENCE_UNAVAILABLE', 'LEADER_BRAND_SCOPE_REQUIRED',
-          'EMERGENCY_REPLACEMENT_ADMIN_ONLY', 'STAFFING_PERMISSION_REQUIRED', 'ACTOR_NOT_AUTHORIZED']
+          'EMERGENCY_REPLACEMENT_ADMIN_ONLY', 'STAFFING_PERMISSION_REQUIRED', 'ACTOR_NOT_AUTHORIZED',
+          'ROLE_NOT_QUALIFIED']
           .find(code => result.error?.message?.includes(code))
         if (known && (result.error.code === '40001' || result.error.code === '23505')) return fail(known, 409)
         if (result.error.code === '42501') return fail(known ?? 'PERMISSION_DENIED', 403)
