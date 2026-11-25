@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "af6a254d89dabb03515076501ffdb0a1feffcabe",
+    "head": "d1149cb3ef213b74f289b12d4a7e34454c79fc04",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -73,6 +73,7 @@
       "app/api/internal/release-provenance/route.ts",
       "app/api/internal/storage-drive-probe/route.ts",
       "app/api/media/jwks/route.ts",
+      "app/api/media/publisher-session/route.ts",
       "app/api/media/viewer-grant/route.ts",
       "app/api/ocr/route.ts",
       "app/api/ocr/vision/route.ts",
@@ -120,14 +121,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 96,
-        "components": 195,
-        "lib": 292,
-        "scripts": 182,
-        "supabase": 160,
-        "tests": 394
+        "app": 97,
+        "components": 198,
+        "lib": 297,
+        "scripts": 193,
+        "supabase": 164,
+        "tests": 400
       },
-      "total": 1319
+      "total": 1349
     },
     "tests": {
       "files": [
@@ -383,11 +384,15 @@
         "tests/rc19-ui-functional-integration.test.tsx",
         "tests/rc19-unified-import-postgres17.test.ts",
         "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
+        "tests/rc19-w4-deltac-live-monitoring.test.ts",
+        "tests/rc19-w4-deltac-webrtc.test.ts",
         "tests/rc19-w4-legacy-segment-compatibility.test.ts",
         "tests/rc19-w4-production-cli-migration-runner.test.ts",
         "tests/rc19-w4-staffing-conflict-api.test.ts",
         "tests/rc19-w4-swap-brand-security-postgres17.test.ts",
         "tests/rc19-w4-swap-brand-security.test.ts",
+        "tests/rc19-w4-taskb-issue184-kao-regression.test.ts",
+        "tests/rc19-w4-taskb-staffing-semantics.test.ts",
         "tests/rc19-wave3-verification.test.ts",
         "tests/rc19-workforce-authority.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
@@ -451,7 +456,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 319
+      "count": 323
     },
     "migrations": {
       "files": [
@@ -586,9 +591,13 @@
         "supabase/migrations/20261116120000_rc19_w4_swap_preflight_and_segment_capacity.sql",
         "supabase/migrations/20261117160000_rc19_w4_pass_recipient_visibility.sql",
         "supabase/migrations/20261118140000_rc19_w4_atomic_overtime_payroll_sync.sql",
-        "supabase/migrations/20261118150000_rc19_w4_overtime_payroll_defect_fixes.sql"
+        "supabase/migrations/20261118150000_rc19_w4_overtime_payroll_defect_fixes.sql",
+        "supabase/migrations/20261124093722_rc19_w4_attendance_assignment_links.sql",
+        "supabase/migrations/20261124104803_rc19_w4_actual_assignment_evidence.sql",
+        "supabase/migrations/20261124120000_rc19_w4_import_staffing_integrity.sql",
+        "supabase/migrations/20261124150000_rc19_w4_deltac_live_monitoring_sharing.sql"
       ],
-      "count": 132
+      "count": 136
     }
   },
   "verification": {
@@ -602,5 +611,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-19T18:01:33+07:00"
+  "synced_at": "2026-11-25T17:16:32+07:00"
 }

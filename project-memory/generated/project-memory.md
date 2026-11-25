@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-11-19T18:01:33+07:00
+Generated at: 2026-11-25T17:16:32+07:00
 
 ## Repository
 
 - Canonical source branch: `main`
-- Snapshot HEAD: `af6a254d89dabb03515076501ffdb0a1feffcabe`
+- Snapshot HEAD: `d1149cb3ef213b74f289b12d4a7e34454c79fc04`
 - origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
@@ -20,10 +20,10 @@ Generated at: 2026-11-19T18:01:33+07:00
 
 ## Inventory
 
-- Routes: 88
-- Source files in tracked inventory roots: 1319
-- Tests: 319
-- Migrations: 132
+- Routes: 89
+- Source files in tracked inventory roots: 1349
+- Tests: 323
+- Migrations: 136
 
 ## Modules
 
