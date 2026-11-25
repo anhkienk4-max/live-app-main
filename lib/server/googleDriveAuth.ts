@@ -87,7 +87,13 @@ export function createGoogleDriveAuth(env: GoogleDriveEnvironment = process.env)
     const clientSecret = required(env, 'GOOGLE_DRIVE_CLIENT_SECRET')
     const refreshToken = required(env, 'GOOGLE_DRIVE_REFRESH_TOKEN')
     const auth = new google.auth.OAuth2(clientId, clientSecret)
-    auth.setCredentials({ refresh_token: refreshToken })
+    auth.setCredentials({
+      refresh_token: refreshToken,
+      ...(env.GOOGLE_DRIVE_ACCESS_TOKEN ? {
+        access_token: env.GOOGLE_DRIVE_ACCESS_TOKEN,
+        expiry_date: Date.now() + 86400000,
+      } : {}),
+    })
     return { auth, mode }
   }
 

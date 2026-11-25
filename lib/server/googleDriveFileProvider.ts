@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { Readable } from 'node:stream'
-import { google } from 'googleapis'
+import { google, type drive_v3 } from 'googleapis'
 
 import type { FileProviderMetadata, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import { sanitizeFileName } from '@/lib/files/fileValidation'
@@ -142,11 +142,15 @@ function toMetadata(file: DriveFile): FileProviderMetadata {
 export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}): FolderCapableFileProvider {
   const env = options.env ?? process.env
   const rootFolderId = requiredRootFolderId(env)
+  if (env.GOOGLE_DRIVE_ROOT_URL) {
+    google.options({ rootUrl: env.GOOGLE_DRIVE_ROOT_URL })
+  }
   const { auth, mode: authMode } = createGoogleDriveAuth(env)
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS
   const drive = options.drive ?? (google.drive({
     version: 'v3',
     auth: auth as Parameters<typeof google.drive>[0]['auth'],
+    ...(env.GOOGLE_DRIVE_ROOT_URL ? { rootUrl: env.GOOGLE_DRIVE_ROOT_URL } : {}),
   }) as unknown as GoogleDriveClient)
   const folderCache = new Map<string, string>()
 
@@ -289,13 +293,17 @@ export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}):
       } else {
         parentId = await resolveFolderPath(input.logical_path)
       }
+      const createOptions = env.GOOGLE_DRIVE_ROOT_URL ? { rootUrl: env.GOOGLE_DRIVE_ROOT_URL } : undefined
       const response = await request(
-        () => drive.files.create({
+        () => (drive.files.create as unknown as (
+          params: drive_v3.Params$Resource$Files$Create,
+          options?: unknown
+        ) => Promise<{ data: drive_v3.Schema$File }>)({
           requestBody: { name: sanitizeFileName(input.name), parents: [parentId] },
           media: { mimeType: input.mime_type, body: Readable.from([content]) },
           fields: 'id,name,mimeType,size,md5Checksum,parents,createdTime,modifiedTime,webViewLink,webContentLink',
           supportsAllDrives: true,
-        }),
+        }, createOptions),
         'GOOGLE_DRIVE_UPLOAD_FAILED',
       )
       const file = response.data
