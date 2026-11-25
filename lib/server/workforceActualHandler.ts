@@ -838,7 +838,7 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
           ])
           if (regsRes?.error || swapsRes?.error) return fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
 
-          const verification = resolveStaffAssignmentVerification({
+          let verification = resolveStaffAssignmentVerification({
             shiftId: current.shift_id,
             staffId: current.staff_id,
             operationalRole: current.operational_role,
@@ -847,6 +847,25 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
             swaps: swapsRes.data ?? [],
           })
 
+          // A replaced employee's registration is removed from the active roster,
+          // but their work before the handover remains eligible for review.
+          if (!verification.assignment_verified && current.assignment_id && current.event_kind === 'worked') {
+            const session = deps.createScopeClient
+              ? await deps.createScopeClient(request)
+              : await (await import('@/lib/supabase/server')).createClient()
+            const historical = await session.rpc('rc19_d1_historical_actual_assignment_valid', { p_actual_id: current.id })
+            if (historical.error) return historical.error.code === '42501'
+              ? fail('WORKFORCE_HISTORICAL_ASSIGNMENT_DENIED', 403)
+              : fail('WORKFORCE_SCOPE_LOOKUP_FAILED', 503)
+            if (historical.data === true) verification = {
+              assignment_verified: true,
+              is_exception: false,
+              requires_exception_approval: false,
+              matched_source: 'shift_registration',
+              exception_reason: null,
+            }
+          }
+
           // Planned coverage without verified assignment CAN NEVER be approved
           if (current.coverage_kind === 'planned' && !verification.assignment_verified) {
             return fail('WORKFORCE_PLANNED_STAFF_UNSCHEDULED', 409)
@@ -854,11 +873,13 @@ export function createWorkforceActualHandler(deps: Depends = {}) {
 
           // Clock events are immutable evidence, separate from the supervisor-approved minute interval.
           if (current.event_kind === 'worked' && current.coverage_kind === 'planned') {
-            const attendance = await client.from('self_attendance_events')
+            let attendanceQuery = client.from('self_attendance_events')
               .select('event_kind')
               .eq('shift_id', current.shift_id)
               .eq('staff_id', current.staff_id)
               .eq('operational_role', current.operational_role)
+            if (current.assignment_id) attendanceQuery = attendanceQuery.eq('assignment_id', current.assignment_id)
+            const attendance = await attendanceQuery
             if (attendance.error) return fail('SELF_ATTENDANCE_REVIEW_UNAVAILABLE', 503)
             const kinds = new Set((attendance.data ?? []).map(event => event.event_kind))
             if (!kinds.has('check_in') || !kinds.has('check_out'))

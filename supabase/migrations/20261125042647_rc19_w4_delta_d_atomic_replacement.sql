@@ -190,6 +190,39 @@ begin
 end;
 $$;
 
+-- Authoritative, scoped proof for review of a replaced employee's work.
+CREATE FUNCTION public.rc19_d1_historical_actual_assignment_valid(p_actual_id text)
+RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $function$
+DECLARE v_actor text; v_permission text;
+BEGIN
+  v_actor := private.require_shift_actor(true);
+  v_permission := private.current_system_permission();
+  IF v_actor IS NULL OR NOT private.current_business_user_is_active()
+    OR v_permission IS DISTINCT FROM 'admin'
+    OR NOT public.rbac01_effective_permission('shifts.assign_staff') THEN
+    RAISE EXCEPTION USING ERRCODE='42501', MESSAGE='ACTOR_NOT_AUTHORIZED';
+  END IF;
+  -- Leader agency authorization has not yet been established for historical
+  -- receipts; keep this new review path Admin-only until it is verified.
+  RETURN EXISTS (
+    SELECT 1 FROM public.workforce_actual_segments a
+    JOIN public.shift_registrations r ON r.id=a.assignment_id AND r.shift_id=a.shift_id
+      AND r.user_id=a.staff_id AND r.operational_role=a.operational_role AND r.status='removed'
+    JOIN public.shifts shift ON shift.id=a.shift_id AND shift.deleted_at IS NULL AND shift.archived_at IS NULL
+    JOIN public.shift_staffing_segments s ON s.id=r.staffing_segment_id AND s.shift_id=a.shift_id
+    JOIN public.rc19_shift_assignment_replacements outgoing ON outgoing.old_registration_id=r.id
+      AND outgoing.shift_id=a.shift_id AND outgoing.staffing_segment_id=s.id
+    WHERE a.id=p_actual_id AND a.event_kind='worked'
+      AND a.actual_start_at>=s.start_at AND a.actual_end_at<=s.end_at
+      AND a.actual_end_at<=outgoing.effective_at
+      AND NOT EXISTS (SELECT 1 FROM public.rc19_shift_assignment_replacements incoming
+        WHERE incoming.new_registration_id=r.id AND a.actual_start_at<incoming.effective_at)
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.rc19_d1_historical_actual_assignment_valid(text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.rc19_d1_historical_actual_assignment_valid(text) TO authenticated;
+
 -- Private operation-specific binding; the C4 receipt remains authoritative for
 -- replacement parameters and this row binds the complete incident payload.
 CREATE TABLE private.rc19_incident_replacement_requests (
