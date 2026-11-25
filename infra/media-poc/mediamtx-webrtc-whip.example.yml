@@ -45,5 +45,6 @@ hlsDirectory: ""
 pathDefaults:
   record: false
   source: publisher
+  overridePublisher: false
   # Exact media_path values (`shift_<id>`) must be present in the ES256 JWT
   # `mediamtx_permissions` claim (`action: publish` or `action: read`).
