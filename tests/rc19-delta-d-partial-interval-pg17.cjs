@@ -13,14 +13,34 @@ async function main() {
     const seed = await db.query("select r.actor_business_user_id actor,u.auth_user_id,r.old_user_id old_user,r.replacement_user_id new_user,n.auth_user_id new_auth,s.brand_id,s.platform_id from public.rc19_shift_assignment_replacements r join public.business_users u on u.id=r.actor_business_user_id join public.business_users n on n.id=r.replacement_user_id join public.shifts s on s.id=r.shift_id where r.shift_id='delta-d-shift'")
     assert.equal(seed.rowCount, 1)
     const x = seed.rows[0], suffix = randomUUID().slice(0, 8), shift = `delta-d-partial-${suffix}`, segment = `delta-d-partial-seg-${suffix}`
+    const candidates = await db.query("select u.id,u.auth_user_id from public.business_users u where u.id<>$1 and u.operational_roles @> array['host']::text[] and u.status='active' and u.account_status='active' and u.archived_at is null and u.deleted_at is null and u.auth_user_id is not null and not exists (select 1 from public.shift_registrations r join public.shifts s on s.id=r.shift_id where r.user_id=u.id and r.status in ('approved','manually_assigned') and s.deleted_at is null and s.archived_at is null and s.start_at<now()+interval '4 hours' and s.end_at>now()-interval '4 hours') order by u.id limit 1", [x.old_user])
+    assert.equal(candidates.rowCount,1,'A free synthetic replacement user is required'); x.new_user=candidates.rows[0].id; x.new_auth=candidates.rows[0].auth_user_id
     await db.query("select set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)", [x.auth_user_id])
-    await db.query("insert into public.shifts(id,date,start_time,end_time,timezone,start_at,end_at,end_date,crosses_midnight,duration_minutes,brand_id,platform_id,registration_cutoff_at,status,title,required_host_count,required_support_count,required_technical_count) select $1,(now() at time zone 'Asia/Ho_Chi_Minh')::date,'08:00','20:00','Asia/Ho_Chi_Minh',now()-interval '3 hours',now()+interval '3 hours',(now() at time zone 'Asia/Ho_Chi_Minh')::date,false,360,$2,$3,now()-interval '1 day','scheduled','D1 partial synthetic',1,0,0", [shift,x.brand_id,x.platform_id])
+    await db.query("insert into public.shifts(id,date,start_time,end_time,timezone,start_at,end_at,end_date,crosses_midnight,duration_minutes,brand_id,platform_id,registration_cutoff_at,status,title,required_host_count,required_support_count,required_technical_count) select $1,((now()-interval '3 hours'-$4::int*interval '1 second') at time zone 'Asia/Ho_Chi_Minh')::date,((now()-interval '3 hours'-$4::int*interval '1 second') at time zone 'Asia/Ho_Chi_Minh')::time,((now()+interval '3 hours') at time zone 'Asia/Ho_Chi_Minh')::time,'Asia/Ho_Chi_Minh',now()-interval '3 hours'-$4::int*interval '1 second',now()+interval '3 hours',((now()+interval '3 hours') at time zone 'Asia/Ho_Chi_Minh')::date,((now()-interval '3 hours'-$4::int*interval '1 second') at time zone 'Asia/Ho_Chi_Minh')::date<>((now()+interval '3 hours') at time zone 'Asia/Ho_Chi_Minh')::date,360,$2,$3,now()-interval '1 day','scheduled','D1 partial synthetic',1,0,0", [shift,x.brand_id,x.platform_id,parseInt(suffix,16)%3600])
     await db.query("insert into public.shift_staffing_segments(id,shift_id,segment_index,start_at,end_at,required_host_count,required_support_count,required_technical_count,created_by) values($1,$2,1,now()-interval '2 hours',now()+interval '2 hours',1,0,0,$3)", [segment,shift,x.actor])
     const original = await db.query("select * from public.manual_assign_shift_staff_to_segment($1,$2,'host','D1 partial fixture',(select version from public.shifts where id=$1),$3)", [shift,x.old_user,segment])
     const oldActual = `delta-d-original-${suffix}`
     await db.query("insert into public.workforce_actual_segments(id,shift_id,staff_id,operational_role,assignment_id,event_kind,actual_start_at,actual_end_at,evidence_note,created_by) values($1,$2,$3,'host',$4,'worked',now()-interval '100 minutes',now()-interval '40 minutes','synthetic original actual',$3)", [oldActual,shift,x.old_user,original.rows[0].id])
     const before = await db.query('select private.rc19_c515_required_payroll_evidence($1) missing', [oldActual])
     assert.equal(before.rows[0].missing.includes('assignment_evidence_mapping_required'), false)
+    await db.query('savepoint pre_replacement_approval')
+    let approvalBlocked = false
+    try {
+      await db.query("update public.workforce_actual_segments set review_status='approved',reviewed_by=$2,reviewed_at=now(),review_note='synthetic independent review',version=version+1 where id=$1", [oldActual,x.actor])
+    } catch (error) { approvalBlocked = error.message.includes('WORKFORCE_SHIFT_NOT_COMPLETED') }
+    await db.query('rollback to savepoint pre_replacement_approval')
+    assert.equal(approvalBlocked,true,'Capture the existing completed-shift approval requirement')
+    console.log('pre-replacement actual approval: BLOCKED (WORKFORCE_SHIFT_NOT_COMPLETED)')
+    await db.query('savepoint completed_approval')
+    await db.query("update public.shifts set status='completed' where id=$1", [shift])
+    await db.query("update public.workforce_actual_segments set review_status='approved',reviewed_by=$2,reviewed_at=now(),review_note='synthetic independent review',version=version+1 where id=$1", [oldActual,x.actor])
+    let completedDenied = false
+    try {
+      await db.query("select public.replace_shift_assignment_with_incident_v1($1,$2,$3,$4,'host',(select version from public.shifts where id=$1),$5,now()-interval '30 minutes','Partial replacement',true,$6,'skip',null)", [shift,segment,original.rows[0].id,x.new_user,original.rows[0].version,randomUUID()])
+    } catch (error) { completedDenied = error.message.includes('SHIFT_NOT_REPLACEABLE') }
+    await db.query('rollback to savepoint completed_approval')
+    assert.equal(completedDenied,true,'A completed shift cannot be replaced under the existing C4 contract')
+    console.log('replacement after approved actual: BLOCKED (SHIFT_NOT_REPLACEABLE)')
     const result = await db.query("select public.replace_shift_assignment_with_incident_v1($1,$2,$3,$4,'host',(select version from public.shifts where id=$1),$5,now()-interval '30 minutes','Partial replacement',true,$6,'skip',null) result", [shift,segment,original.rows[0].id,x.new_user,original.rows[0].version,randomUUID()])
     const receipt = result.rows[0].result
     await db.query("select set_config('request.jwt.claim.sub',$1,true)", [x.new_auth])
@@ -48,6 +68,11 @@ async function main() {
     console.log('original actual-work evidence mapping: PASS')
     await db.query("update public.workforce_actual_segments set evidence_note='synthetic original correction',version=version+1 where id=$1", [oldActual])
     console.log('original actual-work update after replacement: PASS')
+    await db.query('savepoint exact_boundary')
+    await db.query('update public.workforce_actual_segments set actual_end_at=$2,version=version+1 where id=$1', [oldActual,receipt.effective_at])
+    await db.query("insert into public.workforce_actual_segments(id,shift_id,staff_id,operational_role,assignment_id,event_kind,actual_start_at,actual_end_at,evidence_note,created_by) values($1,$2,$3,'host',$4,'worked',$5::timestamptz,$5::timestamptz+interval '1 minute','synthetic boundary actual',$3)", [`delta-d-boundary-${suffix}`,shift,x.new_user,receipt.registration.id,receipt.effective_at])
+    await db.query('rollback to savepoint exact_boundary')
+    console.log('exact handover boundary for original and replacement: PASS')
     await db.query('savepoint original_boundary')
     let oldDenied = false
     try {

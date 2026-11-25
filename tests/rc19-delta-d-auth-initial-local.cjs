@@ -21,7 +21,7 @@ async function main() {
     assert.equal(seed.rowCount, 1); const x = seed.rows[0]
     await db.query('begin')
     await db.query("select set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)", [x.auth_user_id])
-    await db.query("insert into public.shifts(id,date,start_time,end_time,timezone,start_at,end_at,end_date,crosses_midnight,duration_minutes,brand_id,platform_id,registration_cutoff_at,status,title,required_host_count,required_support_count,required_technical_count) select $1,(now() at time zone 'Asia/Ho_Chi_Minh')::date+70,'08:00','12:00','Asia/Ho_Chi_Minh',((now() at time zone 'Asia/Ho_Chi_Minh')::date+70+time '08:00') at time zone 'Asia/Ho_Chi_Minh',((now() at time zone 'Asia/Ho_Chi_Minh')::date+70+time '12:00') at time zone 'Asia/Ho_Chi_Minh',(now() at time zone 'Asia/Ho_Chi_Minh')::date+70,false,240,$2,$3,now()+interval '69 days','scheduled','D1 real HTTP synthetic',1,0,0", [shift,x.brand_id,x.platform_id])
+    await db.query("insert into public.shifts(id,date,start_time,end_time,timezone,start_at,end_at,end_date,crosses_midnight,duration_minutes,brand_id,platform_id,registration_cutoff_at,status,title,required_host_count,required_support_count,required_technical_count) select $1,(now() at time zone 'Asia/Ho_Chi_Minh')::date+$4::int,'08:00','12:00','Asia/Ho_Chi_Minh',((now() at time zone 'Asia/Ho_Chi_Minh')::date+$4::int+time '08:00') at time zone 'Asia/Ho_Chi_Minh',((now() at time zone 'Asia/Ho_Chi_Minh')::date+$4::int+time '12:00') at time zone 'Asia/Ho_Chi_Minh',(now() at time zone 'Asia/Ho_Chi_Minh')::date+$4::int,false,240,$2,$3,now()+interval '69 days','scheduled','D1 real HTTP synthetic',1,0,0", [shift,x.brand_id,x.platform_id,70+parseInt(suffix,16)%5000])
     await db.query("insert into public.shift_staffing_segments(id,shift_id,segment_index,start_at,end_at,required_host_count,required_support_count,required_technical_count,created_by) select $1,$2,1,start_at,end_at,1,0,0,$3 from public.shifts where id=$2", [segment,shift,x.actor])
     const original = await db.query("select * from public.manual_assign_shift_staff_to_segment($1,$2,'host','D1 API fixture',(select version from public.shifts where id=$1),$3)", [shift,x.old_user,segment])
     const versions = await db.query('select version from public.shifts where id=$1', [shift]); await db.query('commit')
@@ -35,6 +35,26 @@ async function main() {
     const result = await response.json(); console.log(`auth=${authStatus} initial_http=${response.status()} code=${result.error?.code ?? 'none'}`)
     assert.equal(response.status(),200); assert.equal(result.readbackRequired,true); assert.equal(result.data.replayed,false)
     assert.equal(result.data.canonicalIncident.originalRegistrationId,body.registrationId); assert.equal(result.data.canonicalIncident.replacementStaffId,x.new_user)
+    const members = await db.query("select email from public.business_users where system_permission='member' and status='active' and account_status='active' and archived_at is null and deleted_at is null and auth_user_id is not null order by id limit 1")
+    assert.equal(members.rowCount,1)
+    const memberContext = await browser.newContext(), memberPage = await memberContext.newPage()
+    try {
+      await memberPage.goto('http://localhost:3112/login'); await memberPage.getByTestId('email-input').fill(members.rows[0].email)
+      await memberPage.getByTestId('password-input').fill(config.test_password); await memberPage.getByRole('button',{name:'Đăng nhập'}).click()
+      await memberPage.waitForURL(url => url.pathname !== '/login', {timeout:45000})
+      const denied = await memberPage.request.post('http://localhost:3112/api/staffing/replacements/incident-v1',{ headers:{Origin:'http://localhost:3112'}, data:body })
+      console.log(`member_replay_http=${denied.status()}`); assert.equal(denied.status(),403)
+    } finally { await memberContext.close() }
+    await page.context().close()
+    const freshContext = await browser.newContext(), freshPage = await freshContext.newPage()
+    try {
+      await freshPage.goto('http://localhost:3112/login'); await freshPage.getByTestId('email-input').fill(x.email)
+      await freshPage.getByTestId('password-input').fill(config.test_password); await freshPage.getByRole('button',{name:'Đăng nhập'}).click()
+      await freshPage.waitForURL(url => url.pathname !== '/login', {timeout:45000})
+      const roster = await freshPage.request.get(`http://localhost:3112/api/operations/registration-context?id=${encodeURIComponent(result.data.registration.id)}`)
+      console.log(`fresh_session_roster_http=${roster.status()}`); assert.equal(roster.status(),200)
+      const readback = await roster.json(); assert.ok(readback.registrations.some(row => row.id === result.data.registration.id))
+    } finally { await freshContext.close() }
     await db.end()
     const fresh = await connect()
     try {
