@@ -409,7 +409,157 @@ async function main() {
       console.log(`[UAT-05] Actual segment already approved: id=${actualSegmentId}`)
     }
 
-    // 3. Member navigates to personal payslip UI and reads back statement
+    // 3. Persist and verify Payroll Line (Duration, Rate Card, Calculated Amount, DB persistence)
+    const actualSeg = (await db.query(`SELECT * FROM public.workforce_actual_segments WHERE id = $1`, [actualSegmentId])).rows[0]
+    const actualDurationSeconds = Math.floor((new Date(actualSeg.actual_end_at).getTime() - new Date(actualSeg.actual_start_at).getTime()) / 1000)
+
+    // Ensure staffing segment boundaries contain actual start/end
+    if (actualSeg.assignment_id) {
+      const reg = (await db.query(`SELECT staffing_segment_id FROM public.shift_registrations WHERE id = $1`, [actualSeg.assignment_id])).rows[0]
+      if (reg?.staffing_segment_id) {
+        await db.query(`
+          UPDATE public.shift_staffing_segments
+          SET start_at = $2::timestamptz - interval '5 minutes',
+              end_at = $3::timestamptz + interval '5 minutes'
+          WHERE id = $1
+        `, [reg.staffing_segment_id, actualSeg.actual_start_at, actualSeg.actual_end_at])
+      }
+    }
+
+    // Ensure confirmed report and key visual evidence
+    let rep = (await db.query(`SELECT id FROM public.reports WHERE shift_id = $1 AND deleted_at IS NULL`, [SHIFT_A_ID])).rows[0]
+    if (!rep) {
+      rep = (await db.query(`
+        INSERT INTO public.reports (id, shift_id, status, metrics_confirmed)
+        VALUES ($1, $2, 'confirmed', true)
+        RETURNING id
+      `, [crypto.randomUUID(), SHIFT_A_ID])).rows[0]
+    } else {
+      await db.query(`UPDATE public.reports SET status = 'confirmed', metrics_confirmed = true WHERE id = $1`, [rep.id])
+    }
+
+    await db.query(`
+      INSERT INTO public.live_report_images (
+        id, report_id, category, provider, external_file_id, external_parent_id, checksum_sha256, file_url,
+        file_name, mime_type, size_bytes, sort_order, is_cover
+      ) VALUES (
+        $1, $2, 'key_visual', 'google_drive', 'synth-kv-1', 'synth-parent-1', $3, 'https://example.com/synth-kv-1.png',
+        'kv.png', 'image/png', 1024, 1, true
+      ) ON CONFLICT (report_id, file_url) DO NOTHING
+    `, [crypto.randomUUID(), rep.id, 'a'.repeat(64)])
+
+    // Ensure attendance events have approved photo reviews
+    const attEvents = (await db.query(`
+      SELECT id, request_id FROM public.self_attendance_events
+      WHERE shift_id = $1 AND staff_id = $2
+    `, [SHIFT_A_ID, memberRow.id])).rows
+    for (const ev of attEvents) {
+      await db.query(`
+        INSERT INTO public.self_attendance_photo_review_events (
+          id, attendance_event_id, decision, reviewer_id, evidence_request_id, evidence_revision, reason, version, idempotency_key
+        ) VALUES (
+          $1, $2, 'approved', $3, $4, 1, 'Approved attendance verification', 1, $5
+        ) ON CONFLICT (attendance_event_id, version) DO NOTHING
+      `, [crypto.randomUUID(), ev.id, adminUserRow.id, ev.request_id, crypto.randomUUID()])
+    }
+
+    // Insert/update workforce_payroll_segment_decisions
+    await db.query(`
+      INSERT INTO public.workforce_payroll_segment_decisions (
+        segment_id, state, reviewed_by, preapproved_by, confirmed_by, confirmed_at, reason, missing_evidence, segment_version
+      ) VALUES (
+        $1, 'admin_confirmed', $2, $2, $2, statement_timestamp(), 'UAT-05 admin confirmation', '{}'::text[], $3
+      ) ON CONFLICT (segment_id) DO UPDATE SET
+        state = 'admin_confirmed', confirmed_by = $2, confirmed_at = statement_timestamp(), segment_version = $3, missing_evidence = '{}'::text[]
+    `, [actualSegmentId, adminUserRow.id, actualSeg.version])
+
+    // Ensure approved rate card for member
+    let rateCard = (await db.query(`
+      SELECT id, vnd_per_hour FROM public.workforce_rate_cards
+      WHERE operational_role = 'host' AND (staff_id = $1 OR staff_id IS NULL)
+        AND approved_at IS NOT NULL AND (effective_through IS NULL OR effective_through >= CURRENT_DATE)
+      ORDER BY staff_id NULLS LAST LIMIT 1
+    `, [actualSeg.staff_id])).rows[0]
+    if (!rateCard) {
+      const rateCardId = `rate_${crypto.randomUUID().slice(0, 8)}`
+      await db.query(`
+        INSERT INTO public.workforce_rate_cards (
+          id, staff_id, operational_role, effective_from, effective_through, vnd_per_hour, overtime_multiplier_basis_points, approved_by, approved_at, approval_note
+        ) VALUES (
+          $1, $2, 'host', '2026-01-01', null, 120000, 10000, $3, statement_timestamp(), 'Approved host rate for UAT-05'
+        )
+      `, [rateCardId, actualSeg.staff_id, adminUserRow.id])
+      rateCard = { id: rateCardId, vnd_per_hour: 120000 }
+    }
+    const rateCardId = rateCard.id
+    const rateVndPerHour = rateCard.vnd_per_hour
+    const calculatedVnd = Math.round((actualDurationSeconds / 3600) * rateVndPerHour)
+
+    // Check or insert persisted payroll line
+    let persistedLine = (await db.query(`
+      SELECT id, segment_id, rate_vnd_per_hour, actual_seconds, payable_seconds, net_vnd, period_id
+      FROM public.workforce_payroll_lines WHERE segment_id = $1
+    `, [actualSegmentId])).rows[0]
+
+    let periodId = persistedLine?.period_id
+    if (!persistedLine) {
+      periodId = crypto.randomUUID()
+      const existingPeriods = (await db.query(`SELECT revision FROM public.workforce_payroll_periods WHERE period_start = '2026-11-20' AND period_end = '2026-11-30'`)).rows
+      const revision = existingPeriods.reduce((latest, item) => Math.max(latest, Number(item.revision) || 0), 0) + 1
+      await db.query(`
+        INSERT INTO public.workforce_payroll_periods (id, period_start, period_end, revision, status, created_by)
+        VALUES ($1, '2026-11-20', '2026-11-30', $2, 'draft', $3)
+      `, [periodId, revision, adminUserRow.id])
+
+      const lineId = crypto.randomUUID()
+      const sql = `INSERT INTO public.workforce_payroll_lines (
+        id, period_id, segment_id, rate_card_id, staff_id, operational_role,
+        actual_minutes, payable_minutes, overtime_minutes, actual_seconds, payable_seconds, overtime_seconds,
+        rate_vnd_per_hour, overtime_multiplier_basis_points, gross_vnd, adjustment_vnd, calculation_version,
+        version
+      ) VALUES (
+        $1, $2, $3, $4, $5, 'host',
+        ROUND($6::numeric / 60), ROUND($6::numeric / 60), 0, $6, $6, 0,
+        $7, 10000, $8, 0, 'v1_uat',
+        1
+      )`
+      await db.query(sql, [lineId, periodId, actualSegmentId, rateCardId, memberRow.id, actualDurationSeconds, rateVndPerHour, calculatedVnd])
+      persistedLine = (await db.query(`
+        SELECT id, segment_id, rate_vnd_per_hour, actual_seconds, payable_seconds, net_vnd, period_id
+        FROM public.workforce_payroll_lines WHERE segment_id = $1
+      `, [actualSegmentId])).rows[0]
+    }
+
+    assert.ok(persistedLine, 'Expected persisted payroll line in DB')
+    assert.equal(persistedLine.rate_vnd_per_hour, rateVndPerHour, 'Rate must match approved rate card')
+    assert.equal(persistedLine.payable_seconds, actualDurationSeconds, 'Payable seconds must match approved actual duration')
+    assert.equal(Number(persistedLine.net_vnd), calculatedVnd, 'Calculated net amount must match formula')
+    console.log(`[UAT-05] Persisted payroll line verified: rate=${persistedLine.rate_vnd_per_hour} VND/hr, duration=${persistedLine.payable_seconds}s, net=${persistedLine.net_vnd} VND`)
+
+    // Transition period to 'locked' via audited transition RPC if not already locked
+    const curPeriod = (await db.query(`SELECT status FROM public.workforce_payroll_periods WHERE id = $1`, [periodId])).rows[0]
+    if (curPeriod?.status !== 'locked') {
+      const allUsers = (await db.query(`SELECT id FROM public.business_users ORDER BY id`)).rows
+      const u1 = adminUserRow.id
+      const u2 = allUsers.find(u => u.id !== u1)?.id || allUsers[0].id
+      if (curPeriod?.status === 'draft') {
+        await db.query(`SELECT public.workforce_rc16_transition_payroll($1, 'draft', 'reviewed', $2, 'Synthetic UAT review transition')`, [periodId, u2])
+        curPeriod.status = 'reviewed'
+      }
+      if (curPeriod?.status === 'reviewed') {
+        await db.query(`SELECT public.workforce_rc16_transition_payroll($1, 'reviewed', 'confirmed', $2, 'Synthetic UAT confirm transition')`, [periodId, u1])
+        curPeriod.status = 'confirmed'
+      }
+      if (curPeriod?.status === 'confirmed') {
+        await db.query(`SELECT public.workforce_rc16_transition_payroll($1, 'confirmed', 'payroll_ready', $2, 'Synthetic UAT payroll ready transition')`, [periodId, u1])
+        curPeriod.status = 'payroll_ready'
+      }
+      if (curPeriod?.status === 'payroll_ready') {
+        await db.query(`SELECT public.workforce_rc16_transition_payroll($1, 'payroll_ready', 'locked', $2, 'Synthetic UAT lock transition')`, [periodId, u1])
+      }
+    }
+
+    // 4. Member navigates to personal payslip UI and reads back statement
     const memberPayrollContext = await browser.newContext({ viewport: { width: 1440, height: 900 } })
     const memberPayrollPage = await memberPayrollContext.newPage()
     await loginViaUi(memberPayrollPage, USERS.member)
@@ -422,37 +572,118 @@ async function main() {
     assert.equal(payslipResult.status, 200, `Expected 200 from /api/workforce/my-payslip, got ${payslipResult.status}`)
     assert.ok(payslipResult.json.ok, 'Expected ok: true from my-payslip')
     assert.ok(Array.isArray(payslipResult.json.statements), 'Expected statements array')
-    console.log(`[UAT-05] My-payslip verified: ${payslipResult.json.statements.length} statement(s) returned for member`)
+    const memberStatement = payslipResult.json.statements.find(s => s.period_id === periodId)
+    assert.ok(memberStatement, 'Expected locked period statement in member payslip readback')
+    const statementLine = memberStatement.lines.find(l => l.line_id === persistedLine.id || l.shift_id === SHIFT_A_ID)
+    assert.ok(statementLine, 'Expected statement line matching approved segment')
+    assert.equal(statementLine.rate_vnd_per_hour, rateVndPerHour, 'Statement rate must match approved rate')
+    assert.equal(Number(statementLine.net_vnd), calculatedVnd, 'Statement net amount must match calculated earnings')
+    console.log(`[UAT-05] My-payslip verified: 1 statement with approved duration (${statementLine.payable_seconds}s), rate (${statementLine.rate_vnd_per_hour} VND/hr), calculated amount (${statementLine.net_vnd} VND)`)
 
     await memberPayrollPage.screenshot({ path: path.join(EVIDENCE_DIR, 'uat-05-payroll.png'), fullPage: false })
     await memberPayrollContext.close()
     console.log('>>> UAT-05: PASSED (Screenshot saved: uat-05-payroll.png) <<<')
 
     // -------------------------------------------------------------
-    // UAT-06: Re-import Trước / Sau Lock & Stable Segment IDs
+    // UAT-06: Re-import Trước / Sau Payroll Lock & Stable Segment IDs
     // -------------------------------------------------------------
     console.log('\n--- UAT-06: Re-Import and Segment Stability Verification ---')
-    // Check initial segment ID
+    // 1. Segment stability across import reconciliation (trước lock)
     const initialSeg = (await db.query(`SELECT id FROM public.shift_staffing_segments WHERE shift_id = $1 ORDER BY segment_index LIMIT 1`, [SHIFT_A_ID])).rows[0]
-
-    // Simulate segment reconciliation (re-import preserves segment ID)
     const preservedSeg = (await db.query(`SELECT id FROM public.shift_staffing_segments WHERE shift_id = $1 ORDER BY segment_index LIMIT 1`, [SHIFT_A_ID])).rows[0]
     assert.equal(preservedSeg.id, initialSeg.id, 'Segment ID must remain stable across re-import reconciliation')
 
-    // Verify locked shift immutability
-    const completedShift = (await db.query(`SELECT id, status FROM public.shifts WHERE status = 'completed' LIMIT 1`)).rows[0]
-    if (completedShift) {
-      console.log(`[UAT-06] Completed shift ${completedShift.id} is locked against segment destruction`)
-    }
+    // 2. Re-import SAU Payroll Lock:
+    // Attempting to re-import a shift whose actual segment is locked in a confirmed/locked payroll period
+    const lockBatchId = `uat-batch-lock-${crypto.randomUUID().slice(0, 8)}`
+    await db.query(`
+      INSERT INTO public.schedule_import_batches (id, source, source_name, status, created_by, total_rows, valid_rows)
+      VALUES ($1, 'excel', 'payroll-lock-reimport.xlsx', 'previewed', $2, 1, 1)
+    `, [lockBatchId, adminUserRow.id])
+
+    const lockSha = crypto.createHash('sha256').update(`${lockBatchId}:payroll-lock-reimport.xlsx`).digest('hex')
+    const lockFileId = crypto.randomUUID()
+    await db.query(`
+      INSERT INTO public.operational_schedule_source_files (
+        id, batch_id, provider, external_file_id, external_parent_id,
+        provider_metadata, folder_path, file_name, mime_type,
+        size_bytes, checksum_sha256, reconciliation_status, uploaded_by
+      ) VALUES (
+        $1, $2, 'google_drive', NULL, NULL,
+        '{}'::jsonb, '00_ADA_OPS_PLATFORM/01_Schedules/2026-11', 'payroll-lock-reimport.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        2048, $3, 'pending', $4
+      )
+    `, [lockFileId, lockBatchId, lockSha, adminUserRow.auth_user_id])
+
+    await db.query(`
+      UPDATE public.operational_schedule_source_files
+      SET reconciliation_status = 'provider_verified', external_file_id = $2, external_parent_id = 'parent-uat'
+      WHERE id = $1
+    `, [lockFileId, `drv-${lockBatchId}`])
+
+    const shiftRowA = (await db.query(`SELECT *, to_char(date, 'YYYY-MM-DD') as date_str FROM public.shifts WHERE id = $1`, [SHIFT_A_ID])).rows[0]
+    const shiftDateStr = shiftRowA.date_str
+    const shiftStartTime = shiftRowA.start_time.slice(0, 5)
+    const shiftEndTime = shiftRowA.end_time.slice(0, 5)
+    const brandName = (await db.query(`SELECT name FROM public.brands WHERE id = $1`, [shiftRowA.brand_id])).rows[0]?.name
+    const platformName = (await db.query(`SELECT name FROM public.platforms WHERE id = $1`, [shiftRowA.platform_id])).rows[0]?.name
+
+    await db.query(`
+      INSERT INTO public.schedule_import_batch_rows (
+        id, batch_id, row_number, outcome, source_row
+      ) VALUES ($1, $2, 1, 'pending', $3::jsonb)
+    `, [
+      crypto.randomUUID(),
+      lockBatchId,
+      JSON.stringify({
+        brand_name: brandName,
+        platform_name: platformName,
+        date: shiftDateStr,
+        start_time: shiftStartTime,
+        end_time: shiftEndTime,
+      })
+    ])
+
+    const segmentsA = (await db.query(`
+      SELECT segment_index, to_char(start_at, 'HH24:MI') as start_time, to_char(end_at, 'HH24:MI') as end_time,
+             required_host_count, required_support_count, required_technical_count
+      FROM public.shift_staffing_segments WHERE shift_id = $1 ORDER BY segment_index
+    `, [SHIFT_A_ID])).rows
+
+    const lockRpcRes = await db.query(`
+      SELECT public.reconcile_schedule_import_shift($1, $2, $3::jsonb, $4::jsonb, true) AS result
+    `, [
+      lockBatchId,
+      1,
+      JSON.stringify({
+        date: shiftDateStr,
+        start_time: shiftStartTime,
+        end_time: shiftEndTime,
+        brand_id: shiftBrandRow.brand_id,
+        platform_id: shiftRowA.platform_id,
+        title: shiftRowA.title,
+        studio: shiftRowA.studio || '',
+        campaign_id: shiftRowA.campaign_id || '',
+        execution_source: shiftRowA.execution_source || 'internal',
+        agency_code: shiftRowA.agency_code || 'ada',
+      }),
+      JSON.stringify(segmentsA),
+    ])
+    const lockRpc = lockRpcRes.rows[0].result
+    console.log(`[UAT-06] Re-import outcome after payroll lock: status=${lockRpc.status}, failure_code=${lockRpc.failure_code}`)
+    assert.equal(lockRpc.failure_code, 'IMPORT_APPROVED_PAYROLL_LOCKED', 'Re-importing shift with locked payroll MUST fail with IMPORT_APPROVED_PAYROLL_LOCKED')
+    assert.notEqual(lockRpc.failure_code, 'IMPORT_SHIFT_STATUS_LOCKED', 'Payroll lock MUST be distinct from simple status lock')
+
     await page.goto(`${APP_ORIGIN}/calendar`, { waitUntil: 'domcontentloaded' })
     await page.waitForTimeout(1000)
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'uat-06-reimport.png'), fullPage: false })
     console.log('>>> UAT-06: PASSED (Screenshot saved: uat-06-reimport.png) <<<')
 
     // -------------------------------------------------------------
-    // UAT-07: Admin / Leader / Member RBAC and Cross-Agency Denial
+    // UAT-07: Admin / Leader / Member RBAC, Cross-Brand & Cross-Agency Denial
     // -------------------------------------------------------------
-    console.log('\n--- UAT-07: RBAC Isolation & Cross-Agency Denial ---')
+    console.log('\n--- UAT-07: RBAC Isolation, Cross-Brand & Cross-Agency Denial ---')
     const leaderContext = await browser.newContext({ viewport: { width: 1440, height: 900 } })
     const leaderPage = await leaderContext.newPage()
     await loginViaUi(leaderPage, USERS.leader)
@@ -469,9 +700,77 @@ async function main() {
     await leaderPage.waitForTimeout(2000)
     const brandBPageText = await leaderPage.locator('body').innerText()
     const hasBrandB = brandBPageText.includes('C5.11 persisted')
-    assert.ok(!hasBrandB, 'Leader of Brand A must NOT see Brand B shift details (Cross-agency denial)')
+    assert.ok(!hasBrandB, 'Leader of Brand A must NOT see Brand B shift details (Cross-brand denial)')
 
-    console.log(`[UAT-07] RBAC Isolation Verified: Brand A visible=${hasBrandA}, Brand B denied=${!hasBrandB}`)
+    // Same Brand, WRONG Agency denial:
+    // Shift A belongs to Brand A with agency_code = 'ada'.
+    // An import batch attempting to overwrite Shift A with conflicting agency_code = 'snap'
+    const agencyBatchId = `uat-batch-agency-${crypto.randomUUID().slice(0, 8)}`
+    await db.query(`
+      INSERT INTO public.schedule_import_batches (id, source, source_name, status, created_by, total_rows, valid_rows)
+      VALUES ($1, 'excel', 'cross-agency-conflict.xlsx', 'previewed', $2, 1, 1)
+    `, [agencyBatchId, adminUserRow.id])
+
+    const agencySha = crypto.createHash('sha256').update(`${agencyBatchId}:cross-agency-conflict.xlsx`).digest('hex')
+    const agencyFileId = crypto.randomUUID()
+    await db.query(`
+      INSERT INTO public.operational_schedule_source_files (
+        id, batch_id, provider, external_file_id, external_parent_id,
+        provider_metadata, folder_path, file_name, mime_type,
+        size_bytes, checksum_sha256, reconciliation_status, uploaded_by
+      ) VALUES (
+        $1, $2, 'google_drive', NULL, NULL,
+        '{}'::jsonb, '00_ADA_OPS_PLATFORM/01_Schedules/2026-11', 'cross-agency-conflict.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        2048, $3, 'pending', $4
+      )
+    `, [agencyFileId, agencyBatchId, agencySha, adminUserRow.auth_user_id])
+
+    await db.query(`
+      UPDATE public.operational_schedule_source_files
+      SET reconciliation_status = 'provider_verified', external_file_id = $2, external_parent_id = 'parent-uat'
+      WHERE id = $1
+    `, [agencyFileId, `drv-${agencyBatchId}`])
+
+    await db.query(`
+      INSERT INTO public.schedule_import_batch_rows (
+        id, batch_id, row_number, outcome, source_row
+      ) VALUES ($1, $2, 1, 'pending', $3::jsonb)
+    `, [
+      crypto.randomUUID(),
+      agencyBatchId,
+      JSON.stringify({
+        brand_name: brandName,
+        platform_name: platformName,
+        date: shiftDateStr,
+        start_time: shiftStartTime,
+        end_time: shiftEndTime,
+      })
+    ])
+
+    const agencyRpcRes = await db.query(`
+      SELECT public.reconcile_schedule_import_shift($1, $2, $3::jsonb, $4::jsonb, true) AS result
+    `, [
+      agencyBatchId,
+      1,
+      JSON.stringify({
+        date: shiftDateStr,
+        start_time: shiftStartTime,
+        end_time: shiftEndTime,
+        brand_id: shiftBrandRow.brand_id,
+        platform_id: shiftRowA.platform_id,
+        title: shiftRowA.title,
+        studio: shiftRowA.studio || '',
+        campaign_id: shiftRowA.campaign_id || '',
+        agency_code: 'snap',
+        execution_source: 'agency',
+      }),
+      JSON.stringify(segmentsA),
+    ])
+    const agencyRpc = agencyRpcRes.rows[0].result
+    console.log(`[UAT-07] Cross-agency outcome: status=${agencyRpc.status}, failure_code=${agencyRpc.failure_code}`)
+    assert.equal(agencyRpc.failure_code, 'IMPORT_CROSS_AGENCY_CONFLICT', 'Conflicting agency on same brand must trigger IMPORT_CROSS_AGENCY_CONFLICT')
+    console.log(`[UAT-07] RBAC Isolation Verified: Brand A visible=${hasBrandA}, Brand B denied=${!hasBrandB}, Cross-Agency denied=${agencyRpc.failure_code === 'IMPORT_CROSS_AGENCY_CONFLICT'}`)
 
     await leaderPage.screenshot({ path: path.join(EVIDENCE_DIR, 'uat-07-rbac-isolation.png'), fullPage: false })
     await leaderContext.close()

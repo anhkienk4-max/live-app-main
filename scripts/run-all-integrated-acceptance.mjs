@@ -227,6 +227,8 @@ paths:
     killProcessTree(mtxProc)
     killProcessTree(proxyProc)
     if (driveProc) killProcessTree(driveProc)
+    try { rmSync(path.join(ROOT, 'auto.crt'), { force: true }) } catch {}
+    try { rmSync(path.join(ROOT, 'auto.key'), { force: true }) } catch {}
   }
 }
 

@@ -223,6 +223,10 @@ export function LiveSharedStreamViewer({
       if (whepHandleRef.current && whepHandleRef.current.connectionState === 'connected') {
         return
       }
+      // Fail-closed in Production: HTTP frame fallback is strictly forbidden outside dev/test
+      if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_ALLOW_MEDIA_FRAME_FALLBACK !== 'true') {
+        return
+      }
       pollingFrame = true
       try {
         const grant = await ensureGrant()

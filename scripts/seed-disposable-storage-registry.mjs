@@ -5,7 +5,7 @@ import { Client } from 'pg'
 const REGISTRY_PATH = path.resolve('docs/storage/ADA_OPS_FOLDER_REGISTRY_20261102.json')
 const registryData = JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf8'))
 
-const connectionString = 'postgresql://postgres@127.0.0.1:55542/rc19_ab_c511_canonical_v6_20261125'
+const connectionString = process.env.DATABASE_URL || 'postgresql://postgres@127.0.0.1:55542/rc19_ab_c511_canonical_v6_20261125'
 
 async function seed() {
   const client = new Client({ connectionString })
