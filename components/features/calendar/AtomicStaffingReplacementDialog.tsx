@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { OperationalRole, Shift, ShiftRegistration, User } from '@/lib/types/database.types'
 import type { ShiftStaffingSegmentOption } from '@/lib/services/supabaseShiftRegistrationService'
+import type { ShiftIncidentType } from '@/lib/types/shiftIncidentContract'
 import { currentUserService, shiftRegistrationService, userService } from '@/lib/services/dataService'
 import { getAuthMode } from '@/lib/auth/authMode'
 import { hasPermission } from '@/lib/permissions'
@@ -29,10 +30,23 @@ interface Props {
 type RoleLabel = Record<OperationalRole, string>
 const roleLabel: RoleLabel = { host: 'Host', support: 'Trợ livestream', technical: 'Kỹ thuật' }
 
+const incidentTypeOptions: Array<{ type: ShiftIncidentType; labelVi: string }> = [
+  { type: 'planned_reassignment', labelVi: 'Điều động theo kế hoạch (Reassignment)' },
+  { type: 'absent', labelVi: 'Vắng mặt không phép (Absent)' },
+  { type: 'skip', labelVi: 'Bỏ ca đột xuất (Skip)' },
+  { type: 'late', labelVi: 'Đi trễ quá giờ (Late arrival)' },
+  { type: 'early_leave', labelVi: 'Về sớm (Early departure)' },
+  { type: 'authorized_absence', labelVi: 'Nghỉ có phép (Authorized absence)' },
+  { type: 'approved_pass', labelVi: 'PASS ca đã duyệt (Approved PASS)' },
+  { type: 'approved_swap', labelVi: 'Đổi ca đã duyệt (Approved Swap)' },
+  { type: 'other', labelVi: 'Lý do khác (Other)' },
+]
+
 function errorText(error: unknown) {
   const message = error instanceof Error ? error.message : 'Không thể hoàn tất thay thế.'
   const errorCode = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
   const code = `${errorCode} ${message}`.toUpperCase()
+  if (code.includes('INCIDENT_RECORDING_CAPABILITY_UNAVAILABLE')) return 'Tính năng ghi nhận sự cố ca trực (Delta D) chưa khả dụng trên backend. Không thể thay đổi phân công ca khi chưa ghi nhận sự cố để bảo toàn tính toàn vẹn dữ liệu.'
   if (code.includes('ACTOR_NOT_AUTHORIZED') || code.includes('OPERATION_NOT_ALLOWED') || code.includes('STAFFING_PERMISSION_REQUIRED') || code.includes('LEADER_BRAND_SCOPE_REQUIRED') || code.includes('42501')) return 'Tài khoản hoặc phạm vi Brand hiện tại không được phép thay nhân sự.'
   if (code.includes('EMERGENCY_REPLACEMENT_ADMIN_ONLY')) return 'Chỉ Admin mới được thực hiện thay thế khẩn cấp.'
   if (code.includes('STAFFING_SEGMENT_CAPACITY_EXCEEDED') || code.includes('CAPACITY_EXCEEDED')) return 'Định biên của phân đoạn đã thay đổi. Hãy tải lại danh sách nhân sự.'
@@ -64,6 +78,7 @@ export function AtomicStaffingReplacementDialog({
   const [reason, setReason] = React.useState('')
   const [emergency, setEmergency] = React.useState(initialEmergency)
   const [emergencyAt, setEmergencyAt] = React.useState('')
+  const [incidentType, setIncidentType] = React.useState<ShiftIncidentType>(initialEmergency ? 'absent' : 'planned_reassignment')
   const [busy, setBusy] = React.useState(false)
   const [capability, setCapability] = React.useState<'checking' | 'ready' | 'unavailable'>(persistedRuntime ? 'checking' : 'unavailable')
   const [capabilityMessage, setCapabilityMessage] = React.useState('')
@@ -152,6 +167,7 @@ export function AtomicStaffingReplacementDialog({
   const candidates = candidateDirectory.filter(user => user.status === 'active' &&
     user.id !== registration.user_id && user.operational_roles?.includes(registration.operational_role) &&
     !assignedIds.has(user.id))
+  const hasIncidentIntent = Boolean(incidentType && incidentType !== 'planned_reassignment')
   const validEmergencyTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(emergencyAt)
   const canSubmit = !busy && !completed && !committedUnverified && persistedRuntime && capability === 'ready' && canReplace &&
     (!emergency || isAdmin) && snapshotReady && targetHasVersions && Boolean(segmentId) &&
@@ -176,6 +192,7 @@ export function AtomicStaffingReplacementDialog({
       const signature = JSON.stringify([
         shift.id, segmentId, registration.id, replacementUserId, registration.operational_role,
         shift.version, registration.version, emergency ? effectiveAt : 'standard-server-time', reason.trim(), emergency,
+        incidentType, null,
       ])
       if (pendingRequest.current?.signature !== signature) {
         pendingRequest.current = {
@@ -192,6 +209,8 @@ export function AtomicStaffingReplacementDialog({
             reason: reason.trim(),
             emergency,
             idempotencyKey: crypto.randomUUID(),
+            incidentType,
+            evidenceReferenceId: null,
           },
         }
       }
@@ -224,9 +243,12 @@ export function AtomicStaffingReplacementDialog({
       pendingRequest.current = null
       setCompleted(true)
       setCommittedUnverified(false)
+      const incidentNotice = result.canonicalIncident
+        ? ` (Sự cố #${result.canonicalIncident.id.slice(0, 8)}: ${result.canonicalIncident.reviewState === 'pending' ? 'Chờ duyệt' : result.canonicalIncident.reviewState})`
+        : ' (Chế độ tương thích C4: Ghi nhận sự cố D1 đang chờ kích hoạt backend)'
       setFeedback(refreshFailure
-        ? { kind: 'warning', message: 'Đã nhận receipt và xác minh phân công đã lưu; màn hình cha chưa tải lại được. Hãy tải lại ca.' }
-        : { kind: 'success', message: `Đã xác minh thay thế ${candidateDirectory.find(user => user.id === registration.user_id)?.full_name ?? registration.user_id} → ${candidateDirectory.find(user => user.id === replacementUserId)?.full_name ?? replacementUserId} trên máy chủ.` })
+        ? { kind: 'warning', message: `Đã nhận receipt và xác minh phân công đã lưu${incidentNotice}; màn hình cha chưa tải lại được. Hãy tải lại ca.` }
+        : { kind: 'success', message: `Đã xác minh thay thế ${candidateDirectory.find(user => user.id === registration.user_id)?.full_name ?? registration.user_id} → ${candidateDirectory.find(user => user.id === replacementUserId)?.full_name ?? replacementUserId} trên máy chủ.${incidentNotice}` })
     } catch (error) {
       setFeedback({ kind: committed ? 'warning' : 'error', message: committed
         ? `Máy chủ đã ghi nhận nhưng chưa xác minh được roster; không gửi yêu cầu mới. ${errorText(error)}`
@@ -275,8 +297,8 @@ export function AtomicStaffingReplacementDialog({
             Ca <strong>{shift.title || shift.id}</strong> · Segment <code>{segmentId || (legacySegmentsLoading ? 'đang tải' : 'chưa chọn')}</code> · {roleLabel[registration.operational_role]}
           </p>
           {isAdmin && <div className="flex gap-2">
-            <Button type="button" size="sm" variant={emergency ? 'outline' : 'default'} disabled={busy} onClick={() => { setEmergency(false); setFeedback(null) }}>Thay thường</Button>
-            <Button type="button" size="sm" variant={emergency ? 'destructive' : 'outline'} disabled={busy} onClick={() => { setEmergency(true); setFeedback(null) }}>Khẩn cấp (Admin)</Button>
+            <Button type="button" size="sm" variant={emergency ? 'outline' : 'default'} disabled={busy} onClick={() => { setEmergency(false); setIncidentType('planned_reassignment'); setFeedback(null) }}>Thay thường</Button>
+            <Button type="button" size="sm" variant={emergency ? 'destructive' : 'outline'} disabled={busy} onClick={() => { setEmergency(true); setIncidentType('absent'); setFeedback(null) }}>Khẩn cấp (Admin)</Button>
           </div>}
           <label className="block font-medium">Nhân sự thay thế · {roleLabel[registration.operational_role]}
             <select aria-label="Chọn nhân sự thay thế" className="mt-1 w-full rounded border bg-background p-2" value={replacementUserId} onChange={event => setReplacementUserId(event.target.value)}>
@@ -287,12 +309,69 @@ export function AtomicStaffingReplacementDialog({
             {hasFallbackUsersError && <span role="alert" data-testid="replacement-directory-error" data-error-code={fallbackUsersError?.code} className="mt-1 block text-xs text-red-700">Không tải được danh sách nhân sự. Hãy đóng và mở lại ca để thử lại.</span>}
             {users.length === 0 && fallbackUsers?.actorKey === actorKey && fallbackDirectory.length === 0 && <span role="status" className="mt-1 block text-xs text-muted-foreground">Không có nhân sự phù hợp trong phạm vi được phép.</span>}
           </label>
+          <label className="block font-medium">Loại sự cố / Phân loại thay thế
+            <select
+              aria-label="Loại sự cố"
+              data-testid="incident-classification-select"
+              className="mt-1 w-full rounded border bg-background p-2 text-xs"
+              value={incidentType}
+              onChange={event => setIncidentType(event.target.value as ShiftIncidentType)}
+            >
+              {incidentTypeOptions.map(opt => (
+                <option key={opt.type} value={opt.type}>{opt.labelVi}</option>
+              ))}
+            </select>
+          </label>
           {emergency ? <label className="block font-medium">Thời điểm hiệu lực (+07:00)
             <Input className="mt-1" type="datetime-local" required value={emergencyAt} onChange={event => setEmergencyAt(event.target.value)} />
           </label> : <p className="text-muted-foreground">Thời điểm hiệu lực: thời gian ghi nhận bởi PostgreSQL khi xác nhận.</p>}
           <label className="block font-medium">Lý do bắt buộc
-            <Input className="mt-1" maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} />
+            <Input className="mt-1" maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} placeholder="Nhập lý do thay thế cụ thể…" />
           </label>
+          <div className="space-y-1">
+            <label className="block font-medium">Mã / Link bằng chứng (Tạm khóa)
+              <Input
+                className="mt-1 bg-muted/40 cursor-not-allowed opacity-75"
+                data-testid="evidence-reference-input"
+                disabled={true}
+                value=""
+                readOnly
+                placeholder="Backend hiện từ chối non-NULL evidenceReferenceId..."
+              />
+            </label>
+            <div
+              className="flex items-center gap-1.5 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"
+              data-testid="evidence-capability-unavailable"
+            >
+              <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
+              <span>Đính kèm minh chứng chưa khả dụng trên backend hiện tại (Fail-closed policy).</span>
+            </div>
+          </div>
+          {hasIncidentIntent && (
+            <div
+              className="rounded border border-blue-200 bg-blue-50/70 p-2 text-blue-900"
+              data-testid="incident-pairing-active"
+            >
+              <div className="flex items-center gap-1.5 font-semibold text-[11px]">
+                <ShieldAlert className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                <span>Ghi nhận sự cố song song (Delta D1 API Paired)</span>
+              </div>
+              <p className="mt-0.5 text-[10px] text-blue-800 leading-relaxed">
+                Yêu cầu thay thế sẽ tự động ghi nhận sự cố <strong>{incidentTypeOptions.find(o => o.type === incidentType)?.labelVi}</strong> ở trạng thái <strong>Chờ duyệt (Pending Review)</strong> qua versioned D1 API.
+              </p>
+            </div>
+          )}
+          <div
+            className="rounded border border-blue-200 bg-blue-50/70 p-2 text-blue-900"
+            data-testid="historical-policy-disclaimer"
+          >
+            <p className="font-semibold text-[11px]" data-testid="incident-pending-review-notice">
+              Chính sách sự cố & bảo toàn lịch sử:
+            </p>
+            <p className="mt-0.5 text-[10px] text-blue-800">
+              Sự cố nhân sự sẽ được tạo ở trạng thái <strong>Chờ duyệt (Pending Review)</strong>. Lịch sử ca, bằng chứng chấm công và Payroll của nhân sự cũ được bảo toàn bất biến; không tự động phạt trừ lương.
+            </p>
+          </div>
           {replacementUserId && <div className="rounded border bg-muted/20 p-3" data-testid="atomic-replacement-before-after">
             <p className="mb-1 font-semibold">Xác nhận thay đổi · v{shift.version} / v{registration.version}</p>
             <div className="flex flex-wrap items-center gap-2"><span className="text-red-700 line-through">{originalName}</span><ArrowRight className="h-3.5 w-3.5" /><span className="font-semibold text-green-700">{replacementName}</span><span>· {roleLabel[registration.operational_role]}</span></div>

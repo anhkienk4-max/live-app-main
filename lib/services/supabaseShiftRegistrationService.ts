@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { readShiftStaffingSummary, withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
 
 import { createClient } from '@/lib/supabase/client'
+import type { ShiftIncidentType, ShiftIncidentV1 } from '@/lib/types/shiftIncidentContract'
 import type {
   OperationalRole,
   SwapExchangeCandidate,
@@ -253,6 +254,8 @@ export interface ReplaceShiftAssignmentInput {
   reason: string
   emergency: boolean
   idempotencyKey: string
+  incidentType?: ShiftIncidentType
+  evidenceReferenceId?: string | null
 }
 
 export interface ShiftStaffingSegmentOption {
@@ -283,6 +286,9 @@ export interface ReplaceShiftAssignmentResult {
     version: number
   }>
   replayed: boolean
+  canonicalIncident?: ShiftIncidentV1 | null
+  receiptId?: string
+  readbackRequired?: boolean
 }
 
 export const isStaffedRegistration = (
@@ -570,10 +576,75 @@ export function createSupabaseShiftRegistrationRepository(
     },
 
     async replaceAssignment(input) {
+      const isIncidentIntent = Boolean(
+        input.incidentType && input.incidentType !== 'planned_reassignment',
+      )
+
+      if (isIncidentIntent) {
+        const incidentPayload = {
+          shiftId: input.shiftId,
+          staffingSegmentId: input.staffingSegmentId,
+          registrationId: input.registrationId,
+          replacementUserId: input.replacementUserId,
+          role: input.role,
+          expectedShiftVersion: input.expectedShiftVersion,
+          expectedRegistrationVersion: input.expectedRegistrationVersion,
+          effectiveAt: input.effectiveAt,
+          reason: input.reason,
+          isEmergency: input.emergency ?? false,
+          idempotencyKey: input.idempotencyKey,
+          incidentType: input.incidentType,
+          evidenceReferenceId: input.evidenceReferenceId ?? null,
+        }
+        const response = await fetch('/api/staffing/replacements/incident-v1', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(incidentPayload),
+        })
+        const payload = await response.json().catch(() => null) as {
+          ok?: boolean
+          data?: ReplaceShiftAssignmentResult & {
+            canonicalIncident?: any
+            receiptId?: string
+            replacement_id?: string
+            shift_id?: string
+            old_registration_id?: string
+            staffing_segment_id?: string
+          }
+          error?: { code?: string }
+        } | null
+        if (!response.ok || !payload?.ok || !payload.data) {
+          const code = payload?.error?.code || 'STAFFING_INCIDENT_REPLACEMENT_FAILED'
+          throw new RegistrationRequestError(code, code)
+        }
+        return {
+          ...payload.data,
+          shift_id: payload.data.shift_id ?? input.shiftId,
+          old_registration_id: payload.data.old_registration_id ?? input.registrationId,
+          staffing_segment_id: payload.data.staffing_segment_id ?? input.staffingSegmentId,
+          receiptId: payload.data.receiptId ?? payload.data.replacement_id ?? '',
+          readbackRequired: true,
+        }
+      }
+
+      // Pure C4 payload for legacy /api/staffing/replacements endpoint (normal replacement without incident intent)
+      const legacyPayload = {
+        shiftId: input.shiftId,
+        staffingSegmentId: input.staffingSegmentId,
+        registrationId: input.registrationId,
+        replacementUserId: input.replacementUserId,
+        role: input.role,
+        expectedShiftVersion: input.expectedShiftVersion,
+        expectedRegistrationVersion: input.expectedRegistrationVersion,
+        effectiveAt: input.effectiveAt,
+        reason: input.reason,
+        emergency: input.emergency,
+        idempotencyKey: input.idempotencyKey,
+      }
       const response = await fetch('/api/staffing/replacements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify(legacyPayload),
       })
       const payload = await response.json().catch(() => null) as {
         ok?: boolean
@@ -584,7 +655,11 @@ export function createSupabaseShiftRegistrationRepository(
         const code = payload?.error?.code || 'STAFFING_REPLACEMENT_FAILED'
         throw new RegistrationRequestError(code, code)
       }
-      return payload.data
+      return {
+        ...payload.data,
+        canonicalIncident: null,
+        readbackRequired: true,
+      }
     },
   }
 }

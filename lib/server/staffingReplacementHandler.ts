@@ -23,7 +23,16 @@ const noStore = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options'
 const fail = (code: string, status: number) => Response.json({ ok: false, error: { code } }, { status, headers: noStore })
 const hasExactOrigin = (request: Request) => {
   const origin = request.headers.get('origin')
-  return Boolean(origin && origin === new URL(request.url).origin)
+  if (!origin) return false
+  const reqOrigin = new URL(request.url).origin
+  if (origin === reqOrigin) return true
+  if (process.env.NODE_ENV !== 'production') {
+    const isLoopback = (u: string) => u.startsWith('http://127.0.0.1:') || u.startsWith('http://localhost:')
+    if (isLoopback(origin) && isLoopback(reqOrigin)) {
+      return new URL(origin).port === new URL(request.url).port
+    }
+  }
+  return false
 }
 
 type Dependencies = {
