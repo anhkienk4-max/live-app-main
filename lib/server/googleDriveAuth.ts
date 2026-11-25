@@ -11,6 +11,7 @@ const DEFAULT_LOCAL_REDIRECT_URI = 'http://127.0.0.1:53682/oauth2callback'
 
 export type GoogleDriveErrorCode =
   | 'GOOGLE_DRIVE_NOT_CONFIGURED'
+  | 'GOOGLE_DRIVE_CONFIGURATION_ERROR'
   | 'GOOGLE_DRIVE_AUTH_FAILED'
   | 'GOOGLE_DRIVE_ROOT_FOLDER_INVALID'
   | 'GOOGLE_DRIVE_FOLDER_URL_INVALID'
@@ -80,6 +81,12 @@ export function resolveGoogleDriveAuthMode(env: GoogleDriveEnvironment = process
   throw new GoogleDriveError('GOOGLE_DRIVE_AUTH_FAILED', 'Unsupported Google Drive auth mode.')
 }
 
+export function isSyntheticDriveAllowed(env: GoogleDriveEnvironment = process.env): boolean {
+  if (env.ALLOW_SYNTHETIC_DRIVE === 'true') return true
+  const isProd = env.NODE_ENV === 'production' || env.VERCEL_ENV === 'production' || env.VERCEL_ENV === 'preview' || env.VERCEL_ENV === 'staging'
+  return !isProd
+}
+
 export function createGoogleDriveAuth(env: GoogleDriveEnvironment = process.env): GoogleDriveAuthResult {
   const mode = resolveGoogleDriveAuthMode(env)
   if (mode === 'oauth_refresh_token') {
@@ -87,13 +94,18 @@ export function createGoogleDriveAuth(env: GoogleDriveEnvironment = process.env)
     const clientSecret = required(env, 'GOOGLE_DRIVE_CLIENT_SECRET')
     const refreshToken = required(env, 'GOOGLE_DRIVE_REFRESH_TOKEN')
     const auth = new google.auth.OAuth2(clientId, clientSecret)
-    auth.setCredentials({
-      refresh_token: refreshToken,
-      ...(env.GOOGLE_DRIVE_ACCESS_TOKEN ? {
+    if (env.GOOGLE_DRIVE_ACCESS_TOKEN) {
+      if (!isSyntheticDriveAllowed(env)) {
+        throw new GoogleDriveError('GOOGLE_DRIVE_AUTH_FAILED', 'Synthetic access token is prohibited in production environments.')
+      }
+      auth.setCredentials({
+        refresh_token: refreshToken,
         access_token: env.GOOGLE_DRIVE_ACCESS_TOKEN,
         expiry_date: Date.now() + 86400000,
-      } : {}),
-    })
+      })
+    } else {
+      auth.setCredentials({ refresh_token: refreshToken })
+    }
     return { auth, mode }
   }
 

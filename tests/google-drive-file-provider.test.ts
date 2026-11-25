@@ -703,3 +703,46 @@ test('configured OneDrive selects the supported provider path', () => {
   const gateway = createFileStorageService({ env: { NODE_ENV: 'production', FILE_PROVIDER: 'onedrive', ONEDRIVE_CLIENT_ID: 'client-id', ONEDRIVE_CLIENT_SECRET: 'client-secret', ONEDRIVE_REFRESH_TOKEN: 'refresh-token' } })
   assert.equal(gateway.providerName, 'onedrive')
 })
+
+test('synthetic Google Drive rootUrl fails closed in production', () => {
+  assert.throws(
+    () => createGoogleDriveFileProvider({
+      env: { ...env, NODE_ENV: 'production', GOOGLE_DRIVE_ROOT_URL: 'http://127.0.0.1:18890/' },
+    }),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_CONFIGURATION_ERROR',
+  )
+})
+
+test('synthetic Google Drive rootUrl rejects non-loopback external hosts', () => {
+  assert.throws(
+    () => createGoogleDriveFileProvider({
+      env: { ...env, NODE_ENV: 'test', GOOGLE_DRIVE_ROOT_URL: 'https://evil-storage.com/' },
+    }),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_CONFIGURATION_ERROR',
+  )
+})
+
+test('synthetic access token fails closed in production', () => {
+  assert.throws(
+    () => createGoogleDriveAuth({
+      ...env,
+      NODE_ENV: 'production',
+      GOOGLE_DRIVE_ACCESS_TOKEN: 'synthetic-token',
+    }),
+    (error: unknown) => error instanceof GoogleDriveError && error.code === 'GOOGLE_DRIVE_AUTH_FAILED',
+  )
+})
+
+test('synthetic Google Drive rootUrl and token succeed in test environment on loopback', () => {
+  const auth = createGoogleDriveAuth({
+    ...env,
+    NODE_ENV: 'test',
+    GOOGLE_DRIVE_ACCESS_TOKEN: 'synthetic-token',
+  })
+  assert.ok(auth.auth)
+
+  const provider = createGoogleDriveFileProvider({
+    env: { ...env, NODE_ENV: 'test', GOOGLE_DRIVE_ROOT_URL: 'http://127.0.0.1:18890/' },
+  })
+  assert.ok(provider)
+})

@@ -5,7 +5,13 @@ import { google, type drive_v3 } from 'googleapis'
 
 import type { FileProviderMetadata, FileUploadInput, FileUploadResult } from '@/lib/files/fileProvider'
 import { sanitizeFileName } from '@/lib/files/fileValidation'
-import { createGoogleDriveAuth, GoogleDriveError, type GoogleDriveEnvironment, type GoogleDriveErrorCode } from '@/lib/server/googleDriveAuth'
+import {
+  createGoogleDriveAuth,
+  isSyntheticDriveAllowed,
+  GoogleDriveError,
+  type GoogleDriveEnvironment,
+  type GoogleDriveErrorCode,
+} from '@/lib/server/googleDriveAuth'
 import { DRIVE_FOLDER_MIME, normalizeGoogleDriveFileId, resolveGoogleDriveDestination, validateGoogleDriveFolder } from '@/lib/server/googleDriveDestination'
 import { CloudFolderRef } from '@/lib/storage/types'
 import { FolderCapableFileProvider } from '@/lib/storage/folderCapable'
@@ -139,10 +145,26 @@ function toMetadata(file: DriveFile): FileProviderMetadata {
   }
 }
 
+function validateSyntheticRootUrl(urlStr: string, env: GoogleDriveEnvironment): void {
+  if (!isSyntheticDriveAllowed(env)) {
+    throw new GoogleDriveError('GOOGLE_DRIVE_CONFIGURATION_ERROR', 'Synthetic Google Drive rootUrl is prohibited in production environments.')
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(urlStr)
+  } catch {
+    throw new GoogleDriveError('GOOGLE_DRIVE_CONFIGURATION_ERROR', 'Invalid Google Drive rootUrl format.')
+  }
+  if (!['127.0.0.1', 'localhost'].includes(parsed.hostname)) {
+    throw new GoogleDriveError('GOOGLE_DRIVE_CONFIGURATION_ERROR', 'Synthetic Google Drive rootUrl is only permitted on loopback (127.0.0.1 or localhost).')
+  }
+}
+
 export function createGoogleDriveFileProvider(options: GoogleDriveOptions = {}): FolderCapableFileProvider {
   const env = options.env ?? process.env
   const rootFolderId = requiredRootFolderId(env)
   if (env.GOOGLE_DRIVE_ROOT_URL) {
+    validateSyntheticRootUrl(env.GOOGLE_DRIVE_ROOT_URL, env)
     google.options({ rootUrl: env.GOOGLE_DRIVE_ROOT_URL })
   }
   const { auth, mode: authMode } = createGoogleDriveAuth(env)

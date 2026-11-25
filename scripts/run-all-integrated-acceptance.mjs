@@ -112,6 +112,9 @@ paths:
     FEATURE_PAYROLL: 'true',
     FEATURE_ACTUAL_STAFFING: 'true',
     FEATURE_SELF_ATTENDANCE_REVIEW: 'true',
+    FEATURE_SELF_ATTENDANCE_PHOTO: 'true',
+    FILE_STORAGE_ENABLED: 'true',
+    ALLOW_SYNTHETIC_DRIVE: 'true',
     FEATURE_IMPORT_BATCH: 'true',
   }
   delete nextEnv.VERCEL
@@ -120,6 +123,7 @@ paths:
   let nextProc
   let mtxProc
   let proxyProc
+  let driveProc
 
   try {
     // Start Dedicated CORS Proxy
@@ -139,17 +143,27 @@ paths:
     proxyProc.stderr.on('data', chunk => process.stderr.write(`[proxy:err] ${chunk}`))
     await waitForHttp(`${CORS_PROXY_ORIGIN}/auth/v1/health`, 5000)
     console.log(`[CORS Proxy] Active on ${CORS_PROXY_ORIGIN} allowing origin ${APP_ORIGIN}`)
-    // Check Synthetic Drive health
+    // Check & Ensure Synthetic Drive
     console.log(`[1/4] Checking Synthetic Drive on http://127.0.0.1:${SYNTHETIC_DRIVE_PORT}...`)
+    const isDriveUp = await fetch(`http://127.0.0.1:${SYNTHETIC_DRIVE_PORT}/health`).then(r => r.ok).catch(() => false)
+    if (!isDriveUp) {
+      console.log(`[1/4] Starting Synthetic Drive on http://127.0.0.1:${SYNTHETIC_DRIVE_PORT}...`)
+      driveProc = spawn(process.execPath, ['scripts/synthetic-google-drive-server.mjs'], {
+        cwd: ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      driveProc.stdout.on('data', chunk => process.stdout.write(`[drive] ${chunk}`))
+      driveProc.stderr.on('data', chunk => process.stderr.write(`[drive:err] ${chunk}`))
+    }
     await waitForHttp(`http://127.0.0.1:${SYNTHETIC_DRIVE_PORT}/health`, 5000)
     console.log('[Synthetic Drive] Active and healthy.')
 
     // Start Next.js App Server
     console.log(`[2/4] Starting Next.js app server on ${APP_ORIGIN}...`)
     try { rmSync(path.join(ROOT, '.next'), { recursive: true, force: true }) } catch {}
-    nextProc = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '-p', NEXT_PORT, '-H', '127.0.0.1'], {
+    nextProc = spawn(process.execPath, ['--max-old-space-size=4096', 'node_modules/next/dist/bin/next', 'dev', '-p', NEXT_PORT, '-H', '127.0.0.1'], {
       cwd: ROOT,
-      env: nextEnv,
+      env: { ...nextEnv, NODE_OPTIONS: '--max-old-space-size=4096' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     nextProc.stdout.on('data', chunk => process.stdout.write(`[next] ${chunk}`))
@@ -168,7 +182,9 @@ paths:
     await new Promise(r => setTimeout(r, 2000))
 
     await waitForHttp(`${APP_ORIGIN}/api/media/jwks`, 180_000)
-    console.log(`[Next.js] Server ready on ${APP_ORIGIN}`)
+    await fetch(`${APP_ORIGIN}/api/schedule-source-files`, { cache: 'no-store' }).catch(() => {})
+    await fetch(`${APP_ORIGIN}/api/workforce/self-attendance-photo`, { cache: 'no-store' }).catch(() => {})
+    console.log(`[Next.js] Server ready and warmed up on ${APP_ORIGIN}`)
 
     // Start Native MediaMTX
     console.log(`[3/4] Starting Native MediaMTX on ${MEDIAMTX_ORIGIN}...`)
@@ -184,9 +200,9 @@ paths:
     console.log('\n======================================================')
     console.log('RUNNING TASK 1: DELTA C AUTHENTICATED ACCEPTANCE')
     console.log('======================================================')
-    const t1 = spawnSync(process.execPath, ['scripts/verify-deltac-authenticated-acceptance.mjs'], {
+    const t1 = spawnSync(process.execPath, ['--max-old-space-size=4096', 'scripts/verify-deltac-authenticated-acceptance.mjs'], {
       cwd: ROOT,
-      env: { ...process.env, APP_ORIGIN, MEDIAMTX_ORIGIN },
+      env: { ...process.env, APP_ORIGIN, MEDIAMTX_ORIGIN, NODE_OPTIONS: '--max-old-space-size=4096' },
       stdio: 'inherit',
     })
     if (t1.status !== 0) throw new Error('Task 1 Authenticated Acceptance FAILED')
@@ -195,9 +211,9 @@ paths:
     console.log('\n======================================================')
     console.log('RUNNING TASK 3: AUTHENTICATED A+B BROWSER UAT')
     console.log('======================================================')
-    const t3 = spawnSync(process.execPath, ['scripts/verify-ab-browser-uat.mjs'], {
+    const t3 = spawnSync(process.execPath, ['--max-old-space-size=4096', 'scripts/verify-ab-browser-uat.mjs'], {
       cwd: ROOT,
-      env: { ...process.env, APP_ORIGIN },
+      env: { ...process.env, APP_ORIGIN, NODE_OPTIONS: '--max-old-space-size=4096' },
       stdio: 'inherit',
     })
     if (t3.status !== 0) throw new Error('Task 3 Browser UAT FAILED')
@@ -210,6 +226,7 @@ paths:
     killProcessTree(nextProc)
     killProcessTree(mtxProc)
     killProcessTree(proxyProc)
+    if (driveProc) killProcessTree(driveProc)
   }
 }
 

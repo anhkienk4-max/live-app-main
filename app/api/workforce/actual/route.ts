@@ -4,5 +4,11 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const handler = createWorkforceActualHandler()
-export const GET = handler.GET
-export const POST = handler.POST
+
+export async function GET(request: Request): Promise<Response> {
+  return handler.GET(request)
+}
+
+export async function POST(request: Request): Promise<Response> {
+  return handler.POST(request)
+}

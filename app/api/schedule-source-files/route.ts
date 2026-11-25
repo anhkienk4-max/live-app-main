@@ -6,5 +6,10 @@ export const maxDuration = 60
 
 const handler = createScheduleSourceStorageHandler()
 
-export const GET = handler.GET
-export const POST = handler.POST
+export async function GET(request: Request): Promise<Response> {
+  return handler.GET(request)
+}
+
+export async function POST(request: Request): Promise<Response> {
+  return handler.POST(request)
+}

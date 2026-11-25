@@ -1,7 +1,11 @@
 import 'server-only'
 
 import { google } from 'googleapis'
-import { createGoogleDriveAuth, type GoogleDriveEnvironment } from '@/lib/server/googleDriveAuth'
+import {
+  createGoogleDriveAuth,
+  isSyntheticDriveAllowed,
+  type GoogleDriveEnvironment,
+} from '@/lib/server/googleDriveAuth'
 import {
   inspectAttendanceDrivePermissions,
   assertPrivateAttendanceDriveAcl,
@@ -53,9 +57,27 @@ export async function inspectAttendanceDriveRoot(
 ):Promise<AttendanceDriveAclStatus> {
   if(!/^[A-Za-z0-9_-]{12,120}$/.test(rootId))
     throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
+
+  let rootUrl: string | undefined = undefined
+  if (env.GOOGLE_DRIVE_ROOT_URL) {
+    if (!isSyntheticDriveAllowed(env)) {
+      throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
+    }
+    try {
+      const parsed = new URL(env.GOOGLE_DRIVE_ROOT_URL)
+      if (!['127.0.0.1', 'localhost'].includes(parsed.hostname)) {
+        throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
+      }
+      rootUrl = env.GOOGLE_DRIVE_ROOT_URL
+    } catch {
+      throw new AttendanceDriveAclError('ATTENDANCE_DRIVE_ACL_UNVERIFIED')
+    }
+  }
+
   const drive=client??(google.drive({
     version:'v3',
     auth:createGoogleDriveAuth(env).auth as Parameters<typeof google.drive>[0]['auth'],
+    ...(rootUrl ? { rootUrl } : {}),
   }) as unknown as DrivePermissionsClient)
 
   let fileInheritedPermissionsDisabled: boolean | null = null

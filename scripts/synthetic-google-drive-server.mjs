@@ -7,11 +7,32 @@ import crypto from 'node:crypto'
 const PORT = Number(process.env.SYNTHETIC_DRIVE_PORT || '18890')
 const STORAGE_DIR = path.join(os.tmpdir(), 'rc19-synthetic-drive-storage')
 fs.mkdirSync(STORAGE_DIR, { recursive: true })
+const MANIFEST_PATH = path.join(STORAGE_DIR, 'synthetic-manifest.json')
 
 const REGISTRY_PATH = path.resolve('docs/storage/ADA_OPS_FOLDER_REGISTRY_20261102.json')
 const registryData = JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf8'))
 
 const files = new Map()
+
+function saveManifest() {
+  try {
+    const list = Array.from(files.values())
+    fs.writeFileSync(MANIFEST_PATH, JSON.stringify(list, null, 2), 'utf8')
+  } catch {}
+}
+
+function loadManifest() {
+  try {
+    if (fs.existsSync(MANIFEST_PATH)) {
+      const list = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'))
+      for (const item of list) {
+        files.set(item.id, item)
+      }
+    }
+  } catch {}
+}
+
+loadManifest()
 
 // 1. Initialize root & app root folders
 files.set('1_-9f1xjIYvlIOEyXSeKtDPdB9PJKkaMm', {
@@ -107,11 +128,49 @@ const server = http.createServer((req, res) => {
     }))
   }
 
-  // 3. GET /drive/v3/files/:id (Metadata or Media)
-  const getMatch = /^\/drive\/v3\/files\/([^/?]+)/.exec(pathname)
+  // 3. GET /drive/v3/files/:id/permissions (ACL check for attendance & sensitive storage)
+  const permMatch = /^\/drive\/v3\/files\/([^/?]+)\/permissions/.exec(pathname)
+  if (method === 'GET' && permMatch) {
+    const fileId = permMatch[1]
+    const file = files.get(fileId)
+    if (!file) {
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      return res.end(JSON.stringify({ error: { code: 404, message: 'File not found' } }))
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify({
+      kind: 'drive#permissionList',
+      permissions: [
+        {
+          id: 'synthetic-owner-perm',
+          type: 'user',
+          role: 'owner',
+          emailAddress: 'ops-service@ada-ops.invalid',
+          inheritedPermissionsDisabled: false,
+        },
+      ],
+    }))
+  }
+
+  // 4. GET /drive/v3/files/:id (Metadata or Media)
+  const getMatch = /^\/drive\/v3\/files\/([^/?]+)$/.exec(pathname)
   if (method === 'GET' && getMatch) {
     const fileId = getMatch[1]
-    const file = files.get(fileId)
+    let file = files.get(fileId)
+    if (!file && fs.existsSync(path.join(STORAGE_DIR, fileId))) {
+      const stat = fs.statSync(path.join(STORAGE_DIR, fileId))
+      file = {
+        id: fileId,
+        name: `${fileId}.jpg`,
+        mimeType: 'image/jpeg',
+        parents: ['1T7r-SHC0yKylszPMoToHccZ3tTOnCDkh'],
+        size: String(stat.size),
+        trashed: false,
+        capabilities: { canAddChildren: true, canEdit: true },
+      }
+      files.set(fileId, file)
+      saveManifest()
+    }
     if (!file) {
       res.writeHead(404, { 'Content-Type': 'application/json' })
       return res.end(JSON.stringify({ error: { code: 404, message: 'File not found' } }))
@@ -158,6 +217,10 @@ const server = http.createServer((req, res) => {
           }
           if (parts[1]) {
             fileBytes = parts[1].body
+            const ctMatch = /content-type:\s*([^\r\n;]+)/i.exec(parts[1].header)
+            if (ctMatch && !metadata.mimeType) {
+              metadata.mimeType = ctMatch[1].trim()
+            }
           }
         }
       } else {
@@ -193,6 +256,7 @@ const server = http.createServer((req, res) => {
       }
 
       files.set(fileId, record)
+      saveManifest()
 
       res.writeHead(200, { 'Content-Type': 'application/json' })
       return res.end(JSON.stringify(record))
@@ -205,6 +269,7 @@ const server = http.createServer((req, res) => {
   if (method === 'DELETE' && delMatch) {
     const fileId = delMatch[1]
     files.delete(fileId)
+    saveManifest()
     const filePath = path.join(STORAGE_DIR, fileId)
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
     res.writeHead(204)
@@ -213,6 +278,13 @@ const server = http.createServer((req, res) => {
 
   res.writeHead(404, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify({ error: { code: 404, message: 'Not found' } }))
+})
+
+server.on('error', err => {
+  console.error('[SYNTHETIC-DRIVE:SERVER-ERR]', err)
+})
+process.on('uncaughtException', err => {
+  console.error('[SYNTHETIC-DRIVE:UNCAUGHT]', err)
 })
 
 server.listen(PORT, '127.0.0.1', () => {

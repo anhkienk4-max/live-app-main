@@ -37,8 +37,8 @@ type ExistingEvidence = {
   size_bytes:number;checksum_sha256:string
 }
 const ERROR_HEADERS={ 'Cache-Control':'no-store' }
-function failed(code:string,status:number) {
-  return Response.json({ok:false,error:{code}}, {status,headers:ERROR_HEADERS})
+function failed(code:string,status:number,extra?:Record<string,unknown>) {
+  return Response.json({ok:false,error:{code,...extra}}, {status,headers:ERROR_HEADERS})
 }
 function mimeFromBytes(bytes:Uint8Array): {mime:string;ext:'jpg'|'png'|'webp'}|null {
   if(bytes.length>=4&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff)
@@ -52,7 +52,16 @@ function mimeFromBytes(bytes:Uint8Array): {mime:string;ext:'jpg'|'png'|'webp'}|n
 }
 function hasExactOrigin(request:Request) {
   const origin=request.headers.get('origin')
-  return Boolean(origin&&origin===new URL(request.url).origin)
+  if(!origin) return false
+  const reqOrigin = new URL(request.url).origin
+  if (origin === reqOrigin) return true
+  if (process.env.NODE_ENV !== 'production') {
+    const isLoopback = (u: string) => u.startsWith('http://127.0.0.1:') || u.startsWith('http://localhost:')
+    if (isLoopback(origin) && isLoopback(reqOrigin)) {
+      return new URL(origin).port === new URL(request.url).port
+    }
+  }
+  return false
 }
 function contextSnapshot(info:z.infer<typeof contextSchema>) {
   return {shift_id:info.shift_id,shift_date:info.date,live_start:info.start_at,
@@ -392,8 +401,11 @@ async function handleSelfAttendancePhotoPost(request: Request, dependencies: Sel
     if(isAuthorizationError(error))return authorizationErrorResponse(error)
     if(error instanceof RequestBodyError)return failed(error.code,error.status)
     if(error instanceof z.ZodError)return failed('ATTENDANCE_PHOTO_REQUEST_INVALID',400)
-    console.error(currentEventKind==='check_out'?'ATTENDANCE_PHOTO_CHECKOUT_FAILED':'ATTENDANCE_PHOTO_CHECKIN_FAILED')
-    return failed('ATTENDANCE_PHOTO_UPLOAD_FAILED',503)
+    console.error(currentEventKind==='check_out'?'ATTENDANCE_PHOTO_CHECKOUT_FAILED':'ATTENDANCE_PHOTO_CHECKIN_FAILED', error)
+    return failed('ATTENDANCE_PHOTO_UPLOAD_FAILED',503, {
+      debugError: String(error instanceof Error ? error.message : error),
+      debugStack: String(error instanceof Error ? error.stack : ''),
+    })
   }
 }
 
