@@ -28,6 +28,15 @@ const restPort = Number(process.env.D1_REST_PORT || runtimeConfig.rest_port)
 const apiProxyPort = Number(process.env.D1_PROXY_PORT || runtimeConfig.proxy_port)
 const testPassword = crypto.randomBytes(32).toString('base64url')
 
+function issueLocalRoleToken(jwtSecret, role) {
+  const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url')
+  const header = encode({ alg: 'HS256', typ: 'JWT' })
+  const now = Math.floor(Date.now() / 1000)
+  const payload = encode({ iss: 'supabase', role, iat: now, exp: now + 1800 })
+  const signature = crypto.createHmac('sha256', jwtSecret).update(`${header}.${payload}`).digest('base64url')
+  return `${header}.${payload}.${signature}`
+}
+
 function routeFetch(input, init) {
   const request = input instanceof Request ? new Request(input, init) : new Request(input, init)
   const target = new URL(request.url)
@@ -84,19 +93,21 @@ async function main() {
   process.env.FEATURE_RBAC_DYNAMIC_ENFORCEMENT = 'false'
 
   const { createClient } = require('@supabase/supabase-js')
-  const anonKey = cfg.anon_key
-  const serviceKey = cfg.service_role_key
+  // Runtime files may retain expired local API keys. Refresh only technical anon/service tokens
+  // from this loopback disposable runtime; browser actor sessions still come from real GoTrue login.
+  const anonKey = issueLocalRoleToken(cfg.jwt_secret, 'anon')
+  const serviceKey = issueLocalRoleToken(cfg.jwt_secret, 'service_role')
   const clientOptions = { global: { fetch: routeFetch }, auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } }
   const service = createClient(`http://127.0.0.1:${apiProxyPort}`, serviceKey, clientOptions)
   const auth = createClient(`http://127.0.0.1:${apiProxyPort}`, anonKey, clientOptions)
   // Before fixture writes, bind REST and GoTrue to the already verified PG database.
   const identityCheck = new PgClient({ connectionString })
   await identityCheck.connect()
-  const baseline = await identityCheck.query("select r.actor_business_user_id,s.brand_id,s.platform_id from public.rc19_shift_assignment_replacements r join public.shifts s on s.id=r.shift_id where r.shift_id='delta-d-shift'")
+  const baseline = await identityCheck.query("select r.actor_business_user_id,r.shift_id,s.brand_id,s.platform_id from public.rc19_shift_assignment_replacements r join public.shifts s on s.id=r.shift_id where r.shift_id like 'd1-canonical-%' order by r.created_at desc limit 1")
   await identityCheck.end()
-  assert.equal(baseline.rowCount, 1, 'expected the retained D1 baseline actor/shift')
-  const baselineShiftRest = requireData(await service.from('shifts').select('id,brand_id,platform_id').eq('id','delta-d-shift').single(), 'bind PostgREST shift')
-  assert.equal(baselineShiftRest.id, 'delta-d-shift')
+  assert.equal(baseline.rowCount, 1, 'expected a retained canonical D1 authorization context')
+  const baselineShiftRest = requireData(await service.from('shifts').select('id,brand_id,platform_id').eq('id',baseline.rows[0].shift_id).single(), 'bind PostgREST shift')
+  assert.equal(baselineShiftRest.id, baseline.rows[0].shift_id)
   assert.equal(baselineShiftRest.brand_id, baseline.rows[0].brand_id)
   assert.equal(baselineShiftRest.platform_id, baseline.rows[0].platform_id)
   const accounts = new Map()
@@ -243,7 +254,7 @@ async function main() {
   try {
     const seedDb = new PgClient({ connectionString })
     await seedDb.connect()
-    const seed = (await seedDb.query("select actor_business_user_id,old_user_id,replacement_user_id,shift_id from public.rc19_shift_assignment_replacements where shift_id='delta-d-shift'")).rows[0]
+    const seed = (await seedDb.query("select actor_business_user_id,old_user_id,replacement_user_id,shift_id from public.rc19_shift_assignment_replacements where shift_id like 'd1-canonical-%' order by created_at desc limit 1")).rows[0]
     const templateActor = (await seedDb.query('select operational_roles from public.business_users where id=$1', [seed.old_user_id])).rows[0]
     await seedDb.end()
     assert.ok(seed)
@@ -275,12 +286,12 @@ async function main() {
     const dateText = p => `${p.year}-${p.month}-${p.day}`
     const timeText = p => `${p.hour}:${p.minute}:${p.second}`
     const parentStartLocal = localParts(parentStart), parentEndLocal = localParts(parentEnd)
-    assert.equal(dateText(parentStartLocal), dateText(parentEndLocal), 'fixture is an ordinary same-day shift')
+    const crossesMidnight = dateText(parentStartLocal) !== dateText(parentEndLocal)
     const shiftId = `d1_partial_attendance_${runId}`
     const shiftRow = requireData(await service.from('shifts').insert({
       id: shiftId, date: dateText(parentStartLocal), start_time: timeText(parentStartLocal), end_time: timeText(parentEndLocal),
       timezone: 'Asia/Ho_Chi_Minh', start_at: parentStart.toISOString(), end_at: parentEnd.toISOString(),
-      end_date: dateText(parentEndLocal), crosses_midnight: false, duration_minutes: 360,
+      end_date: dateText(parentEndLocal), crosses_midnight: crossesMidnight, duration_minutes: 360,
       brand_id: context.brand_id, platform_id: context.platform_id, title: `D1 attendance replacement ${runId}`,
       required_host_count: 1, required_support_count: 0, required_technical_count: 0,
       registration_cutoff_at: new Date(parentStart.getTime() - 60 * 60_000).toISOString(),
