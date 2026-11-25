@@ -1,0 +1,9 @@
+# RC19 W4 Delta D3 implementation note
+
+This branch adds a monthly Workforce incident read endpoint backed by a scoped database RPC. It aggregates the current canonical incident row by its stored `business_date`, separates review states, counts confirmed Skip/Absent/Authorized Absence/Late/Early Leave, keeps approved PASS and SWAP separate, and reports verified late minutes separately from unknown late duration. A late-minute value is projected only for a confirmed Late incident; this aggregation does not calculate or validate an arrival time itself. Detail items include source incident ID/version and shift/segment IDs; reasons and evidence references are not exposed.
+
+Authorization is evaluated inside the `SECURITY DEFINER` RPC. Members are self-only. Leaders need the `workforce.read` permission and an active Brand scope for every returned shift; an explicitly requested Brand is rejected if the Leader has no matching scope. Admins need the effective `workforce.read` permission. The current canonical schema does not provide an agency identifier on the incident/shift/business-user rows, so this change does not invent an agency mapping. Agency-scoped aggregation remains unverified until an authoritative agency relation exists.
+
+Report revision snapshots are not implemented in this D3 checkpoint. The frozen contract requires note IDs and versions from D2 to be selected and captured atomically with report revision submission. D2's persisted note contract is still being implemented, so adding a snapshot writer before its stable source identity exists would create a second source of truth.
+
+The committed migration/API code is not persisted-DB acceptance. Apply it only to a separately marked disposable PG17 database and verify authenticated Admin/Leader/Member scopes there before claiming integration acceptance.
