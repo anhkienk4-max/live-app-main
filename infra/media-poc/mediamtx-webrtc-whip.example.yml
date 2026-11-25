@@ -1,0 +1,50 @@
+# Reference Production WebRTC WHIP/WHEP + HLS Gateway Configuration for Delta C (#189)
+# Separate from #51's OBS PoC (`mediamtx.yml`) to preserve existing #51 config contract tests.
+# Do NOT deploy without TLS termination (Nginx/Caddy), coturn ICE credentials, and
+# configured ES256 JWKS secrets (MEDIA_APP_ORIGIN + MEDIA_PUBLIC_HLS_ORIGIN).
+
+logLevel: info
+logDestinations: [stdout]
+
+authMethod: jwt
+authJWTJWKS: https://ops5729.top/api/media/jwks
+authJWTIssuer: https://ops5729.top
+authJWTAudience: ada-media-monitor
+authJWTExclude: []
+
+# Disable all legacy unencrypted protocols except local reverse-proxied HLS/WebRTC
+rtsp: false
+rtmp: false
+srt: false
+moq: false
+playback: false
+api: false
+metrics: false
+pprof: false
+
+# WebRTC WHIP (ingest) + WHEP (fan-out) bound to loopback behind HTTPS reverse proxy
+webrtc: true
+webrtcAddress: 127.0.0.1:8889
+webrtcAllowOrigins: ["https://ops5729.top"]
+webrtcLocalUDPAddress: :8189
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+  # Production requires turn:<domain>:5349 with time-limited HMAC username/password
+
+# Optional low-latency fMP4 HLS fallback for video-only H.264 streams
+hls: true
+hlsAddress: 127.0.0.1:8888
+hlsEncryption: false
+hlsAllowOrigins: ["https://ops5729.top"]
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsDirectory: ""
+
+pathDefaults:
+  record: false
+  source: publisher
+  overridePublisher: false
+  # Exact media_path values (`shift_<id>`) must be present in the ES256 JWT
+  # `mediamtx_permissions` claim (`action: publish` or `action: read`).
