@@ -40,5 +40,9 @@ export interface WorkforceIncidentMonthlyResponse {
   pageLimit: number
   pageOffset: number
   totalIncidents: number
+  /** Count over the complete authorized and filtered scope, before pagination. */
+  totalDistinctShifts: number
+  /** Count over the complete authorized and filtered scope, before pagination. */
+  totalDistinctStaff: number
   staff: WorkforceIncidentMonthlyStaffSummary[]
 }

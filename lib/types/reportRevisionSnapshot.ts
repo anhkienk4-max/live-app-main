@@ -48,6 +48,12 @@ export const ReportRevisionSourceSnapshotSchema = z.object({
     createdBy: z.string().min(1),
   }).strict()),
   incidentRefs: z.array(z.object({ incidentId: z.string().uuid(), version: z.number().int().positive() }).strict()),
+  approvedExternalSummary: z.object({
+    summaryId: z.string().uuid(),
+    version: z.number().int().positive(),
+    approvedBy: z.string().min(1),
+    approvedAt: z.string().datetime({ offset: true }),
+  }).strict().optional(),
 }).strict()
 
 export const ReportExternalProjectionSchema = z.object({
@@ -69,6 +75,10 @@ export const ReportExternalProjectionSchema = z.object({
     liveDurationMinutes: z.number().int().nullable(),
     dashboardPlatform: z.string(),
   }).strict(),
+  operationalSummary: z.object({
+    version: z.number().int().positive(),
+    content: z.string().min(1).max(4000),
+  }).strict().nullable().optional(),
 }).strict()
 
 export const ReportRevisionSnapshotResponseSchema = z.union([

@@ -1,6 +1,6 @@
 # RC19 W4 Agency Membership Authorization Decision
 
-**Status:** Proposal for Owner / HR approval. No schema migration is authorized by this document.
+**Status:** Owner approved the canonical Agency membership model and HR-authoritative backfill preparation on 2026-11-26. Production migration and real HR backfill remain unauthorized.
 
 **Evidence checkpoint:** D1 `6923a0bda50ae1cccb64726e1fb1134e60085e8d`; D2 `5eb3992c23767af539b946af9105af93bc70d126`; D3 `7bd0668c8aba543fa62f0329a13431a3d67af91e`.
 
@@ -10,15 +10,19 @@ The isolated D1-derived PG17 candidate `rc19_d123_candidate_20261126_c1` was ins
 
 This is insufficient evidence that `agency_code` identifies a staffing agency or a person's employer. Existing Brand grants remain a separate authorization dimension. Brand membership must not be treated as Agency membership.
 
-## Decision required before implementation
+## Current implementation boundary
 
-Owner and HR must name the authoritative Agency directory/source and provide a stable identifier and mapping rules. Until then, do not create Agency rows, backfill memberships, grant access based on Brand, or broaden Leader permissions. Agency-sensitive operations should fail closed where the contract requires an Agency decision that the current data cannot prove.
+The additive disposable-candidate implementation is in migration `20261126130000_rc19_w4_canonical_agency_membership.sql`. It creates a private Agency directory, HR-provenance membership history, immutable membership events, and `shifts.authoritative_agency_id`; it inserts no Agency or membership data. `agency_code` remains an import/source classification and is never copied into the canonical Agency FK.
+
+The repository contains no HR directory export, canonical HR Agency key, or approved immutable HR-to-`business_users.id` mapping. Therefore a real mapping dry run and membership seed are blocked on the authoritative HR input. No row may be manufactured from names, email similarity, Brand grant, shift, Attendance, or Payroll history.
+
+The current tenant boundary is the Supabase project/database. There is no canonical in-database tenant identity or tenant membership model in the current schema. The additive Agency tables do not claim row-level multi-tenant isolation inside a shared Supabase project. If multiple business tenants must share one project, an Owner-approved stable tenant key and source mapping are still required before enforcement.
 
 ## Proposed canonical model
 
 - `agencies`: immutable UUID primary key, unique HR-authoritative external key, canonical display name, active/inactive state, timestamps, and audited state changes. Do not reuse `shifts.agency_code` as the external key without an explicit HR mapping decision.
 - `business_user_agency_memberships`: UUID primary key, `business_user_id`, `agency_id`, effective start/end timestamps, status (`active`/`revoked`), HR source reference, source version, created/changed actor, timestamps, and optimistic version. Keep membership history; revocation closes the active interval rather than deleting it.
-- Multiple concurrent Agency memberships may be supported only if HR confirms the business rule. If permitted, each operation must select and persist the exact Agency scope; if not, enforce one effective membership per user at the database boundary. Overlapping intervals for the same user/Agency are forbidden.
+- Multiple concurrent Agency memberships are supported. Each protected operation must match the target shift's exact Agency; overlapping intervals for the same user/Agency are forbidden by a transaction-serialized database trigger.
 - All timestamps use `timestamptz`; authorization is evaluated at transaction time. An expired, future-dated, inactive, or revoked membership is not effective.
 
 ## Authorization contract proposed for approval
@@ -51,12 +55,12 @@ Current `agency_code` import behavior must remain source classification until th
 3. **Enforcement:** only after parity and Owner approval, add Agency checks to versioned write/read boundaries. Reauthorize inside transactions and on receipt replay. Do not switch by a global flag that bypasses deny behavior.
 4. **Rollback:** stop new Agency-sensitive mutations or revert to the last approved versioned handler only if doing so does not broaden access. Keep the additive tables and audit history; never delete memberships or rewrite old records as rollback.
 
-## Approval checklist
+## Remaining input and release gates
 
-- [ ] Owner/HR identifies the authoritative Agency system and stable key.
-- [ ] Owner decides whether Admin is globally cross-Agency.
-- [ ] Owner/HR confirms whether simultaneous multi-Agency membership is valid.
-- [ ] Owner/HR approves effective-date, revocation, and identity-reconciliation rules.
-- [ ] Owner approves the additive schema and enforcement rollout after disposable PG/RLS tests.
+- [ ] HR provides the authoritative source name, stable user/Agency keys, effective dates, source version, current status, and source snapshot checksum.
+- [ ] HR approves exact mapping from immutable HR user keys to `business_users.id`; unresolved or duplicate users remain unmapped.
+- [ ] Owner confirms whether the existing Admin global-scope behavior remains unchanged (current candidate preserves it).
+- [ ] Owner supplies the canonical tenant identity only if multiple tenants share one Supabase project.
+- [ ] Disposable canonical PG/RLS acceptance and application-wide scope integration complete before any enforcement release.
 
-Until these decisions are recorded, this proposal remains unapproved and no membership migration or automatic backfill should be implemented.
+The schema is local candidate code only. It has not been run on Production, Staging, or a canonical authenticated runtime. No real HR backfill, migration cutover, or Production authorization change has occurred.

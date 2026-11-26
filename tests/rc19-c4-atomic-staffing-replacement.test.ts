@@ -48,7 +48,14 @@ test('replacement RPC is executable only by authenticated callers and never expo
 test('typed service forwards the complete request through the authorized API to the authoritative RPC', () => {
   assert.match(repository, /replaceAssignment\(input: ReplaceShiftAssignmentInput\)/)
   assert.match(repository, /fetch\('\/api\/staffing\/replacements'/)
-  assert.match(repository, /body: JSON\.stringify\(input\)/)
+  assert.match(repository, /body: JSON\.stringify\(legacyPayload\)/)
+  for (const field of [
+    'shiftId', 'staffingSegmentId', 'registrationId', 'replacementUserId', 'role',
+    'expectedShiftVersion', 'expectedRegistrationVersion', 'effectiveAt', 'reason',
+    'emergency', 'idempotencyKey',
+  ]) assert.match(repository, new RegExp(`${field}: input\\.`))
+  assert.match(repository, /body: JSON\.stringify\(incidentPayload\)/)
+  assert.match(repository, /canonicalIncident\?: ShiftIncidentV1 \| null/)
   assert.match(handler, /requirePermission\(request, 'shifts\.assign_staff'/)
   assert.match(handler, /rpc\('replace_shift_assignment'/)
   for (const field of [
