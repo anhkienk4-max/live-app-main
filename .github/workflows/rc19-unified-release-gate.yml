@@ -7,6 +7,7 @@ on:
       - integration/rc19-unified-release
       - integration/rc19-unified-candidate
       - integration/rc19-c4-candidate
+      - chore/rc19-w4-release-readiness
       - codex/rc19-batch05a43-ci-hardening
       - codex/rc19-c3-db-enforcement
   pull_request:
@@ -14,6 +15,11 @@ on:
       - main
       - feat/ops-full-app-upgrade-rc19
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact commit SHA required for a manual run
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -21,12 +27,12 @@ permissions:
 jobs:
   unified-release-gate:
     name: RC19 Unified Release Gate (PostgreSQL 17 + Strict Concurrency + Build)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     services:
       postgres17:
-        image: postgres:17-alpine
+        image: postgres:17.11-alpine
         env:
           POSTGRES_USER: rc19_ci
           POSTGRES_PASSWORD: rc19-ci-${{ github.run_id }}-${{ github.run_attempt }}
@@ -46,10 +52,27 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Verify exact HEAD SHA
+      - name: Verify checkout SHA and record PR head versus merge SHA
+        env:
+          CHECKOUT_SHA: ${{ github.sha }}
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TESTED_MERGE_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ github.event.inputs.expected_sha }}
         run: |
-          echo "Verified Head SHA: ${{ github.sha }}"
-          git rev-parse HEAD
+          actual="$(git rev-parse HEAD)"
+          if [[ "$actual" != "$CHECKOUT_SHA" || "$actual" != "$TESTED_MERGE_SHA" ]]; then
+            echo "::error::Checked-out HEAD $actual does not match event SHA $CHECKOUT_SHA"
+            exit 1
+          fi
+          if [[ -n "$EXPECTED_SHA" && "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Checked-out HEAD $actual does not match requested exact SHA $EXPECTED_SHA"
+            exit 1
+          fi
+          {
+            echo "Source head SHA: $SOURCE_HEAD_SHA"
+            echo "Tested/merge SHA: $TESTED_MERGE_SHA"
+            echo "Checked-out SHA: $actual"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify PostgreSQL 17 and create isolated test databases
         env:
@@ -81,7 +104,7 @@ jobs:
       - name: Set up Node.js 24 (matches Vercel Production runtime)
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '24'
+          node-version: '24.18.0'
 
       - name: Install pinned pnpm
         run: |
@@ -221,3 +244,22 @@ jobs:
           OPERATIONAL_STORAGE_ROUTING_MODE: database
         run: |
           pnpm run build
+
+      - name: Write sanitized exact-SHA gate attestation
+        if: always()
+        env:
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TESTED_MERGE_SHA: ${{ github.sha }}
+          GATE_RESULT: ${{ job.status }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/rc19-release-attestation"
+          jq -n --arg source "$SOURCE_HEAD_SHA" --arg tested "$TESTED_MERGE_SHA" --arg result "$GATE_RESULT" --arg run "$GITHUB_RUN_ID" '{scope:"release-gate-attestation",source_head_sha:$source,tested_merge_sha:$tested,job_result:$result,run_id:$run,contains_credentials:false}' > "$RUNNER_TEMP/rc19-release-attestation/attestation.json"
+
+      - name: Upload sanitized exact-SHA gate attestation
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rc19-unified-gate-${{ github.run_id }}
+          path: ${{ runner.temp }}/rc19-release-attestation/attestation.json
+          retention-days: 14
+          if-no-files-found: warn
