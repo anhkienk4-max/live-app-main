@@ -1,8 +1,15 @@
 # RC19 W4 PASS / Swap segment-aware handoff
 
-Status: source contract proposal from Codex backend WIP; not authenticated acceptance. Frontend worktree remains frozen and unchanged.
+Status: committed review-only backend contract; authenticated acceptance not run. Frontend worktree remains frozen and unchanged.
+
+- Backend source commit: `520a1d585d5b495e5c8525399193745374699f17`
+- Commit tree: `cd1d6d39d2855ec2b07f3bed8014b7cd4a9f466f`
+- Migration SHA-256: `EB05B4D9FBCB6BDAEF7E5B1B330F20CCE6E066718E70D560E73ED6786BFCC184`
+- Typed contract: `lib/types/segmentAwarePassSwap.ts`
 
 ## Canonical selection identity
+
+`SegmentAwareSwapSource` carries the exact `registrationId`, `shiftId`, nullable legacy `staffingSegmentId`, `operationalRole`, persisted effective interval and `registrationVersion`. `SegmentAwareSwapExchangeCandidate` is the exact row shape returned by `get_swap_exchange_candidates_v2`; its `registration_id` is the counterpart identity sent to preflight and create.
 
 - Source selection is the exact active `shift_registrations.id`. The role is read from that row; a UI must not select `assigned.find(role)` when one person has multiple registrations of that role in a parent shift.
 - For a segmented assignment, `staffing_segment_id` is required and must belong to the selected parent shift. Display that segment's persisted `start_at`/`end_at`; do not display the parent shift time as the assignment interval.
