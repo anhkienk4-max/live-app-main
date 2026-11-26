@@ -604,7 +604,7 @@ export function createSupabaseShiftRegistrationRepository(
         const payload = await response.json().catch(() => null) as {
           ok?: boolean
           data?: ReplaceShiftAssignmentResult & {
-            canonicalIncident?: any
+            canonicalIncident?: ShiftIncidentV1 | null
             receiptId?: string
             replacement_id?: string
             shift_id?: string
