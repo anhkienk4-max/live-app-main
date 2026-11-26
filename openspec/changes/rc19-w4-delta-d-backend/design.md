@@ -1,0 +1,3 @@
+# Design
+
+The distinct V1 facade invokes the existing atomic replacement inside its transaction and creates a canonical pending incident, receipt link and audit event before commit. Actor identity and scope are server-derived and checked again before idempotent replay. Preserve text IDs and the `registration` response field. Existing notes use affected user/role and version; draft save and review use CAS. Report revisions capture source IDs, versions and server-filtered snapshots. Monthly counts aggregate the entire authorized dataset, not a detail page. The reviewed compatibility decisions are recorded in `docs/rc19/W4_DELTA_D_BACKEND_PROPOSED_CONTRACT.md`; typed interfaces require UI-owner confirmation.
