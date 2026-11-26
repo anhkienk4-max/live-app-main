@@ -11,6 +11,7 @@ on:
       - docs/releases/RC19_W4_HOSTED_RUNTIME_HARNESS_CONTRACT.md
       - lib/services/supabaseShiftRegistrationService.ts
       - project-memory/**
+      - tests/final-release-test-manifest.json
   pull_request:
     branches:
       - main
