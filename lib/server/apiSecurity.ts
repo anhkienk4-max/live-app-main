@@ -176,3 +176,70 @@ export async function withTimeout<T>(
     if (timeoutId) clearTimeout(timeoutId)
   }
 }
+
+const ALLOWED_LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
+
+export function hasExactOrigin(request: Request): boolean {
+  const origin = request.headers.get('origin')
+  if (!origin || !origin.trim()) return false
+
+  // Reject multiple Origin headers or comma-separated origins
+  if (origin.includes(',')) return false
+
+  let originUrl: URL
+  let reqUrl: URL
+  try {
+    originUrl = new URL(origin)
+    reqUrl = new URL(request.url)
+  } catch {
+    return false
+  }
+
+  // Reject userinfo in Origin or Request URL (RFC 6454 Section 4)
+  if (originUrl.username || originUrl.password || reqUrl.username || reqUrl.password) {
+    return false
+  }
+
+  // Strict same-origin match (canonical browser/server alignment)
+  if (origin === reqUrl.origin) return true
+
+  // Loopback normalization only in explicitly authorized disposable/test/dev runtimes
+  // Strictly denied in Production, Staging, and Preview environments
+  const isProdOrStaging =
+    process.env.NODE_ENV === 'production' ||
+    process.env.NEXT_PUBLIC_APP_ENV === 'production' ||
+    process.env.NEXT_PUBLIC_APP_ENV === 'staging' ||
+    process.env.APP_ENV === 'production' ||
+    process.env.APP_ENV === 'staging' ||
+    process.env.VERCEL_ENV === 'production' ||
+    process.env.VERCEL_ENV === 'preview'
+
+  if (isProdOrStaging) {
+    return false
+  }
+
+  const isExplicitDisposableRuntime =
+    process.env.NODE_ENV === 'test' ||
+    process.env.NODE_ENV === 'development' ||
+    process.env.DISPOSABLE_RUNTIME === 'true' ||
+    process.env.DISPOSABLE_TEST_ENV === 'true'
+
+  if (!isExplicitDisposableRuntime) {
+    return false
+  }
+
+  // Protocol must be strictly http: for loopback relaxation
+  if (originUrl.protocol !== 'http:' || reqUrl.protocol !== 'http:') {
+    return false
+  }
+
+  // Exact hostname allowlist
+  if (!ALLOWED_LOOPBACK_HOSTNAMES.has(originUrl.hostname) || !ALLOWED_LOOPBACK_HOSTNAMES.has(reqUrl.hostname)) {
+    return false
+  }
+
+  // Port validation: ports must match exactly (defaulting to 80 for http)
+  const originPort = originUrl.port || '80'
+  const reqPort = reqUrl.port || '80'
+  return originPort === reqPort
+}

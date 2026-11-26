@@ -1,6 +1,12 @@
 import { getAuthMode } from '@/lib/auth/authMode'
 import { createClient } from '@/lib/supabase/client'
 import type { OperationalRole, ShiftOperationalNote, ShiftOperationalNoteCategory } from '@/lib/types/database.types'
+import type {
+  ShiftOperationalNoteWorkflowAction,
+  ShiftOperationalNoteWorkflowState,
+  ShiftOperationalNoteWorkflowV1Request,
+  ShiftOperationalNoteWorkflowV1Response,
+} from '@/lib/types/shiftOperationalNoteWorkflow'
 
 let inMemoryNotes: ShiftOperationalNote[] = [
   {
@@ -295,6 +301,229 @@ export const shiftNoteService = {
     }
     inMemoryNotes[idx] = updatedNote
     return Promise.resolve(updatedNote)
+  },
+
+  async executeWorkflow(
+    request: ShiftOperationalNoteWorkflowV1Request,
+  ): Promise<ShiftOperationalNoteWorkflowV1Response> {
+    if (getAuthMode() === 'mock') {
+      const now = new Date().toISOString()
+      const noteId = request.noteId || `note-${Date.now()}`
+      let noteItem = inMemoryNotes.find(n => n.id === noteId)
+      const version = (request.expectedVersion ?? 0) + 1
+      if (!noteItem) {
+        noteItem = {
+          id: noteId,
+          shift_id: request.shiftId || '',
+          business_date: request.businessDate || now.slice(0, 10),
+          date: request.businessDate || now.slice(0, 10),
+          category: request.category || 'normal',
+          note: request.note || '',
+          author_id: 'mock-user',
+          author_name: 'Mock User',
+          author_role: 'admin',
+          actual_event_time: request.actualEventTime || now,
+          event_time: request.actualEventTime || now,
+          version,
+          created_at: now,
+          updated_at: now,
+        }
+        inMemoryNotes.unshift(noteItem)
+      } else {
+        noteItem.version = version
+        noteItem.note = request.note ?? noteItem.note
+        noteItem.category = request.category ?? noteItem.category
+        noteItem.updated_at = now
+      }
+      const workflowStateMap: Record<ShiftOperationalNoteWorkflowAction, ShiftOperationalNoteWorkflowState> = {
+        save_draft: 'draft',
+        submit: 'submitted',
+        approve: 'reviewed',
+        request_correction: 'correction_requested',
+        reject: 'rejected',
+      }
+      return {
+        note: {
+          id: noteItem.id,
+          shift_id: noteItem.shift_id,
+          business_date: noteItem.business_date,
+          category: noteItem.category,
+          note: noteItem.note,
+          author_id: noteItem.author_id,
+          actual_event_time: noteItem.actual_event_time,
+          affected_role: request.affectedRole,
+          affected_user_id: request.affectedUserId,
+          version: noteItem.version,
+          workflow_state: workflowStateMap[request.action],
+          staffing_segment_id: request.staffingSegmentId,
+          canonical_incident_id: request.canonicalIncidentId,
+          created_at: noteItem.created_at,
+          updated_at: noteItem.updated_at,
+        },
+        replayed: false,
+        revision: version,
+      }
+    }
+
+    let response: Response
+    try {
+      response = await fetch('/api/operational-notes/workflow-v1', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      })
+    } catch (err: unknown) {
+      throw new ShiftNoteServiceError(
+        `D2_WORKFLOW_NETWORK_ERROR: ${err instanceof Error ? err.message : String(err)}`,
+        'NETWORK_ERROR',
+      )
+    }
+
+    if (response.status === 404 || response.status === 503) {
+      throw new ShiftNoteServiceError(
+        'D2_WORKFLOW_UNAVAILABLE: Luồng ghi chú vận hành V1 chưa được triển khai trên môi trường này.',
+        'D2_WORKFLOW_UNAVAILABLE',
+      )
+    }
+
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const code = payload?.error?.code || `HTTP_${response.status}`
+      const message = payload?.error?.message || payload?.error || `Giao tác thất bại với mã lỗi ${code}`
+      throw new ShiftNoteServiceError(message, code)
+    }
+
+    return payload as ShiftOperationalNoteWorkflowV1Response
+  },
+
+  async saveDraft(input: {
+    noteId?: string | null
+    expectedVersion?: number | null
+    shiftId?: string | null
+    businessDate?: string | null
+    category?: ShiftOperationalNoteCategory | null
+    note?: string | null
+    actualEventTime?: string | null
+    affectedRole?: OperationalRole | null
+    affectedUserId?: string | null
+    staffingSegmentId?: string | null
+    canonicalIncidentId?: string | null
+    idempotencyKey?: string
+  }): Promise<ShiftOperationalNoteWorkflowV1Response> {
+    return this.executeWorkflow({
+      action: 'save_draft',
+      noteId: input.noteId ?? null,
+      expectedVersion: input.expectedVersion ?? null,
+      idempotencyKey: input.idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`),
+      shiftId: input.shiftId ?? null,
+      businessDate: input.businessDate ?? null,
+      category: input.category ?? null,
+      note: input.note ?? null,
+      actualEventTime: input.actualEventTime ?? null,
+      affectedRole: input.affectedRole ?? null,
+      affectedUserId: input.affectedUserId ?? null,
+      staffingSegmentId: input.staffingSegmentId ?? null,
+      canonicalIncidentId: input.canonicalIncidentId ?? null,
+    })
+  },
+
+  async submitNote(input: {
+    noteId?: string | null
+    expectedVersion?: number | null
+    shiftId?: string | null
+    businessDate?: string | null
+    category?: ShiftOperationalNoteCategory | null
+    note?: string | null
+    actualEventTime?: string | null
+    affectedRole?: OperationalRole | null
+    affectedUserId?: string | null
+    staffingSegmentId?: string | null
+    canonicalIncidentId?: string | null
+    idempotencyKey?: string
+  }): Promise<ShiftOperationalNoteWorkflowV1Response> {
+    return this.executeWorkflow({
+      action: 'submit',
+      noteId: input.noteId ?? null,
+      expectedVersion: input.expectedVersion ?? null,
+      idempotencyKey: input.idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`),
+      shiftId: input.shiftId ?? null,
+      businessDate: input.businessDate ?? null,
+      category: input.category ?? null,
+      note: input.note ?? null,
+      actualEventTime: input.actualEventTime ?? null,
+      affectedRole: input.affectedRole ?? null,
+      affectedUserId: input.affectedUserId ?? null,
+      staffingSegmentId: input.staffingSegmentId ?? null,
+      canonicalIncidentId: input.canonicalIncidentId ?? null,
+    })
+  },
+
+  async approveNote(input: {
+    noteId: string
+    expectedVersion: number
+    idempotencyKey?: string
+  }): Promise<ShiftOperationalNoteWorkflowV1Response> {
+    return this.executeWorkflow({
+      action: 'approve',
+      noteId: input.noteId,
+      expectedVersion: input.expectedVersion,
+      idempotencyKey: input.idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`),
+      shiftId: null,
+      businessDate: null,
+      category: null,
+      note: null,
+      actualEventTime: null,
+      affectedRole: null,
+      affectedUserId: null,
+      staffingSegmentId: null,
+      canonicalIncidentId: null,
+    })
+  },
+
+  async requestCorrection(input: {
+    noteId: string
+    expectedVersion: number
+    note?: string | null
+    idempotencyKey?: string
+  }): Promise<ShiftOperationalNoteWorkflowV1Response> {
+    return this.executeWorkflow({
+      action: 'request_correction',
+      noteId: input.noteId,
+      expectedVersion: input.expectedVersion,
+      idempotencyKey: input.idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`),
+      shiftId: null,
+      businessDate: null,
+      category: null,
+      note: input.note ?? null,
+      actualEventTime: null,
+      affectedRole: null,
+      affectedUserId: null,
+      staffingSegmentId: null,
+      canonicalIncidentId: null,
+    })
+  },
+
+  async rejectNote(input: {
+    noteId: string
+    expectedVersion: number
+    reason?: string | null
+    idempotencyKey?: string
+  }): Promise<ShiftOperationalNoteWorkflowV1Response> {
+    return this.executeWorkflow({
+      action: 'reject',
+      noteId: input.noteId,
+      expectedVersion: input.expectedVersion,
+      idempotencyKey: input.idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`),
+      shiftId: null,
+      businessDate: null,
+      category: null,
+      note: input.reason ?? null,
+      actualEventTime: null,
+      affectedRole: null,
+      affectedUserId: null,
+      staffingSegmentId: null,
+      canonicalIncidentId: null,
+    })
   },
 
   /** Clear or seed notes (for test harnesses) */

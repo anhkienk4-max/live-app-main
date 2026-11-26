@@ -1,6 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { hasExactOrigin } from '@/lib/server/apiSecurity'
 import {
   authorizationErrorResponse,
   isAuthorizationError,
@@ -82,6 +83,7 @@ export function createReportRevisionSnapshotHandler(options: Options = {}) {
 
     async POST(request: Request): Promise<Response> {
       try {
+        if (!hasExactOrigin(request)) return failure('REPORT_SNAPSHOT_ORIGIN_INVALID', 403)
         await requireRole(request, ['admin', 'leader', 'member'], options.resolveUser)
         let body: unknown
         try {

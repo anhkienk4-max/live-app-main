@@ -116,7 +116,7 @@ test('versioned report save uses one atomic idempotent RPC and returns its recei
   })
   const response = await handler.POST(new Request('https://ops.example/api/reports/revision-snapshots', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', origin: 'https://ops.example' },
     body: JSON.stringify({
       reportId: 'report-1', patch: { revenue: 100 }, expectedVersion: 2,
       reason: null, event: 'save', idempotencyKey: '4fdc4c27-c59b-4cc7-91d6-b2e17e67bf85',
@@ -138,7 +138,7 @@ test('versioned report save preserves CAS and idempotency conflicts as 409', asy
     }) }) as never,
   })
   const response = await handler.POST(new Request('https://ops.example/api/reports/revision-snapshots', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', origin: 'https://ops.example' },
     body: JSON.stringify({
       reportId: 'report-1', patch: { revenue: 100 }, expectedVersion: 2,
       event: 'save', idempotencyKey: '4fdc4c27-c59b-4cc7-91d6-b2e17e67bf85',
@@ -156,7 +156,7 @@ test('versioned report save returns a safe conflict when saved sources violate s
     }) }) as never,
   })
   const response = await handler.POST(new Request('https://ops.example/api/reports/revision-snapshots', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', origin: 'https://ops.example' },
     body: JSON.stringify({
       reportId: 'report-1', patch: { revenue: 100 }, expectedVersion: 2,
       event: 'save', idempotencyKey: '4fdc4c27-c59b-4cc7-91d6-b2e17e67bf85',
@@ -164,4 +164,21 @@ test('versioned report save returns a safe conflict when saved sources violate s
   }))
   assert.equal(response.status, 409)
   assert.equal((await response.json()).error.code, 'REPORT_SOURCE_SCOPE_INVALID')
+})
+
+test('versioned report save rejects missing or cross-origin requests with 403', async () => {
+  const handler = createReportRevisionSnapshotHandler({ resolveUser: admin })
+  const missingOrigin = await handler.POST(new Request('https://ops.example/api/reports/revision-snapshots', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reportId: 'report-1', patch: { revenue: 100 }, expectedVersion: 2, event: 'save', idempotencyKey: '4fdc4c27-c59b-4cc7-91d6-b2e17e67bf85' }),
+  }))
+  assert.equal(missingOrigin.status, 403)
+  assert.equal((await missingOrigin.json()).error.code, 'REPORT_SNAPSHOT_ORIGIN_INVALID')
+
+  const crossOrigin = await handler.POST(new Request('https://ops.example/api/reports/revision-snapshots', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', origin: 'https://attacker.example' },
+    body: JSON.stringify({ reportId: 'report-1', patch: { revenue: 100 }, expectedVersion: 2, event: 'save', idempotencyKey: '4fdc4c27-c59b-4cc7-91d6-b2e17e67bf85' }),
+  }))
+  assert.equal(crossOrigin.status, 403)
+  assert.equal((await crossOrigin.json()).error.code, 'REPORT_SNAPSHOT_ORIGIN_INVALID')
 })

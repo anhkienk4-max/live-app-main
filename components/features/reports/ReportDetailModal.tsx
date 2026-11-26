@@ -54,6 +54,7 @@ import {
   normalizeFinalReportRecap,
 } from '@/lib/utils/finalReportRecap'
 import { LiveReportImageDisplay, LiveReportImageEditor, LiveReportImageGallery } from '@/components/features/reports/LiveReportImageGallery'
+import { ReportOperationalNotesReview } from '@/components/features/reports/ReportOperationalNotesReview'
 import {
   moveLiveReportImage,
   resolveLiveReportImagePermissions,
@@ -975,6 +976,7 @@ export function ReportDetailModal({
                     </Button>
                   </div>
                 )}
+                <ReportOperationalNotesReview shiftId={shift?.id || report.shift_id} reportId={report.id} revisionVersion={report.version_number} readOnly={true} className="mt-4" />
               </CardContent>
             </Card>
           </TabsContent>
