@@ -1,0 +1,324 @@
+name: RC19 W4 Hosted Application Acceptance (No Deploy)
+
+on:
+  workflow_call:
+    inputs:
+      harness_sha:
+        description: Exact reviewed commit containing this reusable workflow and application SHA allowlist
+        required: true
+        type: string
+      application_sha:
+        description: Exact reviewed application candidate SHA listed in the harness allowlist
+        required: true
+        type: string
+      run_browser_uat:
+        description: Run the Lane 01 browser acceptance suite when its reviewed entrypoint exists
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc19-w4-app-acceptance-${{ inputs.application_sha }}
+  cancel-in-progress: false
+
+jobs:
+  hosted-application-acceptance:
+    name: Reviewed candidate on fresh job-local Supabase runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact harness commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.harness_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Initialize sanitized application acceptance manifest
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/rc19-w4-app-artifact"
+          printf '{"scope":"application-acceptance","deployment":false,"steps":{}}\n' > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+
+      - name: Assert harness SHA and approved application SHA
+        env:
+          EXPECTED_HARNESS_SHA: ${{ inputs.harness_sha }}
+          EXPECTED_APPLICATION_SHA: ${{ inputs.application_sha }}
+        run: |
+          set -euo pipefail
+          harness_sha="$(git rev-parse HEAD)"
+          valid_sha() { [[ ${#1} -eq 40 && "$1" != *[!0-9a-f]* ]]; }
+          valid_sha "$EXPECTED_HARNESS_SHA"
+          valid_sha "$EXPECTED_APPLICATION_SHA"
+          [[ "$harness_sha" == "$EXPECTED_HARNESS_SHA" ]]
+          approved_sha="$(tr -d '[:space:]' < .github/rc19-w4-reviewed-application.sha)"
+          valid_sha "$approved_sha"
+          [[ "$EXPECTED_APPLICATION_SHA" == "$approved_sha" ]] || {
+            echo "::error::Application SHA is not the reviewed candidate pinned by this harness"; exit 1;
+          }
+
+      - name: Checkout exact reviewed application candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.application_sha }}
+          path: rc19-w4-application
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify candidate checkout and application acceptance contract
+        working-directory: rc19-w4-application
+        env:
+          EXPECTED_APPLICATION_SHA: ${{ inputs.application_sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          [[ "$actual" == "$EXPECTED_APPLICATION_SHA" ]]
+          [[ -d supabase/migrations ]] || { echo "::error::Reviewed candidate has no canonical Supabase migrations"; exit 1; }
+          [[ -f supabase/config.toml ]] || { echo "::error::Reviewed candidate has no Supabase CLI config"; exit 1; }
+          [[ -f pnpm-lock.yaml ]] || { echo "::error::Reviewed candidate has no frozen pnpm lockfile"; exit 1; }
+          if rg -n -i '(^|\s)(create|alter|drop)\s+(table|schema)\s+(if\s+(not\s+)?exists\s+)?auth\.' supabase/migrations; then
+            echo "::error::Candidate migrations include direct managed Auth schema DDL"; exit 1;
+          fi
+
+      - name: Set up pinned Node and pnpm
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+
+      - name: Install frozen application dependencies
+        working-directory: rc19-w4-application
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.26.0 --activate
+          pnpm install --frozen-lockfile
+
+      - name: Install checksum-pinned Supabase CLI 3.4.0
+        env:
+          CLI_SHA256: d82f8fc8a1611c45b9422b10378f61df614325f7e25624acda3704544513d6ac
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/supabase_3.4.0_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location \
+            https://github.com/supabase/cli/releases/download/v3.4.0/supabase_3.4.0_linux_amd64.tar.gz \
+            --output "$archive"
+          echo "$CLI_SHA256  $archive" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/supabase-cli"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/supabase-cli" supabase
+          echo "$RUNNER_TEMP/supabase-cli" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/supabase-cli/supabase" --version
+
+      - name: Start marked runtime and apply canonical migrations locally
+        working-directory: rc19-w4-application
+        env:
+          EXPECTED_APPLICATION_SHA: ${{ inputs.application_sha }}
+          RUN_MARKER: RC19_W4_APPLICATION_${{ github.run_id }}_${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          project_id="rc19-w4-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 - "$project_id" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          path = Path("supabase/config.toml")
+          text = path.read_text()
+          values = {
+              "project_id": f'"{sys.argv[1]}"',
+              "api.port": "55421",
+              "db.port": "55432",
+              "db.shadow_port": "55430",
+              "db.seed.enabled": "false",
+              "studio.port": "55423",
+              "inbucket.port": "55424",
+          }
+          for dotted, value in values.items():
+              parts = dotted.split(".")
+              key = parts[-1]
+              section = ".".join(parts[:-1])
+              if not section:
+                  pattern = rf"(?m)^\s*{re.escape(key)}\s*=.*$"
+              else:
+                  section_match = re.search(rf"(?ms)^\[{re.escape(section)}\]\n(.*?)(?=^\[|\Z)", text)
+                  if not section_match:
+                      if dotted == "inbucket.port":
+                          continue
+                      raise SystemExit(f"Missing Supabase config section: {section}")
+                  body = section_match.group(1)
+                  key_pattern = rf"(?m)^\s*{re.escape(key)}\s*=.*$"
+                  if not re.search(key_pattern, body):
+                      if dotted == "inbucket.port":
+                          continue
+                      raise SystemExit(f"Missing Supabase config key: {dotted}")
+                  updated = re.sub(key_pattern, f"{key} = {value}", body, count=1)
+                  text = text[:section_match.start(1)] + updated + text[section_match.end(1):]
+                  continue
+              if not re.search(pattern, text):
+                  raise SystemExit(f"Missing Supabase config key: {key}")
+              text = re.sub(pattern, f"{key} = {value}", text, count=1)
+          path.write_text(text)
+          PY
+          test ! -e supabase/.temp/project-ref || { echo "::error::Unexpected linked Supabase project state"; exit 1; }
+          supabase start > "$RUNNER_TEMP/rc19-w4-app-start.log" 2>&1 || {
+            echo "::error::Fresh candidate Supabase stack failed to start; raw logs withheld."; exit 1;
+          }
+          supabase stop --no-backup > /dev/null 2>&1 || { echo "::error::Could not stop stack for cold-start check"; exit 1; }
+          supabase start > "$RUNNER_TEMP/rc19-w4-app-cold-start.log" 2>&1 || {
+            echo "::error::Post-migration cold start failed; raw logs withheld."; exit 1;
+          }
+          supabase status -o env > "$RUNNER_TEMP/rc19-w4-app-status.env"
+          set -a
+          source "$RUNNER_TEMP/rc19-w4-app-status.env"
+          set +a
+          for secret in "${ANON_KEY:-}" "${SERVICE_ROLE_KEY:-}" "${SECRET_KEY:-}" "${JWT_SECRET:-}" "${PUBLISHABLE_KEY:-}" "${DB_URL:-}"; do
+            [[ -z "$secret" ]] || echo "::add-mask::$secret"
+          done
+          api_url="${API_URL:-http://127.0.0.1:55421}"
+          db_url="${DB_URL:?Supabase CLI did not expose DB_URL}"
+          anon_key="${ANON_KEY:?Supabase CLI did not expose ANON_KEY}"
+          service_role_key="${SERVICE_ROLE_KEY:?Supabase CLI did not expose SERVICE_ROLE_KEY}"
+          database_container="supabase_db_${project_id}"
+          database_container_id="$(docker ps --filter "name=^/${database_container}$" --format '{{.ID}}')"
+          [[ -n "$database_container_id" ]] || { echo "::error::Unique candidate database container is missing"; exit 1; }
+          curl --fail --silent --show-error "$api_url/auth/v1/health" > /dev/null
+          curl --fail --silent --show-error "$api_url/rest/v1/" -H "apikey: $anon_key" > /dev/null
+          auth_container_id="$(docker ps --format '{{.ID}} {{.Image}}' | awk 'tolower($0) ~ /gotrue/ {print $1; exit}')"
+          rest_container_id="$(docker ps --format '{{.ID}} {{.Image}}' | awk 'tolower($0) ~ /postgrest/ {print $1; exit}')"
+          [[ -n "$auth_container_id" && -n "$rest_container_id" ]] || { echo "::error::GoTrue or PostgREST container is missing"; exit 1; }
+          auth_image="$(docker inspect --format '{{.Config.Image}}' "$auth_container_id")"
+          rest_image="$(docker inspect --format '{{.Config.Image}}' "$rest_container_id")"
+          auth_image_id="$(docker inspect --format '{{.Image}}' "$auth_container_id")"
+          rest_image_id="$(docker inspect --format '{{.Image}}' "$rest_container_id")"
+          [[ "$auth_image" == *'gotrue:v2.198.0' ]] || { echo "::error::GoTrue image is not the verified pinned version"; exit 1; }
+          [[ "$rest_image" == *'postgrest:v16.6' ]] || { echo "::error::PostgREST image is not the verified pinned version"; exit 1; }
+          auth_db_identity="$(docker inspect "$auth_container_id" | python3 -c 'import json,sys; from urllib.parse import urlsplit; c=json.load(sys.stdin)[0]; env=dict(x.split("=",1) for x in c["Config"]["Env"] if "=" in x); u=urlsplit(env.get("GOTRUE_DB_DATABASE_URL", "")); print(f"{u.hostname}:{u.port}{u.path}")')"
+          expected_db_identity="${database_container}:5432/postgres"
+          [[ "$auth_db_identity" == "$expected_db_identity" ]] || { echo "::error::GoTrue database identity does not match the marked candidate database"; exit 1; }
+          docker exec "$database_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "COMMENT ON DATABASE postgres IS '$RUN_MARKER'" \
+            -c 'CREATE TABLE public.rc19_w4_application_runtime_probe (marker text PRIMARY KEY)' \
+            -c "INSERT INTO public.rc19_w4_application_runtime_probe VALUES ('$RUN_MARKER')"
+          database_version="$(docker exec "$database_container_id" psql -U postgres -d postgres -Atqc 'SHOW server_version')"
+          [[ "$database_version" == 17.12* ]] || { echo "::error::Supabase PostgreSQL runtime version is not the previously verified 17.12"; exit 1; }
+          migration_count="$(docker exec "$database_container_id" psql -U postgres -d postgres -Atqc 'SELECT count(*) FROM supabase_migrations.schema_migrations')"
+          latest_migration="$(docker exec "$database_container_id" psql -U postgres -d postgres -Atqc 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 1')"
+          [[ "$migration_count" =~ ^[0-9]+$ && -n "$latest_migration" ]] || { echo "::error::Canonical migration ledger is empty or unavailable"; exit 1; }
+          synthetic_prefix="rc19-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          admin_email="${synthetic_prefix}-admin@example.test"
+          leader_email="${synthetic_prefix}-leader@example.test"
+          member_email="${synthetic_prefix}-member@example.test"
+          admin_password="$(openssl rand -hex 24)Aa9!"
+          leader_password="$(openssl rand -hex 24)Lb7!"
+          member_password="$(openssl rand -hex 24)Mc5!"
+          for secret in "$admin_password" "$leader_password" "$member_password" "$service_role_key"; do echo "::add-mask::$secret"; done
+          {
+            echo "RC19_W4_RUNTIME_URL=$api_url"
+            echo "RC19_W4_RUNTIME_ANON_KEY=$anon_key"
+            echo "RC19_W4_RUNTIME_SERVICE_ROLE_KEY=$service_role_key"
+            echo "RC19_W4_RUNTIME_DATABASE_URL=$db_url"
+            echo "RC19_W4_RUNTIME_DATABASE_MARKER=$RUN_MARKER"
+            echo "RC19_W4_SYNTHETIC_ADMIN_EMAIL=$admin_email"
+            echo "RC19_W4_SYNTHETIC_ADMIN_PASSWORD=$admin_password"
+            echo "RC19_W4_SYNTHETIC_LEADER_EMAIL=$leader_email"
+            echo "RC19_W4_SYNTHETIC_LEADER_PASSWORD=$leader_password"
+            echo "RC19_W4_SYNTHETIC_MEMBER_EMAIL=$member_email"
+            echo "RC19_W4_SYNTHETIC_MEMBER_PASSWORD=$member_password"
+          } >> "$GITHUB_ENV"
+          jq -n \
+            --arg harness_sha "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
+            --arg application_sha "$EXPECTED_APPLICATION_SHA" \
+            --arg marker "$RUN_MARKER" \
+            --arg database "$database_container" \
+            --arg version "$database_version" \
+            --arg migration_count "$migration_count" \
+            --arg latest_migration "$latest_migration" \
+            --arg gotrue "$auth_image" --arg gotrue_id "$auth_image_id" \
+            --arg postgrest "$rest_image" --arg postgrest_id "$rest_image_id" \
+            --arg connection "$auth_db_identity" \
+            '{scope:"application-acceptance",deployment:false,harness_sha:$harness_sha,application_sha:$application_sha,steps:{migrations:{status:"passed",count:($migration_count|tonumber),latest:$latest_migration},runtime:{status:"passed",database:$database,marker:$marker,postgres_version:$version,gotrue:$gotrue,gotrue_image_id:$gotrue_id,postgrest:$postgrest,postgrest_image_id:$postgrest_id,gotrue_database_identity:$connection,auth_health:true,postgrest_ready:true}}}' \
+            > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+
+      - name: Install pinned Playwright browser for requested browser UAT
+        if: inputs.run_browser_uat
+        working-directory: rc19-w4-application
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Lane 01 canonical synthetic identity and application acceptance
+        working-directory: rc19-w4-application
+        env:
+          RUN_BROWSER_UAT: ${{ inputs.run_browser_uat }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/rc19-w4-lane01-acceptance.json"
+          if [[ "$RUN_BROWSER_UAT" == "true" ]]; then
+            export RC19_W4_RUN_BROWSER_UAT=true
+          else
+            export RC19_W4_RUN_BROWSER_UAT=false
+          fi
+          if [[ ! -f scripts/rc19-w4-application-acceptance.mjs ]]; then
+            jq '.steps.application = {status:"blocked",code:"LANE01_ACCEPTANCE_ENTRYPOINT_MISSING"}' \
+              "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/blocked.json"
+            mv "$RUNNER_TEMP/rc19-w4-app-artifact/blocked.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+            echo "::error::Lane 01 application acceptance entrypoint is not present in the reviewed application SHA. Runtime startup and migrations were verified; role acceptance remains blocked."
+            exit 1
+          fi
+          set +e
+          node scripts/rc19-w4-application-acceptance.mjs > "$report" 2> "$RUNNER_TEMP/rc19-w4-lane01-acceptance.log"
+          result=$?
+          set -e
+          if [[ "$result" -ne 0 ]]; then
+            jq '.steps.application = {status:"failed",code:"LANE01_ACCEPTANCE_FAILED"}' \
+              "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/failed.json"
+            mv "$RUNNER_TEMP/rc19-w4-app-artifact/failed.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+            echo "::error::Lane 01 application acceptance failed; raw output is withheld."
+            exit "$result"
+          fi
+          jq -e '
+            .schema == "rc19-w4-application-acceptance/v1" and
+            .status == "passed" and
+            .synthetic_users.admin.login == true and .synthetic_users.admin.canonical_business_user_mapping == true and
+            .synthetic_users.leader.login == true and .synthetic_users.leader.canonical_business_user_mapping == true and
+            .synthetic_users.member.login == true and .synthetic_users.member.canonical_business_user_mapping == true and
+            .authorization.rbac == true and .authorization.rls == true and .authorization.application_api == true and
+            ((.browser_uat.ran == false) or (.browser_uat.ran == true and .browser_uat.passed == true))
+          ' "$report" > /dev/null || {
+            jq '.steps.application = {status:"failed",code:"LANE01_ACCEPTANCE_CONTRACT_INVALID"}' \
+              "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/failed.json"
+            mv "$RUNNER_TEMP/rc19-w4-app-artifact/failed.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+            echo "::error::Lane 01 acceptance report did not satisfy the role, mapping, RBAC/RLS, API, and optional browser contract"
+            exit 1
+          }
+          jq -c '{schema,status,synthetic_users:{admin:{login:.synthetic_users.admin.login,mapping:.synthetic_users.admin.canonical_business_user_mapping},leader:{login:.synthetic_users.leader.login,mapping:.synthetic_users.leader.canonical_business_user_mapping},member:{login:.synthetic_users.member.login,mapping:.synthetic_users.member.canonical_business_user_mapping}},authorization:{rbac:.authorization.rbac,rls:.authorization.rls,application_api:.authorization.application_api},browser_uat:{ran:.browser_uat.ran,passed:.browser_uat.passed}}' "$report" \
+            > "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json"
+
+      - name: Merge sanitized runtime and application acceptance evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -f "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" && -f "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json" ]]; then
+            jq -s '.[0] * {steps: (.[0].steps + {application: .[1]})}' \
+              "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" \
+              "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json" \
+              > "$RUNNER_TEMP/rc19-w4-app-artifact/combined.json"
+            mv "$RUNNER_TEMP/rc19-w4-app-artifact/combined.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+          fi
+
+      - name: Upload sanitized application acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rc19-w4-application-acceptance-${{ github.run_id }}
+          path: ${{ runner.temp }}/rc19-w4-app-artifact/acceptance.json
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Cleanup job-local Supabase runtime
+        if: always()
+        run: |
+          if [[ -x "$RUNNER_TEMP/supabase-cli/supabase" && -d "$GITHUB_WORKSPACE/rc19-w4-application/supabase" ]]; then
+            cd "$GITHUB_WORKSPACE/rc19-w4-application"
+            "$RUNNER_TEMP/supabase-cli/supabase" stop --no-backup >/dev/null 2>&1 || true
+          fi
