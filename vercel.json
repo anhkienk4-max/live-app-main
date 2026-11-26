@@ -30,7 +30,8 @@
       "release/rc19-c5.4-candidate": false,
       "release/rc19-unified-release-candidate": false,
       "integration/rc19-w4-final-integration": false,
-      "fix/rc19-w4-import-staffing": false
+      "fix/rc19-w4-import-staffing": false,
+      "backup/rc19/w4-d-contract-wip": false
     }
   }
 }
