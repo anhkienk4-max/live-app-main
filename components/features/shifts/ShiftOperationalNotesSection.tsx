@@ -140,6 +140,16 @@ export function ShiftOperationalNotesSection({
   } | null>(null)
   const [reviewReason, setReviewReason] = React.useState('')
   const idempotencyKeyRef = React.useRef<string>(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`)
+  const reviewActionIdempotencyKeysRef = React.useRef<Map<string, string>>(new Map())
+
+  const getReviewActionKey = (actionKey: string) => {
+    let key = reviewActionIdempotencyKeysRef.current.get(actionKey)
+    if (!key) {
+      key = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      reviewActionIdempotencyKeysRef.current.set(actionKey, key)
+    }
+    return key
+  }
 
   const assignedStaff = React.useMemo(() => {
     const list: Array<{ id: string; name: string; role?: string }> = []
@@ -304,11 +314,15 @@ export function ShiftOperationalNotesSection({
 
   const handleApproveNote = async (note: ShiftOperationalNote) => {
     setActionInProgress(note.id)
+    const actionKey = `approve-${note.id}`
+    const idempotencyKey = getReviewActionKey(actionKey)
     try {
       await shiftNoteService.approveNote({
         noteId: note.id,
         expectedVersion: note.version || 1,
+        idempotencyKey,
       })
+      reviewActionIdempotencyKeysRef.current.delete(actionKey)
       toast({
         title: isVi ? 'Thành công' : 'Success',
         description: isVi ? 'Đã phê duyệt ghi chú.' : 'Note approved.',
@@ -333,30 +347,32 @@ export function ShiftOperationalNotesSection({
     if (!reviewDialog) return
     const { note, action } = reviewDialog
     setActionInProgress(note.id)
+    const actionKey = `${action}-${note.id}`
+    const idempotencyKey = getReviewActionKey(actionKey)
     try {
       if (action === 'request_correction') {
         await shiftNoteService.requestCorrection({
           noteId: note.id,
           expectedVersion: note.version || 1,
           note: reviewReason.trim() || null,
-        })
-        toast({
-          title: isVi ? 'Thành công' : 'Success',
-          description: isVi ? 'Đã yêu cầu chỉnh sửa ghi chú.' : 'Correction requested.',
-          variant: 'success',
+          idempotencyKey,
         })
       } else {
         await shiftNoteService.rejectNote({
           noteId: note.id,
           expectedVersion: note.version || 1,
           reason: reviewReason.trim() || null,
-        })
-        toast({
-          title: isVi ? 'Thành công' : 'Success',
-          description: isVi ? 'Đã từ chối ghi chú.' : 'Note rejected.',
-          variant: 'success',
+          idempotencyKey,
         })
       }
+      reviewActionIdempotencyKeysRef.current.delete(actionKey)
+      toast({
+        title: isVi ? 'Thành công' : 'Success',
+        description: action === 'request_correction'
+          ? (isVi ? 'Đã yêu cầu chỉnh sửa ghi chú.' : 'Correction requested.')
+          : (isVi ? 'Đã từ chối ghi chú.' : 'Note rejected.'),
+        variant: 'success',
+      })
       setReviewDialog(null)
       setReviewReason('')
       await loadNotes()
