@@ -22,9 +22,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  FileEdit,
   FileText,
   MessageSquarePlus,
   RefreshCw,
+  Save,
   Send,
   ShoppingBag,
   Users,
@@ -118,6 +120,34 @@ export function ShiftOperationalNotesSection({
   const [category, setCategory] = React.useState<ShiftOperationalNoteCategory>('normal')
   const [noteText, setNoteText] = React.useState('')
   const [submitting, setSubmitting] = React.useState(false)
+  const [affectedUserId, setAffectedUserId] = React.useState('')
+  const [editingNoteId, setEditingNoteId] = React.useState<string | null>(null)
+  const [editingVersion, setEditingVersion] = React.useState<number>(1)
+  const [saveState, setSaveState] = React.useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle')
+
+  const assignedStaff = React.useMemo(() => {
+    const list: Array<{ id: string; name: string; role?: string }> = []
+    const seen = new Set<string>()
+    for (const r of registrations) {
+      if (['approved', 'manually_assigned', 'confirmed'].includes(r.status) && !seen.has(r.user_id)) {
+        seen.add(r.user_id)
+        list.push({ id: r.user_id, name: r.imported_name || r.user_id, role: r.operational_role })
+      }
+    }
+    if (shift.host_id && !seen.has(shift.host_id)) {
+      seen.add(shift.host_id)
+      list.push({ id: shift.host_id, name: 'Host: ' + shift.host_id, role: 'host' })
+    }
+    if (shift.support_id && !seen.has(shift.support_id)) {
+      seen.add(shift.support_id)
+      list.push({ id: shift.support_id, name: 'Trợ livestream: ' + shift.support_id, role: 'support' })
+    }
+    if (shift.technical_id && !seen.has(shift.technical_id)) {
+      seen.add(shift.technical_id)
+      list.push({ id: shift.technical_id, name: 'Kỹ thuật: ' + shift.technical_id, role: 'technical' })
+    }
+    return list
+  }, [registrations, shift.host_id, shift.support_id, shift.technical_id])
 
   const isAssignedStaff = Boolean(
     currentUser &&
@@ -174,45 +204,106 @@ export function ShiftOperationalNotesSection({
 
   const handleApplyTemplate = (tmpl: CategoryTemplate) => {
     setCategory(tmpl.category)
+    setSaveState('dirty')
     const text = isVi ? tmpl.defaultTextVi : tmpl.defaultTextEn
     if (text) {
       setNoteText(text)
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSaveNote = async (asDraft: boolean) => {
     if (!currentUser || !noteText.trim()) return
 
     setSubmitting(true)
+    setSaveState('saving')
     try {
-      await shiftNoteService.create({
-        shiftId: shift.id,
-        businessDate: shift.date,
-        date: shift.date,
-        category,
-        note: noteText.trim(),
-        authorId: currentUser.id,
-        authorName: currentUser.full_name || currentUser.id,
-        authorRole: currentUser.role || 'staff',
-        actualEventTime: new Date().toISOString(),
-      })
-      toast({
-        title: isVi ? 'Thành công' : 'Success',
-        description: isVi ? 'Đã ghi nhận ghi chú vận hành.' : 'Operational note saved.',
-        variant: 'success',
-      })
+      if (editingNoteId) {
+        await shiftNoteService.update({
+          noteId: editingNoteId,
+          expectedVersion: editingVersion,
+          note: noteText.trim(),
+          category,
+          status: asDraft ? 'draft' : 'published',
+          affectedUserId: affectedUserId || null,
+        })
+        toast({
+          title: isVi ? 'Thành công' : 'Success',
+          description: asDraft
+            ? isVi ? 'Đã lưu nháp ghi chú.' : 'Draft updated.'
+            : isVi ? 'Đã xuất bản ghi chú.' : 'Note published.',
+          variant: 'success',
+        })
+      } else {
+        await shiftNoteService.create({
+          shiftId: shift.id,
+          businessDate: shift.date,
+          date: shift.date,
+          category,
+          note: noteText.trim(),
+          authorId: currentUser.id,
+          authorName: currentUser.full_name || currentUser.id,
+          authorRole: currentUser.role || 'staff',
+          actualEventTime: new Date().toISOString(),
+          status: asDraft ? 'draft' : 'published',
+          isDraft: asDraft,
+          affectedUserId: affectedUserId || null,
+        })
+        toast({
+          title: isVi ? 'Thành công' : 'Success',
+          description: asDraft
+            ? isVi ? 'Đã lưu nháp ghi chú vận hành.' : 'Operational note draft saved.'
+            : isVi ? 'Đã ghi nhận ghi chú vận hành.' : 'Operational note recorded.',
+          variant: 'success',
+        })
+      }
+      setSaveState('saved')
       setNoteText('')
+      setEditingNoteId(null)
+      setEditingVersion(1)
+      setAffectedUserId('')
       await loadNotes()
-    } catch (err) {
+    } catch (err: unknown) {
+      setSaveState('error')
+      const isSchemaError =
+        err instanceof Error &&
+        (err.message.includes('SCHEMA_NOT_DEPLOYED') ||
+          (err as { code?: string }).code === 'SCHEMA_NOT_DEPLOYED')
+      if (isSchemaError) {
+        setSchemaUnavailable(true)
+      }
+      const isConflict =
+        err instanceof Error &&
+        (err.message.includes('NOTE_VERSION_CONFLICT') ||
+          (err as { code?: string }).code === 'NOTE_VERSION_CONFLICT')
       toast({
         title: isVi ? 'Lỗi' : 'Error',
-        description: err instanceof Error ? err.message : 'Không thể lưu ghi chú.',
+        description: isConflict
+          ? isVi
+            ? 'Xung đột phiên bản: ghi chú đã được sửa đổi bởi người khác. Vui lòng tải lại trước khi lưu.'
+            : 'Version conflict: this note was modified elsewhere. Please refresh before saving.'
+          : err instanceof Error ? err.message : 'Không thể lưu ghi chú.',
         variant: 'destructive',
       })
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleResumeDraft = (note: ShiftOperationalNote) => {
+    setEditingNoteId(note.id)
+    setEditingVersion(note.version || 1)
+    setNoteText(note.note)
+    setCategory(note.category)
+    setAffectedUserId(note.affected_user_id || '')
+    setSaveState('idle')
+  }
+
+  const handleCancelEditing = () => {
+    setEditingNoteId(null)
+    setEditingVersion(1)
+    setNoteText('')
+    setAffectedUserId('')
+    setSaveState('idle')
   }
 
   const formatNoteTime = (isoString: string) => {
@@ -251,11 +342,35 @@ export function ShiftOperationalNotesSection({
             <CardTitle className="text-sm font-semibold flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <MessageSquarePlus className="h-4 w-4 text-primary" />
-                {isVi ? 'Thêm ghi chú vận hành' : 'Add Operational Note'}
+                {editingNoteId
+                  ? isVi ? `Sửa bản nháp (v${editingVersion})` : `Edit Draft (v${editingVersion})`
+                  : isVi ? 'Thêm ghi chú vận hành' : 'Add Operational Note'}
               </span>
-              <span className="text-xs font-normal text-muted-foreground">
-                {isVi ? 'Gắn với ca trực' : 'Attached to shift'} #{shift.id}
-              </span>
+              <div className="flex items-center gap-2">
+                {saveState === 'dirty' && (
+                  <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 bg-amber-50">
+                    {isVi ? 'Chưa lưu' : 'Unsaved'}
+                  </Badge>
+                )}
+                {saveState === 'saving' && (
+                  <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300 bg-blue-50">
+                    {isVi ? 'Đang lưu...' : 'Saving...'}
+                  </Badge>
+                )}
+                {saveState === 'saved' && (
+                  <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 bg-emerald-50">
+                    {isVi ? 'Đã lưu' : 'Saved'}
+                  </Badge>
+                )}
+                {saveState === 'error' && (
+                  <Badge variant="outline" className="text-[10px] text-red-600 border-red-300 bg-red-50">
+                    {isVi ? 'Lỗi' : 'Error'}
+                  </Badge>
+                )}
+                <span className="text-xs font-normal text-muted-foreground">
+                  {isVi ? 'Gắn với ca trực' : 'Attached to shift'} #{shift.id}
+                </span>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 space-y-3">
@@ -288,12 +403,15 @@ export function ShiftOperationalNotesSection({
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-2.5">
+            <div className="space-y-2.5">
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="w-full sm:w-44">
                   <Select
                     value={category}
-                    onValueChange={v => setCategory(v as ShiftOperationalNoteCategory)}
+                    onValueChange={v => {
+                      setCategory(v as ShiftOperationalNoteCategory)
+                      setSaveState('dirty')
+                    }}
                   >
                     <SelectTrigger className="h-9 text-xs" data-testid="note-category-select">
                       <SelectValue placeholder={isVi ? 'Chọn phân loại' : 'Select category'} />
@@ -307,41 +425,94 @@ export function ShiftOperationalNotesSection({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex-1">
-                  <Textarea
-                    data-testid="note-content-input"
-                    value={noteText}
-                    onChange={e => setNoteText(e.target.value)}
-                    placeholder={
-                      isVi
-                        ? 'Nhập chi tiết sự kiện vận hành (sự cố, đi trễ, đổi ca, doanh số, v.v.)...'
-                        : 'Enter operational event details...'
-                    }
-                    className="min-h-[70px] text-xs resize-y"
-                    rows={2}
-                  />
+
+                <div className="w-full sm:w-56">
+                  <Select
+                    value={affectedUserId || 'none'}
+                    onValueChange={v => {
+                      setAffectedUserId(v === 'none' ? '' : v)
+                      setSaveState('dirty')
+                    }}
+                  >
+                    <SelectTrigger className="h-9 text-xs" data-testid="note-affected-user-select">
+                      <SelectValue placeholder={isVi ? 'Nhân sự liên quan' : 'Affected staff'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" className="text-xs">
+                        {isVi ? '-- Không gắn nhân sự --' : '-- No specific staff --'}
+                      </SelectItem>
+                      {assignedStaff.map(staff => (
+                        <SelectItem key={staff.id} value={staff.id} className="text-xs">
+                          {staff.name} {staff.role ? `(${staff.role})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div>
+                <Textarea
+                  data-testid="note-content-input"
+                  value={noteText}
+                  onChange={e => {
+                    setNoteText(e.target.value)
+                    setSaveState('dirty')
+                  }}
+                  placeholder={
+                    isVi
+                      ? 'Nhập chi tiết sự kiện vận hành (sự cố, đi trễ, đổi ca, doanh số, v.v.)...'
+                      : 'Enter operational event details...'
+                  }
+                  className="min-h-[70px] text-xs resize-y"
+                  rows={2}
+                />
+              </div>
+
+              <div className="flex justify-end items-center gap-2">
+                {editingNoteId && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCancelEditing}
+                    data-testid="cancel-edit-note-btn"
+                    className="h-8 text-xs font-medium"
+                  >
+                    {isVi ? 'Hủy sửa' : 'Cancel'}
+                  </Button>
+                )}
                 <Button
-                  type="submit"
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="save-draft-operational-note-btn"
+                  disabled={submitting || !noteText.trim()}
+                  onClick={() => void handleSaveNote(true)}
+                  className="h-8 text-xs font-medium"
+                >
+                  <Save className="mr-1.5 h-3.5 w-3.5" />
+                  {submitting && saveState === 'saving'
+                    ? isVi ? 'Đang lưu...' : 'Saving...'
+                    : isVi ? 'Lưu nháp' : 'Save Draft'}
+                </Button>
+                <Button
+                  type="button"
                   size="sm"
                   data-testid="submit-operational-note-btn"
                   disabled={submitting || !noteText.trim()}
+                  onClick={() => void handleSaveNote(false)}
                   className="h-8 text-xs font-medium"
                 >
                   <Send className="mr-1.5 h-3.5 w-3.5" />
-                  {submitting
-                    ? isVi
-                      ? 'Đang lưu...'
-                      : 'Saving...'
-                    : isVi
-                      ? 'Ghi nhận sự kiện'
-                      : 'Record Note'}
+                  {submitting && saveState === 'saving'
+                    ? isVi ? 'Đang lưu...' : 'Saving...'
+                    : editingNoteId
+                    ? isVi ? 'Xuất bản bản sửa' : 'Publish Edit'
+                    : isVi ? 'Ghi nhận sự kiện' : 'Record Note'}
                 </Button>
               </div>
-            </form>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -389,14 +560,22 @@ export function ShiftOperationalNotesSection({
           <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1" data-testid="notes-history-list">
             {notes.map(note => {
               const tmpl = CATEGORY_TEMPLATES.find(c => c.category === note.category)
+              const isDraft = note.status === 'draft'
+              const subjectStaff = note.affected_user_id
+                ? assignedStaff.find(s => s.id === note.affected_user_id)?.name || note.affected_user_id
+                : null
               return (
                 <div
                   key={note.id}
                   data-testid={`note-item-${note.id}`}
-                  className="rounded-lg border border-slate-100 bg-card p-3 shadow-2xs space-y-1.5"
+                  className={`rounded-lg border p-3 shadow-2xs space-y-1.5 ${
+                    isDraft
+                      ? 'border-amber-200 bg-amber-50/40'
+                      : 'border-slate-100 bg-card'
+                  }`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span
                         className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium border ${
                           tmpl?.colorClass || 'border-slate-200 bg-slate-50 text-slate-700'
@@ -404,6 +583,11 @@ export function ShiftOperationalNotesSection({
                       >
                         {isVi ? tmpl?.labelVi || note.category : tmpl?.labelEn || note.category}
                       </span>
+                      {isDraft && (
+                        <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-800 border-amber-300">
+                          {isVi ? 'Bản nháp' : 'Draft'}
+                        </Badge>
+                      )}
                       <span className="text-xs font-semibold text-foreground">
                         {note.author_name || note.author_id}
                       </span>
@@ -412,10 +596,30 @@ export function ShiftOperationalNotesSection({
                           ({note.author_role})
                         </span>
                       )}
+                      {subjectStaff && (
+                        <span className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded font-medium">
+                          {isVi ? 'Liên quan:' : 'Subject:'} {subjectStaff}
+                        </span>
+                      )}
                     </div>
-                    <time className="text-[11px] text-muted-foreground">
-                      {formatNoteTime(note.actual_event_time || note.created_at || note.event_time || '')}
-                    </time>
+                    <div className="flex items-center gap-2">
+                      <time className="text-[11px] text-muted-foreground">
+                        {formatNoteTime(note.actual_event_time || note.created_at || note.event_time || '')}
+                      </time>
+                      {isDraft && canAddNote && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-[11px]"
+                          onClick={() => handleResumeDraft(note)}
+                          data-testid={`resume-draft-btn-${note.id}`}
+                        >
+                          <FileEdit className="h-3 w-3 mr-1" />
+                          {isVi ? 'Sửa nháp' : 'Edit Draft'}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
                     {note.note}

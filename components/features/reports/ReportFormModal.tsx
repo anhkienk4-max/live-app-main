@@ -91,6 +91,7 @@ import {
   updateLiveReportImageMetadata,
 } from '@/lib/utils/liveReportImages'
 import { LiveReportImageEditor } from '@/components/features/reports/LiveReportImageGallery'
+import { ReportOperationalNotesReview } from '@/components/features/reports/ReportOperationalNotesReview'
 import {
   VisionOcrActionGroup,
   VisionOcrReviewPanel,
@@ -1193,6 +1194,7 @@ export function ReportFormModal({
                   </label>
                 ))}
               </div>
+              <ReportOperationalNotesReview shiftId={selectedShift.id} className="mt-4" />
             </section>
           )}
           <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>{t('cancel')}</Button><Button type="button" variant="secondary" onClick={saveDraft} disabled={targetUnavailable || submitting || reviewing || visionScanning}>{t('saveDraft')}</Button><Button type="submit" disabled={targetUnavailable || submitting || reviewing || visionScanning || !currentUser || !hasPermission(currentUser, 'reports.review')}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('saveFinalReport')}</Button></DialogFooter>

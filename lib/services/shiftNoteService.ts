@@ -142,6 +142,10 @@ export const shiftNoteService = {
     affected_role?: OperationalRole | null
     affectedUserId?: string | null
     affected_user_id?: string | null
+    status?: 'draft' | 'published'
+    isDraft?: boolean
+    incidentId?: string | null
+    incident_id?: string | null
   }): Promise<ShiftOperationalNote> {
     const trimmed = input.note?.trim()
     if (!trimmed) throw new Error('NOTE_EMPTY: Nội dung ghi chú không được để trống.')
@@ -152,6 +156,8 @@ export const shiftNoteService = {
     const actualEventTime = input.actualEventTime || input.actual_event_time || input.eventTime || input.event_time || now
     const affectedRole = input.affectedRole !== undefined ? input.affectedRole : input.affected_role ?? null
     const affectedUserId = input.affectedUserId !== undefined ? input.affectedUserId : input.affected_user_id ?? null
+    const status = input.status || (input.isDraft ? 'draft' : 'published')
+    const incidentId = input.incidentId !== undefined ? input.incidentId : input.incident_id ?? null
 
     if (getAuthMode() === 'supabase') {
       const { data, error } = await createClient().rpc('add_shift_operational_note', {
@@ -182,7 +188,11 @@ export const shiftNoteService = {
       if (!persisted?.id || !persisted.author_id || persisted.shift_id !== shiftId) {
         throw new ShiftNoteServiceError('SHIFT_NOTE_CREATE_FAILED: Invalid persisted note receipt.', 'INVALID_RECEIPT')
       }
-      return persisted
+      return {
+        ...persisted,
+        status,
+        incident_id: incidentId,
+      }
     }
 
     const authorId = input.authorId || input.author_id || ''
@@ -202,6 +212,8 @@ export const shiftNoteService = {
       event_time: actualEventTime,
       affected_role: affectedRole,
       affected_user_id: affectedUserId,
+      status,
+      incident_id: incidentId,
       version: 1,
       created_at: now,
       updated_at: now,
@@ -209,6 +221,80 @@ export const shiftNoteService = {
 
     inMemoryNotes.unshift(newNote)
     return Promise.resolve(newNote)
+  },
+
+  async update(input: {
+    noteId: string
+    expectedVersion: number
+    note?: string
+    category?: ShiftOperationalNoteCategory
+    status?: 'draft' | 'published'
+    affectedUserId?: string | null
+    affectedRole?: OperationalRole | null
+  }): Promise<ShiftOperationalNote> {
+    const { noteId, expectedVersion } = input
+    if (!noteId) throw new Error('NOTE_ID_REQUIRED: Missing note ID.')
+
+    if (getAuthMode() === 'supabase') {
+      const client = createClient()
+      // First attempt rpc if backend implements update_shift_operational_note
+      const { data, error } = await client.rpc('update_shift_operational_note', {
+        p_note_id: noteId,
+        p_expected_version: expectedVersion,
+        p_note: input.note,
+        p_category: input.category,
+        p_status: input.status,
+        p_affected_user_id: input.affectedUserId,
+        p_affected_role: input.affectedRole,
+      })
+
+      if (error) {
+        if (error.message?.includes('NOTE_VERSION_CONFLICT') || error.code === '40001') {
+          throw new ShiftNoteServiceError('NOTE_VERSION_CONFLICT: Phiên bản ghi chú đã bị thay đổi bởi người khác.', 'NOTE_VERSION_CONFLICT')
+        }
+        const isMissingSchema =
+          error.code === '42P01' ||
+          error.code === '42883' ||
+          error.code === 'PGRST202' ||
+          error.message?.includes('update_shift_operational_note') ||
+          error.message?.includes('shift_operational_notes')
+        if (isMissingSchema) {
+          throw new ShiftNoteServiceError(
+            'SCHEMA_NOT_DEPLOYED: Tính năng cập nhật ghi chú chưa được triển khai trên môi trường này.',
+            'SCHEMA_NOT_DEPLOYED',
+          )
+        }
+        throw new ShiftNoteServiceError(`SHIFT_NOTE_UPDATE_FAILED: ${error.message}`, 'UPDATE_FAILED')
+      }
+
+      const updated = (Array.isArray(data) ? data[0] : data) as ShiftOperationalNote
+      return updated
+    }
+
+    const idx = inMemoryNotes.findIndex(n => n.id === noteId)
+    if (idx === -1) {
+      throw new ShiftNoteServiceError('NOTE_NOT_FOUND: Không tìm thấy ghi chú.', 'NOT_FOUND')
+    }
+    const current = inMemoryNotes[idx]
+    if (current.version !== expectedVersion) {
+      throw new ShiftNoteServiceError(
+        `NOTE_VERSION_CONFLICT: Phiên bản ghi chú hiện tại (${current.version}) không khớp với phiên bản dự kiến (${expectedVersion}).`,
+        'NOTE_VERSION_CONFLICT',
+      )
+    }
+
+    const updatedNote: ShiftOperationalNote = {
+      ...current,
+      note: input.note !== undefined ? input.note : current.note,
+      category: input.category || current.category,
+      status: input.status || current.status,
+      affected_user_id: input.affectedUserId !== undefined ? input.affectedUserId : current.affected_user_id,
+      affected_role: input.affectedRole !== undefined ? input.affectedRole : current.affected_role,
+      version: current.version + 1,
+      updated_at: new Date().toISOString(),
+    }
+    inMemoryNotes[idx] = updatedNote
+    return Promise.resolve(updatedNote)
   },
 
   /** Clear or seed notes (for test harnesses) */

@@ -10,6 +10,7 @@ import {
   Table2,
   LayoutGrid,
   Banknote,
+  AlertTriangle,
 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { PageShell } from '@/components/ui/archetypes'
@@ -39,6 +40,7 @@ import { WorkforceIndividualView } from '@/components/features/workforce/Workfor
 import { WorkforceLeaderboard } from '@/components/features/workforce/WorkforceLeaderboard'
 import { AttendanceEvidenceReviewPanel } from '@/components/features/workforce/AttendanceEvidenceReviewPanel'
 import { CancellationCompensationPanel } from '@/components/features/workforce/CancellationCompensationPanel'
+import { WorkforceIncidentSummaryPanel } from '@/components/features/workforce/WorkforceIncidentSummaryPanel'
 import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { parseWorkforceYearDraft } from '@/lib/workforce/workforcePeriod'
 import { useListPagination } from '@/lib/hooks/useListPagination'
@@ -74,9 +76,10 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   const viewParam = params.get('workforce_view')
   const canReviewAttendanceEvidence = process.env.NEXT_PUBLIC_FEATURE_SELF_ATTENDANCE_REVIEW === 'true'
   const canReviewCancellationCases = permission === 'leader'
-  const tabGridClass = canReviewAttendanceEvidence && canReviewCancellationCases ? 'md:grid-cols-7'
-    : canReviewAttendanceEvidence || canReviewCancellationCases ? 'md:grid-cols-6' : 'md:grid-cols-5'
+  const tabGridClass = canReviewAttendanceEvidence && canReviewCancellationCases ? 'md:grid-cols-8'
+    : canReviewAttendanceEvidence || canReviewCancellationCases ? 'md:grid-cols-7' : 'md:grid-cols-6'
   const activeTab = viewParam === 'table' || viewParam === 'cards' || viewParam === 'individual' || viewParam === 'leaderboard'
+    || viewParam === 'incidents'
     || (canReviewAttendanceEvidence && viewParam === 'attendance_reviews')
     || (canReviewCancellationCases && viewParam === 'cancellation_compensation') ? viewParam : 'team'
   const search = params.get('workforce_search') || ''
@@ -96,7 +99,7 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
   const updateRole = (value: WorkforceRole) => updateQuery({ workforce_role: value }, true)
   const setActiveTab = (value: string) => updateQuery({ workforce_view: value === 'team' ? null : value })
   const selectedStaffId = staffFilter || currentUser.id
-  const needsOverview = isSupervisor && activeTab !== 'individual' && activeTab !== 'attendance_reviews'
+  const needsOverview = isSupervisor && activeTab !== 'individual' && activeTab !== 'attendance_reviews' && activeTab !== 'incidents'
 
   // Overview response state
   const [overviewState, setOverviewState] = React.useState<{ key: string; data?: WorkforceOverviewResponse; error?: string } | null>(null)
@@ -302,6 +305,10 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
             <Trophy className="h-3.5 w-3.5 mr-1.5" />
             {en ? 'Ranking' : 'Xếp hạng'}
           </TabsTrigger>
+          <TabsTrigger value="incidents" data-testid="workforce-incidents-tab" className="min-h-11 min-w-[98px] shrink-0 whitespace-normal px-2 py-1.5 text-xs font-medium md:min-w-0 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+            {en ? 'Incidents' : 'Sự cố'}
+          </TabsTrigger>
           {canReviewAttendanceEvidence ? <TabsTrigger value="attendance_reviews" data-testid="attendance-evidence-review-tab">Photo review</TabsTrigger> : null}
           {canReviewCancellationCases ? <TabsTrigger value="cancellation_compensation" data-testid="cancellation-compensation-tab"><Banknote className="mr-1.5 h-3.5 w-3.5"/>Hủy ca</TabsTrigger> : null}
         </TabsList>
@@ -335,6 +342,16 @@ function WorkforceWorkspace({ currentUser, canViewTeam }: { currentUser: Busines
 
         {canReviewAttendanceEvidence ? <TabsContent value="attendance_reviews" className="mt-0"><AttendanceEvidenceReviewPanel /></TabsContent> : null}
         {canReviewCancellationCases ? <TabsContent value="cancellation_compensation" className="mt-0"><CancellationCompensationPanel /></TabsContent> : null}
+
+        {/* INCIDENTS & REPLACEMENTS TAB */}
+        <TabsContent value="incidents" className="mt-0">
+          <WorkforceIncidentSummaryPanel
+            initialPeriod={period}
+            initialRole={role}
+            currentUser={currentUser}
+            onSelectStaff={handleDrilldownStaff}
+          />
+        </TabsContent>
 
         {/* LEADERBOARD TAB */}
         <TabsContent value="leaderboard" className="mt-0">

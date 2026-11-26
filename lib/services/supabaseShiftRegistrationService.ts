@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { readShiftStaffingSummary, withShiftStaffingSummary } from '@/lib/services/supabaseStaffingReadService'
 
 import { createClient } from '@/lib/supabase/client'
+import type { ShiftIncidentType, ShiftIncidentV1 } from '@/lib/types/shiftIncidentContract'
 import type {
   OperationalRole,
   SwapExchangeCandidate,
@@ -253,6 +254,8 @@ export interface ReplaceShiftAssignmentInput {
   reason: string
   emergency: boolean
   idempotencyKey: string
+  incidentType?: ShiftIncidentType
+  evidenceReferenceId?: string | null
 }
 
 export interface ShiftStaffingSegmentOption {
@@ -283,6 +286,9 @@ export interface ReplaceShiftAssignmentResult {
     version: number
   }>
   replayed: boolean
+  canonicalIncident?: ShiftIncidentV1 | null
+  receiptId?: string
+  readbackRequired?: boolean
 }
 
 export const isStaffedRegistration = (
@@ -570,10 +576,40 @@ export function createSupabaseShiftRegistrationRepository(
     },
 
     async replaceAssignment(input) {
+      const isIncidentIntent = Boolean(
+        input.incidentType && input.incidentType !== 'planned_reassignment',
+      )
+
+      if (isIncidentIntent) {
+        // Fail-closed safety rule (Task 1):
+        // When incident intent is present (skip, absent, late, etc.),
+        // MUST NOT strip incident fields and call legacy C4 endpoint.
+        // Doing so would alter the roster while failing to persist the incident record.
+        // Block mutation before any network request occurs until versioned D1 API is available.
+        throw new RegistrationRequestError(
+          'Tính năng ghi nhận sự cố ca trực (Delta D) chưa khả dụng trên backend. Không thể thay đổi phân công ca khi chưa ghi nhận sự cố để bảo toàn tính toàn vẹn dữ liệu.',
+          'INCIDENT_RECORDING_CAPABILITY_UNAVAILABLE',
+        )
+      }
+
+      // Pure C4 payload for legacy /api/staffing/replacements endpoint (normal replacement without incident intent)
+      const legacyPayload = {
+        shiftId: input.shiftId,
+        staffingSegmentId: input.staffingSegmentId,
+        registrationId: input.registrationId,
+        replacementUserId: input.replacementUserId,
+        role: input.role,
+        expectedShiftVersion: input.expectedShiftVersion,
+        expectedRegistrationVersion: input.expectedRegistrationVersion,
+        effectiveAt: input.effectiveAt,
+        reason: input.reason,
+        emergency: input.emergency,
+        idempotencyKey: input.idempotencyKey,
+      }
       const response = await fetch('/api/staffing/replacements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify(legacyPayload),
       })
       const payload = await response.json().catch(() => null) as {
         ok?: boolean
@@ -584,7 +620,11 @@ export function createSupabaseShiftRegistrationRepository(
         const code = payload?.error?.code || 'STAFFING_REPLACEMENT_FAILED'
         throw new RegistrationRequestError(code, code)
       }
-      return payload.data
+      return {
+        ...payload.data,
+        canonicalIncident: null,
+        readbackRequired: true,
+      }
     },
   }
 }

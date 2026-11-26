@@ -1176,6 +1176,8 @@ export interface ShiftOperationalNote {
   event_time?: string
   affected_role?: OperationalRole | null
   affected_user_id?: string | null
+  status?: 'draft' | 'published'
+  incident_id?: string | null
   version: number
   created_at: string
   updated_at: string

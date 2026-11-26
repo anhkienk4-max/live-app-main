@@ -33,6 +33,7 @@ import { AuditReferenceMock } from '@/components/visual-qa/AuditReferenceMock'
 import { SettingsReferenceMock } from '@/components/visual-qa/SettingsReferenceMock'
 import { AuthReferenceMock } from '@/components/visual-qa/AuthReferenceMock'
 import { AttendanceSourceManager } from '@/components/features/workforce/AttendanceSourceManager'
+import { DeltaDReferenceMock } from '@/components/visual-qa/DeltaDReferenceMock'
 
 function VisualQaContent() {
   const searchParams = useSearchParams()
@@ -154,6 +155,10 @@ function VisualQaContent() {
         </div>
       </div>
     )
+  }
+
+  if (scenario === 'deltad' || scenario === 'delta-d') {
+    return <DeltaDReferenceMock />
   }
 
   const QA_TIMESTAMP = '2026-09-26T00:00:00.000Z';
