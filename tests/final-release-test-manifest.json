@@ -321,6 +321,7 @@
     "tests/vision-ocr-phase-a.test.ts",
     "tests/vision-ocr-route.test.ts",
     "tests/workflow-restoration.test.ts",
+    "tests/workforce-incident-monthly-handler.test.ts",
     "tests/workforce-period.test.ts",
     "tests/workforce-scope-pagination.test.ts"
   ],
