@@ -181,15 +181,34 @@ jobs:
             -H "apikey: $anon_key" -H 'Content-Type: application/json' \
             --data "$(jq -nc --arg email "$email" --arg password "$password" '{email:$email,password:$password}')" > /dev/null
           connection_identity="$(python3 -c 'import sys; from urllib.parse import urlsplit; u=urlsplit(sys.argv[1]); print(f"{u.hostname}:{u.port}{u.path}")' "$db_url")"
-          check_sql="SELECT (current_database() = 'postgres' AND EXISTS (SELECT 1 FROM public.rc19_w4_runtime_probe WHERE marker = '$RUN_MARKER') AND EXISTS (SELECT 1 FROM auth.users WHERE email = '$email')) FROM pg_database WHERE datname = current_database()"
-          auth_connection_ok="$(docker run --rm --network host -e DB_URL="$db_url" -e CHECK_SQL="$check_sql" postgres:17.11-alpine sh -ec 'psql "$DB_URL" -Atqc "$CHECK_SQL"' 2>/dev/null || printf 'query_error')"
+          query_sql() {
+            local sql="$1"
+            docker run --rm --network host -e DB_URL="$db_url" -e CHECK_SQL="$sql" postgres:17.11-alpine \
+              sh -ec 'psql "$DB_URL" -Atqc "$CHECK_SQL"' 2>/dev/null || printf 'query_error'
+          }
+          auth_database_ok="$(query_sql "SELECT current_database() = 'postgres'")"
+          marker_comment_ok="$(query_sql "SELECT shobj_description(oid, 'pg_database') = '$RUN_MARKER' FROM pg_database WHERE datname = current_database()")"
+          marker_table_exists="$(query_sql "SELECT to_regclass('public.rc19_w4_runtime_probe') IS NOT NULL")"
+          marker_row_ok='f'
+          if [[ "$marker_table_exists" == "t" ]]; then
+            marker_row_ok="$(query_sql "SELECT EXISTS (SELECT 1 FROM public.rc19_w4_runtime_probe WHERE marker = '$RUN_MARKER')")"
+          fi
+          auth_table_exists="$(query_sql "SELECT to_regclass('auth.users') IS NOT NULL")"
+          auth_user_exists='f'
+          if [[ "$auth_table_exists" == "t" ]]; then
+            auth_user_exists="$(query_sql "SELECT EXISTS (SELECT 1 FROM auth.users WHERE email = '$email')")"
+          fi
+          auth_role_connection="$(query_sql "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND usename = 'supabase_auth_admin')")"
+          auth_connection_ok='f'
+          if [[ "$auth_database_ok" == "t" && "$marker_row_ok" == "t" && "$auth_user_exists" == "t" && "$auth_role_connection" == "t" ]]; then
+            auth_connection_ok='t'
+          fi
           auth_container_id="$(docker ps --format '{{.ID}} {{.Image}}' | awk 'tolower($0) ~ /gotrue/ {print $1; exit}')"
           auth_db_identity="UNAVAILABLE"
           if [[ -n "$auth_container_id" ]]; then
             auth_db_identity="$(docker inspect "$auth_container_id" | python3 -c 'import json,sys; from urllib.parse import urlsplit; c=json.load(sys.stdin)[0]; env=dict(x.split("=",1) for x in c["Config"]["Env"] if "=" in x); raw=env.get("GOTRUE_DB_DATABASE_URL", ""); u=urlsplit(raw); print(f"{u.hostname}:{u.port}{u.path}" if raw else "UNAVAILABLE")')"
           fi
-          diagnostic_sql="SELECT current_database() || '|' || (shobj_description(oid, 'pg_database') = '$RUN_MARKER')::text || '|' || EXISTS (SELECT 1 FROM public.rc19_w4_runtime_probe WHERE marker = '$RUN_MARKER')::text || '|' || (to_regclass('auth.users') IS NOT NULL)::text || '|' || (CASE WHEN to_regclass('auth.users') IS NULL THEN false ELSE EXISTS (SELECT 1 FROM auth.users WHERE email = '$email') END)::text || '|' || EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND usename = 'supabase_auth_admin')::text FROM pg_database WHERE datname = current_database()"
-          auth_db_diagnostic="$(docker run --rm --network host -e DB_URL="$db_url" -e DIAGNOSTIC_SQL="$diagnostic_sql" postgres:17.11-alpine sh -ec 'psql "$DB_URL" -Atqc "$DIAGNOSTIC_SQL"' 2>/dev/null || printf 'query_error')"
+          auth_db_diagnostic="$auth_database_ok|$marker_comment_ok|$marker_table_exists|$marker_row_ok|$auth_table_exists|$auth_user_exists|$auth_role_connection"
           if [[ "$auth_connection_ok" != "t" ]]; then
             echo "Sanitized Auth DB diagnostic: CLI target=$connection_identity; GoTrue configured target=$auth_db_identity; database checks=$auth_db_diagnostic"
             jq --arg identity "$connection_identity" --arg auth_identity "$auth_db_identity" --arg diagnostic "$auth_db_diagnostic" \
