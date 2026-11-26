@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - chore/rc19-w4-release-readiness
+    paths-ignore:
+      - .github/rc19-w4-reviewed-application.sha
+      - .github/workflows/rc19-w4-hosted-application-acceptance.yml
+      - .github/workflows/rc19-w4-infrastructure-rehearsal.yml
+      - docs/releases/RC19_W4_HOSTED_RUNTIME_HARNESS_CONTRACT.md
+      - lib/services/supabaseShiftRegistrationService.ts
+      - project-memory/**
   pull_request:
     branches:
       - main
