@@ -168,51 +168,54 @@ jobs:
           db_url="${DB_URL:?Supabase CLI did not expose DB_URL}"
           anon_key="${ANON_KEY:?Supabase CLI did not expose ANON_KEY}"
           curl --fail --silent --show-error "$api_url/auth/v1/health" > /dev/null
-          docker run --rm --network host -e DB_URL="$db_url" -e RUN_MARKER="$RUN_MARKER" postgres:17.11-alpine psql "$db_url" -v ON_ERROR_STOP=1 <<SQL
-          COMMENT ON DATABASE postgres IS '$RUN_MARKER';
-          CREATE TABLE public.rc19_w4_runtime_probe (marker text PRIMARY KEY);
-          INSERT INTO public.rc19_w4_runtime_probe VALUES ('$RUN_MARKER');
-          GRANT SELECT ON public.rc19_w4_runtime_probe TO authenticated;
-          SQL
+          db_container_id="$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2 ~ /^supabase_db_/ {print $1; exit}')"
+          db_container_name="$(docker inspect --format '{{.Name}}' "$db_container_id" | sed 's#^/##')"
+          [[ -n "$db_container_id" && -n "$db_container_name" ]] || {
+            echo "::error::Fresh Supabase database container was not observed"; exit 1;
+          }
+          docker exec "$db_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "COMMENT ON DATABASE postgres IS '$RUN_MARKER'" \
+            -c 'CREATE TABLE public.rc19_w4_runtime_probe (marker text PRIMARY KEY)' \
+            -c "INSERT INTO public.rc19_w4_runtime_probe VALUES ('$RUN_MARKER')" \
+            -c 'GRANT SELECT ON public.rc19_w4_runtime_probe TO authenticated'
           email="synthetic+${GITHUB_RUN_ID}@example.test"
           password="rc19-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-Aa9!"
           echo "::add-mask::$password"
           curl --fail --silent --show-error -X POST "$api_url/auth/v1/signup" \
             -H "apikey: $anon_key" -H 'Content-Type: application/json' \
             --data "$(jq -nc --arg email "$email" --arg password "$password" '{email:$email,password:$password}')" > /dev/null
-          connection_identity="$(python3 -c 'import sys; from urllib.parse import urlsplit; u=urlsplit(sys.argv[1]); print(f"{u.hostname}:{u.port}{u.path}")' "$db_url")"
-          query_sql() {
-            local sql="$1"
-            docker run --rm --network host -e DB_URL="$db_url" -e CHECK_SQL="$sql" postgres:17.11-alpine \
-              sh -ec 'psql "$DB_URL" -Atqc "$CHECK_SQL"' 2>/dev/null || printf 'query_error'
-          }
-          auth_database_ok="$(query_sql "SELECT current_database() = 'postgres'")"
-          marker_comment_ok="$(query_sql "SELECT shobj_description(oid, 'pg_database') = '$RUN_MARKER' FROM pg_database WHERE datname = current_database()")"
-          marker_table_exists="$(query_sql "SELECT to_regclass('public.rc19_w4_runtime_probe') IS NOT NULL")"
-          marker_row_ok='f'
-          if [[ "$marker_table_exists" == "t" ]]; then
-            marker_row_ok="$(query_sql "SELECT EXISTS (SELECT 1 FROM public.rc19_w4_runtime_probe WHERE marker = '$RUN_MARKER')")"
-          fi
-          auth_table_exists="$(query_sql "SELECT to_regclass('auth.users') IS NOT NULL")"
-          auth_user_exists='f'
-          if [[ "$auth_table_exists" == "t" ]]; then
-            auth_user_exists="$(query_sql "SELECT EXISTS (SELECT 1 FROM auth.users WHERE email = '$email')")"
-          fi
-          auth_role_connection="$(query_sql "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND usename = 'supabase_auth_admin')")"
-          auth_connection_ok='f'
-          if [[ "$auth_database_ok" == "t" && "$marker_row_ok" == "t" && "$auth_user_exists" == "t" && "$auth_role_connection" == "t" ]]; then
-            auth_connection_ok='t'
-          fi
+          cli_status_identity="$(python3 -c 'import sys; from urllib.parse import urlsplit; u=urlsplit(sys.argv[1]); print(f"{u.hostname}:{u.port}{u.path}")' "$db_url")"
           auth_container_id="$(docker ps --format '{{.ID}} {{.Image}}' | awk 'tolower($0) ~ /gotrue/ {print $1; exit}')"
           auth_db_identity="UNAVAILABLE"
           if [[ -n "$auth_container_id" ]]; then
             auth_db_identity="$(docker inspect "$auth_container_id" | python3 -c 'import json,sys; from urllib.parse import urlsplit; c=json.load(sys.stdin)[0]; env=dict(x.split("=",1) for x in c["Config"]["Env"] if "=" in x); raw=env.get("GOTRUE_DB_DATABASE_URL", ""); u=urlsplit(raw); print(f"{u.hostname}:{u.port}{u.path}" if raw else "UNAVAILABLE")')"
           fi
+          query_db_sql() {
+            local sql="$1"
+            docker exec "$db_container_id" psql -U postgres -d postgres -Atqc "$sql" 2>/dev/null || printf 'query_error'
+          }
+          auth_database_ok="$(query_db_sql "SELECT current_database() = 'postgres'")"
+          marker_comment_ok="$(query_db_sql "SELECT shobj_description(oid, 'pg_database') = '$RUN_MARKER' FROM pg_database WHERE datname = current_database()")"
+          marker_table_exists="$(query_db_sql "SELECT to_regclass('public.rc19_w4_runtime_probe') IS NOT NULL")"
+          marker_row_ok='f'
+          if [[ "$marker_table_exists" == "t" ]]; then
+            marker_row_ok="$(query_db_sql "SELECT EXISTS (SELECT 1 FROM public.rc19_w4_runtime_probe WHERE marker = '$RUN_MARKER')")"
+          fi
+          auth_table_exists="$(query_db_sql "SELECT to_regclass('auth.users') IS NOT NULL")"
+          auth_user_exists='f'
+          if [[ "$auth_table_exists" == "t" ]]; then
+            auth_user_exists="$(query_db_sql "SELECT EXISTS (SELECT 1 FROM auth.users WHERE email = '$email')")"
+          fi
+          auth_role_connection="$(query_db_sql "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND usename = 'supabase_auth_admin')")"
+          auth_connection_ok='f'
+          if [[ "$auth_database_ok" == "t" && "$marker_row_ok" == "t" && "$auth_user_exists" == "t" && "$auth_role_connection" == "t" && "$auth_db_identity" == "$db_container_name:5432/postgres" ]]; then
+            auth_connection_ok='t'
+          fi
           auth_db_diagnostic="$auth_database_ok|$marker_comment_ok|$marker_table_exists|$marker_row_ok|$auth_table_exists|$auth_user_exists|$auth_role_connection"
           if [[ "$auth_connection_ok" != "t" ]]; then
-            echo "Sanitized Auth DB diagnostic: CLI target=$connection_identity; GoTrue configured target=$auth_db_identity; database checks=$auth_db_diagnostic"
-            jq --arg identity "$connection_identity" --arg auth_identity "$auth_db_identity" --arg diagnostic "$auth_db_diagnostic" \
-              '.steps.supabase = {status:"failed", code:"AUTH_DATABASE_MARKER_MISMATCH", cli_connection_identity:$identity, gotrue_configured_identity:$auth_identity, database_diagnostic:$diagnostic, raw_logs_included:false, credentials_included:false}' \
+            echo "Sanitized Auth DB diagnostic: CLI status target=$cli_status_identity; database container=$db_container_name; GoTrue configured target=$auth_db_identity; database checks=$auth_db_diagnostic"
+            jq --arg cli_identity "$cli_status_identity" --arg db_container "$db_container_name" --arg auth_identity "$auth_db_identity" --arg diagnostic "$auth_db_diagnostic" \
+              '.steps.supabase = {status:"failed", code:"AUTH_DATABASE_MARKER_MISMATCH", cli_status_identity:$cli_identity, database_container:$db_container, gotrue_configured_identity:$auth_identity, database_diagnostic:$diagnostic, raw_logs_included:false, credentials_included:false}' \
               "$RUNNER_TEMP/rc19-w4-artifact/rehearsal.json" > "$RUNNER_TEMP/rehearsal.json"
             mv "$RUNNER_TEMP/rehearsal.json" "$RUNNER_TEMP/rc19-w4-artifact/rehearsal.json"
             echo "::error::Auth synthetic user was not persisted in the marker database; sanitized identity diagnostics are in the artifact."
@@ -236,7 +239,7 @@ jobs:
             echo "::error::GoTrue or PostgREST container was not observed"; exit 1;
           }
           runtime_db_version="$(docker run --rm --network host -e DB_URL="$db_url" postgres:17.11-alpine psql "$db_url" -Atqc 'SHOW server_version')"
-          jq --arg marker "$RUN_MARKER" --arg auth "$auth_image" --arg authid "$auth_image_id" --arg authdb "$auth_db_identity" --arg rest "$rest_image" --arg restid "$rest_image_id" --arg dbversion "$runtime_db_version" --arg identity "$connection_identity"             '.steps.supabase = {status:"passed", database:"postgres", marker:$marker, connection_identity:$identity, gotrue_configured_identity:$authdb, postgres_version:$dbversion, gotrue_image:$auth, gotrue_image_id:$authid, postgrest_image:$rest, postgrest_image_id:$restid, auth_same_database_marker_check:true, synthetic_signup_login:true, jwt_postgrest_read:true, raw_logs_included:false, credentials_included:false}'             "$RUNNER_TEMP/rc19-w4-artifact/rehearsal.json" > "$RUNNER_TEMP/rehearsal.json"
+          jq --arg marker "$RUN_MARKER" --arg dbcontainer "$db_container_name" --arg cliidentity "$cli_status_identity" --arg auth "$auth_image" --arg authid "$auth_image_id" --arg authdb "$auth_db_identity" --arg rest "$rest_image" --arg restid "$rest_image_id" --arg dbversion "$runtime_db_version"             '.steps.supabase = {status:"passed", database:"postgres", marker:$marker, database_container:$dbcontainer, cli_status_identity:$cliidentity, connection_identity:$authdb, gotrue_configured_identity:$authdb, postgres_version:$dbversion, gotrue_image:$auth, gotrue_image_id:$authid, postgrest_image:$rest, postgrest_image_id:$restid, auth_same_database_marker_check:true, synthetic_signup_login:true, jwt_postgrest_read:true, raw_logs_included:false, credentials_included:false}'             "$RUNNER_TEMP/rc19-w4-artifact/rehearsal.json" > "$RUNNER_TEMP/rehearsal.json"
           mv "$RUNNER_TEMP/rehearsal.json" "$RUNNER_TEMP/rc19-w4-artifact/rehearsal.json"
           echo "Fresh pinned Supabase CLI stack cold-started; synthetic Auth login and authenticated PostgREST marker read passed." >> "$GITHUB_STEP_SUMMARY"
           supabase stop --no-backup > /dev/null 2>&1 || true
