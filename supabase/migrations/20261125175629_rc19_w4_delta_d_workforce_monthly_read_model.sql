@@ -3,6 +3,32 @@
 -- business date), never client-paginated rows or mutable shift summaries.
 BEGIN;
 
+-- Admins use the canonical permission decision. Leader access is enforced by
+-- active per-Brand workforce.read scopes below, so this permission is not a
+-- global Leader grant.
+INSERT INTO private.rbac_permission_catalog
+  (permission, legacy_defaults, hard_restricted, role_override_roles, account_override_roles, account_allow_roles)
+VALUES
+  ('workforce.read', '{"member":false,"leader":false,"admin":true}', true, '{}', '{}', '{}')
+ON CONFLICT (permission) DO NOTHING;
+
+DO $assert_workforce_read_permission$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM private.rbac_permission_catalog
+    WHERE permission = 'workforce.read'
+      AND legacy_defaults = '{"member":false,"leader":false,"admin":true}'::jsonb
+      AND hard_restricted
+      AND cardinality(role_override_roles) = 0
+      AND cardinality(account_override_roles) = 0
+      AND cardinality(account_allow_roles) = 0
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'WORKFORCE_READ_PERMISSION_CONFIGURATION_CONFLICT';
+  END IF;
+END
+$assert_workforce_read_permission$;
+
 CREATE INDEX IF NOT EXISTS rc19_staff_incidents_monthly_scope_idx
   ON private.rc19_staff_incidents (business_date, original_staff_id, shift_id)
   INCLUDE (incident_type, review_state, operational_role, staffing_segment_id,
@@ -51,9 +77,6 @@ BEGIN
       RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'WORKFORCE_READ_REQUIRED';
     END IF;
   ELSIF v_permission = 'leader' THEN
-    IF NOT public.rbac01_effective_permission('workforce.read') THEN
-      RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'WORKFORCE_READ_REQUIRED';
-    END IF;
     IF p_brand_id IS NOT NULL
       AND NOT private.rc19_has_leader_brand_scope(p_brand_id, 'workforce.read') THEN
       RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'WORKFORCE_BRAND_SCOPE_REQUIRED';

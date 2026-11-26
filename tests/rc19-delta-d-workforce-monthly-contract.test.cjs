@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node's built-in test runner requires CommonJS in this .cjs file. */
 const assert = require('node:assert/strict')
 const { readFileSync } = require('node:fs')
 const path = require('node:path')
@@ -12,6 +13,18 @@ test('D3 monthly read function is an authenticated security-definer with pinned 
   assert.match(migration, /WORKFORCE_SELF_SCOPE_REQUIRED/u)
   assert.match(migration, /rc19_has_leader_brand_scope\(p_brand_id, 'workforce\.read'\)/u)
   assert.match(migration, /private\.rc19_has_leader_brand_scope\(s\.brand_id, 'workforce\.read'\)/u)
+})
+
+test('D3 registers an Admin-only global permission and scopes Leaders by active Brand grants', () => {
+  assert.match(migration, /\('workforce\.read', '\{"member":false,"leader":false,"admin":true\}', true, '\{\}', '\{\}', '\{\}'\)/u)
+  assert.match(migration, /WORKFORCE_READ_PERMISSION_CONFIGURATION_CONFLICT/u)
+  const leaderBranch = migration.slice(
+    migration.indexOf("ELSIF v_permission = 'leader' THEN"),
+    migration.indexOf('WITH scoped AS MATERIALIZED'),
+  )
+  assert.ok(leaderBranch.length > 0)
+  assert.ok(!leaderBranch.includes('rbac01_effective_permission'))
+  assert.match(leaderBranch, /rc19_has_leader_brand_scope\(p_brand_id, 'workforce\.read'\)/u)
 })
 
 test('D3 monthly summary separates review states, approved PASS/SWAP and unknown late duration', () => {
