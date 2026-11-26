@@ -30,7 +30,16 @@ import {
   Send,
   ShoppingBag,
   Users,
+  XCircle,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface ShiftOperationalNotesSectionProps {
   shift: Shift
@@ -124,6 +133,13 @@ export function ShiftOperationalNotesSection({
   const [editingNoteId, setEditingNoteId] = React.useState<string | null>(null)
   const [editingVersion, setEditingVersion] = React.useState<number>(1)
   const [saveState, setSaveState] = React.useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle')
+  const [actionInProgress, setActionInProgress] = React.useState<string | null>(null)
+  const [reviewDialog, setReviewDialog] = React.useState<{
+    note: ShiftOperationalNote
+    action: 'request_correction' | 'reject'
+  } | null>(null)
+  const [reviewReason, setReviewReason] = React.useState('')
+  const idempotencyKeyRef = React.useRef<string>(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`)
 
   const assignedStaff = React.useMemo(() => {
     const list: Array<{ id: string; name: string; role?: string }> = []
@@ -217,45 +233,40 @@ export function ShiftOperationalNotesSection({
     setSubmitting(true)
     setSaveState('saving')
     try {
-      if (editingNoteId) {
-        await shiftNoteService.update({
+      if (asDraft) {
+        await shiftNoteService.saveDraft({
           noteId: editingNoteId,
-          expectedVersion: editingVersion,
-          note: noteText.trim(),
+          expectedVersion: editingNoteId ? editingVersion : null,
+          shiftId: shift.id,
+          businessDate: shift.date,
           category,
-          status: asDraft ? 'draft' : 'published',
+          note: noteText.trim(),
           affectedUserId: affectedUserId || null,
+          idempotencyKey: idempotencyKeyRef.current,
         })
         toast({
           title: isVi ? 'Thành công' : 'Success',
-          description: asDraft
-            ? isVi ? 'Đã lưu nháp ghi chú.' : 'Draft updated.'
-            : isVi ? 'Đã xuất bản ghi chú.' : 'Note published.',
+          description: isVi ? 'Đã lưu nháp ghi chú trên server.' : 'Draft saved to server.',
           variant: 'success',
         })
       } else {
-        await shiftNoteService.create({
+        await shiftNoteService.submitNote({
+          noteId: editingNoteId,
+          expectedVersion: editingNoteId ? editingVersion : null,
           shiftId: shift.id,
           businessDate: shift.date,
-          date: shift.date,
           category,
           note: noteText.trim(),
-          authorId: currentUser.id,
-          authorName: currentUser.full_name || currentUser.id,
-          authorRole: currentUser.role || 'staff',
-          actualEventTime: new Date().toISOString(),
-          status: asDraft ? 'draft' : 'published',
-          isDraft: asDraft,
           affectedUserId: affectedUserId || null,
+          idempotencyKey: idempotencyKeyRef.current,
         })
         toast({
           title: isVi ? 'Thành công' : 'Success',
-          description: asDraft
-            ? isVi ? 'Đã lưu nháp ghi chú vận hành.' : 'Operational note draft saved.'
-            : isVi ? 'Đã ghi nhận ghi chú vận hành.' : 'Operational note recorded.',
+          description: isVi ? 'Đã ghi nhận ghi chú vận hành.' : 'Operational note submitted.',
           variant: 'success',
         })
       }
+      idempotencyKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`
       setSaveState('saved')
       setNoteText('')
       setEditingNoteId(null)
@@ -267,7 +278,9 @@ export function ShiftOperationalNotesSection({
       const isSchemaError =
         err instanceof Error &&
         (err.message.includes('SCHEMA_NOT_DEPLOYED') ||
-          (err as { code?: string }).code === 'SCHEMA_NOT_DEPLOYED')
+          err.message.includes('D2_WORKFLOW_UNAVAILABLE') ||
+          (err as { code?: string }).code === 'SCHEMA_NOT_DEPLOYED' ||
+          (err as { code?: string }).code === 'D2_WORKFLOW_UNAVAILABLE')
       if (isSchemaError) {
         setSchemaUnavailable(true)
       }
@@ -279,13 +292,82 @@ export function ShiftOperationalNotesSection({
         title: isVi ? 'Lỗi' : 'Error',
         description: isConflict
           ? isVi
-            ? 'Xung đột phiên bản: ghi chú đã được sửa đổi bởi người khác. Vui lòng tải lại trước khi lưu.'
-            : 'Version conflict: this note was modified elsewhere. Please refresh before saving.'
+            ? 'Xung đột phiên bản (CAS): ghi chú đã được sửa đổi bởi người khác. Vui lòng tải lại trước khi lưu.'
+            : 'Version conflict (CAS): this note was modified elsewhere. Please refresh before saving.'
           : err instanceof Error ? err.message : 'Không thể lưu ghi chú.',
         variant: 'destructive',
       })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleApproveNote = async (note: ShiftOperationalNote) => {
+    setActionInProgress(note.id)
+    try {
+      await shiftNoteService.approveNote({
+        noteId: note.id,
+        expectedVersion: note.version || 1,
+      })
+      toast({
+        title: isVi ? 'Thành công' : 'Success',
+        description: isVi ? 'Đã phê duyệt ghi chú.' : 'Note approved.',
+        variant: 'success',
+      })
+      await loadNotes()
+    } catch (err: unknown) {
+      const isConflict = err instanceof Error && err.message.includes('NOTE_VERSION_CONFLICT')
+      toast({
+        title: isVi ? 'Lỗi' : 'Error',
+        description: isConflict
+          ? isVi ? 'Xung đột phiên bản (CAS): ghi chú đã bị thay đổi.' : 'Version conflict: note modified.'
+          : err instanceof Error ? err.message : 'Không thể duyệt ghi chú.',
+        variant: 'destructive',
+      })
+    } finally {
+      setActionInProgress(null)
+    }
+  }
+
+  const handleConfirmReviewDialog = async () => {
+    if (!reviewDialog) return
+    const { note, action } = reviewDialog
+    setActionInProgress(note.id)
+    try {
+      if (action === 'request_correction') {
+        await shiftNoteService.requestCorrection({
+          noteId: note.id,
+          expectedVersion: note.version || 1,
+          note: reviewReason.trim() || null,
+        })
+        toast({
+          title: isVi ? 'Thành công' : 'Success',
+          description: isVi ? 'Đã yêu cầu chỉnh sửa ghi chú.' : 'Correction requested.',
+          variant: 'success',
+        })
+      } else {
+        await shiftNoteService.rejectNote({
+          noteId: note.id,
+          expectedVersion: note.version || 1,
+          reason: reviewReason.trim() || null,
+        })
+        toast({
+          title: isVi ? 'Thành công' : 'Success',
+          description: isVi ? 'Đã từ chối ghi chú.' : 'Note rejected.',
+          variant: 'success',
+        })
+      }
+      setReviewDialog(null)
+      setReviewReason('')
+      await loadNotes()
+    } catch (err: unknown) {
+      toast({
+        title: isVi ? 'Lỗi' : 'Error',
+        description: err instanceof Error ? err.message : 'Thao tác thất bại.',
+        variant: 'destructive',
+      })
+    } finally {
+      setActionInProgress(null)
     }
   }
 
@@ -295,6 +377,7 @@ export function ShiftOperationalNotesSection({
     setNoteText(note.note)
     setCategory(note.category)
     setAffectedUserId(note.affected_user_id || '')
+    idempotencyKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`
     setSaveState('idle')
   }
 
@@ -602,8 +685,8 @@ export function ShiftOperationalNotesSection({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <time className="text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <time className="text-[11px] text-muted-foreground mr-1">
                         {formatNoteTime(note.actual_event_time || note.created_at || note.event_time || '')}
                       </time>
                       {isDraft && canAddNote && (
@@ -619,6 +702,52 @@ export function ShiftOperationalNotesSection({
                           {isVi ? 'Sửa nháp' : 'Edit Draft'}
                         </Button>
                       )}
+                      {isLeaderOrAdmin && !isDraft && (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[11px] text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                            disabled={actionInProgress === note.id}
+                            onClick={() => void handleApproveNote(note)}
+                            data-testid={`approve-note-btn-${note.id}`}
+                          >
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            {isVi ? 'Duyệt' : 'Approve'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[11px] text-amber-700 hover:text-amber-800 hover:bg-amber-50"
+                            disabled={actionInProgress === note.id}
+                            onClick={() => {
+                              setReviewDialog({ note, action: 'request_correction' })
+                              setReviewReason('')
+                            }}
+                            data-testid={`request-correction-note-btn-${note.id}`}
+                          >
+                            <FileEdit className="h-3 w-3 mr-1" />
+                            {isVi ? 'Sửa' : 'Correction'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[11px] text-red-700 hover:text-red-800 hover:bg-red-50"
+                            disabled={actionInProgress === note.id}
+                            onClick={() => {
+                              setReviewDialog({ note, action: 'reject' })
+                              setReviewReason('')
+                            }}
+                            data-testid={`reject-note-btn-${note.id}`}
+                          >
+                            <XCircle className="h-3 w-3 mr-1" />
+                            {isVi ? 'Từ chối' : 'Reject'}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
@@ -630,6 +759,60 @@ export function ShiftOperationalNotesSection({
           </div>
         )}
       </div>
+
+      {/* Review Dialog for Correction or Rejection */}
+      <Dialog open={Boolean(reviewDialog)} onOpenChange={(open) => !open && setReviewDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold">
+              {reviewDialog?.action === 'request_correction'
+                ? (isVi ? 'Yêu cầu chỉnh sửa ghi chú' : 'Request Note Correction')
+                : (isVi ? 'Từ chối ghi chú vận hành' : 'Reject Operational Note')}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {reviewDialog?.action === 'request_correction'
+                ? (isVi ? 'Nhập lý do hoặc nội dung cần tác giả sửa đổi:' : 'Enter revision feedback for author:')
+                : (isVi ? 'Nhập lý do từ chối ghi nhận sự kiện này:' : 'Enter justification for rejecting this note:')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Textarea
+              data-testid="note-review-reason-input"
+              value={reviewReason}
+              onChange={(e) => setReviewReason(e.target.value)}
+              placeholder={isVi ? 'Lý do...' : 'Reason...'}
+              className="text-xs min-h-[80px]"
+              rows={3}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setReviewDialog(null)}
+              className="text-xs"
+            >
+              {isVi ? 'Hủy' : 'Cancel'}
+            </Button>
+            <Button
+              type="button"
+              variant={reviewDialog?.action === 'reject' ? 'destructive' : 'default'}
+              size="sm"
+              data-testid="confirm-note-review-btn"
+              disabled={actionInProgress === reviewDialog?.note.id || !reviewReason.trim()}
+              onClick={() => void handleConfirmReviewDialog()}
+              className="text-xs"
+            >
+              {actionInProgress === reviewDialog?.note.id
+                ? (isVi ? 'Đang gửi...' : 'Submitting...')
+                : reviewDialog?.action === 'reject'
+                ? (isVi ? 'Xác nhận từ chối' : 'Confirm Rejection')
+                : (isVi ? 'Gửi yêu cầu' : 'Send Request')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
         </>
       )}
     </div>

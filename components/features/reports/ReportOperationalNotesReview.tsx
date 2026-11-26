@@ -20,6 +20,8 @@ import {
 import type { ShiftOperationalNote } from '@/lib/types/database.types'
 
 interface ReportOperationalNotesReviewProps {
+  reportId?: string
+  revisionVersion?: number
   shiftId?: string
   readOnly?: boolean
   storedSnapshot?: ShiftOperationalNote[] | null
@@ -29,6 +31,8 @@ interface ReportOperationalNotesReviewProps {
 }
 
 export function ReportOperationalNotesReview({
+  reportId,
+  revisionVersion,
   shiftId,
   readOnly = false,
   storedSnapshot = null,
@@ -40,12 +44,132 @@ export function ReportOperationalNotesReview({
   const isVi = language === 'vi'
 
   const [notes, setNotes] = React.useState<ShiftOperationalNote[]>([])
+  const [incidentsCount, setIncidentsCount] = React.useState(0)
+  const [externalProjection, setExternalProjection] = React.useState<{
+    schemaVersion: number
+    reportId: string
+    revisionVersion: number
+    status: string
+    metrics: {
+      revenue: number
+      orders: number
+      peakViewer: number
+      averageViewer: number
+      gmv?: number | null
+      viewers?: number | null
+      productClicks?: number | null
+      ctr?: number | null
+      cvr?: number | null
+      averageOrderValue?: number | null
+      liveDurationMinutes?: number | null
+      dashboardPlatform: string
+    }
+  } | null>(null)
   const [loading, setLoading] = React.useState(!readOnly)
   const [schemaUnavailable, setSchemaUnavailable] = React.useState(false)
+  const [snapshotUnavailable, setSnapshotUnavailable] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
   const [previewAudience, setPreviewAudience] = React.useState<'internal' | 'external'>('internal')
 
   const loadNotes = React.useCallback(async () => {
-    // In read-only mode (ReportDetail), never query live notes; only use stored snapshot
+    setLoading(true)
+    setError(null)
+    setSchemaUnavailable(false)
+    setSnapshotUnavailable(false)
+
+    // 1. If reportId is available, attempt to fetch from backend revision-snapshots API
+    if (reportId) {
+      try {
+        const queryParams = new URLSearchParams()
+        queryParams.set('report_id', reportId)
+        queryParams.set('audience', previewAudience)
+        if (readOnly && revisionVersion !== undefined) {
+          queryParams.set('revision_version', String(revisionVersion))
+        }
+
+        const res = await fetch(`/api/reports/revision-snapshots?${queryParams.toString()}`)
+        if (res.status === 404) {
+          if (readOnly) {
+            setSnapshotUnavailable(true)
+            setNotes(storedSnapshot || [])
+          } else {
+            if (shiftId) {
+              const data = await shiftNoteService.getForShift(shiftId)
+              setNotes(data.filter(n => n.status !== 'draft'))
+            } else {
+              setNotes([])
+            }
+          }
+          setLoading(false)
+          return
+        }
+
+        if (res.status === 403) {
+          setError(isVi ? 'Không có quyền truy cập bản snapshot báo cáo này.' : 'Forbidden: You do not have permission to access this report snapshot.')
+          setLoading(false)
+          return
+        }
+
+        if (res.status === 503) {
+          setSchemaUnavailable(true)
+          setLoading(false)
+          return
+        }
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          setError(body?.error?.code || `HTTP_${res.status}`)
+          setLoading(false)
+          return
+        }
+
+        const json = await res.json()
+        const data = json.data
+
+        if (previewAudience === 'external') {
+          if (data?.externalProjection) {
+            setExternalProjection(data.externalProjection)
+          } else {
+            setExternalProjection(null)
+          }
+        } else {
+          const source = data?.sourceSnapshot
+          if (source && Array.isArray(source.notes)) {
+            const mappedNotes: ShiftOperationalNote[] = source.notes.map((n: any) => ({
+              id: n.noteId,
+              shift_id: shiftId || '',
+              business_date: n.businessDate,
+              date: n.businessDate,
+              category: n.category,
+              note: n.note,
+              author_id: n.authorId,
+              author_name: n.authorName || n.authorId,
+              author_role: n.authorRole || 'staff',
+              actual_event_time: n.actualEventTime,
+              event_time: n.actualEventTime,
+              affected_role: n.affectedRole,
+              affected_user_id: n.affectedUserId,
+              version: n.version,
+              status: n.workflowState === 'draft' ? 'draft' : 'published',
+              created_at: n.actualEventTime,
+              updated_at: n.actualEventTime,
+            }))
+            setNotes(mappedNotes)
+            setIncidentsCount(Array.isArray(source.incidents) ? source.incidents.length : 0)
+          } else {
+            setNotes(storedSnapshot || [])
+          }
+        }
+        setLoading(false)
+        return
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err))
+        setLoading(false)
+        return
+      }
+    }
+
+    // 2. In read-only mode without reportId, only use stored snapshot
     if (readOnly) {
       setNotes(storedSnapshot || [])
       setLoading(false)
@@ -57,7 +181,7 @@ export function ReportOperationalNotesReview({
       setLoading(false)
       return
     }
-    setLoading(true)
+
     try {
       const data = await shiftNoteService.getForShift(shiftId)
       setNotes(data.filter(n => n.status !== 'draft'))
@@ -75,7 +199,7 @@ export function ReportOperationalNotesReview({
     } finally {
       setLoading(false)
     }
-  }, [shiftId, readOnly, storedSnapshot])
+  }, [reportId, revisionVersion, previewAudience, readOnly, shiftId, storedSnapshot, isVi])
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load of report notes
@@ -167,7 +291,26 @@ export function ReportOperationalNotesReview({
         </div>
       </div>
 
-      {readOnly && (!storedSnapshot || storedSnapshot.length === 0) ? (
+      {error ? (
+        <div
+          className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-900 flex items-center justify-between gap-2"
+          data-testid="report-snapshot-error"
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void loadNotes()}
+            className="h-6 px-2 text-[11px] text-red-800 border-red-300"
+          >
+            {isVi ? 'Thử lại' : 'Retry'}
+          </Button>
+        </div>
+      ) : readOnly && (!storedSnapshot || storedSnapshot.length === 0) && snapshotUnavailable ? (
         <div
           className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-xs text-muted-foreground"
           data-testid="report-snapshot-unavailable"
@@ -191,33 +334,89 @@ export function ReportOperationalNotesReview({
           </div>
         </div>
       ) : loading ? (
-        <div className="py-6 text-center text-xs text-muted-foreground">
-          {isVi ? 'Đang tải danh sách sự kiện vận hành...' : 'Loading operational events...'}
+        <div
+          className="py-6 text-center text-xs text-muted-foreground flex items-center justify-center gap-2"
+          data-testid="report-snapshot-loading"
+        >
+          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+          <span>{isVi ? 'Đang tải danh sách sự kiện vận hành...' : 'Loading operational events...'}</span>
         </div>
+      ) : previewAudience === 'external' ? (
+        externalProjection ? (
+          <div
+            className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 text-xs space-y-3"
+            data-testid="report-external-projection-view"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-semibold text-emerald-900">
+                <Shield className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>
+                  {isVi
+                    ? 'Bản chiếu an toàn cho đối tác bên ngoài (External-Safe Projection)'
+                    : 'External-Safe Projection (Client-safe)'}
+                </span>
+              </div>
+              <Badge variant="outline" className="text-[10px] bg-white border-emerald-300 text-emerald-800">
+                v{externalProjection.revisionVersion} ({externalProjection.status})
+              </Badge>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              <div className="bg-white p-2 rounded border border-emerald-100 text-center">
+                <span className="text-[10px] text-muted-foreground block">{isVi ? 'Doanh thu' : 'Revenue'}</span>
+                <span className="font-semibold text-emerald-900 text-xs">
+                  {externalProjection.metrics.revenue.toLocaleString()} ₫
+                </span>
+              </div>
+              <div className="bg-white p-2 rounded border border-emerald-100 text-center">
+                <span className="text-[10px] text-muted-foreground block">{isVi ? 'Đơn hàng' : 'Orders'}</span>
+                <span className="font-semibold text-emerald-900 text-xs">
+                  {externalProjection.metrics.orders}
+                </span>
+              </div>
+              <div className="bg-white p-2 rounded border border-emerald-100 text-center">
+                <span className="text-[10px] text-muted-foreground block">{isVi ? 'Mắt xem cao nhất' : 'Peak Viewers'}</span>
+                <span className="font-semibold text-emerald-900 text-xs">
+                  {externalProjection.metrics.peakViewer}
+                </span>
+              </div>
+              <div className="bg-white p-2 rounded border border-emerald-100 text-center">
+                <span className="text-[10px] text-muted-foreground block">{isVi ? 'Mắt xem TB' : 'Avg Viewers'}</span>
+                <span className="font-semibold text-emerald-900 text-xs">
+                  {externalProjection.metrics.averageViewer}
+                </span>
+              </div>
+            </div>
+            <p className="text-[11px] text-emerald-800/80 leading-relaxed border-t border-emerald-200/60 pt-2">
+              {isVi
+                ? 'Thông tin nhân sự, danh tính cá nhân và chi tiết ghi chú nội bộ được tách biệt hoàn toàn phía server theo ranh giới phân quyền.'
+                : 'Personnel identities, staff names, and internal notes are fully withheld server-side per authorization boundaries.'}
+            </p>
+          </div>
+        ) : (
+          <div
+            className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 space-y-1"
+            data-testid="external-safe-backend-pending"
+          >
+            <div className="flex items-center gap-2 font-semibold">
+              <Shield className="h-4 w-4 text-amber-600 shrink-0" />
+              <span>
+                {isVi
+                  ? 'Bản chiếu External-Safe phải do backend RPC cấp theo quyền truy cập.'
+                  : 'External-Safe projection must be generated by backend RPC based on permissions.'}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              {isVi
+                ? 'Client không tự che giấu dữ liệu để làm ranh giới bảo mật. Chi tiết nhân sự nội bộ được bảo vệ an toàn đối với góc nhìn đối tác cho đến khi backend kích hoạt RPC chiếu an toàn.'
+                : 'Client-side masking is not a security boundary. Internal personnel details are withheld from external views until backend projection RPC is deployed.'}
+            </p>
+          </div>
+        )
       ) : notes.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-xs text-muted-foreground">
           {isVi
             ? 'Ca trực này không có ghi chú hoặc sự cố vận hành nào.'
             : 'No operational notes or incidents recorded for this shift.'}
-        </div>
-      ) : previewAudience === 'external' ? (
-        <div
-          className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 space-y-1"
-          data-testid="external-safe-backend-pending"
-        >
-          <div className="flex items-center gap-2 font-semibold">
-            <Shield className="h-4 w-4 text-amber-600 shrink-0" />
-            <span>
-              {isVi
-                ? 'Bản chiếu External-Safe phải do backend RPC cấp theo quyền truy cập.'
-                : 'External-Safe projection must be generated by backend RPC based on permissions.'}
-            </span>
-          </div>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {isVi
-              ? 'Client không tự che giấu dữ liệu để làm ranh giới bảo mật. Chi tiết nhân sự nội bộ được bảo vệ an toàn đối với góc nhìn đối tác cho đến khi backend kích hoạt RPC chiếu an toàn.'
-              : 'Client-side masking is not a security boundary. Internal personnel details are withheld from external views until backend projection RPC is deployed.'}
-          </p>
         </div>
       ) : (
         <div className="space-y-2">
