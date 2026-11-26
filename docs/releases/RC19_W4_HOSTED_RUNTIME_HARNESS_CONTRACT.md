@@ -53,9 +53,10 @@ The workflow validates this contract, stores only the sanitized booleans with
 the exact SHAs and runtime image identities, and retains the artifact for 14
 days. Raw test output remains ephemeral and is not uploaded.
 
-The application candidate SHA allowlisted today is the Unified D123 base
-`54951ffb9ed34547dca93fbd077f22823a2dbe5a`. It does not yet contain the
-Lane 01 acceptance entrypoint. The reusable workflow therefore cannot report
+The application candidate SHA allowlisted today is the reviewed W4 application
+commit `87a077955f309e5daaaf4c8dd229df2ae586053a`, which includes Lane 01's
+scoped typed incident correction. It does not yet contain the Lane 01
+acceptance entrypoint. The reusable workflow therefore cannot report
 Admin/Leader/Member or application acceptance until Lane 01 provides and
 reviews that contract and the approved candidate SHA is updated.
 
