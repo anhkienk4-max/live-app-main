@@ -18,6 +18,23 @@ function replacementFor(swap: SwapRequest): string | null {
   return swap.replacement_staff_id || swap.new_host_id || swap.new_support_id || swap.new_technical_id || swap.counterpart_id || null
 }
 
+export function formatSegmentCode(segmentIndex?: number | null): string {
+  if (segmentIndex == null) return 'Toàn ca'
+  return `K${String(segmentIndex).padStart(2, '0')}`
+}
+
+export function formatSegmentTimeRange(startAt?: string | null, endAt?: string | null): string {
+  if (!startAt || !endAt) return ''
+  try {
+    const s = new Date(startAt)
+    const e = new Date(endAt)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${pad(s.getHours())}:${pad(s.getMinutes())}–${pad(e.getHours())}:${pad(e.getMinutes())}`
+  } catch {
+    return `${startAt}–${endAt}`
+  }
+}
+
 export function getSwapStatusPresentation(status: SwapStatus): SwapStatusPresentation {
   if (status === 'pending') return { label: status, tone: 'warning' }
   if (status === 'accepted') return { label: status, tone: 'info' }

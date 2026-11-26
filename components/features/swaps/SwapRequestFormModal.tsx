@@ -2,10 +2,12 @@
 
 import * as React from 'react'
 import { addDays, format, parseISO } from 'date-fns'
-import { Loader2, Calendar, CheckCircle2, AlertCircle, RotateCcw, Search } from 'lucide-react'
+import { Loader2, Calendar, CheckCircle2, AlertCircle, RotateCcw, Search, Clock, ArrowRightLeft } from 'lucide-react'
 import { isStaffedRegistration, shiftRegistrationService, shiftService, swapRequestService, userService } from '@/lib/services/dataService'
 import type { Brand, OperationalRole, Platform, Shift, ShiftRegistration, SwapExchangeCandidate, UserDirectoryEntry } from '@/lib/types/database.types'
+import type { ShiftStaffingSegmentOption } from '@/lib/services/supabaseShiftRegistrationService'
 import { formatShiftTimeRange, getCurrentBusinessDate } from '@/lib/utils/shiftUtils'
+import { formatSegmentCode, formatSegmentTimeRange } from '@/lib/utils/swapUi'
 import { validateSwapTiming } from '@/lib/utils/swapValidation'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { useTranslation } from '@/lib/i18n'
@@ -48,6 +50,8 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const [sourceRevision, setSourceRevision] = React.useState(0)
   const [sourceSnapshot, setSourceSnapshot] = React.useState<SourcePage | null>(null)
   const [sourceId, setSourceId] = React.useState('')
+  const [sourceRegistrationId, setSourceRegistrationId] = React.useState('')
+  const [sourceSegments, setSourceSegments] = React.useState<ShiftStaffingSegmentOption[]>([])
   const [role, setRole] = React.useState<OperationalRole | ''>('')
   const [directorySnapshot, setDirectorySnapshot] = React.useState<{ owner: string; items: UserDirectoryEntry[]; error: string | null } | null>(null)
   const [staffSearch, setStaffSearch] = React.useState('')
@@ -73,11 +77,15 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const selectedSource = sourceRows.find(shift => shift.id === sourceId)
   const timingValidation = selectedSource ? validateSwapTiming(selectedSource, undefined, mode) : null
   const assigned = source?.registrations.filter(reg => reg.shift_id === sourceId && reg.user_id === owner && isStaffedRegistration(reg)) ?? []
-  const sourceRegistration = assigned.find(reg => reg.operational_role === role)
-  const sourceRegistrationId = sourceRegistration?.id
+  const sourceRegistration = assigned.find(reg => reg.id === sourceRegistrationId) || (assigned.length === 1 ? assigned[0] : (role ? assigned.find(reg => reg.operational_role === role) : undefined))
+  const sourceRegistrationIdResolved = sourceRegistration?.id
+  const sourceRegistrationId = sourceRegistrationIdResolved
   const targetKey = JSON.stringify([owner, sourceId, targetPage, targetSearch, targetRevision])
   const target = open && mode === 'exchange' && targetSnapshot?.key === targetKey ? targetSnapshot : null
-  const targetRows = target?.items.filter(shift => shift.id !== sourceId && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at) ?? []
+  const rawTargetRows = target?.items.filter(shift => shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at) ?? []
+  const targetRows = selectedSource && !rawTargetRows.some(shift => shift.id === selectedSource.id)
+    ? [selectedSource, ...rawTargetRows]
+    : rawTargetRows
   const selectedTarget = targetRows.find(shift => shift.id === targetId)
   const counterpartKey = JSON.stringify([owner, sourceId, role, targetId])
   const counterparts = open && selectedTarget && counterpartSnapshot?.key === counterpartKey ? counterpartSnapshot : null
@@ -149,15 +157,33 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   }, [open, owner, mode, selectedSource, role, targetKey, targetPage, targetSearch])
 
   React.useEffect(() => {
+    if (!open || !sourceId) {
+      setSourceSegments([])
+      return
+    }
+    let active = true
+    void shiftRegistrationService.getSegmentsForShift(sourceId).then(segs => {
+      if (active) setSourceSegments(segs)
+    }).catch(() => {
+      if (active) setSourceSegments([])
+    })
+    return () => { active = false }
+  }, [open, sourceId])
+
+  React.useEffect(() => {
     if (!open || mode !== 'exchange' || !selectedTarget || !role) return
     let active = true
     void shiftRegistrationService.getExchangeCandidates(selectedTarget.id, role).then(items => {
-      if (active) setCounterpartSnapshot({ key: counterpartKey, items: items.filter(item => item.user_id !== owner), error: null })
+      if (active) setCounterpartSnapshot({
+        key: counterpartKey,
+        items: items.filter(item => item.user_id !== owner && item.registration_id !== (sourceRegistrationId ?? '')),
+        error: null,
+      })
     }).catch(error => {
       if (active) setCounterpartSnapshot({ key: counterpartKey, items: [], error: error instanceof Error ? error.message : 'CANDIDATE_LOAD_FAILED' })
     })
     return () => { active = false }
-  }, [open, mode, selectedTarget, role, counterpartKey, owner])
+  }, [open, mode, selectedTarget, role, counterpartKey, owner, sourceRegistrationId])
 
   // The server returns only a generic conflict result, not another employee's schedule.
   React.useEffect(() => {
@@ -178,7 +204,17 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
     return () => { active = false }
   }, [open, mode, sourceRegistrationId, selectedTarget, counterpartId, counterparts, exchangeConflictKey, copy])
 
-  const clearSource = () => { setSourceId(''); setRole(''); setReplacementId(''); setTargetId(''); setCounterpartId('') }
+  const clearSource = () => {
+    setSourceId('')
+    setSourceRegistrationId('')
+    setRole('')
+    setReplacementId('')
+    setTargetId('')
+    setCounterpartId('')
+    setSourceSegments([])
+    setConflictSnapshot(null)
+    setExchangeConflictSnapshot(null)
+  }
 
   const selectSourceShift = (shiftId: string) => {
     setSourceId(shiftId)
@@ -186,13 +222,17 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
       reg => reg.shift_id === shiftId && reg.user_id === owner && isStaffedRegistration(reg)
     ) ?? []
     if (shiftAssigned.length === 1) {
+      setSourceRegistrationId(shiftAssigned[0].id)
       setRole(shiftAssigned[0].operational_role)
     } else {
+      setSourceRegistrationId('')
       setRole('')
     }
     setReplacementId('')
     setTargetId('')
     setCounterpartId('')
+    setConflictSnapshot(null)
+    setExchangeConflictSnapshot(null)
   }
 
   const resetFilters = () => {
@@ -479,7 +519,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
               <div className="rounded-md border p-2.5 bg-muted/30 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-foreground">
-                    {copy('Vai trò thực hiện đổi ca', 'Role for swap')}
+                    {copy('Vai trò & Khung giờ thực hiện đổi ca', 'Role & Segment for swap')}
                   </label>
                   {assigned.length === 1 && (
                     <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
@@ -488,21 +528,74 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                   )}
                 </div>
                 {assigned.length > 1 ? (
-                  <select
-                    className="h-8 w-full rounded-md border bg-background px-2 text-xs"
-                    value={role}
-                    onChange={event => { setRole(event.target.value as OperationalRole); setReplacementId(''); setTargetId(''); setCounterpartId(''); setExchangeConflictSnapshot(null) }}
-                  >
-                    <option value="">{copy('Chọn vai trò', 'Choose role')}</option>
-                    {assigned.map(reg => <option key={reg.id} value={reg.operational_role}>{t(reg.operational_role)}</option>)}
-                  </select>
+                  <div className="space-y-2 pt-1" role="group" aria-label={copy('Chọn khung giờ và vai trò phân công', 'Choose assigned segment and role')}>
+                    <span className="text-[11px] text-muted-foreground block font-medium">
+                      {copy('Bạn có nhiều phân công trong ca này. Vui lòng chọn đúng khung giờ và vai trò:', 'You have multiple assignments in this shift. Please select the exact segment and role:')}
+                    </span>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {assigned.map(reg => {
+                        const seg = sourceSegments.find(s => s.id === reg.staffing_segment_id)
+                        const segCode = formatSegmentCode(seg?.segment_index)
+                        const segTime = formatSegmentTimeRange(seg?.start_at, seg?.end_at) || formatShiftTimeRange(selectedSource)
+                        const isSelected = sourceRegistration?.id === reg.id
+                        return (
+                          <button
+                            type="button"
+                            key={reg.id}
+                            data-testid={`source-segment-option-${reg.id}`}
+                            aria-pressed={isSelected}
+                            onClick={() => {
+                              setSourceRegistrationId(reg.id)
+                              setRole(reg.operational_role)
+                              setReplacementId('')
+                              setTargetId('')
+                              setCounterpartId('')
+                              setConflictSnapshot(null)
+                              setExchangeConflictSnapshot(null)
+                            }}
+                            className={`p-2.5 rounded-md border text-left text-xs transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+                              isSelected
+                                ? 'border-primary bg-primary/10 ring-1 ring-primary font-medium'
+                                : 'hover:bg-muted/60 border-border/70 bg-card'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                              <Badge variant={isSelected ? 'default' : 'outline'} className="text-[10px] font-mono px-1.5 py-0">
+                                {segCode}
+                              </Badge>
+                              <Badge variant="secondary" className="text-[10px] capitalize px-1.5 py-0">
+                                {t(reg.operational_role)}
+                              </Badge>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                              <Clock className="h-3 w-3 shrink-0" />
+                              <span>{segTime}</span>
+                            </div>
+                            <div className="text-[10px] text-muted-foreground/80 mt-1 truncate font-mono">
+                              ID: {reg.id}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge variant="default" className="text-xs capitalize py-0.5 px-2.5">
                       {role ? t(role) : assigned[0]?.operational_role ? t(assigned[0].operational_role) : '—'}
                     </Badge>
+                    {(() => {
+                      const seg = sourceSegments.find(s => s.id === assigned[0]?.staffing_segment_id)
+                      const segCode = formatSegmentCode(seg?.segment_index)
+                      const segTime = formatSegmentTimeRange(seg?.start_at, seg?.end_at) || formatShiftTimeRange(selectedSource)
+                      return (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {segCode} · {segTime}
+                        </span>
+                      )
+                    })()}
                     <span className="text-xs text-muted-foreground">
-                      {selectedSource.title} · {selectedSource.date} ({formatShiftTimeRange(selectedSource)})
+                      ({selectedSource.title} · {selectedSource.date})
                     </span>
                   </div>
                 )}
@@ -650,6 +743,56 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                       {copy('Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.', 'Final eligibility is rechecked on submit and approval.')}
                     </p>
                   )}
+
+                  {/* PASS Summary Card */}
+                  {chosenStaff && sourceRegistration && (
+                    <div data-testid="pass-summary-card" className="rounded-lg border p-3 bg-muted/20 space-y-2 mt-3">
+                      <div className="flex items-center justify-between gap-2 border-b pb-1.5">
+                        <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                          {copy('Tóm tắt phân công PASS', 'PASS Assignment Summary')}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                          {copy('Chỉ chuyển khung giờ này', 'Segment only')}
+                        </Badge>
+                      </div>
+                      <div className="grid gap-2 text-xs sm:grid-cols-2">
+                        <div>
+                          <span className="text-muted-foreground block text-[11px]">{copy('Ca tổng', 'Parent Shift')}</span>
+                          <span className="font-medium text-foreground">{selectedSource.title || 'Ca trực'} ({selectedSource.date})</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {brands.find(b => b.id === selectedSource.brand_id)?.name ?? '—'} · {platforms.find(p => p.id === selectedSource.platform_id)?.name ?? '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[11px]">{copy('Khung giờ PASS & Vai trò', 'PASS Segment & Role')}</span>
+                          {(() => {
+                            const seg = sourceSegments.find(s => s.id === sourceRegistration.staffing_segment_id)
+                            const segCode = formatSegmentCode(seg?.segment_index)
+                            const segTime = formatSegmentTimeRange(seg?.start_at, seg?.end_at) || formatShiftTimeRange(selectedSource)
+                            return (
+                              <div className="space-y-0.5">
+                                <span className="font-semibold text-primary font-mono">{segCode} · {segTime}</span>
+                                <div className="text-[11px] text-muted-foreground">
+                                  {copy('Vai trò:', 'Role:')} <Badge variant="secondary" className="text-[10px] capitalize py-0 px-1">{t(sourceRegistration.operational_role)}</Badge>
+                                </div>
+                              </div>
+                            )
+                          })()}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[11px]">{copy('Người đang được phân công', 'Current Assignee')}</span>
+                          <span className="font-medium">{currentUser?.full_name || owner}</span>
+                          <span className="block text-[10px] text-muted-foreground font-mono truncate">ID: {sourceRegistration.id}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[11px]">{copy('Người nhận thay', 'Recipient Staff')}</span>
+                          <span className="font-medium text-foreground">{chosenStaff.full_name}</span>
+                          <span className="block text-[10px] text-muted-foreground font-mono truncate">ID: {chosenStaff.id}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2.5">
@@ -760,28 +903,101 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                       <div role="group" aria-label={copy('Chọn người đổi chéo', 'Choose counterpart')} className="space-y-1.5">
                         {counterparts?.items.map(item => {
                           const isSelected = counterpartId === item.registration_id
+                          const counterpartSegCode = formatSegmentCode(item.segment_index)
+                          const counterpartTime = formatSegmentTimeRange(item.effective_start_at, item.effective_end_at) || (selectedTarget ? formatShiftTimeRange(selectedTarget) : '')
                           return (
                             <button
                               type="button"
                               key={item.registration_id}
+                              data-testid={`counterpart-option-${item.registration_id}`}
                               aria-pressed={isSelected}
                               onClick={() => setCounterpartId(item.registration_id)}
                               className={`w-full rounded-md border p-2 text-left text-xs transition-all focus-visible:ring-2 focus-visible:ring-primary ${
                                 isSelected
-                                  ? 'border-primary bg-primary/5 ring-1 ring-primary/40 font-medium'
+                                  ? 'border-primary bg-primary/10 ring-1 ring-primary/40 font-medium'
                                   : 'hover:bg-muted/50 border-border/60'
                               }`}
                             >
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between gap-1 flex-wrap">
                                 <span className="font-medium text-foreground">{item.full_name}</span>
-                                <Badge variant="default" className="text-[10px] capitalize py-0 px-2 h-4">
-                                  {t(sourceRegistration.operational_role)}
-                                </Badge>
+                                <div className="flex items-center gap-1.5">
+                                  <Badge variant="outline" className="text-[10px] font-mono py-0 px-1.5 h-4">
+                                    {counterpartSegCode}
+                                  </Badge>
+                                  <Badge variant="default" className="text-[10px] capitalize py-0 px-1.5 h-4">
+                                    {t(item.operational_role || sourceRegistration.operational_role)}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="text-[11px] text-muted-foreground flex items-center justify-between gap-2 mt-1 font-mono">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3 shrink-0" />
+                                  {counterpartTime}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground/80 truncate">
+                                  ID: {item.registration_id}
+                                </span>
                               </div>
                             </button>
                           )
                         })}
                       </div>
+
+                      {/* Before & After Exchange Preview Card */}
+                      {counterpartId && (() => {
+                        const candidate = counterparts?.items.find(i => i.registration_id === counterpartId)
+                        if (!candidate) return null
+                        const srcSeg = sourceSegments.find(s => s.id === sourceRegistration.staffing_segment_id)
+                        const srcCode = formatSegmentCode(srcSeg?.segment_index)
+                        const srcTime = formatSegmentTimeRange(srcSeg?.start_at, srcSeg?.end_at) || formatShiftTimeRange(selectedSource)
+                        const tgtCode = formatSegmentCode(candidate.segment_index)
+                        const tgtTime = formatSegmentTimeRange(candidate.effective_start_at, candidate.effective_end_at) || formatShiftTimeRange(selectedTarget)
+                        const isSameShift = selectedSource.id === selectedTarget.id
+
+                        return (
+                          <div data-testid="swap-exchange-preview" className="rounded-lg border p-3 bg-muted/20 space-y-2 mt-3">
+                            <div className="flex items-center justify-between gap-2 border-b pb-1.5">
+                              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+                                {copy('Xem trước kết quả đổi ca (Before & After)', 'Exchange Preview (Before & After)')}
+                              </span>
+                              {isSameShift && (
+                                <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                                  {copy('Đổi khung giờ trong cùng ca', 'Same-shift segment swap')}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="grid gap-3 text-xs sm:grid-cols-2">
+                              <div className="space-y-1.5 rounded-md border p-2 bg-background/50">
+                                <span className="text-[11px] font-semibold text-muted-foreground block uppercase tracking-wider">
+                                  {copy('1. Trước khi đổi (Before)', '1. Before Exchange')}
+                                </span>
+                                <div className="text-[11px] space-y-1">
+                                  <p>
+                                    <strong className="text-foreground">{copy('Bạn:', 'You:')}</strong> {selectedSource.title} · <span className="font-mono text-primary font-medium">{srcCode} ({srcTime})</span>
+                                  </p>
+                                  <p>
+                                    <strong className="text-foreground">{candidate.full_name}:</strong> {selectedTarget.title} · <span className="font-mono text-primary font-medium">{tgtCode} ({tgtTime})</span>
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="space-y-1.5 rounded-md border border-primary/30 p-2 bg-primary/5">
+                                <span className="text-[11px] font-semibold text-primary block uppercase tracking-wider">
+                                  {copy('2. Sau khi duyệt (After Approval)', '2. After Approval')}
+                                </span>
+                                <div className="text-[11px] space-y-1">
+                                  <p>
+                                    <strong className="text-foreground">{copy('Bạn sẽ làm:', 'You will do:')}</strong> {selectedTarget.title} · <span className="font-mono text-primary font-semibold">{tgtCode} ({tgtTime})</span>
+                                  </p>
+                                  <p>
+                                    <strong className="text-foreground">{candidate.full_name} {copy('sẽ làm:', 'will do:')}:</strong> {selectedSource.title} · <span className="font-mono text-primary font-semibold">{srcCode} ({srcTime})</span>
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
 
                       {/* Two-sided conflict checking feedback */}
                       {counterpartId && exchangeCheckStatus === 'PENDING' && (

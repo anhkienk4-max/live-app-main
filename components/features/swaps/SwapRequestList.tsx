@@ -265,8 +265,16 @@ export function SwapRequestList() {
       return <tr key={swap.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
         <td className="max-w-[280px] px-3 py-2.5"><button type="button" onClick={()=>setSelectedSwap(swap)} title={shift.title} className="block max-w-full truncate text-left font-semibold text-primary">{shift.title}</button><p title={swap.id} className="max-w-[220px] truncate text-[10px] text-muted-foreground">{swap.id}</p><p className="mt-1 text-[10px]">{shift.date} / {formatShiftTimeRange(shift)}</p><p className="max-w-[230px] truncate text-[10px] text-muted-foreground" title={`${shift.studio || ''} / ${nameFor(brands,shift.brand_id)} / ${nameFor(platforms,shift.platform_id)} / ${nameFor(campaigns,shift.campaign_id)}`}>{shift.studio || '—'} / {nameFor(platforms,shift.platform_id)}</p></td>
         <td className="px-3 py-2.5"><span className="font-medium">{userName(swap.requester_id)}</span>{swap.original_staff_id && swap.original_staff_id !== swap.requester_id && <p className="text-[10px] text-muted-foreground">{t('originalStaff')}: {userName(swap.original_staff_id)}</p>}</td>
-        <td className="p-3">{userName(replacementFor(swap) || swap.counterpart_id || '')}{swap.mode==='exchange' && <p className="text-xs text-muted-foreground">{t('targetShift')}: {shiftById.get(swap.target_shift_id || '')?.title || swap.target_shift_id || '—'}</p>}</td>
-        <td className="px-3 py-2.5">{t(roleFor(swap))}<p className="text-[10px] text-muted-foreground">{swap.mode || 'replacement'}</p></td>
+        <td className="p-3">
+          {userName(replacementFor(swap) || swap.counterpart_id || '')}
+          {swap.mode==='exchange' && <p className="text-xs text-muted-foreground">{t('targetShift')}: {shiftById.get(swap.target_shift_id || '')?.title || swap.target_shift_id || '—'}</p>}
+          {swap.counterpart_registration_id && <p className="text-[9px] font-mono text-muted-foreground/80 truncate max-w-[140px]" title={swap.counterpart_registration_id}>Target Reg: {swap.counterpart_registration_id.slice(0, 8)}...</p>}
+        </td>
+        <td className="px-3 py-2.5">
+          {t(roleFor(swap))}
+          <p className="text-[10px] text-muted-foreground">{swap.mode || 'replacement'}</p>
+          {swap.source_registration_id && <p className="text-[9px] font-mono text-muted-foreground/80 truncate max-w-[120px]" title={swap.source_registration_id}>Reg: {swap.source_registration_id.slice(0, 8)}...</p>}
+        </td>
         <td className="max-w-[160px] px-3 py-2.5"><p title={swap.reason} className="max-w-[160px] truncate text-[11px] text-muted-foreground">{swap.reason}</p></td>
         <td className="px-3 py-2.5"><Badge variant={statusPresentation.tone === 'success' ? 'success' : statusPresentation.tone === 'danger' ? 'danger' : statusPresentation.tone === 'warning' ? 'warning' : statusPresentation.tone === 'info' ? 'info' : 'outline'} className="text-[10px]">{t(statusPresentation.label)}</Badge>{attentionItems.map(item=><p key={item.key} className="mt-1 text-[10px] text-muted-foreground">{t(item.label as TranslationKey)}</p>)}</td>
         <td className="whitespace-nowrap px-3 py-2.5 text-[10px] text-muted-foreground">{format(new Date(swap.created_at),'dd/MM/yyyy HH:mm')}</td>

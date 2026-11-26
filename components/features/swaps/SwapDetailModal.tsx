@@ -6,11 +6,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
-import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase, ArrowRightLeft } from 'lucide-react'
 
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
-import { getSwapStatusPresentation } from '@/lib/utils/swapUi'
+import { getSwapStatusPresentation, formatSegmentCode, formatSegmentTimeRange } from '@/lib/utils/swapUi'
 
 interface SwapDetailModalProps {
   open: boolean
@@ -162,6 +162,62 @@ export function SwapDetailModal({
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Segment & Assignment Details */}
+          <div className="rounded-md border p-3 bg-muted/20 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="flex items-center gap-1.5 text-foreground">
+                <Briefcase className="h-4 w-4 text-muted-foreground" />
+                {swap.mode === 'exchange' ? 'Exchange Assignment Mapping' : 'PASS Assignment Details'}
+              </span>
+              <Badge variant="outline" className="text-[10px] font-mono">
+                Role: {t(swap.operational_role || 'host')}
+              </Badge>
+            </div>
+            {swap.mode === 'exchange' ? (
+              <div data-testid="detail-exchange-mapping" className="grid gap-2 text-xs sm:grid-cols-2 pt-1">
+                <div className="rounded border bg-background/60 p-2 space-y-1">
+                  <span className="text-[11px] font-semibold text-muted-foreground block uppercase">
+                    Source Assignment
+                  </span>
+                  <p className="font-medium">{requester.full_name}</p>
+                  <p className="text-[10px] font-mono text-muted-foreground truncate">
+                    Reg ID: {swap.source_registration_id || '—'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Shift: {shift.title || shift.id}
+                  </p>
+                </div>
+                <div className="rounded border bg-background/60 p-2 space-y-1">
+                  <span className="text-[11px] font-semibold text-muted-foreground block uppercase">
+                    Counterpart Assignment
+                  </span>
+                  <p className="font-medium">{newHost?.full_name || 'Counterpart'}</p>
+                  <p className="text-[10px] font-mono text-muted-foreground truncate">
+                    Reg ID: {swap.counterpart_registration_id || '—'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Shift: {swap.target_shift_id || shift.id}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div data-testid="detail-pass-assignment" className="text-xs space-y-1 pt-1">
+                <p>
+                  <span className="text-muted-foreground">Source Registration: </span>
+                  <span className="font-mono font-medium">{swap.source_registration_id || '—'}</span>
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Assigned Role: </span>
+                  <span className="font-medium">{t(swap.operational_role || 'host')}</span>
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Recipient: </span>
+                  <span className="font-medium">{newHost?.full_name || '—'}</span>
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Reason */}
