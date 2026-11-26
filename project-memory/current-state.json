@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "28ded321097176662ddbef67a6ea79146847aadd",
+    "head": "8ddb37aab7782d3345213680db9d2bfc4f1aeb62",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -78,6 +78,7 @@
       "app/api/ocr/route.ts",
       "app/api/ocr/vision/route.ts",
       "app/api/operational-files/route.ts",
+      "app/api/operational-notes/workflow-v1/route.ts",
       "app/api/operational-storage-setup/route.ts",
       "app/api/operational-storage/attendance-folders/route.ts",
       "app/api/operations/analytics-snapshot/route.ts",
@@ -93,6 +94,7 @@
       "app/api/role-defaults/route.ts",
       "app/api/schedule-source-files/route.ts",
       "app/api/staff/invite/route.ts",
+      "app/api/staffing/replacements/incident-v1/route.ts",
       "app/api/staffing/replacements/route.ts",
       "app/api/storage-resources/route.ts",
       "app/api/workforce/actual/route.ts",
@@ -100,6 +102,7 @@
       "app/api/workforce/attendance-import/route.ts",
       "app/api/workforce/attendance-photo-review/route.ts",
       "app/api/workforce/capabilities/route.ts",
+      "app/api/workforce/incidents/monthly/route.ts",
       "app/api/workforce/my-payslip/route.ts",
       "app/api/workforce/overview/route.ts",
       "app/api/workforce/payroll/route.ts",
@@ -121,14 +124,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 97,
-        "components": 198,
-        "lib": 297,
-        "scripts": 193,
-        "supabase": 164,
-        "tests": 400
+        "app": 100,
+        "components": 201,
+        "lib": 305,
+        "scripts": 194,
+        "supabase": 168,
+        "tests": 402
       },
-      "total": 1349
+      "total": 1370
     },
     "tests": {
       "files": [
@@ -453,10 +456,11 @@
         "tests/vision-ocr-phase-a.test.ts",
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts",
+        "tests/workforce-incident-monthly-handler.test.ts",
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 323
+      "count": 324
     },
     "migrations": {
       "files": [
@@ -595,9 +599,13 @@
         "supabase/migrations/20261124093722_rc19_w4_attendance_assignment_links.sql",
         "supabase/migrations/20261124104803_rc19_w4_actual_assignment_evidence.sql",
         "supabase/migrations/20261124120000_rc19_w4_import_staffing_integrity.sql",
-        "supabase/migrations/20261124150000_rc19_w4_deltac_live_monitoring_sharing.sql"
+        "supabase/migrations/20261124150000_rc19_w4_deltac_live_monitoring_sharing.sql",
+        "supabase/migrations/20261125042222_rc19_w4_delta_d_incident_foundation.sql",
+        "supabase/migrations/20261125042647_rc19_w4_delta_d_atomic_replacement.sql",
+        "supabase/migrations/20261125175629_rc19_w4_delta_d_workforce_monthly_read_model.sql",
+        "supabase/migrations/20261125175702_rc19_w4_delta_d_note_workflow_v1.sql"
       ],
-      "count": 136
+      "count": 140
     }
   },
   "verification": {
@@ -611,5 +619,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-26T02:51:18+07:00"
+  "synced_at": "2026-11-26T13:39:26+07:00"
 }
