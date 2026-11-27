@@ -373,7 +373,15 @@ async function main() {
       p_expected_version: versionRow.version,
       p_staffing_segment_id: assignment.segmentId,
     }).single()
-    const assignmentRow = await requireNoError(assigned, 'ASSIGNMENT_FIXTURE_CREATE_FAILED')
+    if (assigned.error) {
+      const sqlState = typeof assigned.error.code === 'string' && /^[0-9A-Z]{5}$/u.test(assigned.error.code)
+        ? assigned.error.code : 'UNKNOWN'
+      const messageToken = typeof assigned.error.message === 'string'
+        ? assigned.error.message.match(/^[A-Z][A-Z0-9_]{1,119}$/u)?.[0]
+        : null
+      stop(`ASSIGNMENT_FIXTURE_CREATE_FAILED_${sqlState}_${messageToken ?? 'UNKNOWN'}`)
+    }
+    const assignmentRow = assigned.data
     if (!assignmentRow?.id || assignmentRow.staffing_segment_id !== assignment.segmentId
       || assignmentRow.user_id !== assignment.actorId || assignmentRow.operational_role !== assignment.role) {
       stop('ASSIGNMENT_FIXTURE_CREATE_MISMATCH')
