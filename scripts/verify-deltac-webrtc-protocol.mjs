@@ -24,46 +24,18 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { generateKeyPairSync, sign as signEs256 } from 'node:crypto'
 import { generateSyntheticSdpOffer } from '../lib/media/webrtcClient.ts'
+import { findExistingMediaMtxBinary, ensureMediaMtxBinary } from './ensure-mediamtx.mjs'
 
-// Locate native MediaMTX binary
-function findMediaMtxBinary() {
-  if (process.env.MEDIAMTX_PATH && existsSync(process.env.MEDIAMTX_PATH)) {
-    return { bin: process.env.MEDIAMTX_PATH, isWsl: false }
-  }
-  try {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which'
-    const res = spawnSync(whichCmd, ['mediamtx'], { encoding: 'utf8' })
-    const trimmed = res.stdout?.trim()?.split('\n')[0]?.trim()
-    if (trimmed && existsSync(trimmed)) {
-      return { bin: trimmed, isWsl: false }
-    }
-  } catch {}
-  const tempDir = process.env.TEMP || tmpdir()
-  const candidates = [
-    join(tempDir, 'mediamtx'),
-    join(tempDir, 'mediamtx.exe'),
-    '/usr/local/bin/mediamtx',
-    '/usr/bin/mediamtx',
-    'C:\\TEMP\\mediamtx.exe',
-  ]
-  for (const c of candidates) {
-    if (existsSync(c)) return { bin: c, isWsl: false }
-  }
-  try {
-    const res = spawnSync('wsl', ['-e', 'sh', '-c', 'which mediamtx || ls /tmp/mediamtx 2>/dev/null'], { encoding: 'utf8' })
-    const trimmed = res.stdout?.trim()
-    if (trimmed && trimmed.includes('mediamtx')) {
-      return { bin: trimmed.split('\n')[0], isWsl: true }
-    }
-  } catch {}
-  return null
+// Locate native MediaMTX binary with automatic hardened setup
+let mtxBin = findExistingMediaMtxBinary()
+if (!mtxBin) {
+  mtxBin = await ensureMediaMtxBinary().catch(() => null)
 }
-
-const mtxTarget = findMediaMtxBinary()
-if (!mtxTarget) {
-  console.error('ERROR: Native MediaMTX binary not found.')
+if (!mtxBin) {
+  console.error('ERROR: Native MediaMTX binary not found and cannot be safely provisioned.')
   process.exit(1)
 }
+const mtxTarget = { bin: mtxBin, isWsl: false }
 
 console.log(`[MediaMTX Protocol Test] Using native MediaMTX: ${mtxTarget.bin} (wsl=${mtxTarget.isWsl})`)
 

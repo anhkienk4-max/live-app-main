@@ -17,35 +17,14 @@ import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
-
-function resolveMediaMtxBin() {
-  if (process.env.MEDIAMTX_PATH && fs.existsSync(process.env.MEDIAMTX_PATH)) {
-    return process.env.MEDIAMTX_PATH;
-  }
-  try {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    const res = spawnSync(whichCmd, ['mediamtx'], { encoding: 'utf8' });
-    const trimmed = res.stdout?.trim()?.split('\n')[0]?.trim();
-    if (trimmed && fs.existsSync(trimmed)) {
-      return trimmed;
-    }
-  } catch {}
-  const tempDir = process.env.TEMP || os.tmpdir();
-  const candidates = [
-    path.join(tempDir, 'mediamtx'),
-    path.join(tempDir, 'mediamtx.exe'),
-    '/usr/local/bin/mediamtx',
-    '/usr/bin/mediamtx',
-    'C:\\TEMP\\mediamtx.exe',
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return path.join(tempDir, process.platform === 'win32' ? 'mediamtx.exe' : 'mediamtx');
-}
+import { findExistingMediaMtxBinary, ensureMediaMtxBinary } from './ensure-mediamtx.mjs';
 
 const tempDir = process.env.TEMP || os.tmpdir();
-const MEDIAMTX_BIN = resolveMediaMtxBin();
+let mtxResolved = findExistingMediaMtxBinary();
+if (!mtxResolved) {
+  mtxResolved = await ensureMediaMtxBinary().catch(() => null);
+}
+const MEDIAMTX_BIN = mtxResolved || path.join(tempDir, process.platform === 'win32' ? 'mediamtx.exe' : 'mediamtx');
 const JWKS_PORT = 9886;
 const WEBRTC_PORT = 8889;
 const UDP_PORT = 8189;
