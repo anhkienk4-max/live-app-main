@@ -232,6 +232,10 @@ export const shiftIncidentService = {
           searchParams.set('role', params.role)
         }
       }
+      if (params?.agencyId && params.agencyId !== 'all') searchParams.set('agency_id', params.agencyId)
+      if (params?.platform && params.platform !== 'all') searchParams.set('platform_id', params.platform)
+      if (params?.status && params.status !== 'all') searchParams.set('status', params.status)
+      if (params?.incidentType && params.incidentType !== 'all') searchParams.set('incident_type', params.incidentType)
 
       let res: Response
       try {
@@ -485,8 +489,8 @@ function mapMonthlyResponseToWorkforceIncidentSummary(
     correctedReviews,
     totalVerifiedLateMinutes,
     unknownDurationCount,
-    distinctAffectedShifts: allShiftIds.size,
-    distinctAffectedStaff: staff.length,
+    distinctAffectedShifts: data.totalDistinctShifts ?? allShiftIds.size,
+    distinctAffectedStaff: data.totalDistinctStaff ?? staff.length,
     staffSummaries,
   }
 }

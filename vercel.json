@@ -31,7 +31,8 @@
       "release/rc19-unified-release-candidate": false,
       "integration/rc19-w4-final-integration": false,
       "fix/rc19-w4-import-staffing": false,
-      "backup/rc19/w4-frontend": false
+      "backup/rc19/w4-frontend": false,
+      "feat/rc19-w4-antigravity-frontend": false
     }
   }
 }

@@ -130,17 +130,17 @@ export function SwapRequestDialog({
 
   const [sourceSegments, setSourceSegments] = React.useState<ShiftStaffingSegmentOption[]>([])
   React.useEffect(() => {
-    if (!open || !sourceShift.id) {
-      setSourceSegments([])
-      return
-    }
+    if (!open || !sourceShift.id) return
     let active = true
     void shiftRegistrationService.getSegmentsForShift(sourceShift.id).then(segs => {
       if (active) setSourceSegments(segs)
     }).catch(() => {
       if (active) setSourceSegments([])
     })
-    return () => { active = false }
+    return () => {
+      active = false
+      setSourceSegments([])
+    }
   }, [open, sourceShift.id])
 
   const currentTarget = shifts.length > 0 || targetSnapshot?.key === targetKey

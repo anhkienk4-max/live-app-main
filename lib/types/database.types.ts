@@ -312,6 +312,7 @@ export interface SwapExchangeCandidate {
   registration_id: string
   user_id: string
   full_name: string
+  operational_role?: OperationalRole
   shift_id?: string
   staffing_segment_id?: string | null
   segment_index?: number | null

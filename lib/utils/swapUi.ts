@@ -23,13 +23,18 @@ export function formatSegmentCode(segmentIndex?: number | null): string {
   return `K${String(segmentIndex).padStart(2, '0')}`
 }
 
-export function formatSegmentTimeRange(startAt?: string | null, endAt?: string | null): string {
+export function formatSegmentTimeRange(startAt?: string | null, endAt?: string | null, timeZone = 'Asia/Ho_Chi_Minh'): string {
   if (!startAt || !endAt) return ''
   try {
     const s = new Date(startAt)
     const e = new Date(endAt)
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return `${pad(s.getHours())}:${pad(s.getMinutes())}–${pad(e.getHours())}:${pad(e.getMinutes())}`
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    return `${formatter.format(s)}–${formatter.format(e)}`
   } catch {
     return `${startAt}–${endAt}`
   }

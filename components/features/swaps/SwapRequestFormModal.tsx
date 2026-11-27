@@ -78,8 +78,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   const timingValidation = selectedSource ? validateSwapTiming(selectedSource, undefined, mode) : null
   const assigned = source?.registrations.filter(reg => reg.shift_id === sourceId && reg.user_id === owner && isStaffedRegistration(reg)) ?? []
   const sourceRegistration = assigned.find(reg => reg.id === sourceRegistrationId) || (assigned.length === 1 ? assigned[0] : (role ? assigned.find(reg => reg.operational_role === role) : undefined))
-  const sourceRegistrationIdResolved = sourceRegistration?.id
-  const sourceRegistrationId = sourceRegistrationIdResolved
+  const effectiveSourceRegistrationId = sourceRegistration?.id || sourceRegistrationId
   const targetKey = JSON.stringify([owner, sourceId, targetPage, targetSearch, targetRevision])
   const target = open && mode === 'exchange' && targetSnapshot?.key === targetKey ? targetSnapshot : null
   const rawTargetRows = target?.items.filter(shift => shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at) ?? []
@@ -133,9 +132,9 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   }, [open, owner, mode])
 
   React.useEffect(() => {
-    if (!open || mode !== 'replacement' || !selectedSource || !sourceRegistrationId || !replacementId) return
+    if (!open || mode !== 'replacement' || !selectedSource || !effectiveSourceRegistrationId || !replacementId) return
     let active = true
-    void swapRequestService.verifyConflict({ sourceRegistrationId, mode: 'replacement', replacementStaffId: replacementId })
+    void swapRequestService.verifyConflict({ sourceRegistrationId: effectiveSourceRegistrationId, mode: 'replacement', replacementStaffId: replacementId })
       .then(status => {
         if (active) setConflictSnapshot({ key: conflictKey, status, reason: status === 'CONFLICT' ? copy('Nhân sự bị trùng lịch hoặc không đủ điều kiện nhận ca', 'The recipient has a schedule conflict or is not eligible') : null, error: null })
       })
@@ -143,7 +142,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
         if (active) setConflictSnapshot({ key: conflictKey, status: 'FAILED', reason: null, error: copy('Không thể xác minh điều kiện nhận ca, vui lòng thử lại', 'Eligibility could not be verified; please retry') })
       })
     return () => { active = false }
-  }, [open, mode, selectedSource, sourceRegistrationId, replacementId, conflictKey, copy])
+  }, [open, mode, selectedSource, effectiveSourceRegistrationId, replacementId, conflictKey, copy])
 
   React.useEffect(() => {
     if (!open || !owner || mode !== 'exchange' || !selectedSource || !role) return
@@ -157,17 +156,17 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
   }, [open, owner, mode, selectedSource, role, targetKey, targetPage, targetSearch])
 
   React.useEffect(() => {
-    if (!open || !sourceId) {
-      setSourceSegments([])
-      return
-    }
+    if (!open || !sourceId) return
     let active = true
     void shiftRegistrationService.getSegmentsForShift(sourceId).then(segs => {
       if (active) setSourceSegments(segs)
     }).catch(() => {
       if (active) setSourceSegments([])
     })
-    return () => { active = false }
+    return () => {
+      active = false
+      setSourceSegments([])
+    }
   }, [open, sourceId])
 
   React.useEffect(() => {
@@ -176,23 +175,23 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
     void shiftRegistrationService.getExchangeCandidates(selectedTarget.id, role).then(items => {
       if (active) setCounterpartSnapshot({
         key: counterpartKey,
-        items: items.filter(item => item.user_id !== owner && item.registration_id !== (sourceRegistrationId ?? '')),
+        items: items.filter(item => item.user_id !== owner && item.registration_id !== (effectiveSourceRegistrationId ?? '')),
         error: null,
       })
     }).catch(error => {
       if (active) setCounterpartSnapshot({ key: counterpartKey, items: [], error: error instanceof Error ? error.message : 'CANDIDATE_LOAD_FAILED' })
     })
     return () => { active = false }
-  }, [open, mode, selectedTarget, role, counterpartKey, owner, sourceRegistrationId])
+  }, [open, mode, selectedTarget, role, counterpartKey, owner, effectiveSourceRegistrationId])
 
   // The server returns only a generic conflict result, not another employee's schedule.
   React.useEffect(() => {
-    if (!open || mode !== 'exchange' || !sourceRegistrationId || !selectedTarget || !counterpartId) return
+    if (!open || mode !== 'exchange' || !effectiveSourceRegistrationId || !selectedTarget || !counterpartId) return
     const counterpartCandidate = counterparts?.items.find(item => item.registration_id === counterpartId)
     if (!counterpartCandidate) return
     let active = true
     void swapRequestService.verifyConflict({
-      sourceRegistrationId,
+      sourceRegistrationId: effectiveSourceRegistrationId,
       mode: 'exchange',
       targetShiftId: selectedTarget.id,
       counterpartRegistrationId: counterpartCandidate.registration_id,
@@ -202,7 +201,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
       if (active) setExchangeConflictSnapshot({ key: exchangeConflictKey, status: 'FAILED', reason: null, error: copy('Không thể xác minh điều kiện đổi ca, vui lòng thử lại', 'Exchange eligibility could not be verified; please retry') })
     })
     return () => { active = false }
-  }, [open, mode, sourceRegistrationId, selectedTarget, counterpartId, counterparts, exchangeConflictKey, copy])
+  }, [open, mode, effectiveSourceRegistrationId, selectedTarget, counterpartId, counterparts, exchangeConflictKey, copy])
 
   const clearSource = () => {
     setSourceId('')

@@ -6,11 +6,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
-import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase, ArrowRightLeft } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, User as UserIcon, Calendar, Briefcase } from 'lucide-react'
 
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
 import { useTranslation } from '@/lib/i18n'
-import { getSwapStatusPresentation, formatSegmentCode, formatSegmentTimeRange } from '@/lib/utils/swapUi'
+import { getSwapStatusPresentation } from '@/lib/utils/swapUi'
 
 interface SwapDetailModalProps {
   open: boolean
