@@ -9,7 +9,11 @@ const fixtureManifest = JSON.parse(readFileSync(new URL('../docs/rc19/W4_EXECUTA
   credentials_included: boolean
   runtime_id_policy: string
   attendance_payroll: { status: string }
-  current_staffing_fixture: { d01_atomic_replacement: { case: string; segments: Array<{ segment_index: number }> } }
+  current_staffing_fixture: {
+    d01_atomic_replacement: { case: string; segments: Array<{ segment_index: number }> }
+    pass_swap: { lifecycle_execution_status: string; expiry_status: string }
+    operational_note_lifecycle: { execution_status: string }
+  }
 }
 
 test('application acceptance runs actor-backed Agency, Workforce and receipt cases without upgrading unfinished groups', () => {
@@ -23,6 +27,16 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(hostedPlaywrightConfig, /baseURL: process\.env\.RC19_W4_NEXT_BASE_URL/u)
   assert.doesNotMatch(hostedPlaywrightConfig, /webServer:/u)
   assert.match(entrypoint, /SWAP_IDEMPOTENCY_KEY_REUSED/u)
+  assert.match(entrypoint, /SWAP_APPROVAL_DID_NOT_REVALIDATE_CANDIDATE_CONFLICT/u)
+  assert.match(entrypoint, /SWAP_INVALIDATION_ROLLBACK_READBACK_MISMATCH/u)
+  assert.match(entrypoint, /pass-swap-expiry[\s\S]*status: 'BLOCKED'/u)
+  assert.match(entrypoint, /pass-swap-expiry[\s\S]*POLICY_PENDING/u)
+  assert.match(entrypoint, /lifecycle: passSwapFixtures/u)
+  assert.match(entrypoint, /passSwapSubcaseExpectations\.map/u)
+  assert.match(entrypoint, /pass-swap-reciprocal-segment-exchange/u)
+  assert.match(entrypoint, /pass-swap-approval-conflict-invalidation/u)
+  assert.match(entrypoint, /operational-note-draft-submit-review-revisions/u)
+  assert.match(entrypoint, /OPERATIONAL_NOTE_IMMUTABLE_REVISION_READBACK_MISMATCH/u)
   assert.match(entrypoint, /D01'[\s\S]*D11/u)
   assert.match(entrypoint, /const originalD = \[[\s\S]*\['D11'/u)
   assert.match(entrypoint, /const originalL = \[[\s\S]*\['L15'/u)
@@ -56,6 +70,9 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.equal(fixtureManifest.credentials_included, false)
   assert.match(fixtureManifest.runtime_id_policy, /same runtime marker/u)
   assert.equal(fixtureManifest.attendance_payroll.status, 'NOT RUN')
+  assert.equal(fixtureManifest.current_staffing_fixture.pass_swap.lifecycle_execution_status, 'SOURCE_IMPLEMENTED_NOT_EXECUTED')
+  assert.match(fixtureManifest.current_staffing_fixture.pass_swap.expiry_status, /BLOCKED/u)
+  assert.equal(fixtureManifest.current_staffing_fixture.operational_note_lifecycle.execution_status, 'SOURCE_IMPLEMENTED_NOT_EXECUTED')
   assert.match(fixtureManifest.current_staffing_fixture.d01_atomic_replacement.case, /independent PostgreSQL readback/u)
   assert.deepEqual(fixtureManifest.current_staffing_fixture.d01_atomic_replacement.segments.map(row => row.segment_index), [1, 2, 3])
   assert.match(entrypoint, /authenticated-browser'[\s\S]*status: 'NOT RUN'/u)
