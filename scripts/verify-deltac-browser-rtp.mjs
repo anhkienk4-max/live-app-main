@@ -14,14 +14,19 @@ import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import http from 'node:http';
+import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const MEDIAMTX_BIN = process.env.MEDIAMTX_PATH || path.join(process.env.TEMP, 'mediamtx.exe');
+const tempDir = process.env.TEMP || os.tmpdir();
+const MEDIAMTX_BIN = process.env.MEDIAMTX_PATH ||
+  (fs.existsSync('/home/antigravity/bin/mediamtx') ? '/home/antigravity/bin/mediamtx' :
+  (fs.existsSync('/tmp/mediamtx-bin/mediamtx') ? '/tmp/mediamtx-bin/mediamtx' :
+  path.join(tempDir, 'mediamtx.exe')));
 const JWKS_PORT = 9886;
 const WEBRTC_PORT = 8889;
 const UDP_PORT = 8189;
-const CONF_PATH = path.join(process.env.TEMP, 'mediamtx-browser-rtp.yml');
+const CONF_PATH = path.join(tempDir, 'mediamtx-browser-rtp.yml');
 
 // 1. Generate ES256 keypair for JWT signing
 const keyPair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });

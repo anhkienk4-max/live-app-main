@@ -27,6 +27,18 @@ import { generateSyntheticSdpOffer } from '../lib/media/webrtcClient.ts'
 
 // Locate native MediaMTX binary
 function findMediaMtxBinary() {
+  if (process.env.MEDIAMTX_PATH && existsSync(process.env.MEDIAMTX_PATH)) {
+    return { bin: process.env.MEDIAMTX_PATH, isWsl: false }
+  }
+  const linuxCandidates = [
+    '/tmp/mediamtx-bin/mediamtx',
+    '/home/antigravity/bin/mediamtx',
+    '/usr/local/bin/mediamtx',
+    join(tmpdir(), 'mediamtx'),
+  ]
+  for (const c of linuxCandidates) {
+    if (existsSync(c)) return { bin: c, isWsl: false }
+  }
   const candidates = [
     join(tmpdir(), 'mediamtx.exe'),
     join(process.env.TEMP || 'C:\\TEMP', 'mediamtx.exe'),
@@ -35,6 +47,13 @@ function findMediaMtxBinary() {
   for (const c of candidates) {
     if (existsSync(c)) return { bin: c, isWsl: false }
   }
+  try {
+    const res = spawnSync('which', ['mediamtx'], { encoding: 'utf8' })
+    const trimmed = res.stdout?.trim()
+    if (trimmed && existsSync(trimmed)) {
+      return { bin: trimmed, isWsl: false }
+    }
+  } catch {}
   try {
     const res = spawnSync('wsl', ['-e', 'sh', '-c', 'which mediamtx || ls /tmp/mediamtx-bin/mediamtx 2>/dev/null'], { encoding: 'utf8' })
     const trimmed = res.stdout?.trim()
@@ -148,6 +167,9 @@ writeFileSync(mtxConfigPath, mtxConfigContent)
 const mtxProc = mtxTarget.isWsl
   ? spawn('wsl', ['-e', mtxTarget.bin, mtxConfigPath])
   : spawn(mtxTarget.bin, [mtxConfigPath])
+
+mtxProc.stdout.on('data', d => console.log('[MediaMTX]', d.toString().trim()))
+mtxProc.stderr.on('data', d => console.error('[MediaMTX ERR]', d.toString().trim()))
 
 mtxProc.on('error', err => {
   console.error('[MediaMTX Error]', err)
