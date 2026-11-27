@@ -350,11 +350,14 @@ jobs:
               "c7b743aa97b19c678ff6f84d6c9b8a2c",
           ]:
               raise SystemExit("RC15 fixture annotations changed from the reviewed production baseline")
+          print("RC15_PREDECESSOR_RPC_CONTRACT_ACTUAL=" + repr(actual))
+          print("RC15_PREDECESSOR_RPC_CONTRACT_EXPECTED=" + repr(expected))
           if [line.split("|", 1)[1] for line in actual] != [line.split("|", 1)[1] for line in expected]:
               raise SystemExit("Disposable RC15 bridge fingerprint/security contract mismatch")
           if actual != expected:
               raise SystemExit("Disposable RC15 bridge metadata or execution privileges differ")
           PY
+          cat "$RUNNER_TEMP/rc19-w4-rc15-baseline-contract.txt"
           target_index="$(awk 'END{print NR}' "$RUNNER_TEMP/rc19-w4-rc15-predecessors.txt")"
           python3 - "$canonical_migrations" "$target_index" "$bridge_filename" <<'PY'
           from pathlib import Path
