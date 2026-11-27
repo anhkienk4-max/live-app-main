@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "02a732ab893ae91b154b47f8734eeadf7b621751",
+    "head": "e3986391d48d49059cc42b254812a5368d41caa6",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -636,5 +636,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-27T04:54:02Z"
+  "synced_at": "2026-11-27T05:10:58Z"
 }
