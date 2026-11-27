@@ -102,8 +102,11 @@ async function runBrowserAcceptance(credentials, fixtureManifestPath, verifiedRe
           : null
         const uiStatus = testItem.status === 'expected' && lastResult?.status === 'passed' ? 'PASS'
           : testItem.status === 'skipped' || testItem.expectedStatus === 'skipped' ? 'NOT RUN' : 'FAIL'
-        const observation = observations.cases.find(item => item.title === specItem.title)
-        const actualFailure = (lastResult?.errors ?? []).map(error => String(error?.message ?? '')).join('\n')
+        const titleCaseId = specItem.title.match(/^(BROWSER-[A-Z0-9-]+|CALENDAR-[A-Z0-9-]+|SWAP-\d+|D\d+(?:\/D\d+|\s*&\s*D\d+)?|L\d+(?:\/L\d+)?|ATT-\d+|PAY-\d+|RESPONSIVE-[A-Z]+|REPORT-[A-Z0-9-]+)/u)?.[1]
+        const observation = observations.cases.find(item => item.caseId === titleCaseId)
+          ?? observations.cases.find(item => item.title === specItem.title || item.title.endsWith(specItem.title))
+        const actualFailure = (lastResult?.errors ?? []).map(error => [error?.message, error?.stack]
+          .filter(value => typeof value === 'string' && value.length > 0).join('\n')).join('\n')
           .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, '[synthetic-email]')
           .replace(/Bearer\s+\S+/giu, 'Bearer [redacted]')
           .replace(/https?:\/\/[^\s)]+/giu, value => {
