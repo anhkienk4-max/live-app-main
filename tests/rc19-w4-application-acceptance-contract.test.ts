@@ -43,7 +43,7 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /UPDATE public\.shifts SET authoritative_agency_id=/u)
   assert.match(entrypoint, /actors\.memberUnassigned\.id, agencyIds\.inScope/u)
   assert.match(entrypoint, /databaseFailureCode\('ASSIGNMENT_FIXTURE_CREATE_FAILED', assigned\.error\)/u)
-  assert.match(entrypoint, /set_config\('request\.jwt\.claim\.sub', \$\{fixtureAdminId\}, true\)/u)
+  assert.match(entrypoint, /DO \$rc19_fixture\$ BEGIN PERFORM set_config\('request\.jwt\.claim\.sub', \$\{fixtureAdminId\}, true\)/u)
   assert.match(entrypoint, /request\.jwt\.claims',[\s\S]*'role', 'authenticated'/u)
   assert.match(entrypoint, /VERBOSITY=verbose/u)
   assert.match(entrypoint, /DATABASE_READBACK_FAILED_\$\{sqlState\}_\$\{messageToken \?\? objectName/u)
