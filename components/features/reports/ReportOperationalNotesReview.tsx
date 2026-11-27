@@ -17,6 +17,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import {
   shiftNoteService,
 } from '@/lib/services/shiftNoteService'
+import { reportExternalSummaryService } from '@/lib/services/reportExternalSummaryService'
+import type { ReportExternalSummaryWorkflowResponse } from '@/lib/types/reportExternalSummary'
 import type { ShiftOperationalNote } from '@/lib/types/database.types'
 
 interface ReportOperationalNotesReviewProps {
@@ -70,6 +72,7 @@ export function ReportOperationalNotesReview({
   const [snapshotUnavailable, setSnapshotUnavailable] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [previewAudience, setPreviewAudience] = React.useState<'internal' | 'external'>('internal')
+  const [externalSummary, setExternalSummary] = React.useState<ReportExternalSummaryWorkflowResponse['summary'] | null>(null)
 
   const loadNotes = React.useCallback(async () => {
     setLoading(true)
@@ -132,10 +135,30 @@ export function ReportOperationalNotesReview({
           } else {
             setExternalProjection(null)
           }
+          try {
+            const summaryRes = await reportExternalSummaryService.getSummary(reportId)
+            setExternalSummary(summaryRes.summary)
+          } catch {
+            setExternalSummary(null)
+          }
         } else {
           const source = data?.sourceSnapshot
           if (source && Array.isArray(source.notes)) {
-            const mappedNotes: ShiftOperationalNote[] = source.notes.map((n: any) => ({
+            type SourceNote = {
+              noteId: string
+              businessDate: string
+              category: ShiftOperationalNote['category']
+              note: string
+              authorId: string
+              authorName?: string
+              authorRole?: ShiftOperationalNote['author_role']
+              actualEventTime: string
+              affectedRole?: ShiftOperationalNote['affected_role']
+              affectedUserId?: string
+              version: number
+              workflowState?: string
+            }
+            const mappedNotes: ShiftOperationalNote[] = (source.notes as SourceNote[]).map(n => ({
               id: n.noteId,
               shift_id: shiftId || '',
               business_date: n.businessDate,
@@ -236,7 +259,7 @@ export function ReportOperationalNotesReview({
             <FileText className="h-4 w-4 text-primary" />
             {isVi ? 'Ghi chú & Sự cố vận hành ca trực' : 'Shift Operational Notes & Incidents'}
             <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4">
-              {notes.length}
+              {notes.length}{incidentsCount > 0 ? ` · ${incidentsCount} ${isVi ? 'sự cố' : 'incidents'}` : ''}
             </Badge>
           </h4>
           <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -386,6 +409,24 @@ export function ReportOperationalNotesReview({
                 </span>
               </div>
             </div>
+            {externalSummary?.workflowState === 'approved' && (
+              <div className="bg-white p-3 rounded border border-emerald-200 space-y-1.5" data-testid="report-approved-external-summary">
+                <div className="font-semibold text-emerald-950 text-xs">
+                  {isVi ? 'Tóm tắt vận hành (Đã duyệt gửi đối tác)' : 'Operational Summary (Approved for External Sharing)'}
+                </div>
+                <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{externalSummary.content}</p>
+                <div className="text-[10px] text-muted-foreground pt-0.5">
+                  v{externalSummary.version} · {isVi ? 'Phê duyệt bởi' : 'Approved by'} {externalSummary.reviewedBy || 'Admin'}
+                </div>
+              </div>
+            )}
+            {externalSummary && externalSummary.workflowState !== 'approved' && (
+              <div className="bg-amber-50/70 p-2.5 rounded border border-amber-200/80 text-[11px] text-amber-900" data-testid="report-unapproved-external-summary-note">
+                {isVi
+                  ? `Bản tóm tắt vận hành đang ở trạng thái "${externalSummary.workflowState}" và sẽ chỉ hiển thị cho đối tác sau khi được duyệt.`
+                  : `Operational summary is currently in "${externalSummary.workflowState}" state and will only appear externally after approval.`}
+              </div>
+            )}
             <p className="text-[11px] text-emerald-800/80 leading-relaxed border-t border-emerald-200/60 pt-2">
               {isVi
                 ? 'Thông tin nhân sự, danh tính cá nhân và chi tiết ghi chú nội bộ được tách biệt hoàn toàn phía server theo ranh giới phân quyền.'
