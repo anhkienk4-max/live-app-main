@@ -293,8 +293,14 @@ function seedSyntheticIncidents(databaseContainer, marker, actors, shifts, assig
   if (!host || !support || !hostSegment || !supportSegment) stop('WORKFORCE_INCIDENT_FIXTURE_SOURCE_MISSING')
   const pendingId = randomUUID()
   const confirmedId = randomUUID()
+  const fixtureAdminId = sqlLiteral(actors.admin.id)
   const statements = [
     'BEGIN',
+    // The privileged fixture connection supplies the verified synthetic Admin's request identity
+    // for this seed transaction; the Agency trigger remains enabled and validates actor status,
+    // Agency scope, and each incident subject against canonical membership rows.
+    `SELECT set_config('request.jwt.claim.sub', ${fixtureAdminId}, true)`,
+    `SELECT set_config('request.jwt.claims', json_build_object('sub', ${fixtureAdminId}, 'role', 'authenticated')::text, true)`,
     `INSERT INTO private.rc19_staff_incidents (id,shift_id,staffing_segment_id,original_registration_id,original_staff_id,operational_role,business_date,incident_type,review_state,effective_at,reason,created_by) VALUES (${sqlLiteral(pendingId)}::uuid,${sqlLiteral(shifts.inScope)},${sqlLiteral(hostSegment.id)},${sqlLiteral(host.id)},${sqlLiteral(actors.member.id)},'host','2099-12-01','skip','pending','2099-12-01T12:00:00Z',${sqlLiteral(`${marker} synthetic pending incident`)},${sqlLiteral(actors.admin.id)})`,
     `INSERT INTO private.rc19_staff_incidents (id,shift_id,staffing_segment_id,original_registration_id,original_staff_id,operational_role,business_date,incident_type,review_state,effective_at,reason,verified_late_minutes,created_by) VALUES (${sqlLiteral(confirmedId)}::uuid,${sqlLiteral(shifts.inScope)},${sqlLiteral(supportSegment.id)},${sqlLiteral(support.id)},${sqlLiteral(actors.memberSupport.id)},'support','2099-12-01','late','confirmed','2099-12-01T13:00:00Z',${sqlLiteral(`${marker} synthetic confirmed incident`)},7,${sqlLiteral(actors.admin.id)})`,
     'COMMIT',
