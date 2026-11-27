@@ -31,7 +31,7 @@ jobs:
       - name: Verify exact application and reusable harness pins
         id: reviewed
         env:
-          PINNED_HARNESS_SHA: 7ca676a139032220723f8161b9d134be95f9036a
+          PINNED_HARNESS_SHA: f1d186f0cc7574d2587c0838ced3daef34d4c11f
         run: |
           set -euo pipefail
           marker=.github/rc19-w4-runtime-diagnostic.json
@@ -56,9 +56,9 @@ jobs:
     name: Call exact-SHA bounded disposable runtime diagnostic
     needs: verify-diagnostic-pins
     if: github.ref == 'refs/heads/integration/rc19-w4-codex02'
-    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@7ca676a139032220723f8161b9d134be95f9036a
+    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@f1d186f0cc7574d2587c0838ced3daef34d4c11f
     with:
-      harness_sha: 7ca676a139032220723f8161b9d134be95f9036a
+      harness_sha: f1d186f0cc7574d2587c0838ced3daef34d4c11f
       application_sha: ${{ needs.verify-diagnostic-pins.outputs.application_sha }}
       run_browser_uat: false
       diagnostic_only: true
