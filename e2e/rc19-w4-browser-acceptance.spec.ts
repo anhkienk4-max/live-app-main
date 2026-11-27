@@ -276,20 +276,24 @@ function routePath(value: string) {
   try { return new URL(value, process.env.E2E_BASE_URL).pathname } catch { return 'unavailable' }
 }
 
-function observePage(page: Page) {
-  if (!activeObservation) return
+function observePage(page: Page, observation: BrowserObservation | null = activeObservation) {
+  // Keep each listener bound to the test that created it. Reading the mutable
+  // module-level activeObservation from late response/navigation events can
+  // attribute one test's network traffic to the next case.
+  if (!observation) return
+  const currentObservation = observation
   page.on('framenavigated', frame => {
-    if (frame === page.mainFrame()) activeObservation?.actualRoutes.push(routePath(frame.url()))
+    if (frame === page.mainFrame()) currentObservation.actualRoutes.push(routePath(frame.url()))
   })
   page.on('response', response => {
     const url = response.url()
     if (url.startsWith(process.env.E2E_BASE_URL ?? '')) {
-      activeObservation?.responses.push({ route: routePath(url), status: response.status() })
+      currentObservation.responses.push({ route: routePath(url), status: response.status() })
     }
   })
   const originalGoto = page.goto.bind(page)
   page.goto = async (url, options) => {
-    activeObservation?.expectedRoutes.push(routePath(String(url)))
+    currentObservation.expectedRoutes.push(routePath(String(url)))
     return originalGoto(url, options)
   }
 }
@@ -333,13 +337,14 @@ test.beforeEach(async ({ page }, testInfo) => {
     caseId: caseIdFromTitle(testInfo.title), title: testInfo.title,
     authenticated: false, expectedRoutes: [], actualRoutes: [], responses: [], successfulUiActions: 0,
   }
-  observePage(page)
+  observePage(page, activeObservation)
 })
 
 test.afterEach(async ({}, testInfo) => {
   if (activeObservation) {
     activeObservation.status = testInfo.status
-    const error = testInfo.error?.message
+    const error = [testInfo.error?.message, testInfo.error?.stack]
+      .filter(value => typeof value === 'string' && value.length > 0).join('\n')
     if (error) {
       activeObservation.failure = error
         .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, '[synthetic-email]')
@@ -596,23 +601,20 @@ test.describe('RC19 W4: Suite A - Smoke & Pure Invariant Suite', () => {
 
 test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
   test('BROWSER-AUTH-01: GoTrue login resolves the exact runtime actor identity', async ({ browser }) => {
-    await withAuthenticatedRole(browser, 'member', async page => {
+    await withAuthenticatedRole(browser, 'member', async () => {
       const identity = SYNTHETIC_FIXTURES.actors.member
       expect(activeObservation?.authUserId).toBe(identity.authUserId)
       expect(activeObservation?.businessUserId).toBe(identity.businessUserId)
       expect(activeObservation?.authenticated).toBe(true)
-      await page.goto('/calendar?open_view=calendar&open_calendar_month=2099-12')
-      await expect(page).not.toHaveURL(/\/login(?:\?|$)/u)
-      await expect(page.getByTestId(`calendar-event-${SYNTHETIC_FIXTURES.shiftA}`)).toBeVisible({ timeout: 20_000 })
-      recordObservedUiAction()
       recordCaseResult('BROWSER-AUTH-01', 'PASS', 'GoTrue session user ID matched the runtime fixture actor and business-user identity.')
     })
   })
 
   test('CALENDAR-DETAIL-01: Authenticated Calendar opens the assigned segment Shift Detail', async ({ browser }) => {
     await withAuthenticatedRole(browser, 'member', async page => {
-      const targetUrl = '/calendar?open_view=calendar&open_calendar_month=2099-12'
+      const targetUrl = '/calendar?tab=calendar&calendar_view=month&calendar_date=2099-12-01'
       await page.goto(targetUrl)
+      await expect(page).not.toHaveURL(/\/login(?:\?|$)/u)
       await page.getByTestId(`calendar-event-${SYNTHETIC_FIXTURES.shiftA}`).click()
       const detail = page.getByTestId('shift-detail-modal')
       await expect(detail).toBeVisible({ timeout: 20_000 })
