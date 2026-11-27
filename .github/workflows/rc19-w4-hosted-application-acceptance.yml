@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnostic_only:
+        description: Run the bounded runtime diagnostic without strict business acceptance or browser UAT
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -286,14 +291,54 @@ jobs:
             > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
 
       - name: Install pinned Playwright browser for requested browser UAT
-        if: inputs.run_browser_uat
+        if: inputs.run_browser_uat && !inputs.diagnostic_only
         working-directory: rc19-w4-application
         run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verify disposable Storage upload, readback, and anonymous denial
+        if: inputs.diagnostic_only
+        run: |
+          set -euo pipefail
+          STORAGE_URL="$RC19_W4_RUNTIME_URL"
+          STORAGE_ANON_KEY="$RC19_W4_RUNTIME_ANON_KEY"
+          STORAGE_SERVICE_KEY="$RC19_W4_RUNTIME_SERVICE_ROLE_KEY"
+          STORAGE_MARKER="$RC19_W4_RUNTIME_DATABASE_MARKER"
+          bucket="rc19-w4-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          object="probe.txt"
+          printf '%s' "$STORAGE_MARKER" > "$RUNNER_TEMP/rc19-w4-storage-probe.txt"
+          bucket_status="$(curl --silent --output "$RUNNER_TEMP/storage-bucket.json" --write-out '%{http_code}' \
+            --request POST "$STORAGE_URL/storage/v1/bucket" \
+            --header "apikey: $STORAGE_SERVICE_KEY" --header "Authorization: Bearer $STORAGE_SERVICE_KEY" \
+            --header 'Content-Type: application/json' \
+            --data "$(jq -nc --arg id "$bucket" '{id:$id,name:$id,public:false,file_size_limit:1048576,allowed_mime_types:["text/plain"]}')")"
+          [[ "$bucket_status" == 200 || "$bucket_status" == 201 ]] || { echo "::error::Disposable Storage bucket creation failed (HTTP $bucket_status)"; exit 1; }
+          upload_status="$(curl --silent --output "$RUNNER_TEMP/storage-upload.json" --write-out '%{http_code}' \
+            --request POST "$STORAGE_URL/storage/v1/object/$bucket/$object" \
+            --header "apikey: $STORAGE_SERVICE_KEY" --header "Authorization: Bearer $STORAGE_SERVICE_KEY" \
+            --header 'Content-Type: text/plain' --data-binary "@$RUNNER_TEMP/rc19-w4-storage-probe.txt")"
+          [[ "$upload_status" == 200 ]] || { echo "::error::Disposable Storage upload failed (HTTP $upload_status)"; exit 1; }
+          readback_status="$(curl --silent --output "$RUNNER_TEMP/storage-readback.txt" --write-out '%{http_code}' \
+            "$STORAGE_URL/storage/v1/object/$bucket/$object" \
+            --header "apikey: $STORAGE_SERVICE_KEY" --header "Authorization: Bearer $STORAGE_SERVICE_KEY")"
+          [[ "$readback_status" == 200 ]] && cmp -s "$RUNNER_TEMP/rc19-w4-storage-probe.txt" "$RUNNER_TEMP/storage-readback.txt" || {
+            echo "::error::Disposable Storage authorized readback did not match the synthetic marker"; exit 1;
+          }
+          denial_status="$(curl --silent --output "$RUNNER_TEMP/storage-denied.json" --write-out '%{http_code}' \
+            "$STORAGE_URL/storage/v1/object/$bucket/$object" --header "apikey: $STORAGE_ANON_KEY")"
+          [[ "$denial_status" == 400 || "$denial_status" == 401 || "$denial_status" == 403 || "$denial_status" == 404 ]] || {
+            echo "::error::Private Storage object was not denied to an unauthenticated caller (HTTP $denial_status)"; exit 1;
+          }
+          jq --arg bucket "$bucket" --arg upload "$upload_status" --arg readback "$readback_status" --arg denied "$denial_status" \
+            '.steps.storage={status:"passed",synthetic_private_bucket:$bucket,upload_http_status:($upload|tonumber),authorized_readback_http_status:($readback|tonumber),readback_matches_marker:true,unauthenticated_read_denied:true,denial_http_status:($denied|tonumber),scope:"Supabase Storage runtime capability; not Google Drive G11"}' \
+            "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/storage-evidence.json"
+          mv "$RUNNER_TEMP/storage-evidence.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+          rm -f "$RUNNER_TEMP/rc19-w4-storage-probe.txt" "$RUNNER_TEMP/storage-readback.txt"
 
       - name: Build and start Next.js against the marked disposable runtime
         working-directory: rc19-w4-application
         env:
           RUN_BROWSER_UAT: ${{ inputs.run_browser_uat }}
+          DIAGNOSTIC_ONLY: ${{ inputs.diagnostic_only }}
           EXPECTED_APPLICATION_SHA: ${{ inputs.application_sha }}
         run: |
           set -euo pipefail
@@ -315,12 +360,15 @@ jobs:
             sleep 2
           done
           [[ "$ready" == true ]] || { echo "::error::Next.js did not become ready against the disposable Supabase runtime; raw logs are withheld."; exit 1; }
-          jq '.steps.next = {status:"passed",ready:true,readiness_http_status:200,host:"127.0.0.1",port:3000,production_build:true,uses_disposable_runtime_environment:true}' \
+          jq '.steps.next = {status:"passed",ready:true,readiness_http_status:200,host:"127.0.0.1",port:3000,production_build:true,uses_disposable_runtime_environment:true,application_database_binding_verified:false}' \
             "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" \
             > "$RUNNER_TEMP/rc19-w4-app-artifact/next.json"
           mv "$RUNNER_TEMP/rc19-w4-app-artifact/next.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
 
           report="$RUNNER_TEMP/rc19-w4-lane01-acceptance.json"
+          if [[ "$DIAGNOSTIC_ONLY" == "true" && "$RUN_BROWSER_UAT" == "true" ]]; then
+            echo "::error::Bounded runtime diagnostics cannot request browser UAT"; exit 1
+          fi
           if [[ "$RUN_BROWSER_UAT" == "true" ]]; then
             export RC19_W4_RUN_BROWSER_UAT=true
           else
@@ -338,11 +386,52 @@ jobs:
           result=$?
           set -e
           if [[ "$result" -ne 0 ]]; then
+            if [[ "$DIAGNOSTIC_ONLY" == "true" ]]; then
+              jq '.steps.application = {status:"blocked",code:"DIAGNOSTIC_ENTRYPOINT_FAILED"}' \
+                "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-failed.json"
+              jq '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=false' \
+                "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-failed.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+              echo "::warning::The bounded diagnostic entrypoint failed; sanitized runtime evidence is retained."
+              exit 0
+            fi
             jq '.steps.application = {status:"failed",code:"LANE01_ACCEPTANCE_FAILED"}' \
               "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/failed.json"
             mv "$RUNNER_TEMP/rc19-w4-app-artifact/failed.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
             echo "::error::Lane 01 application acceptance failed; raw output is withheld."
             exit "$result"
+          fi
+          if [[ "$DIAGNOSTIC_ONLY" == "true" ]]; then
+            jq -e --arg sha "$EXPECTED_APPLICATION_SHA" --arg marker "$RC19_W4_RUNTIME_DATABASE_MARKER" '
+              .schema == "rc19-w4-application-acceptance/v2" and
+              .application_sha == $sha and .runtime_database_marker == $marker and
+              .synthetic_users.admin.login == true and .synthetic_users.admin.canonical_business_user_mapping == true and
+              .synthetic_users.leader.login == true and .synthetic_users.leader.canonical_business_user_mapping == true and
+              .synthetic_users.member.login == true and .synthetic_users.member.canonical_business_user_mapping == true
+            ' "$report" > /dev/null || {
+              jq '.steps.application = {status:"blocked",code:"DIAGNOSTIC_REPORT_INVALID"}' \
+                "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-invalid.json"
+              jq '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=false' \
+                "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-invalid.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+              echo "::warning::The diagnostic report did not prove exact-SHA Auth and canonical identity; strict acceptance remains unrun."
+              exit 0
+            }
+            jq --arg sha "$EXPECTED_APPLICATION_SHA" --arg marker "$RC19_W4_RUNTIME_DATABASE_MARKER" '
+              {mode:"bounded-runtime-diagnostic",schema,status:.status,application_sha:$sha,
+               runtime_database_marker_match:(.runtime_database_marker == $marker),
+               synthetic_users,authorization,browser_uat,
+               cases:[.cases[]|{case_id,status,evidence_scope}],
+               fixtures:{authenticated_users:.fixtures.authenticated_users,brands:.fixtures.brands,
+                 platforms:.fixtures.platforms,parent_shifts:.fixtures.parent_shifts,
+                 staffing_segments:.fixtures.staffing_segments,canonical_assignments:.fixtures.canonical_assignments,
+                 wrong_brand_denied:.fixtures.wrong_brand_denied,unassigned_member_has_no_assignment:.fixtures.unassigned_member_has_no_assignment,
+                 wrong_agency_denial:.fixtures.wrong_agency_denial,anonymous_denied:.fixtures.anonymous_denied}}
+            ' "$report" > "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json"
+            jq --slurpfile app "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json" \
+              '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=false | .steps.application = {status:"diagnostic",evidence:$app[0]}' \
+              "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic.json"
+            mv "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+            echo "Bounded diagnostic completed. Strict business acceptance and browser UAT were not run." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
           jq --arg browser_requested "$RUN_BROWSER_UAT" -e '
             .schema == "rc19-w4-application-acceptance/v2" and
@@ -404,6 +493,62 @@ jobs:
           }
           jq -c '{schema,status,synthetic_users:{admin:{login:.synthetic_users.admin.login,mapping:.synthetic_users.admin.canonical_business_user_mapping},leader:{login:.synthetic_users.leader.login,mapping:.synthetic_users.leader.canonical_business_user_mapping},member:{login:.synthetic_users.member.login,mapping:.synthetic_users.member.canonical_business_user_mapping}},database_binding:{runtime_marker_match:.database_binding.runtime_marker_match,application_target_match:.database_binding.application_target_match},next_app:{ready:.next_app.ready,readiness_http_status:.next_app.readiness_http_status,authenticated_browser:.next_app.authenticated_browser},browser_uat:{ran:.browser_uat.ran,passed:.browser_uat.passed,authenticated:.browser_uat.authenticated,interaction_count:.browser_uat.interaction_count},business_cases:[.business_cases[]|{case_id,area,source_case_ids,source_criteria,actor:{role:.actor.role,scope_key:.actor.scope_key},expected:{authorization:.expected.authorization,result:.expected.result},actual:{http_status:.actual.http_status,rpc_code:.actual.rpc_code},database_readback:{status:.database_readback.status,matches_expected:.database_readback.matches_expected},negative_authorization:{tested:.negative_authorization.tested,passed:.negative_authorization.passed},browser_interaction:{performed:.browser_interaction.performed,authenticated:.browser_interaction.authenticated,status:.browser_interaction.status},status}]}' "$report" \
             > "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json"
+
+      - name: Verify authenticated Realtime delivery against scoped synthetic shift
+        if: inputs.diagnostic_only
+        working-directory: rc19-w4-application
+        run: |
+          set -euo pipefail
+          export REALTIME_URL="$RC19_W4_RUNTIME_URL"
+          export REALTIME_ANON_KEY="$RC19_W4_RUNTIME_ANON_KEY"
+          export REALTIME_SERVICE_KEY="$RC19_W4_RUNTIME_SERVICE_ROLE_KEY"
+          export REALTIME_MEMBER_EMAIL="$RC19_W4_SYNTHETIC_MEMBER_EMAIL"
+          export REALTIME_MEMBER_PASSWORD="$RC19_W4_SYNTHETIC_MEMBER_PASSWORD"
+          export REALTIME_MARKER="$RC19_W4_RUNTIME_DATABASE_MARKER"
+          node --input-type=module <<'NODE'
+          import { createClient } from '@supabase/supabase-js'
+
+          const fail = code => { process.stderr.write(`${code}\n`); process.exit(1) }
+          const withTimeout = (promise, code) => Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error(code)), 15000)),
+          ])
+          const url = process.env.REALTIME_URL
+          const member = createClient(url, process.env.REALTIME_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
+          const service = createClient(url, process.env.REALTIME_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
+          const login = await member.auth.signInWithPassword({ email: process.env.REALTIME_MEMBER_EMAIL, password: process.env.REALTIME_MEMBER_PASSWORD })
+          if (login.error || !login.data.session) fail('REALTIME_SYNTHETIC_MEMBER_LOGIN_FAILED')
+          const found = await service.from('shifts').select('id').like('title', 'RC19 acceptance % scoped').limit(1).maybeSingle()
+          if (found.error || !found.data?.id) fail('REALTIME_SCOPED_SHIFT_FIXTURE_MISSING')
+          const visible = await member.from('shifts').select('id').eq('id', found.data.id).maybeSingle()
+          if (visible.error || visible.data?.id !== found.data.id) fail('REALTIME_MEMBER_SCOPE_READ_FAILED')
+          const markerTitle = `RC19 diagnostic ${process.env.REALTIME_MARKER}`
+          let resolveEvent
+          const event = new Promise(resolve => { resolveEvent = resolve })
+          const channel = member.channel(`rc19-w4-diagnostic-${process.env.REALTIME_MARKER}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'shifts', filter: `id=eq.${found.data.id}` }, payload => {
+              if (payload.new?.title === markerTitle) resolveEvent(true)
+            })
+          const subscribed = new Promise((resolve, reject) => channel.subscribe(status => {
+            if (status === 'SUBSCRIBED') resolve(true)
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') reject(new Error('REALTIME_SUBSCRIPTION_FAILED'))
+          }))
+          try {
+            await withTimeout(subscribed, 'REALTIME_SUBSCRIPTION_TIMEOUT')
+            const changed = await service.from('shifts').update({ title: markerTitle }).eq('id', found.data.id).select('id').maybeSingle()
+            if (changed.error || changed.data?.id !== found.data.id) fail('REALTIME_SYNTHETIC_UPDATE_FAILED')
+            await withTimeout(event, 'REALTIME_EVENT_TIMEOUT')
+          } catch (error) {
+            fail(error.message === 'REALTIME_EVENT_TIMEOUT' ? 'REALTIME_EVENT_TIMEOUT' : 'REALTIME_EVENT_DELIVERY_FAILED')
+          } finally {
+            await member.removeChannel(channel)
+            await member.auth.signOut()
+          }
+          process.stdout.write('Authenticated member received the scoped shift update over Realtime.\n')
+          NODE
+          jq '.steps.realtime={status:"passed",authenticated_member:true,authorized_scoped_shift:true,event_delivered:true,synthetic_update_readback:true}' \
+            "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/realtime-evidence.json"
+          mv "$RUNNER_TEMP/realtime-evidence.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
 
       - name: Merge sanitized runtime and application acceptance evidence
         if: always()
