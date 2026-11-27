@@ -1,0 +1,6 @@
+{
+  "application_sha": "f50840b4403ea8e40740fa98b5129f73c500e222",
+  "harness_sha": "70a26d5719b4dd9610cc76c4aad1ad3af0ab2b5a",
+  "acceptance_contract": "rc19-w4-application-acceptance/v2",
+  "reviewed": true
+}
