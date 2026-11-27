@@ -275,9 +275,13 @@ function readDatabase(databaseContainer, query) {
   if (!/^supabase_db_[a-z0-9-]+$/u.test(databaseContainer)) stop('DATABASE_CONTAINER_INVALID')
   try {
     return execFileSync('docker', ['exec', databaseContainer, 'psql', '-U', 'postgres', '-d', 'postgres',
-      '-v', 'ON_ERROR_STOP=1', '-Atqc', query], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
-  } catch {
-    stop('DATABASE_READBACK_FAILED')
+      '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose', '-Atqc', query], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  } catch (error) {
+    const stderr = String(error?.stderr ?? '')
+    const sqlState = stderr.match(/ERROR:\s+([0-9A-Z]{5}):/u)?.[1] ?? 'UNKNOWN'
+    const messageToken = stderr.match(/ERROR:\s+[0-9A-Z]{5}:\s*([A-Z][A-Z0-9_]{1,119})\b/u)?.[1]
+    const objectName = stderr.match(/(?:column|constraint|relation) "([a-z][a-z0-9_]{0,62})"/iu)?.[1]?.toUpperCase()
+    stop(`DATABASE_READBACK_FAILED_${sqlState}_${messageToken ?? objectName ?? 'UNKNOWN'}`)
   }
 }
 
