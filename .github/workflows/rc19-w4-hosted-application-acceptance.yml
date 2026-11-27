@@ -790,7 +790,11 @@ jobs:
           if [[ "$ready" != true ]]; then
             process_alive=false
             kill -0 "$next_pid" 2>/dev/null && process_alive=true || true
-            python3 - "$RUNNER_TEMP/rc19-w4-next-start.log" "$status" "$process_alive" "$RUNNER_TEMP/rc19-w4-next-failure.json" <<'PY'
+            start_exit_code=""
+            if [[ "$process_alive" == false ]]; then
+              if wait "$next_pid"; then start_exit_code=0; else start_exit_code=$?; fi
+            fi
+            python3 - "$RUNNER_TEMP/rc19-w4-next-start.log" "$status" "$process_alive" "$RUNNER_TEMP/rc19-w4-next-failure.json" "$start_exit_code" <<'PY'
           import hashlib
           import json
           import re
@@ -803,6 +807,14 @@ jobs:
           env_guard_codes = sorted(set(re.findall(r"\[ENV GUARD\]\s+([A-Z0-9_]+)", decoded)))
           if env_guard_codes:
               code = env_guard_codes[0]
+          elif re.search(r"Invalid project directory", decoded, re.I):
+              code = "NEXT_INVALID_PROJECT_DIRECTORY"
+          elif re.search(r"Could not find a production build|production build.*not found", decoded, re.I):
+              code = "NEXT_PRODUCTION_BUILD_NOT_FOUND"
+          elif re.search(r"EADDRINUSE|address already in use", decoded, re.I):
+              code = "NEXT_PORT_ALREADY_IN_USE"
+          elif re.search(r"ERR_MODULE_NOT_FOUND|Cannot find module", decoded, re.I):
+              code = "NEXT_MODULE_LOAD_FAILURE"
           elif sys.argv[3] != "true":
               code = "NEXT_SERVER_PROCESS_EXITED"
           elif sys.argv[2] in {"500", "502", "503", "504"}:
@@ -811,14 +823,16 @@ jobs:
               code = "NEXT_READINESS_TIMEOUT"
           safe_lines = []
           for line in decoded.splitlines():
-              if not re.search(r"\b(?:ERROR|FATAL|Error|Exception|failed|failure|ENV GUARD)\b", line, re.I):
+              if not line.strip():
                   continue
               safe = re.sub(r"\x1b\[[0-9;]*m", "", line)
               safe = re.sub(r"postgres(?:ql)?://\S+", "[database-url]", safe, flags=re.I)
               safe = re.sub(r"https?://\S+", "[url]", safe)
               safe = re.sub(r"\beyJ[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+){0,2}", "[token]", safe)
+              safe = re.sub(r"(?i)\bBearer\s+\S+", "Bearer [redacted]", safe)
               safe = re.sub(r"[\w.+-]+@[\w.-]+", "[email]", safe)
-              safe = re.sub(r"(?i)\b(password|secret|api[_-]?key|token|authorization)\b\s*[:=]\s*\S+", r"\1=[redacted]", safe)
+              safe = re.sub(r"(?i)\b(database_url|supabase_service_role_key|service_role_key|anon_key|password|secret|api[_-]?key|token|authorization)\b\s*[:=]\s*\S+", r"\1=[redacted]", safe)
+              safe = re.sub(r"/home/runner/work/[^/]+/[^/]+", "[workspace]", safe)
               safe = re.sub(r"\s+", " ", safe).strip()
               safe_lines.append(safe[:300])
           evidence = {
@@ -826,9 +840,10 @@ jobs:
               "stage": "next_readiness",
               "code": code,
               "process_alive": sys.argv[3] == "true",
+              "process_exit_code": int(sys.argv[5]) if sys.argv[5].isdigit() else None,
               "readiness_http_status": int(sys.argv[2]) if sys.argv[2].isdigit() else None,
               "environment_guard_codes": env_guard_codes,
-              "sanitized_error_lines": safe_lines[:12],
+              "sanitized_startup_lines": safe_lines[:12],
               "raw_log_sha256": hashlib.sha256(raw).hexdigest(),
               "raw_log_bytes": len(raw),
               "raw_log_in_artifact": False,
