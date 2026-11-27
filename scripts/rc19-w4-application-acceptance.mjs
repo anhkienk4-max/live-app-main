@@ -271,6 +271,7 @@ function seedSyntheticAgencyFixtures(databaseContainer, marker, actors, shifts) 
     [actors.realtimeMember.id, agencyIds.inScope, 'realtime-member-in-scope', 'active'],
     [actors.memberSupport.id, agencyIds.inScope, 'member-support-in-scope', 'active'],
     [actors.memberUnassigned.id, agencyIds.inScope, 'member-unassigned-in-scope', 'active'],
+    [actors.memberBrowserCandidate.id, agencyIds.inScope, 'member-browser-clear-candidate', 'active'],
     [actors.leaderOtherBrand.id, agencyIds.outOfScope, 'leader-other-brand', 'active'],
     [actors.memberOutAgency.id, agencyIds.outOfScope, 'member-out-of-scope', 'active'],
     [actors.leaderRevoked.id, agencyIds.inScope, 'leader-revoked', 'revoked'],
@@ -282,6 +283,8 @@ function seedSyntheticAgencyFixtures(databaseContainer, marker, actors, shifts) 
   }
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.inScope)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.realtime)}`)
+  lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.browserA)}`)
+  lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.browserB)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.swap)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.swapConflict)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.outOfScope)} WHERE id=${sqlLiteral(shifts.outOfScope)}`)
@@ -517,11 +520,13 @@ async function main() {
   const realtimeMemberPassword = `${randomBytes(24).toString('base64url')}Rt8!`
   const outAgencyEmail = `rc19-${randomUUID()}-out-agency@example.test`
   const outAgencyPassword = `${randomBytes(24).toString('base64url')}Aa3!`
-  const [memberSupport, memberUnassigned, leaderOtherBrand, realtimeMember] = await Promise.all([
+  const browserCandidatePassword = `${randomBytes(24).toString('base64url')}Bc6!`
+  const [memberSupport, memberUnassigned, leaderOtherBrand, realtimeMember, memberBrowserCandidate] = await Promise.all([
     createActor(service, url, anonKey, 'member', `rc19-${randomUUID()}-support@example.test`, supportPassword, 'member-support'),
     createActor(service, url, anonKey, 'member', `rc19-${randomUUID()}-unassigned@example.test`, unassignedPassword, 'member-unassigned'),
     createActor(service, url, anonKey, 'leader', `rc19-${randomUUID()}-other-brand@example.test`, foreignLeaderPassword, 'leader-other-brand'),
     createActor(service, url, anonKey, 'member', realtimeMemberEmail, realtimeMemberPassword, 'member-realtime'),
+    createActor(service, url, anonKey, 'member', `rc19-${randomUUID()}-browser-clear-candidate@example.test`, browserCandidatePassword, 'member-browser-clear-candidate'),
   ])
   const [memberOutAgency, leaderRevoked] = await Promise.all([
     createActor(service, url, anonKey, 'member', outAgencyEmail, outAgencyPassword, 'member-out-agency'),
@@ -591,6 +596,14 @@ async function main() {
     admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} realtime`, '2099-12-03',
     [segment(1, '10:00', '14:00', 'host')],
   )
+  const browserShiftA = await createShift(
+    admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} isolated browser source`, '2099-12-04',
+    [segment(1, '10:00', '12:00', 'host')],
+  )
+  const browserShiftB = await createShift(
+    admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} isolated browser counterpart`, '2099-12-05',
+    [segment(1, '12:00', '14:00', 'host')],
+  )
   const swapShiftId = await createShift(
     admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} reciprocal segment exchange`, '2099-12-04',
     [segment(1, '10:00', '12:00', 'host'), segment(2, '12:00', '14:00', 'host')],
@@ -601,18 +614,19 @@ async function main() {
   )
 
   const segmentRows = await service.from('shift_staffing_segments')
-    .select('id,shift_id,segment_index,start_at,end_at').in('shift_id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, swapShiftId, swapConflictShiftId])
+    .select('id,shift_id,segment_index,start_at,end_at').in('shift_id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, browserShiftA, browserShiftB, swapShiftId, swapConflictShiftId])
   const storedSegments = await requireNoError(segmentRows, 'SEGMENT_FIXTURE_READBACK_FAILED')
-  if (!Array.isArray(storedSegments) || storedSegments.length !== 10
-    || storedSegments.some(row => !row.id || ![scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, swapShiftId, swapConflictShiftId].includes(row.shift_id))) {
+  if (!Array.isArray(storedSegments) || storedSegments.length !== 12
+    || storedSegments.some(row => !row.id || ![scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, browserShiftA, browserShiftB, swapShiftId, swapConflictShiftId].includes(row.shift_id))) {
     stop('SEGMENT_FIXTURE_READBACK_MISMATCH')
   }
   const segmentByKey = new Map(storedSegments.map(row => [`${row.shift_id}:${row.segment_index}`, row.id]))
   const databaseContainer = required('RC19_W4_RUNTIME_DATABASE_CONTAINER')
   const { agencyIds, membershipRows } = seedSyntheticAgencyFixtures(databaseContainer, marker, {
-    leader, member, realtimeMember, memberSupport, memberUnassigned, leaderOtherBrand,
+    leader, member, realtimeMember, memberSupport, memberUnassigned, memberBrowserCandidate, leaderOtherBrand,
     memberOutAgency, leaderRevoked,
-  }, { inScope: scopedShiftId, realtime: realtimeShiftId, outOfScope: foreignShiftId, d01: d01ShiftId, swap: swapShiftId, swapConflict: swapConflictShiftId })
+  }, { inScope: scopedShiftId, realtime: realtimeShiftId, browserA: browserShiftA, browserB: browserShiftB,
+    outOfScope: foreignShiftId, d01: d01ShiftId, swap: swapShiftId, swapConflict: swapConflictShiftId })
   const agencyReadback = await service.from('shifts')
     .select('id,brand_id,authoritative_agency_id').in('id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, swapShiftId, swapConflictShiftId])
   const agencyRows = await requireNoError(agencyReadback, 'AGENCY_FIXTURE_READBACK_FAILED')
@@ -626,10 +640,11 @@ async function main() {
     || agencyRows.find(row => row.id === realtimeShiftId)?.brand_id !== brandIds[0]) {
     stop('AGENCY_FIXTURE_READBACK_MISMATCH')
   }
-  if (!Array.isArray(membershipRows) || membershipRows.length !== 8
+  if (!Array.isArray(membershipRows) || membershipRows.length !== 9
     || membershipRows.find(row => row.businessUserId === member.id)?.agencyId !== agencyIds.inScope
     || membershipRows.find(row => row.businessUserId === realtimeMember.id)?.agencyId !== agencyIds.inScope
     || membershipRows.find(row => row.businessUserId === realtimeMember.id)?.status !== 'active'
+    || membershipRows.find(row => row.businessUserId === memberBrowserCandidate.id)?.agencyId !== agencyIds.inScope
     || membershipRows.find(row => row.businessUserId === memberOutAgency.id)?.agencyId !== agencyIds.outOfScope
     || membershipRows.find(row => row.businessUserId === leaderRevoked.id)?.status !== 'revoked') {
     stop('AGENCY_MEMBERSHIP_FIXTURE_READBACK_MISMATCH')
@@ -710,6 +725,31 @@ async function main() {
   if (!realtimeRegistration?.id || realtimeRegistration.staffing_segment_id !== realtimeSegment.id
     || realtimeRegistration.user_id !== realtimeMember.id || realtimeRegistration.operational_role !== 'host') {
     stop('REALTIME_ASSIGNMENT_FIXTURE_CREATE_MISMATCH')
+  }
+  const browserSourceSegment = storedSegments.find(row => row.shift_id === browserShiftA && row.segment_index === 1)
+  const browserCounterpartSegment = storedSegments.find(row => row.shift_id === browserShiftB && row.segment_index === 1)
+  if (!browserSourceSegment?.id || !browserCounterpartSegment?.id) stop('BROWSER_ASSIGNMENT_SEGMENT_FIXTURE_MISSING')
+  const browserSourceVersionResult = await service.from('shifts').select('version').eq('id', browserShiftA).single()
+  const browserSourceVersion = await requireNoError(browserSourceVersionResult, 'BROWSER_SOURCE_SHIFT_VERSION_FAILED')
+  const browserSourceResult = await admin.client.rpc('manual_assign_shift_staff_to_segment', {
+    p_shift_id: browserShiftA, p_user_id: realtimeMember.id, p_role: 'host',
+    p_notes: 'Isolated authenticated browser Member source fixture',
+    p_expected_version: browserSourceVersion.version, p_staffing_segment_id: browserSourceSegment.id,
+  }).single()
+  const browserSourceRegistration = await requireNoError(browserSourceResult, 'BROWSER_SOURCE_REGISTRATION_CREATE_FAILED')
+  const browserCounterpartVersionResult = await service.from('shifts').select('version').eq('id', browserShiftB).single()
+  const browserCounterpartVersion = await requireNoError(browserCounterpartVersionResult, 'BROWSER_COUNTERPART_SHIFT_VERSION_FAILED')
+  const browserCounterpartResult = await admin.client.rpc('manual_assign_shift_staff_to_segment', {
+    p_shift_id: browserShiftB, p_user_id: memberSupport.id, p_role: 'host',
+    p_notes: 'Isolated browser Exchange counterpart fixture',
+    p_expected_version: browserCounterpartVersion.version, p_staffing_segment_id: browserCounterpartSegment.id,
+  }).single()
+  const browserCounterpartRegistration = await requireNoError(browserCounterpartResult, 'BROWSER_COUNTERPART_REGISTRATION_CREATE_FAILED')
+  if (browserSourceRegistration?.user_id !== realtimeMember.id
+    || browserSourceRegistration.staffing_segment_id !== browserSourceSegment.id
+    || browserCounterpartRegistration?.user_id !== memberSupport.id
+    || browserCounterpartRegistration.staffing_segment_id !== browserCounterpartSegment.id) {
+    stop('BROWSER_ASSIGNMENT_FIXTURE_MISMATCH')
   }
   const realtimeActorShift = await realtimeMember.client.from('shifts').select('id,brand_id,authoritative_agency_id')
     .eq('id', realtimeShiftId).maybeSingle()
@@ -796,14 +836,17 @@ async function main() {
     ['pass-swap-approval-conflict-invalidation', 'A new candidate overlap after acceptance denies Leader approval and preserves the source assignment.'],
     ['pass-swap-revoked-membership-replay', 'Replay after Agency membership revocation is denied and revocation is independently read back.'],
   ]
-  const recordPassSwapSubcase = (caseId, actor, rpcCode, negativeAuthorization = false) => {
+  const recordPassSwapSubcase = (caseId, actor, rpcCode, negativeAuthorization = false, readbackVerified = false) => {
     const expected = passSwapSubcaseExpectations.find(([id]) => id === caseId)?.[1]
     if (!expected) stop('SWAP_SUBCASE_CONTRACT_MISSING')
     passSwapSubcaseResults.push({ case_id: caseId, actor,
       expected, actual: { rpc_code: rpcCode },
-      database_readback: { status: 'passed', matches_expected: true },
+      database_readback: { status: readbackVerified ? 'passed' : 'not_asserted', matches_expected: readbackVerified },
       negative_authorization: { tested: negativeAuthorization, passed: negativeAuthorization },
-      evidence_scope: 'Authenticated GoTrue API/RPC with independent disposable PostgreSQL readback', status: 'PASS' })
+      evidence_scope: readbackVerified
+        ? 'Authenticated GoTrue API/RPC with independent disposable PostgreSQL readback'
+        : 'Authenticated GoTrue API/RPC; independent PostgreSQL readback not asserted',
+      status: readbackVerified ? 'PASS' : 'BLOCKED' })
   }
   async function executeCase(caseId, actor, expected, run) {
     const startedAt = new Date().toISOString()
@@ -1074,15 +1117,20 @@ async function main() {
         p_target_shift_id: null, p_counterpart_registration_id: null,
       })
       if (preflight.error || preflight.data !== 'VERIFIED_CLEAR') stop('SWAP_CLEAR_CANDIDATE_PREFLIGHT_FAILED')
+      const crossAgencyKey = randomUUID()
       const crossAgency = await member.client.rpc('shift_swap_operation_v1', {
         p_action: 'create', p_request_id: null,
-        p_payload: { ...payload, replacement_staff_id: memberOutAgency.id }, p_idempotency_key: randomUUID(),
+        p_payload: { ...payload, replacement_staff_id: memberOutAgency.id }, p_idempotency_key: crossAgencyKey,
       })
       if (!crossAgency.error || !String(crossAgency.error.message).includes('RC19_AGENCY_MEMBERSHIP_REQUIRED')) {
         stop('SWAP_CROSS_AGENCY_CANDIDATE_NOT_DENIED')
       }
+      if (readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_swap_operation_receipts WHERE actor_id=${sqlLiteral(member.id)} AND idempotency_key=${sqlLiteral(crossAgencyKey)}::uuid`) !== '0') {
+        stop('SWAP_CROSS_AGENCY_DENIAL_PERSISTED_RECEIPT')
+      }
       recordPassSwapSubcase('pass-swap-cross-agency-and-clear-preflight', 'Requester Member and cross-Agency Member',
-        'VERIFIED_CLEAR plus RC19_AGENCY_MEMBERSHIP_REQUIRED', true)
+        'VERIFIED_CLEAR plus RC19_AGENCY_MEMBERSHIP_REQUIRED', true, true)
       const invoke = () => member.client.rpc('shift_swap_operation_v1', {
         p_action: 'create', p_request_id: null, p_payload: payload, p_idempotency_key: key,
       }).single()
@@ -1110,9 +1158,6 @@ async function main() {
       if (!crossActor.error || !/SWAP_ACTOR_NOT_AUTHORIZED|SWAP_NOT_OWNER|SWAP_REQUEST_NOT_AUTHORIZED/u.test(String(crossActor.error.message))) {
         stop('SWAP_CROSS_ACTOR_MUTATION_NOT_DENIED')
       }
-      recordPassSwapSubcase('pass-swap-concurrent-create-replay', 'Requester Member', 'ONE_REQUEST_ONE_RECEIPT')
-      recordPassSwapSubcase('pass-swap-payload-action-actor-binding', 'Requester Member and wrong actor',
-        'SWAP_IDEMPOTENCY_KEY_REUSED_AND_SWAP_NOT_OWNER', true)
       const staleAccept = await memberUnassigned.client.rpc('shift_swap_operation_v1', {
         p_action: 'accept', p_request_id: firstRow.id,
         p_payload: { expected_version: firstRow.version + 99, notes: 'Stale acceptance must fail' }, p_idempotency_key: randomUUID(),
@@ -1130,8 +1175,12 @@ async function main() {
         p_payload: { expected_version: firstRow.version, notes: 'Synthetic candidate acceptance' }, p_idempotency_key: acceptKey,
       }).single(), 'SWAP_CANDIDATE_ACCEPT_REPLAY_FAILED')
       if (acceptedReplay.id !== accepted.id || acceptedReplay.version !== accepted.version) stop('SWAP_ACCEPT_REPLAY_MISMATCH')
+      if (readDatabase(databaseContainer,
+        `SELECT count(*) FROM public.swap_requests WHERE id=${sqlLiteral(firstRow.id)} AND status='accepted' AND version=${Number(accepted.version)}`) !== '1') {
+        stop('SWAP_ACCEPTED_STATE_POSTGRES_READBACK_MISMATCH')
+      }
       recordPassSwapSubcase('pass-swap-stale-version-and-candidate-acceptance', 'Clear candidate Member',
-        'STALE_VERSION_DENIED_AND_ACCEPTED_REPLAY_STABLE', true)
+        'STALE_VERSION_DENIED_AND_ACCEPTED_REPLAY_STABLE', true, true)
       const approvalKey = randomUUID()
       const approved = await requireNoError(await leader.client.rpc('shift_swap_operation_v1', {
         p_action: 'approve', p_request_id: firstRow.id,
@@ -1153,8 +1202,11 @@ async function main() {
         && row.operational_role === source.operational_role && row.staffing_segment_id === source.staffing_segment_id
         && row.status === 'approved')
       if (retiredSource?.status !== 'cancelled' || !acceptedReplacement) stop('SWAP_EXACT_SEGMENT_PASS_READBACK_MISMATCH')
+      const passPostgresReadback = readDatabase(databaseContainer,
+        `SELECT count(*) FROM public.swap_requests q WHERE q.id=${sqlLiteral(firstRow.id)} AND q.status='completed' AND q.approved_by=${sqlLiteral(leader.id)} AND EXISTS (SELECT 1 FROM public.shift_registrations r WHERE r.id=${sqlLiteral(source.id)} AND r.status='cancelled' AND r.staffing_segment_id=${sqlLiteral(source.staffing_segment_id)}) AND EXISTS (SELECT 1 FROM public.shift_registrations r WHERE r.id=${sqlLiteral(acceptedReplacement.id)} AND r.user_id=${sqlLiteral(memberUnassigned.id)} AND r.status='approved' AND r.staffing_segment_id=${sqlLiteral(source.staffing_segment_id)})`)
+      if (passPostgresReadback !== '1') stop('SWAP_EXACT_SEGMENT_PASS_POSTGRES_READBACK_MISMATCH')
       recordPassSwapSubcase('pass-swap-leader-approval-exact-segment-pass', 'Scoped Leader',
-        'COMPLETED_EXACT_SEGMENT_REPLACEMENT')
+        'COMPLETED_EXACT_SEGMENT_REPLACEMENT', false, true)
       const swapShiftSource = swapAssignments.find(row => row.user_id === member.id)
       const swapShiftCounterpart = swapAssignments.find(row => row.user_id === memberSupport.id)
       const exchangeConflict = await member.client.rpc('check_shift_swap_conflict', {
@@ -1192,8 +1244,11 @@ async function main() {
         || memberInTwo?.staffing_segment_id !== segmentTwo || supportInOne?.staffing_segment_id !== segmentOne) {
         stop('SWAP_EXCHANGE_EXACT_SEGMENT_READBACK_MISMATCH')
       }
+      const exchangePostgresReadback = readDatabase(databaseContainer,
+        `SELECT count(*) FROM public.swap_requests q WHERE q.id=${sqlLiteral(exchange.id)} AND q.status='completed' AND EXISTS (SELECT 1 FROM public.shift_registrations r WHERE r.id=${sqlLiteral(swapShiftSource.id)} AND r.status='cancelled') AND EXISTS (SELECT 1 FROM public.shift_registrations r WHERE r.id=${sqlLiteral(swapShiftCounterpart.id)} AND r.status='cancelled') AND EXISTS (SELECT 1 FROM public.shift_registrations r WHERE r.user_id=${sqlLiteral(member.id)} AND r.status='approved' AND r.staffing_segment_id=${sqlLiteral(segmentTwo)}) AND EXISTS (SELECT 1 FROM public.shift_registrations r WHERE r.user_id=${sqlLiteral(memberSupport.id)} AND r.status='approved' AND r.staffing_segment_id=${sqlLiteral(segmentOne)})`)
+      if (exchangePostgresReadback !== '1') stop('SWAP_EXCHANGE_POSTGRES_READBACK_MISMATCH')
       recordPassSwapSubcase('pass-swap-reciprocal-segment-exchange', 'Requester, counterpart and scoped Leader',
-        'COMPLETED_RECIPROCAL_SEGMENT_EXCHANGE')
+        'COMPLETED_RECIPROCAL_SEGMENT_EXCHANGE', false, true)
       const invalidationPayload = { source_registration_id: memberInTwo.id, mode: 'replacement',
         reason: 'RC19 post-acceptance conflict invalidation', target_shift_id: null,
         replacement_staff_id: memberUnassigned.id, counterpart_registration_id: null,
@@ -1243,8 +1298,11 @@ async function main() {
         || persistedConflictAssignment.staffing_segment_id !== conflictSegment) {
         stop('SWAP_INVALIDATION_CONFLICT_READBACK_MISMATCH')
       }
+      const conflictPostgresReadback = readDatabase(databaseContainer,
+        `SELECT count(*) FROM public.swap_requests q WHERE q.id=${sqlLiteral(invalidationRequest.id)} AND q.status='accepted' AND q.version=${Number(invalidationAccepted.version)} AND EXISTS (SELECT 1 FROM public.shift_registrations r WHERE r.id=${sqlLiteral(memberInTwo.id)} AND r.status='approved' AND r.staffing_segment_id=${sqlLiteral(segmentTwo)}) AND EXISTS (SELECT 1 FROM public.shift_registrations r WHERE r.id=${sqlLiteral(conflictAssignment.id)} AND r.user_id=${sqlLiteral(memberUnassigned.id)} AND r.status='manually_assigned' AND r.staffing_segment_id=${sqlLiteral(conflictSegment)})`)
+      if (conflictPostgresReadback !== '1') stop('SWAP_INVALIDATION_POSTGRES_READBACK_MISMATCH')
       recordPassSwapSubcase('pass-swap-approval-conflict-invalidation', 'Candidate and scoped Leader',
-        'APPROVAL_CONFLICT_DENIED_SOURCE_PRESERVED')
+        'APPROVAL_CONFLICT_DENIED_SOURCE_PRESERVED', false, true)
       const supportSource = assignments.find(row => row.user_id === memberSupport.id)
       const supportRequestPayload = { source_registration_id: supportSource.id, mode: 'replacement',
         reason: 'RC19 candidate rejection fixture', target_shift_id: null,
@@ -1277,11 +1335,20 @@ async function main() {
         || new Map(lifecycle.map(row => [row.id, row.status])).get(cancelRequest.id) !== 'cancelled') {
         stop('SWAP_LIFECYCLE_DATABASE_READBACK_MISMATCH')
       }
+      const lifecyclePostgresReadback = readDatabase(databaseContainer,
+        `SELECT (SELECT status FROM public.swap_requests WHERE id=${sqlLiteral(rejectedRequest.id)}) || '|' || (SELECT status FROM public.swap_requests WHERE id=${sqlLiteral(cancelRequest.id)})`)
+      if (lifecyclePostgresReadback !== 'rejected|cancelled') stop('SWAP_REJECTION_CANCELLATION_POSTGRES_READBACK_MISMATCH')
       recordPassSwapSubcase('pass-swap-candidate-rejection-and-requester-cancellation',
-        'Candidate Member and requester Member', 'REJECTED_AND_CANCELLED_READBACK')
+        'Candidate Member and requester Member', 'REJECTED_AND_CANCELLED_READBACK', false, true)
       const receiptReadback = readDatabase(databaseContainer,
         `SELECT count(*) FROM private.rc19_swap_operation_receipts WHERE (actor_id=${sqlLiteral(member.id)} AND idempotency_key=${sqlLiteral(key)}::uuid AND response->>'id'=${sqlLiteral(firstRow.id)}) OR (actor_id=${sqlLiteral(memberUnassigned.id)} AND idempotency_key=${sqlLiteral(acceptKey)}::uuid AND response->>'id'=${sqlLiteral(firstRow.id)}) OR (actor_id=${sqlLiteral(leader.id)} AND idempotency_key=${sqlLiteral(approvalKey)}::uuid AND response->>'id'=${sqlLiteral(firstRow.id)})`)
       if (receiptReadback !== '3') stop('SWAP_LIFECYCLE_RECEIPT_POSTGRES_READBACK_MISMATCH')
+      const payloadBindingReadback = readDatabase(databaseContainer,
+        `SELECT (SELECT count(*) FROM private.rc19_swap_operation_receipts WHERE actor_id=${sqlLiteral(member.id)} AND idempotency_key=${sqlLiteral(key)}::uuid AND action='create' AND request_payload->>'reason'=${sqlLiteral(payload.reason)})::text || '|' || (SELECT count(*) FROM private.rc19_swap_operation_receipts WHERE actor_id=${sqlLiteral(memberSupport.id)} AND idempotency_key=${sqlLiteral(key)}::uuid)::text`)
+      if (payloadBindingReadback !== '1|0') stop('SWAP_RECEIPT_ACTOR_PAYLOAD_POSTGRES_READBACK_MISMATCH')
+      recordPassSwapSubcase('pass-swap-concurrent-create-replay', 'Requester Member', 'ONE_REQUEST_ONE_RECEIPT', false, true)
+      recordPassSwapSubcase('pass-swap-payload-action-actor-binding', 'Requester Member and wrong actor',
+        'SWAP_IDEMPOTENCY_KEY_REUSED_AND_SWAP_NOT_OWNER', true, true)
       passSwapFixtures.push({ passRequestId: firstRow.id, passSourceRegistrationId: source.id,
         passReplacementRegistrationId: acceptedReplacement.id, passSegmentId: source.staffing_segment_id,
         exchangeRequestId: exchange.id, exchangeSourceRegistrationId: swapShiftSource.id,
@@ -1302,17 +1369,20 @@ async function main() {
         `SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(member.id)} AND source_version=${sqlLiteral(marker)} AND status='revoked'`) !== '1') {
         stop('SWAP_REVOKED_MEMBERSHIP_POSTGRES_READBACK_MISMATCH')
       }
+      const revokedReceiptReadback = readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_swap_operation_receipts WHERE actor_id=${sqlLiteral(member.id)} AND idempotency_key=${sqlLiteral(key)}::uuid AND action='create'`)
+      if (revokedReceiptReadback !== '1') stop('SWAP_REVOKED_REPLAY_RECEIPT_READBACK_MISMATCH')
       recordPassSwapSubcase('pass-swap-revoked-membership-replay', 'Requester after Agency revocation',
-        'REPLAY_DENIED_AFTER_MEMBERSHIP_REVOCATION', true)
+        'REPLAY_DENIED_AFTER_MEMBERSHIP_REVOCATION', true, true)
       return { actual: { rpc_code: 'OK' }, database_readback: { status: 'passed', matches_expected: true },
         negative_authorization: { tested: true, passed: true } }
     })
   caseResults.push({ case_id: 'pass-swap-expiry', actor: 'Synthetic requester/candidate/Leader',
-    expected: 'A pending or accepted request expires at its approved action deadline and cannot mutate registrations after expiry.',
-    actual: { rpc_code: 'NOT_IMPLEMENTED_NO_EXPIRED_SWAP_STATUS_OR_OPERATION' },
+    expected: 'Do not introduce an expiry status, deadline, or post-start transition until the Owner approves that policy.',
+    actual: { rpc_code: 'POLICY_PENDING' },
     database_readback: { status: 'not_run', matches_expected: false },
     negative_authorization: { tested: false, passed: false },
-    evidence_scope: 'Source contract review only; current swap schema and RPC expose no expired state or expiry transition.',
+    evidence_scope: 'Issue #93 Owner clarification approves Daily 2-hour and Campaign 24-hour request timing, but leaves expiry and post-start behavior pending; no transition policy is inferred.',
     started_at: new Date().toISOString(), completed_at: new Date().toISOString(), status: 'BLOCKED' })
   await executeCase('external-summary-approval-revisions-privacy-retry', 'Member submitter and Admin reviewer',
     'Authenticated draft/submit/approve calls create replay receipts, immutable approved revision data and an external projection without personnel details.', async () => {
@@ -1415,29 +1485,46 @@ async function main() {
     try {
       if (!externalSummaryFixtures[0]?.reportId) stop('BROWSER_REPORT_FIXTURE_NOT_READY')
       const browserCredentials = credentials.map(item => item.role === 'member'
-        ? { ...item, email: memberSupport.email, password: supportPassword }
+        ? { ...item, email: realtimeMemberEmail, password: realtimeMemberPassword }
         : item)
       const browserMemberEmail = browserCredentials.find(item => item.role === 'member')?.email
-      const browserMember = browserMemberEmail === memberSupport.email
+      const browserMember = browserMemberEmail === realtimeMemberEmail
       if (!browserMember) stop('BROWSER_MEMBER_FIXTURE_MAPPING_FAILED')
+      const browserFixtureReadback = readDatabase(databaseContainer,
+        `SELECT (SELECT count(*) FROM public.shift_registrations WHERE id=${sqlLiteral(browserSourceRegistration.id)} AND user_id=${sqlLiteral(realtimeMember.id)} AND shift_id=${sqlLiteral(browserShiftA)} AND staffing_segment_id=${sqlLiteral(browserSourceSegment.id)} AND status='manually_assigned')::text || '|' || (SELECT count(*) FROM public.shift_registrations WHERE id=${sqlLiteral(browserCounterpartRegistration.id)} AND user_id=${sqlLiteral(memberSupport.id)} AND shift_id=${sqlLiteral(browserShiftB)} AND staffing_segment_id=${sqlLiteral(browserCounterpartSegment.id)} AND status='manually_assigned')::text || '|' || (SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(realtimeMember.id)} AND agency_id=${sqlLiteral(agencyIds.inScope)} AND status='active' AND effective_from<=statement_timestamp() AND (effective_until IS NULL OR effective_until>statement_timestamp()))::text || '|' || (SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(memberBrowserCandidate.id)} AND agency_id=${sqlLiteral(agencyIds.inScope)} AND status='active' AND effective_from<=statement_timestamp() AND (effective_until IS NULL OR effective_until>statement_timestamp()))::text`)
+      if (browserFixtureReadback !== '1|1|1|1') stop('BROWSER_FIXTURE_POSTGRES_READBACK_MISMATCH')
+      const requesterRevoked = readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(member.id)} AND agency_id=${sqlLiteral(agencyIds.inScope)} AND status='revoked' AND effective_until<=statement_timestamp()`)
+      if (requesterRevoked !== '1') stop('BROWSER_REQUESTER_REVOCATION_READBACK_MISMATCH')
       const browserFixturePath = join(required('RUNNER_TEMP'), 'rc19-w4-browser-fixtures.json')
       const browserFixtures = {
-        schema: 'rc19-w4-browser-fixtures/v1', runtimeMarker: marker,
+        schema: 'rc19-w4-browser-fixtures/v1', applicationSha: sha,
+        runtimeMarker: marker, runtimeDatabaseContainer: databaseContainer,
         actors: {
           admin: { authUserId: admin.id, businessUserId: admin.id, role: 'admin' },
           leader: { authUserId: leader.id, businessUserId: leader.id, role: 'leader' },
-          member: { authUserId: memberSupport.id, businessUserId: memberSupport.id, role: 'member' },
+          member: { authUserId: realtimeMember.id, businessUserId: realtimeMember.id, role: 'member' },
         },
-        shiftA: scopedShiftId, shiftB: foreignShiftId,
-        sourceRegistrationId: assignments.find(row => row.user_id === memberSupport.id)?.id ?? '',
-        counterpartRegistrationId: d01OriginalAssignment.id,
-        sourceSegmentId: segmentByKey.get(`${scopedShiftId}:2`) ?? '',
-        counterpartSegmentId: d01K02Segment.id,
-        conflictCandidateId: memberUnassigned.id, clearCandidateId: memberSupport.id,
+        shiftA: browserShiftA, shiftB: browserShiftB,
+        sourceRegistrationId: browserSourceRegistration.id,
+        counterpartRegistrationId: browserCounterpartRegistration.id,
+        sourceSegmentId: browserSourceSegment.id,
+        counterpartSegmentId: browserCounterpartSegment.id,
+        conflictCandidateId: memberSupport.id, clearCandidateId: memberBrowserCandidate.id,
         reportId: externalSummaryFixtures[0].reportId, periodId: randomUUID(),
         approvedSummaryRevision: externalSummaryFixtures[0].approvedRevisionVersion,
         approvedSummaryContent: externalSummaryFixtures[0].content,
         brandId: brandIds[0], agencyId: agencyIds.inScope, shiftId: scopedShiftId,
+        expectedState: {
+          pass_swap_mutations_completed_before_browser: true,
+          requester_membership: 'revoked and independently read back',
+          browser_member_membership: 'active and independent of PASS/Swap lifecycle',
+          browser_member_registration: 'manually assigned to the isolated browser source segment',
+          counterpart_registration: 'manually assigned to the isolated browser counterpart segment',
+          clear_candidate_membership: 'active and independently read back',
+          independent_postgres_readback: browserFixtureReadback,
+        },
+        credentials_included: false,
       }
       if (Object.values(browserFixtures).some(value => value === '')) stop('BROWSER_FIXTURE_MAPPING_FAILED')
       writeFileSync(browserFixturePath, `${JSON.stringify(browserFixtures)}\n`, { mode: 0o600 })

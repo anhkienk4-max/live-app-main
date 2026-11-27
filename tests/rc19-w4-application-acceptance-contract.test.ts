@@ -30,6 +30,7 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /SWAP_APPROVAL_DID_NOT_REVALIDATE_CANDIDATE_CONFLICT/u)
   assert.match(entrypoint, /SWAP_INVALIDATION_ROLLBACK_READBACK_MISMATCH/u)
   assert.match(entrypoint, /pass-swap-expiry[\s\S]*status: 'BLOCKED'/u)
+  assert.match(entrypoint, /pass-swap-expiry[\s\S]*POLICY_PENDING/u)
   assert.match(entrypoint, /lifecycle: passSwapFixtures/u)
   assert.match(entrypoint, /passSwapSubcaseExpectations\.map/u)
   assert.match(entrypoint, /pass-swap-reciprocal-segment-exchange/u)
