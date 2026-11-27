@@ -616,10 +616,15 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       await page.goto(targetUrl)
       await expect(page).not.toHaveURL(/\/login(?:\?|$)/u)
       await page.getByTestId(`calendar-event-${SYNTHETIC_FIXTURES.shiftA}`).click()
+      // Month events open a preview drawer first. The full Shift Detail modal
+      // is a separate, explicit action in the production Calendar flow.
+      const preview = page.getByRole('dialog')
+      await expect(preview).toBeVisible({ timeout: 20_000 })
+      await preview.getByRole('button', { name: /View Full Shift|Xem ca đầy đủ/i }).click()
       const detail = page.getByTestId('shift-detail-modal')
       await expect(detail).toBeVisible({ timeout: 20_000 })
       await expect(detail.getByTestId('shift-detail-segments-section')).toBeVisible({ timeout: 15_000 })
-      await expect(detail.getByTestId('detail-segment-row-1')).toBeVisible({ timeout: 15_000 })
+      await expect(detail.getByTestId('detail-segment-row-2')).toBeVisible({ timeout: 15_000 })
       recordObservedUiAction()
       recordCaseResult('CALENDAR-DETAIL-01', 'PASS', 'Authenticated actor opened the runtime shift and exact assigned staffing segment.')
     })
@@ -878,7 +883,9 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
   test('D07 & D09: Report External Preview respects revision immutability and withholds internal notes and personnel identity', async ({ browser }) => {
     await withAuthenticatedRole(browser, 'admin', async (page) => {
       await page.goto(`/reports?reports_report_id=${SYNTHETIC_FIXTURES.reportId}`)
-      await page.waitForLoadState('networkidle')
+      // Authenticated dashboard pages may keep background requests active;
+      // wait for the actual report action below instead of global network idle.
+      await page.waitForLoadState('domcontentloaded')
 
       const viewDetailBtn = page.getByRole('button', { name: /Xem chi tiết|View details|Tiếp tục/i }).first()
       await expect(viewDetailBtn).toBeVisible({ timeout: 20_000 })
