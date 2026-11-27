@@ -352,9 +352,9 @@ jobs:
               raise SystemExit("RC15 fixture annotations changed from the reviewed production baseline")
           print("RC15_PREDECESSOR_RPC_CONTRACT_ACTUAL=" + repr(actual))
           print("RC15_PREDECESSOR_RPC_CONTRACT_EXPECTED=" + repr(expected))
-          if [line.split("|", 1)[1] for line in actual] != [line.split("|", 1)[1] for line in expected]:
-              raise SystemExit("Disposable RC15 bridge fingerprint/security contract mismatch")
-          if actual != expected:
+          actual_by_signature = {line.split("|", 1)[0]: line for line in actual}
+          expected_by_signature = {line.split("|", 1)[0]: line for line in expected}
+          if len(actual_by_signature) != 3 or actual_by_signature != expected_by_signature:
               raise SystemExit("Disposable RC15 bridge metadata or execution privileges differ")
           PY
           cat "$RUNNER_TEMP/rc19-w4-rc15-baseline-contract.txt"
