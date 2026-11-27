@@ -211,6 +211,18 @@ jobs:
                   "version": path.name.split("_", 1)[0],
                   "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
               })
+          error_tokens = sorted(set(re.findall(
+              r"\b(?:RC\d{1,2}_[A-Z0-9_]+|OPERATIONAL_SETTINGS_NOT_CONFIGURED)\b",
+              decoded,
+          )))
+          token_sources = {
+              token: [item["filename"] for item in migrations
+                      if token in (Path("supabase/migrations") / item["filename"]).read_text()]
+              for token in error_tokens
+          }
+          unique_token_sources = sorted(set(
+              filename for filenames in token_sources.values() for filename in filenames
+          ))
           containers = []
           for line in containers_path.read_text().splitlines() if containers_path.exists() else []:
               parts = line.split("|", 2)
@@ -227,8 +239,13 @@ jobs:
               "candidate_migrations": migrations,
               "candidate_migration_count": len(migrations),
               "log_observed_migration_filenames": observed_files,
+              "last_log_observed_migration_filename": observed_files[-1] if observed_files else None,
               "failed_migration_filenames": failed_files,
               "sqlstates": sqlstates,
+              "log_error_tokens": error_tokens,
+              "error_token_migration_sources": token_sources,
+              "failure_migration_candidate": unique_token_sources[0] if len(unique_token_sources) == 1 else None,
+              "failure_candidate_status": "single_source_match" if len(unique_token_sources) == 1 else "unresolved",
               "executed_ledger_receipts": {"status": "not_verified", "versions": [], "count": None},
               "container_states": containers,
           }
