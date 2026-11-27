@@ -766,7 +766,7 @@ jobs:
             echo "::error::Next.js DATABASE_URL does not match the marked disposable runtime URL"; exit 1;
           }
           database_marker="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc \
-            "SELECT coalesce(obj_description(oid, 'pg_database'), '') FROM pg_database WHERE datname=current_database()")"
+            "SELECT marker FROM public.rc19_w4_application_runtime_probe WHERE marker='$RC19_W4_RUNTIME_DATABASE_MARKER'")"
           [[ "$database_marker" == "$RC19_W4_RUNTIME_DATABASE_MARKER" ]] || {
             echo "::error::Next.js database binding marker does not match the disposable runtime"; exit 1;
           }
