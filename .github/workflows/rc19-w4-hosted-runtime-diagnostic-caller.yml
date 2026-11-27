@@ -31,7 +31,7 @@ jobs:
       - name: Verify exact application and reusable harness pins
         id: reviewed
         env:
-          PINNED_HARNESS_SHA: 31123ecc0c110f113c7cf3d5d68fd30080c4fe4d
+          PINNED_HARNESS_SHA: 42912a9ce83d895f5f8453ec1a3c90fbd10b95ca
         run: |
           set -euo pipefail
           marker=.github/rc19-w4-runtime-diagnostic.json
@@ -49,16 +49,16 @@ jobs:
           git cat-file -e "${application_sha}^{commit}"
           git cat-file -e "${harness_sha}:.github/workflows/rc19-w4-hosted-application-acceptance.yml"
           git show "${harness_sha}:.github/workflows/rc19-w4-hosted-application-acceptance.yml" \
-            | rg -q 'diagnostic_only:' || { echo "::error::Pinned harness lacks bounded diagnostic mode"; exit 1; }
+            | grep -q 'diagnostic_only:' || { echo "::error::Pinned harness lacks bounded diagnostic mode"; exit 1; }
           echo "application_sha=$application_sha" >> "$GITHUB_OUTPUT"
 
   hosted-runtime-diagnostic:
     name: Call exact-SHA bounded disposable runtime diagnostic
     needs: verify-diagnostic-pins
     if: github.ref == 'refs/heads/integration/rc19-w4-codex02'
-    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@31123ecc0c110f113c7cf3d5d68fd30080c4fe4d
+    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@42912a9ce83d895f5f8453ec1a3c90fbd10b95ca
     with:
-      harness_sha: 31123ecc0c110f113c7cf3d5d68fd30080c4fe4d
+      harness_sha: 42912a9ce83d895f5f8453ec1a3c90fbd10b95ca
       application_sha: ${{ needs.verify-diagnostic-pins.outputs.application_sha }}
       run_browser_uat: false
       diagnostic_only: true
