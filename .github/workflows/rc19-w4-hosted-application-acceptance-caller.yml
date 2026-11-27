@@ -1,0 +1,31 @@
+name: RC19 W4 Hosted Application Acceptance Caller (No Deploy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      application_sha:
+        description: Exact reviewed application SHA present in the pinned harness allowlist
+        required: true
+        type: string
+      run_browser_uat:
+        description: Run browser UAT only when the reviewed candidate includes Lane 01 and Antigravity acceptance prerequisites
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc19-w4-hosted-application-acceptance-caller-${{ inputs.application_sha }}
+  cancel-in-progress: false
+
+jobs:
+  hosted-application-acceptance:
+    name: Call pinned disposable hosted acceptance harness
+    if: github.ref == 'refs/heads/integration/rc19-w4-codex02'
+    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@38dd7ae7a374fbb4505b5a95e79c79f060377b42
+    with:
+      harness_sha: 38dd7ae7a374fbb4505b5a95e79c79f060377b42
+      application_sha: ${{ inputs.application_sha }}
+      run_browser_uat: ${{ inputs.run_browser_uat }}
