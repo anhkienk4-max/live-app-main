@@ -162,14 +162,26 @@ export function ReportsList() {
   const [firstRows, setFirstRows] = React.useState<{key:string; rows:Report[]; shifts:Shift[]; total:number} | null>(null)
   const [loadError, setLoadError] = React.useState<unknown>(null)
 
-  const encodedFilters = JSON.stringify({ search: filters.search, from: filters.start || undefined, to: filters.end || undefined,
-    brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds, agencyCodes: filters.agencyCodes,
-    hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds,
-    reportStatuses: filters.reportStatuses, metricsStatuses: filters.metricsStatuses })
+  const encodedFilters = JSON.stringify({ search: filters.search || undefined, from: filters.start || undefined, to: filters.end || undefined,
+    brandIds: filters.brandIds.length ? filters.brandIds : undefined,
+    platformIds: filters.platformIds.length ? filters.platformIds : undefined,
+    campaignIds: filters.campaignIds.length ? filters.campaignIds : undefined,
+    agencyCodes: filters.agencyCodes.length ? filters.agencyCodes : undefined,
+    hostIds: filters.hostIds.length ? filters.hostIds : undefined,
+    supportIds: filters.supportIds.length ? filters.supportIds : undefined,
+    technicalIds: filters.technicalIds.length ? filters.technicalIds : undefined,
+    reportStatuses: filters.reportStatuses.length ? filters.reportStatuses : undefined,
+    metricsStatuses: filters.metricsStatuses.length ? filters.metricsStatuses : undefined })
   const encodedQueueFilters = JSON.stringify({ search: filters.search || undefined, from: filters.start || undefined, to: filters.end || undefined,
-    brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds, agencyCodes: filters.agencyCodes,
-    hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds,
-    reportStatuses: filters.reportStatuses, metricsStatuses: filters.metricsStatuses })
+    brandIds: filters.brandIds.length ? filters.brandIds : undefined,
+    platformIds: filters.platformIds.length ? filters.platformIds : undefined,
+    campaignIds: filters.campaignIds.length ? filters.campaignIds : undefined,
+    agencyCodes: filters.agencyCodes.length ? filters.agencyCodes : undefined,
+    hostIds: filters.hostIds.length ? filters.hostIds : undefined,
+    supportIds: filters.supportIds.length ? filters.supportIds : undefined,
+    technicalIds: filters.technicalIds.length ? filters.technicalIds : undefined,
+    reportStatuses: filters.reportStatuses.length ? filters.reportStatuses : undefined,
+    metricsStatuses: filters.metricsStatuses.length ? filters.metricsStatuses : undefined })
   // Apply/Reset use exactly the same URL-sourced filter contract in every view.
   const syncFilterUrl = React.useCallback((value: Filters) => {
     const keys: (keyof Filters)[] = ['search','start','end','brandIds','platformIds','campaignIds','agencyCodes','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']

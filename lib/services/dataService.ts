@@ -2647,6 +2647,10 @@ export async function getReportObligationPage(query: ListQuery, signal?: AbortSi
     if (filters.brandIds?.length && !filters.brandIds.includes(shift.brand_id)) return []
     if (filters.platformIds?.length && !filters.platformIds.includes(shift.platform_id)) return []
     if (filters.campaignIds?.length && !filters.campaignIds.includes(shift.campaign_id ?? '')) return []
+    if (filters.agencyCodes?.length) {
+      const shiftAgency = normalizeAgencyCode(shift.agency_code) || normalizeAgencyCode((shift as unknown as { custom_fields?: { Agency?: string } }).custom_fields?.Agency)
+      if (!shiftAgency || !filters.agencyCodes.includes(shiftAgency)) return []
+    }
     if (filters.hostIds?.length && !filters.hostIds.some(id => shift.host_id === id || shiftRegistrations.some(item => item.shift_id === shift.id && item.operational_role === 'host' && item.user_id === id && isStaffedRegistration(item)))) return []
     if (filters.supportIds?.length && !filters.supportIds.some(id => shift.support_id === id || shiftRegistrations.some(item => item.shift_id === shift.id && item.operational_role === 'support' && item.user_id === id && isStaffedRegistration(item)))) return []
     if (filters.technicalIds?.length && !filters.technicalIds.some(id => shift.technical_id === id || shiftRegistrations.some(item => item.shift_id === shift.id && item.operational_role === 'technical' && item.user_id === id && isStaffedRegistration(item)))) return []

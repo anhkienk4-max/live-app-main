@@ -99,6 +99,8 @@ export function ReportOperationalNotesReview({
 
   // Revision inspection state
   const [selectedRevisionVersion, setSelectedRevisionVersion] = React.useState<number | undefined>(revisionVersion)
+  const latestVersion = revisionVersion ?? (availableRevisions.length ? Math.max(...availableRevisions.map(r => r.version)) : undefined)
+  const isHistoricalSnapshot = selectedRevisionVersion !== undefined && latestVersion !== undefined && selectedRevisionVersion !== latestVersion
 
   // External Summary Workflow state
   const [workflowSummary, setWorkflowSummary] = React.useState<ReportExternalSummaryWorkflowResponse['summary'] | null>(null)
@@ -111,18 +113,38 @@ export function ReportOperationalNotesReview({
   const [reasonInput, setReasonInput] = React.useState('')
   const [showReasonDialog, setShowReasonDialog] = React.useState<'reject' | 'correction' | null>(null)
 
+  const notesRequestSeq = React.useRef(0)
+  const workflowRequestSeq = React.useRef(0)
+
+  // Clear stale projection data immediately on report, revision, audience or identity changes
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setExternalProjection(null)
+      setNotes([])
+      setError(null)
+      setSchemaUnavailable(false)
+      setSnapshotUnavailable(false)
+      setSummaryError(null)
+      setUnauthorizedMessage(null)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [reportId, selectedRevisionVersion, previewAudience, currentUser?.id])
+
   const loadWorkflowSummary = React.useCallback(async () => {
-    if (!reportId) return
+    if (!reportId || isHistoricalSnapshot) return
+    const seq = ++workflowRequestSeq.current
     setSummaryLoading(true)
     setSummaryError(null)
     setIsStaleConflict(false)
     try {
       const res = await reportExternalSummaryService.getSummary(reportId)
+      if (seq !== workflowRequestSeq.current) return
       setWorkflowSummary(res.summary)
       if (res.summary) {
         setEditContent(res.summary.content)
       }
     } catch (err) {
+      if (seq !== workflowRequestSeq.current) return
       if (err instanceof ReportExternalSummaryServiceError) {
         if (err.status === 404 || err.code === 'REPORT_NOT_FOUND') {
           setWorkflowSummary(null)
@@ -135,11 +157,14 @@ export function ReportOperationalNotesReview({
         setSummaryError(err instanceof Error ? err.message : String(err))
       }
     } finally {
-      setSummaryLoading(false)
+      if (seq === workflowRequestSeq.current) {
+        setSummaryLoading(false)
+      }
     }
-  }, [reportId])
+  }, [reportId, isHistoricalSnapshot])
 
   const loadNotes = React.useCallback(async () => {
+    const seq = ++notesRequestSeq.current
     setLoading(true)
     setError(null)
     setSchemaUnavailable(false)
@@ -156,13 +181,19 @@ export function ReportOperationalNotesReview({
         }
 
         const res = await fetch(`/api/reports/revision-snapshots?${queryParams.toString()}`)
+        if (seq !== notesRequestSeq.current) return
+
         if (res.status === 404) {
-          if (readOnly) {
+          if (previewAudience === 'external') {
+            setExternalProjection(null)
+            setNotes([])
+          } else if (readOnly || selectedRevisionVersion !== undefined) {
             setSnapshotUnavailable(true)
             setNotes(storedSnapshot || [])
           } else {
             if (shiftId) {
               const data = await shiftNoteService.getForShift(shiftId)
+              if (seq !== notesRequestSeq.current) return
               setNotes(data.filter(n => n.status !== 'draft'))
             } else {
               setNotes([])
@@ -186,12 +217,14 @@ export function ReportOperationalNotesReview({
 
         if (!res.ok) {
           const body = await res.json().catch(() => null)
+          if (seq !== notesRequestSeq.current) return
           setError(body?.error?.code || `HTTP_${res.status}`)
           setLoading(false)
           return
         }
 
         const json = await res.json()
+        if (seq !== notesRequestSeq.current) return
         const data = json.data
 
         if (previewAudience === 'external') {
@@ -200,6 +233,7 @@ export function ReportOperationalNotesReview({
           } else {
             setExternalProjection(null)
           }
+          setNotes([])
         } else {
           const source = data?.sourceSnapshot
           if (source && Array.isArray(source.notes)) {
@@ -245,6 +279,7 @@ export function ReportOperationalNotesReview({
         setLoading(false)
         return
       } catch (err: unknown) {
+        if (seq !== notesRequestSeq.current) return
         setError(err instanceof Error ? err.message : String(err))
         setLoading(false)
         return
@@ -258,6 +293,14 @@ export function ReportOperationalNotesReview({
       return
     }
 
+    // 3. For external preview or historical revision without reportId, never fallback to internal operational notes
+    if (previewAudience === 'external' || selectedRevisionVersion !== undefined) {
+      setExternalProjection(null)
+      setNotes([])
+      setLoading(false)
+      return
+    }
+
     if (!shiftId) {
       setNotes([])
       setLoading(false)
@@ -266,9 +309,11 @@ export function ReportOperationalNotesReview({
 
     try {
       const data = await shiftNoteService.getForShift(shiftId)
+      if (seq !== notesRequestSeq.current) return
       setNotes(data.filter(n => n.status !== 'draft'))
       setSchemaUnavailable(false)
     } catch (err: unknown) {
+      if (seq !== notesRequestSeq.current) return
       if (
         err instanceof Error &&
         (err.message.includes('SCHEMA_NOT_DEPLOYED') ||
@@ -279,7 +324,9 @@ export function ReportOperationalNotesReview({
         setNotes([])
       }
     } finally {
-      setLoading(false)
+      if (seq === notesRequestSeq.current) {
+        setLoading(false)
+      }
     }
   }, [reportId, selectedRevisionVersion, previewAudience, readOnly, shiftId, storedSnapshot, isVi])
 
@@ -448,8 +495,6 @@ export function ReportOperationalNotesReview({
     }))
   }, [availableRevisions, revisionVersion])
 
-  const isHistoricalSnapshot = selectedRevisionVersion !== undefined && revisionVersion !== undefined && selectedRevisionVersion < revisionVersion
-
   return (
     <div
       className={`rounded-lg border border-slate-200 bg-white p-3 space-y-3 ${className}`}
@@ -549,7 +594,7 @@ export function ReportOperationalNotesReview({
       )}
 
       {/* External Summary Workflow Section */}
-      {allowWorkflowActions && reportId && (
+      {allowWorkflowActions && reportId && !isHistoricalSnapshot && (
         <div
           className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-3"
           data-testid="external-summary-workflow-card"
@@ -846,6 +891,23 @@ export function ReportOperationalNotesReview({
               {workflowSummary.content}
             </div>
           )}
+        </div>
+      )}
+
+      {allowWorkflowActions && reportId && isHistoricalSnapshot && (
+        <div
+          className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 space-y-1 text-xs text-amber-900"
+          data-testid="historical-revision-immutable-notice"
+        >
+          <div className="flex items-center gap-2 font-medium">
+            <Lock className="h-4 w-4 text-amber-600 shrink-0" />
+            <span>{isVi ? `Bản ghi lịch sử phiên bản v${selectedRevisionVersion} ở trạng thái bất biến.` : `Historical revision snapshot v${selectedRevisionVersion} is immutable.`}</span>
+          </div>
+          <p className="text-[11px] text-amber-800">
+            {isVi
+              ? 'Quy trình tóm tắt đối tác chỉ được áp dụng trên phiên bản báo cáo mới nhất.'
+              : 'External summary workflow actions can only be performed on the latest report revision.'}
+          </p>
         </div>
       )}
 

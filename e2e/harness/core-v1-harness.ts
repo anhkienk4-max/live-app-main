@@ -23,13 +23,13 @@ export interface SmokeResult {
 }
 
 export function readEnvIdentities(): EnvIdentities {
-  const baseURL = process.env.E2E_BASE_URL ?? process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3101'
-  const adminEmail = process.env.E2E_ADMIN_EMAIL
-  const adminPassword = process.env.E2E_ADMIN_PASSWORD
-  const leaderEmail = process.env.E2E_LEADER_EMAIL
-  const leaderPassword = process.env.E2E_LEADER_PASSWORD
-  const memberEmail = process.env.E2E_MEMBER_EMAIL
-  const memberPassword = process.env.E2E_MEMBER_PASSWORD
+  const baseURL = process.env.RC19_W4_NEXT_BASE_URL ?? process.env.RC19_W4_RUNTIME_URL ?? process.env.E2E_BASE_URL ?? process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3101'
+  const adminEmail = process.env.RC19_W4_SYNTHETIC_ADMIN_EMAIL ?? process.env.E2E_ADMIN_EMAIL
+  const adminPassword = process.env.RC19_W4_SYNTHETIC_ADMIN_PASSWORD ?? process.env.E2E_ADMIN_PASSWORD
+  const leaderEmail = process.env.RC19_W4_SYNTHETIC_LEADER_EMAIL ?? process.env.E2E_LEADER_EMAIL
+  const leaderPassword = process.env.RC19_W4_SYNTHETIC_LEADER_PASSWORD ?? process.env.E2E_LEADER_PASSWORD
+  const memberEmail = process.env.RC19_W4_SYNTHETIC_MEMBER_EMAIL ?? process.env.E2E_MEMBER_EMAIL
+  const memberPassword = process.env.RC19_W4_SYNTHETIC_MEMBER_PASSWORD ?? process.env.E2E_MEMBER_PASSWORD
   return {
     baseURL,
     admin: adminEmail && adminPassword ? { email: adminEmail, password: adminPassword } : null,
