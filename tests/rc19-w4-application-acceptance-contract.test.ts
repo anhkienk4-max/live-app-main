@@ -9,7 +9,11 @@ const fixtureManifest = JSON.parse(readFileSync(new URL('../docs/rc19/W4_EXECUTA
   credentials_included: boolean
   runtime_id_policy: string
   attendance_payroll: { status: string }
-  current_staffing_fixture: { d01_atomic_replacement: { case: string; segments: Array<{ segment_index: number }> } }
+  current_staffing_fixture: {
+    d01_atomic_replacement: { case: string; segments: Array<{ segment_index: number }> }
+    pass_swap: { lifecycle_execution_status: string; expiry_status: string }
+    operational_note_lifecycle: { execution_status: string }
+  }
 }
 
 test('application acceptance runs actor-backed Agency, Workforce and receipt cases without upgrading unfinished groups', () => {
@@ -30,6 +34,8 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /passSwapSubcaseExpectations\.map/u)
   assert.match(entrypoint, /pass-swap-reciprocal-segment-exchange/u)
   assert.match(entrypoint, /pass-swap-approval-conflict-invalidation/u)
+  assert.match(entrypoint, /operational-note-draft-submit-review-revisions/u)
+  assert.match(entrypoint, /OPERATIONAL_NOTE_IMMUTABLE_REVISION_READBACK_MISMATCH/u)
   assert.match(entrypoint, /D01'[\s\S]*D11/u)
   assert.match(entrypoint, /const originalD = \[[\s\S]*\['D11'/u)
   assert.match(entrypoint, /const originalL = \[[\s\S]*\['L15'/u)
@@ -65,6 +71,7 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.equal(fixtureManifest.attendance_payroll.status, 'NOT RUN')
   assert.equal(fixtureManifest.current_staffing_fixture.pass_swap.lifecycle_execution_status, 'SOURCE_IMPLEMENTED_NOT_EXECUTED')
   assert.match(fixtureManifest.current_staffing_fixture.pass_swap.expiry_status, /BLOCKED/u)
+  assert.equal(fixtureManifest.current_staffing_fixture.operational_note_lifecycle.execution_status, 'SOURCE_IMPLEMENTED_NOT_EXECUTED')
   assert.match(fixtureManifest.current_staffing_fixture.d01_atomic_replacement.case, /independent PostgreSQL readback/u)
   assert.deepEqual(fixtureManifest.current_staffing_fixture.d01_atomic_replacement.segments.map(row => row.segment_index), [1, 2, 3])
   assert.match(entrypoint, /authenticated-browser'[\s\S]*status: 'NOT RUN'/u)

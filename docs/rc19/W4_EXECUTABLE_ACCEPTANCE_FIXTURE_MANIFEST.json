@@ -57,6 +57,16 @@
       "lifecycle_cases": ["create", "concurrent_retry", "same_key_replay", "changed_payload_rejection", "changed_action_rejection", "wrong_actor_denial", "cross_agency_denial", "stale_version_rejection", "candidate_accept", "accept_replay", "leader_approval", "partial_segment_pass", "reciprocal_segment_exchange", "candidate_rejection", "requester_cancellation", "approval_time_conflict_invalidation", "revoked_membership_replay_denial"],
       "lifecycle_execution_status": "SOURCE_IMPLEMENTED_NOT_EXECUTED",
       "expiry_status": "BLOCKED: current published swap RPC/schema exposes no expiry transition or expired state"
+    },
+    "operational_note_lifecycle": {
+      "shift": "primary synthetic shift, segment 1",
+      "author": "member_requester",
+      "reviewer": "admin",
+      "expected_revision_versions": [1, 2, 3, 4],
+      "expected_terminal_state": "reviewed",
+      "wrong_author_submission": "denied",
+      "stale_edit": "NOTE_VERSION_CONFLICT",
+      "execution_status": "SOURCE_IMPLEMENTED_NOT_EXECUTED"
     }
   },
   "workforce_expected": {

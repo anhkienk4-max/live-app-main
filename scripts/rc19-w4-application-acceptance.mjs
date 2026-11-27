@@ -944,6 +944,86 @@ async function main() {
       return { actual: { rpc_code: 'OK' }, database_readback: { status: 'passed', matches_expected: true },
         negative_authorization: { tested: true, passed: true } }
     })
+  await executeCase('operational-note-draft-submit-review-revisions', 'Assigned Member, wrong author Member, Admin reviewer',
+    'Actor-bound draft replay/edit, stale-version rejection, submit, wrong-author denial, review, immutable revisions and independent PostgreSQL readback.', async () => {
+      const noteIdempotencyKey = randomUUID()
+      const noteContent = `Synthetic D06 note ${randomUUID()}`
+      const noteArgs = { p_action: 'save_draft', p_note_id: null, p_expected_version: null,
+        p_idempotency_key: noteIdempotencyKey, p_shift_id: scopedShiftId, p_business_date: '2099-12-01',
+        p_category: 'attendance', p_note: noteContent, p_actual_event_time: '2099-12-01T03:30:00.000Z',
+        p_affected_role: 'host', p_affected_user_id: member.id,
+        p_staffing_segment_id: segmentByKey.get(`${scopedShiftId}:1`), p_canonical_incident_id: null }
+      const created = await requireNoError(await member.client.rpc('mutate_shift_operational_note_v1', noteArgs),
+        'OPERATIONAL_NOTE_DRAFT_CREATE_FAILED')
+      if (!created?.note?.id || created.note.author_id !== member.id || created.note.workflow_state !== 'draft'
+        || created.note.version !== 1 || created.note.staffing_segment_id !== noteArgs.p_staffing_segment_id) {
+        stop('OPERATIONAL_NOTE_DRAFT_STATE_MISMATCH')
+      }
+      const replay = await requireNoError(await member.client.rpc('mutate_shift_operational_note_v1', noteArgs),
+        'OPERATIONAL_NOTE_DRAFT_REPLAY_FAILED')
+      if (replay.note?.id !== created.note.id || replay.replayed !== true || replay.revision !== 1) {
+        stop('OPERATIONAL_NOTE_DRAFT_REPLAY_MISMATCH')
+      }
+      const editedContent = `${noteContent} edited after shift navigation`
+      const edited = await requireNoError(await member.client.rpc('mutate_shift_operational_note_v1', {
+        ...noteArgs, p_note_id: created.note.id, p_expected_version: 1,
+        p_idempotency_key: randomUUID(), p_note: editedContent,
+      }), 'OPERATIONAL_NOTE_DRAFT_EDIT_FAILED')
+      if (edited.note?.version !== 2 || edited.note.note !== editedContent || edited.note.workflow_state !== 'draft') {
+        stop('OPERATIONAL_NOTE_DRAFT_EDIT_STATE_MISMATCH')
+      }
+      const staleEdit = await member.client.rpc('mutate_shift_operational_note_v1', {
+        ...noteArgs, p_note_id: created.note.id, p_expected_version: 1,
+        p_idempotency_key: randomUUID(), p_note: `${editedContent} stale write`,
+      })
+      if (!staleEdit.error || !String(staleEdit.error.message).includes('NOTE_VERSION_CONFLICT')) {
+        stop('OPERATIONAL_NOTE_STALE_VERSION_NOT_REJECTED')
+      }
+      const reviewArgs = { p_note_id: created.note.id, p_expected_version: 2,
+        p_idempotency_key: randomUUID(), p_shift_id: null, p_business_date: null, p_category: null,
+        p_note: null, p_actual_event_time: null, p_affected_role: null, p_affected_user_id: null,
+        p_staffing_segment_id: null, p_canonical_incident_id: null }
+      const wrongAuthorSubmit = await memberSupport.client.rpc('mutate_shift_operational_note_v1', {
+        ...reviewArgs, p_action: 'submit', p_expected_version: 2,
+      })
+      if (!wrongAuthorSubmit.error || !String(wrongAuthorSubmit.error.message).includes('NOTE_AUTHOR_REQUIRED')) {
+        stop('OPERATIONAL_NOTE_WRONG_AUTHOR_NOT_DENIED')
+      }
+      const submitted = await requireNoError(await member.client.rpc('mutate_shift_operational_note_v1', {
+        ...reviewArgs, p_action: 'submit', p_expected_version: 2,
+      }), 'OPERATIONAL_NOTE_SUBMIT_FAILED')
+      if (submitted.note?.workflow_state !== 'submitted' || submitted.note.version !== 3) {
+        stop('OPERATIONAL_NOTE_SUBMIT_STATE_MISMATCH')
+      }
+      const approved = await requireNoError(await admin.client.rpc('mutate_shift_operational_note_v1', {
+        ...reviewArgs, p_action: 'approve', p_expected_version: 3, p_idempotency_key: randomUUID(),
+      }), 'OPERATIONAL_NOTE_REVIEW_FAILED')
+      if (approved.note?.workflow_state !== 'reviewed' || approved.note.version !== 4) {
+        stop('OPERATIONAL_NOTE_REVIEW_STATE_MISMATCH')
+      }
+      const storedJson = readDatabase(databaseContainer,
+        `SELECT json_build_object('id',id,'shift_id',shift_id,'business_date',business_date,'category',category,'note',note,'author_id',author_id,'version',version,'workflow_state',workflow_state,'staffing_segment_id',staffing_segment_id)::text FROM public.shift_operational_notes WHERE id=${sqlLiteral(created.note.id)} AND deleted_at IS NULL`)
+      let stored
+      try { stored = JSON.parse(storedJson) } catch { stop('OPERATIONAL_NOTE_DATABASE_READBACK_INVALID') }
+      if (!stored || stored.shift_id !== scopedShiftId || stored.author_id !== member.id
+        || stored.business_date !== '2099-12-01' || stored.category !== 'attendance'
+        || stored.note !== editedContent || stored.version !== 4 || stored.workflow_state !== 'reviewed'
+        || stored.staffing_segment_id !== noteArgs.p_staffing_segment_id) stop('OPERATIONAL_NOTE_DATABASE_READBACK_MISMATCH')
+      const revisionsJson = readDatabase(databaseContainer,
+        `SELECT coalesce(json_agg(json_build_object('version',version,'action',action,'snapshot',snapshot,'actor_id',actor_id) ORDER BY version),'[]'::json)::text FROM public.shift_operational_note_revisions WHERE note_id=${sqlLiteral(created.note.id)}`)
+      let revisions
+      try { revisions = JSON.parse(revisionsJson) } catch { stop('OPERATIONAL_NOTE_REVISION_READBACK_INVALID') }
+      if (!Array.isArray(revisions) || revisions.length !== 4 || revisions.map(row => row.version).join(',') !== '1,2,3,4'
+        || revisions[0].snapshot?.note !== noteContent || revisions[1].snapshot?.note !== editedContent
+        || revisions[3].snapshot?.workflow_state !== 'reviewed') stop('OPERATIONAL_NOTE_IMMUTABLE_REVISION_READBACK_MISMATCH')
+      const receiptCount = readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_shift_note_idempotency WHERE note_id=${sqlLiteral(created.note.id)} AND actor_id IN (${sqlLiteral(member.id)},${sqlLiteral(admin.id)})`)
+      if (receiptCount !== '4') stop('OPERATIONAL_NOTE_RECEIPT_POSTGRES_READBACK_MISMATCH')
+      return { actual: { rpc_code: 'DRAFT_EDIT_SUBMIT_REVIEW_OK', revision_count: 4,
+        replayed: replay.replayed === true, stale_write: 'NOTE_VERSION_CONFLICT' },
+        database_readback: { status: 'passed', matches_expected: true },
+        negative_authorization: { tested: true, passed: true } }
+    })
   await executeCase('pass-swap-same-key-concurrency-and-replay', 'Requester Member',
     'Exact-segment PASS, reciprocal Exchange, submit/accept/reject/Leader approval/cancel, conflict validation, same-key replay after authorization changes, and persisted assignment identities.', async () => {
       const source = assignments.find(row => row.user_id === member.id)
@@ -1512,7 +1592,8 @@ async function main() {
       area: item.case_id.startsWith('delta-d01-') ? 'atomic_staffing_replacement'
         : item.case_id.startsWith('agency-') ? 'brand_agency_authorization_boundaries'
         : item.case_id.startsWith('workforce-') ? 'workforce_reporting'
-          : item.case_id.startsWith('external-summary-') ? 'external_summary' : 'pass_swap_lifecycle',
+          : item.case_id.startsWith('external-summary-') ? 'external_summary'
+            : item.case_id.startsWith('operational-note-') ? 'operational_notes_lifecycle' : 'pass_swap_lifecycle',
       source_case_ids: item.case_id === 'delta-d01-atomic-skip-replacement' ? ['D01'] : [item.case_id],
       source_criteria: [{ id: item.case_id === 'delta-d01-atomic-skip-replacement' ? 'D01' : item.case_id,
         criterion: item.case_id === 'delta-d01-atomic-skip-replacement'
