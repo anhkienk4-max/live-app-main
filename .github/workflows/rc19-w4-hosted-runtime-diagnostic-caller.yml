@@ -64,6 +64,6 @@ jobs:
     with:
       harness_sha: 4a3d2de26bebe804229bbc632da0b38007bd2823
       application_sha: ${{ needs.verify-diagnostic-pins.outputs.application_sha }}
-      run_browser_uat: ${{ needs.verify-diagnostic-pins.outputs.browser_uat }}
+      run_browser_uat: ${{ fromJSON(needs.verify-diagnostic-pins.outputs.browser_uat) }}
       diagnostic_only: true
       diagnostic_browser_uat: true
