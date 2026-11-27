@@ -936,7 +936,7 @@ jobs:
                runtime_database_marker_match:(.runtime_database_marker == $marker),
                synthetic_users,authorization,browser_uat,
                cases:[.cases[]|{case_id,status,evidence_scope}],
-               browser_cases:[.browser_cases[]|{case_id,status,database_readback:{status:.database_readback.status,matches_expected:.database_readback.matches_expected},browser_interaction:{performed:.browser_interaction.performed,authenticated:.browser_interaction.authenticated,status:.browser_interaction.status}}],
+               browser_cases:[.browser_cases[]|{case_id,status,actual:{failure_class:.actual.failure_class},database_readback:{status:.database_readback.status,matches_expected:.database_readback.matches_expected},browser_interaction:{performed:.browser_interaction.performed,authenticated:.browser_interaction.authenticated,status:.browser_interaction.status}}],
                fixtures:{authenticated_users:.fixtures.authenticated_users,brands:.fixtures.brands,
                  platforms:.fixtures.platforms,parent_shifts:.fixtures.parent_shifts,
                  staffing_segments:.fixtures.staffing_segments,canonical_assignments:.fixtures.canonical_assignments,
@@ -1030,7 +1030,6 @@ jobs:
           realtime_container="${RC19_W4_RUNTIME_DATABASE_CONTAINER/supabase_db_/supabase_realtime_}"
           realtime_image="$(docker inspect --format '{{.Config.Image}}|{{.Image}}' "$realtime_container" 2>/dev/null || echo unavailable)"
           realtime_container_state="$(docker inspect --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$realtime_container" 2>/dev/null || echo unavailable)"
-          realtime_image="$(docker inspect --format '{{.Config.Image}}|{{.Image}}' "$realtime_container" 2>/dev/null || echo unavailable)"
           export REALTIME_URL="$RC19_W4_RUNTIME_URL"
           export REALTIME_ANON_KEY="$RC19_W4_RUNTIME_ANON_KEY"
           export REALTIME_SERVICE_KEY="$RC19_W4_RUNTIME_SERVICE_ROLE_KEY"
@@ -1078,12 +1077,14 @@ jobs:
           if (![fixture.actor?.auth_user_id, fixture.actor?.shift_id, fixture.actor?.registration_id,
             fixture.actor?.staffing_segment_id, fixture.actor?.brand_id, fixture.actor?.agency_id,
             fixture.wrong_scope_actor?.auth_user_id].every(safeUuid)) fail('REALTIME_FIXTURE_ID_INVALID')
-          const logins = await Promise.all([
-            member.auth.signInWithPassword({ email: fixture.actor.email, password: fixture.actor.password }),
-            wrong.auth.signInWithPassword({ email: fixture.wrong_scope_actor.email, password: fixture.wrong_scope_actor.password }),
-          ])
-          const [login, wrongLogin] = logins
-          if (login.error || !login.data.session || wrongLogin.error || !wrongLogin.data.session) fail('REALTIME_SYNTHETIC_ACTOR_LOGIN_FAILED')
+          const login = await member.auth.signInWithPassword({ email: fixture.actor.email, password: fixture.actor.password })
+          diagnostic.member_login_ok = !login.error && Boolean(login.data.session)
+          if (!diagnostic.member_login_ok) fail('REALTIME_MEMBER_LOGIN_FAILED')
+          if (login.data.user?.id !== fixture.actor.auth_user_id) fail('REALTIME_MEMBER_LOGIN_IDENTITY_MISMATCH')
+          const wrongLogin = await wrong.auth.signInWithPassword({ email: fixture.wrong_scope_actor.email, password: fixture.wrong_scope_actor.password })
+          diagnostic.wrong_scope_login_ok = !wrongLogin.error && Boolean(wrongLogin.data.session)
+          if (!diagnostic.wrong_scope_login_ok) fail('REALTIME_WRONG_BRAND_ACTOR_LOGIN_FAILED')
+          if (wrongLogin.data.user?.id !== fixture.wrong_scope_actor.auth_user_id) fail('REALTIME_WRONG_BRAND_LOGIN_IDENTITY_MISMATCH')
           const identity = await member.auth.getUser()
           diagnostic.actor_identity_match = !identity.error && identity.data.user?.id === fixture.actor.auth_user_id
             && login.data.user?.id === fixture.actor.business_user_id
@@ -1176,7 +1177,7 @@ jobs:
           safe_keys = {"fixture_marker_match", "actor_identity_match", "active_membership_and_scope",
               "authenticated_token_bound", "subscription_status", "subscription_ready", "row_readback",
               "wal_progressed", "matching_decoded_event", "wrong_scope_event_denied", "realtime_versions",
-              "event_type", "update_wal"}
+              "event_type", "update_wal", "member_login_ok", "wrong_scope_login_ok"}
           safe = {key: value for key, value in diagnostic.items() if key in safe_keys}
           safe.update({"status": "failed", "raw_log_sha256": __import__("hashlib").sha256(log_path.read_bytes()).hexdigest(),
               "raw_log_in_artifact": False})
@@ -1258,7 +1259,7 @@ jobs:
           allowed = {"status", "fixture_marker_match", "actor_identity_match", "active_membership_and_scope",
               "authenticated_token_bound", "subscription_status", "subscription_ready", "row_readback",
               "wal_progressed", "matching_decoded_event", "wrong_scope_event_denied", "realtime_versions",
-              "event_type", "update_wal"}
+              "event_type", "update_wal", "member_login_ok", "wrong_scope_login_ok"}
           safe = {key: value for key, value in data.items() if key in allowed}
           Path(sys.argv[2]).write_text(json.dumps(safe, separators=(",", ":")))
           PY

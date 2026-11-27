@@ -41,13 +41,13 @@ jobs:
           reviewed="$(jq -er '.reviewed' "$marker")"
           application_sha="$(jq -er '.application_sha | strings' "$marker")"
           harness_sha="$(jq -er '.harness_sha | strings' "$marker")"
+          jq -e '.browser_uat_requested | type == "boolean"' "$marker" > /dev/null || { echo "::error::Browser UAT request must be an explicit boolean"; exit 1; }
           browser_uat="$(jq -er '.browser_uat_requested | tostring' "$marker")"
           valid_sha() { [[ ${#1} -eq 40 && "$1" != *[!0-9a-f]* ]]; }
           [[ "$mode" == "bounded-runtime-diagnostic" && "$reviewed" == true ]]
           valid_sha "$application_sha"
           valid_sha "$harness_sha"
           [[ "$harness_sha" == "$PINNED_HARNESS_SHA" ]]
-          [[ "$browser_uat" == true ]] || { echo "::error::This caller requires an explicitly reviewed browser UAT request"; exit 1; }
           [[ "$(tr -d '[:space:]' < .github/rc19-w4-reviewed-application.sha)" == "$application_sha" ]]
           git cat-file -e "${application_sha}^{commit}"
           git cat-file -e "${harness_sha}:.github/workflows/rc19-w4-hosted-application-acceptance.yml"
