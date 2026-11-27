@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       application_sha: ${{ steps.reviewed.outputs.application_sha }}
+      browser_uat: ${{ steps.reviewed.outputs.browser_uat }}
     steps:
       - name: Checkout triggering integration commit without credentials
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -31,7 +32,7 @@ jobs:
       - name: Verify exact application and reusable harness pins
         id: reviewed
         env:
-          PINNED_HARNESS_SHA: 0ef0447f024d3f66a2c1b4e38110a7cbc042bb7d
+          PINNED_HARNESS_SHA: 4a3d2de26bebe804229bbc632da0b38007bd2823
         run: |
           set -euo pipefail
           marker=.github/rc19-w4-runtime-diagnostic.json
@@ -40,25 +41,29 @@ jobs:
           reviewed="$(jq -er '.reviewed' "$marker")"
           application_sha="$(jq -er '.application_sha | strings' "$marker")"
           harness_sha="$(jq -er '.harness_sha | strings' "$marker")"
+          browser_uat="$(jq -er '.browser_uat_requested | tostring' "$marker")"
           valid_sha() { [[ ${#1} -eq 40 && "$1" != *[!0-9a-f]* ]]; }
           [[ "$mode" == "bounded-runtime-diagnostic" && "$reviewed" == true ]]
           valid_sha "$application_sha"
           valid_sha "$harness_sha"
           [[ "$harness_sha" == "$PINNED_HARNESS_SHA" ]]
+          [[ "$browser_uat" == true ]] || { echo "::error::This caller requires an explicitly reviewed browser UAT request"; exit 1; }
           [[ "$(tr -d '[:space:]' < .github/rc19-w4-reviewed-application.sha)" == "$application_sha" ]]
           git cat-file -e "${application_sha}^{commit}"
           git cat-file -e "${harness_sha}:.github/workflows/rc19-w4-hosted-application-acceptance.yml"
           git show "${harness_sha}:.github/workflows/rc19-w4-hosted-application-acceptance.yml" \
             | grep -q 'diagnostic_only:' || { echo "::error::Pinned harness lacks bounded diagnostic mode"; exit 1; }
           echo "application_sha=$application_sha" >> "$GITHUB_OUTPUT"
+          echo "browser_uat=$browser_uat" >> "$GITHUB_OUTPUT"
 
   hosted-runtime-diagnostic:
     name: Call exact-SHA bounded disposable runtime diagnostic
     needs: verify-diagnostic-pins
     if: github.ref == 'refs/heads/integration/rc19-w4-codex02'
-    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@0ef0447f024d3f66a2c1b4e38110a7cbc042bb7d
+    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@4a3d2de26bebe804229bbc632da0b38007bd2823
     with:
-      harness_sha: 0ef0447f024d3f66a2c1b4e38110a7cbc042bb7d
+      harness_sha: 4a3d2de26bebe804229bbc632da0b38007bd2823
       application_sha: ${{ needs.verify-diagnostic-pins.outputs.application_sha }}
-      run_browser_uat: false
+      run_browser_uat: ${{ needs.verify-diagnostic-pins.outputs.browser_uat }}
       diagnostic_only: true
+      diagnostic_browser_uat: true
