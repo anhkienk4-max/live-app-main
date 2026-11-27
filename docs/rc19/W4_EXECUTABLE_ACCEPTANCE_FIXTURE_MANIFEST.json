@@ -1,0 +1,89 @@
+{
+  "schema": "rc19-w4-synthetic-fixtures/v1",
+  "status": "SOURCE_CONTRACT_ONLY",
+  "runtime_ids_available": false,
+  "runtime_id_policy": "The application acceptance runner generates fresh IDs for each marked disposable run and emits them in fixture_manifest. Codex 02 and Antigravity must consume the exact manifest from the same runtime marker; never hard-code an ID from another run.",
+  "credentials_included": false,
+  "runtime_binding": {
+    "marker_env": "RC19_W4_RUNTIME_DATABASE_MARKER",
+    "database_container_env": "RC19_W4_RUNTIME_DATABASE_CONTAINER",
+    "independent_postgresql_readback": true,
+    "readback_target": "The database container associated with the same disposable marker used by GoTrue and PostgREST."
+  },
+  "actors": [
+    { "key": "admin", "role": "admin", "business_user_mapping": "auth_user_id equals business_users.id", "scope": "Existing Admin permission policy; no Agency behavior is invented." },
+    { "key": "leader_in_scope", "role": "leader", "scope": "Primary synthetic Brand plus active primary synthetic Agency membership." },
+    { "key": "member_requester", "role": "member", "scope": "Own active identity, primary synthetic Agency membership, and exact source registration." },
+    { "key": "member_support_submitter", "role": "member", "scope": "Primary synthetic Brand and active primary synthetic Agency membership." },
+    { "key": "member_clear_candidate", "role": "member", "scope": "Active primary synthetic Agency membership; no shift registration." },
+    { "key": "leader_wrong_brand", "role": "leader", "scope": "Active scope for second synthetic Brand only." },
+    { "key": "member_wrong_agency", "role": "member", "scope": "Active membership in second synthetic Agency; no primary Agency membership." },
+    { "key": "leader_revoked_agency", "role": "leader", "scope": "Primary Brand scope remains active while primary Agency membership is revoked." }
+  ],
+  "runtime_generated_id_fields": {
+    "actors": ["auth_user_id", "business_user_id"],
+    "brands": ["id"],
+    "agencies": ["id"],
+    "shifts": ["id"],
+    "staffing_segments": ["id", "shift_id", "segment_index"],
+    "registrations": ["id", "shift_id", "business_user_id", "staffing_segment_id", "role"],
+    "external_summaries": ["reportId", "summaryId", "approvedRevisionId", "approvedRevisionVersion"]
+  },
+  "current_staffing_fixture": {
+    "primary_shift": { "business_date": "2099-12-01", "segments": [
+      { "segment_index": 1, "start": "10:00", "end": "12:00", "role": "host", "registration_actor": "member_requester" },
+      { "segment_index": 2, "start": "12:00", "end": "14:00", "role": "support", "registration_actor": "member_support_submitter" }
+    ] },
+    "second_brand_shift": { "business_date": "2099-12-02", "segments": [
+      { "segment_index": 1, "start": "10:00", "end": "14:00", "role": "host" }
+    ] },
+    "pass_swap": {
+      "source_actor": "member_requester",
+      "source_registration": "Exact registration on primary shift segment 1",
+      "clear_replacement_candidate": "member_clear_candidate",
+      "self_candidate_denial": "member_requester",
+      "cross_agency_candidate": "member_wrong_agency",
+      "overlap_conflict_candidate": null,
+      "overlap_case_status": "NOT RUN"
+    }
+  },
+  "workforce_expected": {
+    "month": "2099-12",
+    "filters": ["primary synthetic Agency", "primary synthetic Brand"],
+    "totals": {
+      "total_incidents": 2,
+      "total_distinct_shifts": 1,
+      "total_distinct_staff": 2,
+      "pending_count": 1,
+      "confirmed_count": 1,
+      "confirmed_late_count": 1,
+      "verified_late_minutes_total": 7
+    }
+  },
+  "external_summary_expected": {
+    "revision_ids": "Generated report, summary and revision IDs are returned in the runner report after execution.",
+    "approval": "Admin approval creates an immutable external projection; correction request leaves the approved historical revision unchanged.",
+    "retry_receipt": "Concurrent identical draft calls with one UUID key return one summary and one persisted receipt."
+  },
+  "attendance_payroll": {
+    "status": "NOT RUN",
+    "expected": "No Attendance or Payroll fixture is currently written by this runner; no temporal result may be inferred."
+  },
+  "environment_variable_names": [
+    "RC19_W4_EXPECTED_APPLICATION_SHA",
+    "RC19_W4_RUNTIME_URL",
+    "RC19_W4_RUNTIME_DATABASE_URL",
+    "RC19_W4_RUNTIME_DATABASE_MARKER",
+    "RC19_W4_RUNTIME_DATABASE_CONTAINER",
+    "RC19_W4_RUNTIME_ANON_KEY",
+    "RC19_W4_RUNTIME_SERVICE_ROLE_KEY",
+    "RC19_W4_SYNTHETIC_ADMIN_EMAIL",
+    "RC19_W4_SYNTHETIC_ADMIN_PASSWORD",
+    "RC19_W4_SYNTHETIC_LEADER_EMAIL",
+    "RC19_W4_SYNTHETIC_LEADER_PASSWORD",
+    "RC19_W4_SYNTHETIC_MEMBER_EMAIL",
+    "RC19_W4_SYNTHETIC_MEMBER_PASSWORD",
+    "RC19_W4_RUN_BROWSER_UAT",
+    "RC19_W4_NEXT_BASE_URL"
+  ]
+}

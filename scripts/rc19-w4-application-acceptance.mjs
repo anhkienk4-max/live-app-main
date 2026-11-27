@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 
@@ -32,6 +32,110 @@ function parseLoopbackUrl(value, expectedPort, code) {
   return url.origin
 }
 
+async function runBrowserAcceptance(credentials) {
+  const appOrigin = parseLoopbackUrl(required('RC19_W4_NEXT_BASE_URL'), 3000, 'NEXT_APP_URL_NOT_DISPOSABLE_LOOPBACK')
+  const readiness = await fetch(`${appOrigin}/login`, { signal: AbortSignal.timeout(10000) })
+  if (readiness.status !== 200) stop('NEXT_APP_NOT_READY_FOR_BROWSER_UAT')
+  const cli = join(root, 'node_modules', '@playwright', 'test', 'cli.js')
+  const spec = join(root, 'e2e', 'rc19-w4-browser-acceptance.spec.ts')
+  const config = join(root, 'playwright.rc19-w4-hosted-acceptance.config.ts')
+  if (!existsSync(cli) || !existsSync(spec) || !existsSync(config)) stop('BROWSER_ACCEPTANCE_INPUT_MISSING')
+  const byRole = Object.fromEntries(credentials.map(item => [item.role, item]))
+  const result = spawnSync(process.execPath, [cli, 'test', spec, `--config=${config}`, '--reporter=json'], {
+    cwd: root,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+    env: {
+      ...process.env,
+      E2E_BASE_URL: appOrigin,
+      E2E_ADMIN_EMAIL: byRole.admin.email,
+      E2E_ADMIN_PASSWORD: byRole.admin.password,
+      E2E_LEADER_EMAIL: byRole.leader.email,
+      E2E_LEADER_PASSWORD: byRole.leader.password,
+      E2E_MEMBER_EMAIL: byRole.member.email,
+      E2E_MEMBER_PASSWORD: byRole.member.password,
+    },
+  })
+  if (result.error) stop('BROWSER_ACCEPTANCE_RUNNER_FAILED')
+  let playwrightReport
+  try {
+    const start = result.stdout.indexOf('{')
+    playwrightReport = JSON.parse(result.stdout.slice(start))
+  } catch {
+    stop('BROWSER_ACCEPTANCE_REPORT_INVALID')
+  }
+  const stats = playwrightReport?.stats
+  if (!stats || !Number.isInteger(stats.expected) || !Number.isInteger(stats.skipped)
+    || !Number.isInteger(stats.unexpected) || !Number.isInteger(stats.flaky)) {
+    stop('BROWSER_ACCEPTANCE_REPORT_INVALID')
+  }
+  const suiteCases = []
+  let browserInteractionCount = 0
+  let authenticatedBrowserInteractionCount = 0
+  let authenticatedTestCount = 0
+  const countInteractions = steps => {
+    for (const step of steps ?? []) {
+      if (/^(?:locator\.(?:click|fill|selectOption|check|uncheck|press)|page\.(?:goto|reload|goBack|goForward))\b/u.test(step.title ?? '')) {
+        browserInteractionCount += 1
+      }
+      countInteractions(step.steps)
+    }
+  }
+  const collectCases = suite => {
+    for (const nested of suite.suites ?? []) collectCases(nested)
+    for (const specItem of suite.specs ?? []) {
+      for (const testItem of specItem.tests ?? []) {
+        const lastResult = testItem.results?.at(-1)
+        const interactionCountBeforeTest = browserInteractionCount
+        const uiStatus = testItem.status === 'expected' && lastResult?.status === 'passed' ? 'PASS'
+          : testItem.status === 'skipped' || testItem.expectedStatus === 'skipped' ? 'NOT RUN' : 'FAIL'
+        countInteractions(lastResult?.steps)
+        const status = uiStatus === 'PASS' ? 'BLOCKED' : uiStatus
+        const isAnonymousDenial = /^L08:/u.test(specItem.title)
+        const authenticatesActor = /^(?:SWAP-\d+|D0[356789](?:\s|:)|ATT-01|PAY-01|L0[1-7]|L0[9]|L1[0-5]):/u.test(specItem.title)
+        const testInteractionCount = browserInteractionCount - interactionCountBeforeTest
+        if (uiStatus === 'PASS' && authenticatesActor) {
+          authenticatedTestCount += 1
+          authenticatedBrowserInteractionCount += testInteractionCount
+        }
+        suiteCases.push({
+          case_id: `browser:${specItem.title}`,
+          actor: isAnonymousDenial ? 'Anonymous' : 'Synthetic Admin/Leader/Member as specified by authenticated browser test',
+          expected: specItem.title,
+          actual: { http_status: readiness.status, rpc_code: uiStatus },
+          database_readback: { status: 'not_asserted_by_browser_suite', matches_expected: false },
+          negative_authorization: { tested: isAnonymousDenial, passed: isAnonymousDenial && uiStatus === 'PASS' },
+          browser_interaction: { performed: uiStatus === 'PASS' && testInteractionCount > 0,
+            authenticated: uiStatus === 'PASS' && authenticatesActor && !isAnonymousDenial,
+            interaction_count: testInteractionCount, status },
+          evidence_scope: 'Authenticated Playwright against exact local Next.js app; this UI assertion does not replace independent PostgreSQL readback.',
+          status,
+        })
+      }
+    }
+  }
+  for (const topSuite of playwrightReport.suites ?? []) collectCases(topSuite)
+  if (suiteCases.length === 0) stop('BROWSER_ACCEPTANCE_CASES_MISSING')
+  const suitePassed = result.status === 0 && stats.expected > 0 && stats.skipped === 0
+    && stats.unexpected === 0 && stats.flaky === 0
+  return {
+    app_ready: true,
+    readiness_http_status: readiness.status,
+    ran: true,
+    suite_passed: suitePassed,
+    passed: false,
+    authenticated: authenticatedTestCount > 0 && authenticatedBrowserInteractionCount > 0,
+    interaction_count: authenticatedBrowserInteractionCount,
+    expected: stats.expected,
+    skipped: stats.skipped,
+    failed: stats.unexpected,
+    flaky: stats.flaky,
+    cases: suiteCases,
+    status: suitePassed ? 'BLOCKED' : 'FAIL',
+    blocker: suitePassed ? 'BROWSER_PERSISTED_READBACK_NOT_ASSERTED' : null,
+  }
+}
+
 function candidateSha() {
   try {
     return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
@@ -60,6 +164,23 @@ function expectedSha() {
     stop('APPLICATION_SHA_ATTESTATION_INVALID')
   }
   return manifest.application_sha
+}
+
+function persistWorkflowEvidence(report) {
+  const runnerTemp = process.env.RUNNER_TEMP?.trim()
+  if (!runnerTemp) return
+  const directory = join(runnerTemp, 'rc19-w4-app-artifact')
+  const artifact = join(directory, 'acceptance.json')
+  if (!existsSync(artifact)) return
+  try {
+    const current = JSON.parse(readFileSync(artifact, 'utf8'))
+    const combined = { ...current, rc19_w4_application_report: report,
+      steps: { ...current.steps, application: report } }
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(artifact, `${JSON.stringify(combined)}\n`, { mode: 0o600 })
+  } catch {
+    stop('ACCEPTANCE_EVIDENCE_WRITE_FAILED')
+  }
 }
 
 function validateSha(value) {
@@ -103,9 +224,10 @@ function seedSyntheticAgencyFixtures(databaseContainer, marker, actors, shifts) 
     [actors.leader.id, agencyIds.inScope, 'leader-in-scope', 'active'],
     [actors.member.id, agencyIds.inScope, 'member-in-scope', 'active'],
     [actors.memberSupport.id, agencyIds.inScope, 'member-support-in-scope', 'active'],
+    [actors.memberUnassigned.id, agencyIds.inScope, 'member-unassigned-in-scope', 'active'],
     [actors.leaderOtherBrand.id, agencyIds.outOfScope, 'leader-other-brand', 'active'],
     [actors.memberOutAgency.id, agencyIds.outOfScope, 'member-out-of-scope', 'active'],
-    [actors.memberRevoked.id, agencyIds.inScope, 'member-revoked', 'revoked'],
+    [actors.leaderRevoked.id, agencyIds.inScope, 'leader-revoked', 'revoked'],
   ]
   const lines = ['BEGIN']
   for (const [id, key, name] of agencies) {
@@ -137,6 +259,35 @@ function seedSyntheticAgencyFixtures(databaseContainer, marker, actors, shifts) 
   } catch {
     stop('AGENCY_FIXTURE_PROVISIONING_FAILED')
   }
+}
+
+function readDatabase(databaseContainer, query) {
+  if (!/^supabase_db_[a-z0-9-]+$/u.test(databaseContainer)) stop('DATABASE_CONTAINER_INVALID')
+  try {
+    return execFileSync('docker', ['exec', databaseContainer, 'psql', '-U', 'postgres', '-d', 'postgres',
+      '-v', 'ON_ERROR_STOP=1', '-Atqc', query], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  } catch {
+    stop('DATABASE_READBACK_FAILED')
+  }
+}
+
+function seedSyntheticIncidents(databaseContainer, marker, actors, shifts, assignments, segments) {
+  const host = assignments.find(row => row.user_id === actors.member.id)
+  const support = assignments.find(row => row.user_id === actors.memberSupport.id)
+  const hostSegment = segments.find(row => row.shift_id === shifts.inScope && row.segment_index === 1)
+  const supportSegment = segments.find(row => row.shift_id === shifts.inScope && row.segment_index === 2)
+  if (!host || !support || !hostSegment || !supportSegment) stop('WORKFORCE_INCIDENT_FIXTURE_SOURCE_MISSING')
+  const pendingId = randomUUID()
+  const confirmedId = randomUUID()
+  const statements = [
+    'BEGIN',
+    `INSERT INTO private.rc19_staff_incidents (id,shift_id,staffing_segment_id,original_registration_id,original_staff_id,operational_role,business_date,incident_type,review_state,effective_at,reason,created_by) VALUES (${sqlLiteral(pendingId)}::uuid,${sqlLiteral(shifts.inScope)},${sqlLiteral(hostSegment.id)},${sqlLiteral(host.id)},${sqlLiteral(actors.member.id)},'host','2099-12-01','skip','pending','2099-12-01T12:00:00Z',${sqlLiteral(`${marker} synthetic pending incident`)},${sqlLiteral(actors.admin.id)})`,
+    `INSERT INTO private.rc19_staff_incidents (id,shift_id,staffing_segment_id,original_registration_id,original_staff_id,operational_role,business_date,incident_type,review_state,effective_at,reason,verified_late_minutes,created_by) VALUES (${sqlLiteral(confirmedId)}::uuid,${sqlLiteral(shifts.inScope)},${sqlLiteral(supportSegment.id)},${sqlLiteral(support.id)},${sqlLiteral(actors.memberSupport.id)},'support','2099-12-01','late','confirmed','2099-12-01T13:00:00Z',${sqlLiteral(`${marker} synthetic confirmed incident`)},7,${sqlLiteral(actors.admin.id)})`,
+    'COMMIT',
+    `SELECT count(*) FROM private.rc19_staff_incidents WHERE id IN (${sqlLiteral(pendingId)}::uuid,${sqlLiteral(confirmedId)}::uuid)`,
+  ]
+  if (readDatabase(databaseContainer, `${statements.join(';')};`) !== '2') stop('WORKFORCE_INCIDENT_FIXTURE_READBACK_MISMATCH')
+  return { pendingId, confirmedId }
 }
 
 async function requireNoError(result, code) {
@@ -243,10 +394,6 @@ async function createShift(admin, service, brandId, platformId, title, date, seg
 }
 
 async function main() {
-  if (process.env.RC19_W4_RUN_BROWSER_UAT?.trim().toLowerCase() === 'true') {
-    stop('BROWSER_UAT_REQUIRES_SEPARATE_REVIEWED_APP_RUNTIME')
-  }
-
   const sha = validateSha(candidateSha())
   if (sha !== validateSha(expectedSha())) stop('APPLICATION_SHA_MISMATCH')
   assertNoRemoteLink()
@@ -309,9 +456,9 @@ async function main() {
     createActor(service, url, anonKey, 'member', `rc19-${randomUUID()}-unassigned@example.test`, unassignedPassword, 'member-unassigned'),
     createActor(service, url, anonKey, 'leader', `rc19-${randomUUID()}-other-brand@example.test`, foreignLeaderPassword, 'leader-other-brand'),
   ])
-  const [memberOutAgency, memberRevoked] = await Promise.all([
+  const [memberOutAgency, leaderRevoked] = await Promise.all([
     createActor(service, url, anonKey, 'member', `rc19-${randomUUID()}-out-agency@example.test`, `${randomBytes(24).toString('base64url')}Aa3!`, 'member-out-agency'),
-    createActor(service, url, anonKey, 'member', `rc19-${randomUUID()}-revoked@example.test`, `${randomBytes(24).toString('base64url')}Rb9!`, 'member-revoked'),
+    createActor(service, url, anonKey, 'leader', `rc19-${randomUUID()}-revoked@example.test`, `${randomBytes(24).toString('base64url')}Rb9!`, 'leader-revoked'),
   ])
 
   const brandIds = [randomUUID(), randomUUID()]
@@ -325,7 +472,7 @@ async function main() {
   })
   await requireNoError(platform, 'PLATFORM_FIXTURE_CREATE_FAILED')
 
-  for (const [actorId, brandId] of [[leader.id, brandIds[0]], [leaderOtherBrand.id, brandIds[1]]]) {
+  for (const [actorId, brandId] of [[leader.id, brandIds[0]], [leaderOtherBrand.id, brandIds[1]], [leaderRevoked.id, brandIds[0]]]) {
     const scope = await admin.client.rpc('rc19_set_leader_brand_scope', {
       p_user_id: actorId,
       p_brand_id: brandId,
@@ -337,6 +484,19 @@ async function main() {
       p_reason: 'Disposable RC19 application acceptance fixture',
     })
     await requireNoError(scope, 'LEADER_SCOPE_FIXTURE_CREATE_FAILED')
+  }
+  for (const actorId of [leader.id, leaderRevoked.id]) {
+    const scope = await admin.client.rpc('rc19_set_leader_brand_scope', {
+      p_user_id: actorId,
+      p_brand_id: brandIds[0],
+      p_scope_key: 'workforce.read',
+      p_enabled: true,
+      p_expected_version: 0,
+      p_valid_from: new Date(Date.now() - 5000).toISOString(),
+      p_valid_until: null,
+      p_reason: 'Disposable RC19 workforce acceptance fixture',
+    })
+    await requireNoError(scope, 'LEADER_WORKFORCE_SCOPE_FIXTURE_CREATE_FAILED')
   }
 
   const suffix = randomUUID()
@@ -382,8 +542,8 @@ async function main() {
 
   const databaseContainer = required('RC19_W4_RUNTIME_DATABASE_CONTAINER')
   const { agencyIds, membershipRows } = seedSyntheticAgencyFixtures(databaseContainer, marker, {
-    leader, member, memberSupport, leaderOtherBrand,
-    memberOutAgency, memberRevoked,
+    leader, member, memberSupport, memberUnassigned, leaderOtherBrand,
+    memberOutAgency, leaderRevoked,
   }, { inScope: scopedShiftId, outOfScope: foreignShiftId })
   const agencyReadback = await service.from('shifts')
     .select('id,authoritative_agency_id').in('id', [scopedShiftId, foreignShiftId])
@@ -393,10 +553,10 @@ async function main() {
     || agencyRows.find(row => row.id === foreignShiftId)?.authoritative_agency_id !== agencyIds.outOfScope) {
     stop('AGENCY_FIXTURE_READBACK_MISMATCH')
   }
-  if (!Array.isArray(membershipRows) || membershipRows.length !== 6
+  if (!Array.isArray(membershipRows) || membershipRows.length !== 7
     || membershipRows.find(row => row.businessUserId === member.id)?.agencyId !== agencyIds.inScope
     || membershipRows.find(row => row.businessUserId === memberOutAgency.id)?.agencyId !== agencyIds.outOfScope
-    || membershipRows.find(row => row.businessUserId === memberRevoked.id)?.status !== 'revoked') {
+    || membershipRows.find(row => row.businessUserId === leaderRevoked.id)?.status !== 'revoked') {
     stop('AGENCY_MEMBERSHIP_FIXTURE_READBACK_MISMATCH')
   }
 
@@ -442,6 +602,36 @@ async function main() {
   const anonymousRead = await anonymous.from('business_users').select('id').limit(1)
   if (!anonymousRead.error || (anonymousRead.data?.length ?? 0) > 0) stop('ANONYMOUS_POSTGREST_NOT_DENIED')
 
+  const caseResults = []
+  const externalSummaryFixtures = []
+  async function executeCase(caseId, actor, expected, run) {
+    const startedAt = new Date().toISOString()
+    try {
+      const result = await run()
+      caseResults.push({ case_id: caseId, actor, expected, actual: result.actual,
+        database_readback: result.database_readback, negative_authorization: result.negative_authorization,
+        evidence_scope: 'Disposable local PG17 candidate with real GoTrue/PostgREST actor sessions',
+        started_at: startedAt, completed_at: new Date().toISOString(), status: 'PASS' })
+    } catch (error) {
+      const code = typeof error?.message === 'string' ? error.message : 'ASSERTION_FAILED'
+      caseResults.push({ case_id: caseId, actor, expected, actual: { rpc_code: code },
+        database_readback: { status: 'failed', matches_expected: false },
+        negative_authorization: { tested: false, passed: false },
+        evidence_scope: 'Disposable local PG17 candidate with real GoTrue/PostgREST actor sessions',
+        started_at: startedAt, completed_at: new Date().toISOString(), status: 'FAIL' })
+    }
+  }
+  await executeCase('auth-canonical-business-identity', 'Authenticated Admin, Leader, Member',
+    'Each GoTrue actor session resolves to the matching active canonical business user; anonymous PostgREST access is denied.', async () => {
+      const ids = [admin.id, leader.id, member.id]
+      const storedCount = readDatabase(databaseContainer,
+        `SELECT count(*) FROM public.business_users WHERE id IN (${ids.map(sqlLiteral).join(',')}) AND auth_user_id=id AND status='active' AND account_status='active' AND deleted_at IS NULL AND archived_at IS NULL`)
+      if (storedCount !== '3' || !anonymousRead.error) stop('AUTH_CANONICAL_IDENTITY_POSTGRES_READBACK_MISMATCH')
+      return { actual: { rpc_code: 'AUTHENTICATED_GOTRUE_AND_ANONYMOUS_DENIED' },
+        database_readback: { status: 'passed', matches_expected: true },
+        negative_authorization: { tested: true, passed: true } }
+    })
+
   const persistedAssignments = await service.from('shift_registrations')
     .select('id,shift_id,user_id,operational_role,staffing_segment_id')
     .in('shift_id', [scopedShiftId, foreignShiftId])
@@ -452,6 +642,8 @@ async function main() {
     || new Set(assignments.map(row => row.staffing_segment_id)).size !== 2) {
     stop('ASSIGNMENT_FIXTURE_READBACK_MISMATCH')
   }
+  const incidentFixtures = seedSyntheticIncidents(databaseContainer, marker, { admin, member, memberSupport },
+    { inScope: scopedShiftId }, assignments, storedSegments)
   const unassignedMemberResult = await service.from('shift_registrations')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', memberUnassigned.id)
@@ -459,73 +651,467 @@ async function main() {
   await requireNoError(unassignedMemberResult, 'UNASSIGNED_MEMBER_READBACK_FAILED')
   if (unassignedMemberResult.count !== 0) stop('UNASSIGNED_MEMBER_HAS_ASSIGNMENT')
 
+  const workforceArgs = (agencyId, brandId, staffId = null, limit = 1, offset = 0) => ({
+    p_month: '2099-12-01', p_staff_id: staffId, p_brand_id: brandId, p_role: null,
+    p_agency_id: agencyId, p_platform_id: null, p_review_state: null, p_incident_type: null,
+    p_limit: limit, p_offset: offset,
+  })
+  await executeCase('agency-membership-effective-scope', 'scoped Leader',
+    'Active Brand and canonical Agency membership permit the scoped Workforce RPC; readback remains within scope.', async () => {
+      const result = await leader.client.rpc('rc19_workforce_incident_monthly_v2',
+        workforceArgs(agencyIds.inScope, brandIds[0], null, 1, 0))
+      const data = await requireNoError(result, 'AGENCY_IN_SCOPE_RPC_DENIED')
+      if (!data || data.month !== '2099-12' || data.pageLimit !== 1 || data.pageOffset !== 0) stop('AGENCY_IN_SCOPE_RESULT_INVALID')
+      return { actual: { rpc_code: 'OK' }, database_readback: { status: 'passed', matches_expected: true },
+        negative_authorization: { tested: false, passed: false } }
+    })
+  await executeCase('agency-wrong-agency-denial', 'scoped Leader',
+    'A valid Brand-scoped Leader without membership in the requested Agency is denied.', async () => {
+      const result = await leader.client.rpc('rc19_workforce_incident_monthly_v2',
+        workforceArgs(agencyIds.outOfScope, brandIds[0], null, 1, 0))
+      if (!result.error || !String(result.error.message).includes('WORKFORCE_AGENCY_SCOPE_REQUIRED')) stop('AGENCY_WRONG_SCOPE_NOT_DENIED')
+      return { actual: { rpc_code: 'WORKFORCE_AGENCY_SCOPE_REQUIRED' },
+        database_readback: { status: 'passed', matches_expected: true },
+        negative_authorization: { tested: true, passed: true } }
+    })
+  await executeCase('agency-revocation-denial', 'Brand-scoped Leader with revoked Agency membership',
+    'Revoked canonical Agency membership denies access even when the independent Brand scope remains active.', async () => {
+      const result = await leaderRevoked.client.rpc('rc19_workforce_incident_monthly_v2',
+        workforceArgs(agencyIds.inScope, brandIds[0], null, 1, 0))
+      if (!result.error || !String(result.error.message).includes('WORKFORCE_AGENCY_SCOPE_REQUIRED')) stop('AGENCY_REVOKED_MEMBERSHIP_NOT_DENIED')
+      return { actual: { rpc_code: 'WORKFORCE_AGENCY_SCOPE_REQUIRED' },
+        database_readback: { status: 'passed', matches_expected: true },
+        negative_authorization: { tested: true, passed: true } }
+    })
+  await executeCase('workforce-full-scope-pagination', 'Admin and scoped Leader',
+    'Identical filters return equal aggregate totals across pages and persisted rows match the actor RPC projection.', async () => {
+      const args1 = workforceArgs(agencyIds.inScope, brandIds[0], null, 1, 0)
+      const args2 = workforceArgs(agencyIds.inScope, brandIds[0], null, 1, 1)
+      const [page1, page2] = await Promise.all([
+        leader.client.rpc('rc19_workforce_incident_monthly_v2', args1),
+        leader.client.rpc('rc19_workforce_incident_monthly_v2', args2),
+      ])
+      const first = await requireNoError(page1, 'WORKFORCE_PAGE_ONE_FAILED')
+      const second = await requireNoError(page2, 'WORKFORCE_PAGE_TWO_FAILED')
+      const aggregateKeys = ['totalIncidents','totalDistinctShifts','totalDistinctStaff','summary']
+      if (aggregateKeys.some(key => JSON.stringify(first?.[key]) !== JSON.stringify(second?.[key]))) stop('WORKFORCE_TOTALS_CHANGED_ACROSS_PAGES')
+      if (first.totalIncidents !== 2 || first.totalDistinctShifts !== 1 || first.totalDistinctStaff !== 2
+        || first.summary?.pendingCount !== 1 || first.summary?.confirmedCount !== 1
+        || first.summary?.confirmedLateCount !== 1 || first.summary?.verifiedLateMinutesTotal !== 7) {
+        stop('WORKFORCE_FULL_SCOPE_TOTALS_MISMATCH')
+      }
+      const persistedCount = readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_staff_incidents WHERE id IN (${sqlLiteral(incidentFixtures.pendingId)}::uuid,${sqlLiteral(incidentFixtures.confirmedId)}::uuid)`)
+      if (persistedCount !== '2') stop('WORKFORCE_POSTGRES_READBACK_MISMATCH')
+      const selfScopeDenial = await member.client.rpc('rc19_workforce_incident_monthly_v2',
+        workforceArgs(agencyIds.inScope, brandIds[0], admin.id, 1, 0))
+      if (!selfScopeDenial.error || !String(selfScopeDenial.error.message).includes('WORKFORCE_SELF_SCOPE_REQUIRED')) {
+        stop('WORKFORCE_MEMBER_SELF_SCOPE_NOT_ENFORCED')
+      }
+      return { actual: { rpc_code: 'OK' }, database_readback: { status: 'passed', matches_expected: true },
+        negative_authorization: { tested: true, passed: true } }
+    })
+  await executeCase('pass-swap-same-key-concurrency-and-replay', 'Requester Member',
+    'Concurrent same-key create calls and later replay resolve to one persisted request; changed payload is rejected.', async () => {
+      const source = assignments.find(row => row.user_id === member.id)
+      const key = randomUUID()
+      const payload = { source_registration_id: source.id, mode: 'replacement', reason: 'RC19 acceptance',
+        target_shift_id: null, replacement_staff_id: memberUnassigned.id,
+        counterpart_registration_id: null, notes: 'Disposable receipt acceptance' }
+      const invoke = () => member.client.rpc('shift_swap_operation_v1', {
+        p_action: 'create', p_request_id: null, p_payload: payload, p_idempotency_key: key,
+      }).single()
+      const [first, concurrent] = await Promise.all([invoke(), invoke()])
+      const firstRow = await requireNoError(first, 'SWAP_CREATE_FAILED')
+      const concurrentRow = await requireNoError(concurrent, 'SWAP_CONCURRENT_RETRY_FAILED')
+      if (firstRow.id !== concurrentRow.id) stop('SWAP_CONCURRENT_DUPLICATE_REQUEST')
+      const replay = await invoke()
+      const replayRow = await requireNoError(replay, 'SWAP_REPLAY_FAILED')
+      if (replayRow.id !== firstRow.id) stop('SWAP_REPLAY_RESULT_MISMATCH')
+      const changed = await member.client.rpc('shift_swap_operation_v1', {
+        p_action: 'create', p_request_id: null, p_payload: { ...payload, reason: 'changed payload' }, p_idempotency_key: key,
+      }).single()
+      if (!changed.error || !String(changed.error.message).includes('SWAP_IDEMPOTENCY_KEY_REUSED')) stop('SWAP_CHANGED_PAYLOAD_NOT_REJECTED')
+      const changedAction = await member.client.rpc('shift_swap_operation_v1', {
+        p_action: 'respond_reject', p_request_id: firstRow.id,
+        p_payload: { expected_version: 1, notes: 'action binding check' }, p_idempotency_key: key,
+      })
+      if (!changedAction.error || !String(changedAction.error.message).includes('SWAP_IDEMPOTENCY_KEY_REUSED')) {
+        stop('SWAP_CHANGED_ACTION_NOT_REJECTED')
+      }
+      const crossActor = await memberSupport.client.rpc('shift_swap_operation_v1', {
+        p_action: 'create', p_request_id: null, p_payload: payload, p_idempotency_key: key,
+      })
+      if (!crossActor.error || !/SWAP_ACTOR_NOT_AUTHORIZED|SWAP_NOT_OWNER|SWAP_REQUEST_NOT_AUTHORIZED/u.test(String(crossActor.error.message))) {
+        stop('SWAP_CROSS_ACTOR_MUTATION_NOT_DENIED')
+      }
+      const readback = await service.from('swap_requests').select('id,requester_id,source_registration_id,status')
+        .eq('id', firstRow.id).maybeSingle()
+      const stored = await requireNoError(readback, 'SWAP_PERSISTED_READBACK_FAILED')
+      if (!stored || stored.id !== firstRow.id || stored.requester_id !== member.id || stored.source_registration_id !== source.id) stop('SWAP_PERSISTED_READBACK_MISMATCH')
+      const receiptCount = readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_swap_operation_receipts WHERE actor_id=${sqlLiteral(member.id)} AND idempotency_key=${sqlLiteral(key)}::uuid AND response->>'id'=${sqlLiteral(firstRow.id)}`)
+      if (receiptCount !== '1') stop('SWAP_RECEIPT_POSTGRES_READBACK_MISMATCH')
+      const revokedMembership = readDatabase(databaseContainer,
+        `WITH changed AS (UPDATE private.rc19_business_user_agency_memberships SET status='revoked',effective_until=statement_timestamp(),revoked_at=statement_timestamp(),version=version+1 WHERE business_user_id=${sqlLiteral(member.id)} AND source_version=${sqlLiteral(marker)} AND status='active' RETURNING 1) SELECT count(*) FROM changed`)
+      if (revokedMembership !== '1') stop('SWAP_REVOKE_FIXTURE_FAILED')
+      const revokedReplay = await invoke()
+      if (!revokedReplay.error || !/SWAP_RECEIPT_REPLAY_NOT_AUTHORIZED|SWAP_RECEIPT_REPLAY_SCOPE_UNRESOLVED|SWAP_ACTOR_NOT_AUTHORIZED/u.test(String(revokedReplay.error.message))) {
+        stop('SWAP_REVOKED_REPLAY_NOT_DENIED')
+      }
+      if (readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(member.id)} AND source_version=${sqlLiteral(marker)} AND status='revoked'`) !== '1') {
+        stop('SWAP_REVOKED_MEMBERSHIP_POSTGRES_READBACK_MISMATCH')
+      }
+      return { actual: { rpc_code: 'OK' }, database_readback: { status: 'passed', matches_expected: true },
+        negative_authorization: { tested: true, passed: true } }
+    })
+  await executeCase('external-summary-approval-revisions-privacy-retry', 'Member submitter and Admin reviewer',
+    'Authenticated draft/submit/approve calls create replay receipts, immutable approved revision data and an external projection without personnel details.', async () => {
+      const externalActor = memberSupport
+      const completed = await service.from('shifts').update({ status: 'completed' }).eq('id', scopedShiftId).select('id').single()
+      const completedShift = await requireNoError(completed, 'EXTERNAL_REPORT_SHIFT_FIXTURE_FAILED')
+      if (completedShift.id !== scopedShiftId) stop('EXTERNAL_REPORT_SHIFT_FIXTURE_FAILED')
+      const created = await externalActor.client.rpc('create_report', { p_data: {
+        shift_id: scopedShiftId, revenue: 1200, orders: 12, dashboard_platform: 'other',
+        insights_good: 'synthetic private report fixture',
+      } }).single()
+      const report = await requireNoError(created, 'EXTERNAL_REPORT_FIXTURE_CREATE_FAILED')
+      if (!report?.id) stop('EXTERNAL_REPORT_FIXTURE_CREATE_FAILED')
+      const summaryKey = randomUUID()
+      const content = `Approved synthetic external summary ${randomUUID()}`
+      const saveArgs = { p_action: 'save_draft', p_report_id: report.id, p_summary_id: null,
+        p_content: content, p_expected_version: 0, p_reason: null, p_idempotency_key: summaryKey }
+      const [saved, duplicateSave] = await Promise.all([
+        externalActor.client.rpc('external_report_summary_workflow_v1', saveArgs),
+        externalActor.client.rpc('external_report_summary_workflow_v1', saveArgs),
+      ])
+      const saveReceipt = await requireNoError(saved, 'EXTERNAL_SUMMARY_SAVE_FAILED')
+      const replayReceipt = await requireNoError(duplicateSave, 'EXTERNAL_SUMMARY_RETRY_FAILED')
+      if (!saveReceipt?.summaryId || saveReceipt.summaryId !== replayReceipt.summaryId
+        || saveReceipt.version !== replayReceipt.version) stop('EXTERNAL_SUMMARY_RETRY_MISMATCH')
+      const receiptCount = readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_report_external_summary_idempotency WHERE actor_id=${sqlLiteral(externalActor.id)} AND idempotency_key=${sqlLiteral(summaryKey)}::uuid AND response->>'summaryId'=${sqlLiteral(saveReceipt.summaryId)}`)
+      if (receiptCount !== '1') stop('EXTERNAL_SUMMARY_RECEIPT_POSTGRES_READBACK_MISMATCH')
+      const changedPayload = await externalActor.client.rpc('external_report_summary_workflow_v1', {
+        ...saveArgs, p_content: `${content} changed`,
+      })
+      if (!changedPayload.error || !String(changedPayload.error.message).includes('REPORT_EXTERNAL_SUMMARY_IDEMPOTENCY_CONFLICT')) {
+        stop('EXTERNAL_SUMMARY_CHANGED_PAYLOAD_NOT_REJECTED')
+      }
+      const submitted = await externalActor.client.rpc('external_report_summary_workflow_v1', {
+        p_action: 'submit', p_report_id: report.id, p_summary_id: saveReceipt.summaryId,
+        p_content: null, p_expected_version: saveReceipt.version, p_reason: null, p_idempotency_key: randomUUID(),
+      })
+      const submitReceipt = await requireNoError(submitted, 'EXTERNAL_SUMMARY_SUBMIT_FAILED')
+      const memberApproval = await externalActor.client.rpc('external_report_summary_workflow_v1', {
+        p_action: 'approve', p_report_id: report.id, p_summary_id: saveReceipt.summaryId,
+        p_content: null, p_expected_version: submitReceipt.version, p_reason: null, p_idempotency_key: randomUUID(),
+      })
+      if (!memberApproval.error || !String(memberApproval.error.message).includes('REPORT_EXTERNAL_SUMMARY_REVIEW_FORBIDDEN')) {
+        stop('EXTERNAL_SUMMARY_MEMBER_REVIEW_NOT_DENIED')
+      }
+      const approved = await admin.client.rpc('external_report_summary_workflow_v1', {
+        p_action: 'approve', p_report_id: report.id, p_summary_id: saveReceipt.summaryId,
+        p_content: null, p_expected_version: submitReceipt.version, p_reason: null, p_idempotency_key: randomUUID(),
+      })
+      const approval = await requireNoError(approved, 'EXTERNAL_SUMMARY_APPROVAL_FAILED')
+      const summaryRead = await admin.client.rpc('get_report_external_summary_workflow_v1', { p_report_id: report.id })
+      const summaryState = await requireNoError(summaryRead, 'EXTERNAL_SUMMARY_READBACK_FAILED')
+      if (summaryState?.summary?.workflowState !== 'approved' || summaryState.summary.content !== content
+        || summaryState.summary.version !== approval.version) stop('EXTERNAL_SUMMARY_READBACK_MISMATCH')
+      if (!approval.reportRevisionId) stop('EXTERNAL_SUMMARY_REVISION_ID_MISSING')
+      const revisionRows = await service.from('report_revisions').select('version')
+        .eq('report_id', report.id).order('version', { ascending: true })
+      const revisions = await requireNoError(revisionRows, 'EXTERNAL_SUMMARY_REVISION_READBACK_FAILED')
+      const approvedRevision = revisions.find(row => row.version && row.version > 1)
+      if (!approvedRevision) stop('EXTERNAL_SUMMARY_REVISION_READBACK_MISSING')
+      const immutableRead = await admin.client.rpc('get_report_revision_sources_v1', {
+        p_report_id: report.id, p_revision_version: approvedRevision.version, p_audience: 'external',
+      })
+      const immutable = await requireNoError(immutableRead, 'EXTERNAL_SUMMARY_IMMUTABLE_READBACK_FAILED')
+      const projection = immutable?.externalProjection
+      if (!projection || projection.operationalSummary?.content !== content
+        || projection.operationalSummary.version !== approval.version
+        || JSON.stringify(projection).includes(externalActor.id)
+        || JSON.stringify(projection).includes('synthetic private report fixture')) stop('EXTERNAL_SUMMARY_PRIVACY_OR_REVISION_MISMATCH')
+      const correction = await admin.client.rpc('external_report_summary_workflow_v1', {
+        p_action: 'request_correction', p_report_id: report.id, p_summary_id: saveReceipt.summaryId,
+        p_content: null, p_expected_version: approval.version, p_reason: 'Synthetic correction test',
+        p_idempotency_key: randomUUID(),
+      })
+      const correctionReceipt = await requireNoError(correction, 'EXTERNAL_SUMMARY_CORRECTION_FAILED')
+      const historical = await admin.client.rpc('get_report_revision_sources_v1', {
+        p_report_id: report.id, p_revision_version: approvedRevision.version, p_audience: 'external',
+      })
+      const oldRevision = await requireNoError(historical, 'EXTERNAL_SUMMARY_HISTORICAL_READBACK_FAILED')
+      const latestVersion = Math.max(...revisions.map(row => row.version), approvedRevision.version) + 1
+      const correctedSnapshot = await admin.client.rpc('get_report_revision_sources_v1', {
+        p_report_id: report.id, p_revision_version: latestVersion, p_audience: 'external',
+      })
+      const newRevision = await requireNoError(correctedSnapshot, 'EXTERNAL_SUMMARY_CORRECTION_REVISION_READBACK_FAILED')
+      if (oldRevision?.externalProjection?.operationalSummary?.content !== content
+        || newRevision?.externalProjection?.operationalSummary !== null
+        || correctionReceipt.workflowState !== 'correction_requested') stop('EXTERNAL_SUMMARY_IMMUTABILITY_FAILED')
+      externalSummaryFixtures.push({ reportId: report.id, summaryId: saveReceipt.summaryId,
+        approvedRevisionId: approval.reportRevisionId, approvedRevisionVersion: approvedRevision.version,
+        summaryVersion: approval.version, correctionVersion: correctionReceipt.version })
+      return { actual: { rpc_code: 'OK' }, database_readback: { status: 'passed', matches_expected: true },
+        negative_authorization: { tested: true, passed: true } }
+    })
+
+  const browserRequested = process.env.RC19_W4_RUN_BROWSER_UAT?.trim().toLowerCase() === 'true'
+  let browserResult = { app_ready: false, readiness_http_status: null, ran: false, passed: false,
+    authenticated: false, interaction_count: 0, status: 'NOT RUN', blocker: null }
+  if (browserRequested) {
+    try {
+      browserResult = await runBrowserAcceptance(credentials)
+    } catch (error) {
+      browserResult.blocker = typeof error?.message === 'string' && /^[A-Z0-9_]+$/u.test(error.message)
+        ? error.message : 'BROWSER_ACCEPTANCE_BLOCKED'
+      browserResult.status = 'BLOCKED'
+    }
+  } else if (process.env.RC19_W4_NEXT_BASE_URL?.trim()) {
+    try {
+      const appOrigin = parseLoopbackUrl(process.env.RC19_W4_NEXT_BASE_URL, 3000, 'NEXT_APP_URL_NOT_DISPOSABLE_LOOPBACK')
+      const response = await fetch(`${appOrigin}/login`, { signal: AbortSignal.timeout(10000) })
+      browserResult.app_ready = response.status === 200
+      browserResult.readiness_http_status = response.status
+    } catch { /* no browser request: readiness is recorded as unavailable */ }
+  }
+  const browserCase = {
+    case_id: 'authenticated-browser', actor: 'Admin, Leader, Member',
+    expected: 'Run Antigravity authenticated GoTrue browser workflows against the exact candidate Next.js runtime and retain each UI result.',
+    actual: { http_status: browserResult.readiness_http_status, rpc_code: browserResult.blocker ?? (browserResult.passed ? 'PLAYWRIGHT_PASS' : browserResult.status) },
+    database_readback: { status: 'not_asserted_by_browser_suite', matches_expected: false },
+    negative_authorization: { tested: browserResult.ran, passed: browserResult.passed },
+    browser_interaction: { performed: browserResult.ran && browserResult.interaction_count > 0,
+      authenticated: browserResult.authenticated, interaction_count: browserResult.interaction_count,
+      status: browserResult.status },
+    evidence_scope: browserResult.ran
+      ? 'Authenticated Playwright against exact local Next.js app and marked disposable runtime; DB evidence is separately reported by API cases.'
+      : 'No browser evidence.',
+    status: browserResult.status,
+  }
+
+  const originalD = [
+    ['D01', 'atomic_staffing_replacement', 'full_segment_skip_emergency_replacement_atomic_receipt_history'],
+    ['D02', 'attendance_segment_boundaries', 'partial_replacement_preserves_actual_attendance_and_payroll_intervals'],
+    ['D03', 'workforce_reporting', 'distinguish_pass_reassignment_authorized_absence_and_confirmed_incidents'],
+    ['D04', 'workforce_reporting', 'host_support_technical_overnight_business_month_unknown_minutes'],
+    ['D05', 'brand_agency_authorization_boundaries', 'unauthorized_scope_segment_version_lock_concurrency_retry_denial'],
+    ['D06', 'operational_notes_lifecycle', 'draft_save_switch_reload_relogin_resume_edit_version_conflict'],
+    ['D07', 'report_revision_snapshots', 'saved_notes_preview_submit_readback_retry_correction_revision'],
+    ['D08', 'workforce_reporting', 'employee_summary_unique_incident_pending_late_minutes_no_deduction'],
+    ['D09', 'external_summary', 'history_note_and_external_report_privacy_authorization'],
+    ['D10', 'import_staffing_updates', 'combined_import_reimport_replacement_attendance_actual_payroll_report_history'],
+    ['D11', 'storage_authorization_upload_readback', 'authenticated_api_database_browser_migration_and_provider_evidence'],
+  ].map(([case_id, area, criterion]) => ({
+    case_id, area, source_case_ids: [case_id], source_criteria: [{ id: case_id, criterion }],
+    actor: { role: 'Admin, Leader, Member per original D case', scope_key: 'synthetic-disposable-runtime' },
+    expected: { authorization: 'Original #190 role and scope rules; deny unauthorized and cross-scope actions.',
+      result: `Demonstrate original ${case_id} criterion ${criterion} with authenticated API/UI behavior and independent persisted readback.` },
+    actual: { rpc_code: 'NOT_RUN' },
+    database_readback: { status: 'not_run', matches_expected: false },
+    negative_authorization: { tested: false, passed: false },
+    browser_interaction: { performed: false, authenticated: false, status: 'NOT RUN' },
+    status: 'not_run',
+  }))
+  const originalL = [
+    ['L01', 'live_monitoring_authorization', 'save_link_db_readback_reload_other_account_stale_write'],
+    ['L02', 'live_monitoring_authorization', 'publisher_consent_and_actual_video'],
+    ['L03', 'live_monitoring_authorization', 'publisher_shift_a_b_a_continuity'],
+    ['L04', 'live_monitoring_authorization', 'publisher_reports_navigation_continuity'],
+    ['L05', 'live_monitoring_authorization', 'independent_admin_receives_changing_frames'],
+    ['L06', 'live_monitoring_authorization', 'independent_leader_receives_changing_frames'],
+    ['L07', 'live_monitoring_authorization', 'member_receives_only_permitted_shift_media'],
+    ['L08', 'storage_authorization_upload_readback', 'anonymous_wrong_scope_and_direct_media_denial'],
+    ['L09', 'live_monitoring_authorization', 'viewer_reload_reconnect_without_stopping_publisher'],
+    ['L10', 'live_monitoring_authorization', 'concurrent_room_isolation_and_duplicate_publisher_guard'],
+    ['L11', 'live_monitoring_authorization', 'publisher_stop_ends_viewer_and_releases_resources'],
+    ['L12', 'live_monitoring_authorization', 'capture_browser_network_interruption_and_consent_restart'],
+    ['L13', 'live_monitoring_authorization', 'token_expiry_revocation_logout_and_termination'],
+    ['L14', 'live_monitoring_authorization', 'privacy_no_recording_and_audio_when_available'],
+    ['L15', 'live_monitoring_authorization', 'live_reports_calendar_shift_obs_regression_and_resource_metrics'],
+  ].map(([case_id, area, criterion]) => ({
+    case_id, area, source_case_ids: [case_id], source_criteria: [{ id: case_id, criterion }],
+    actor: { role: 'Admin, Leader, Member, publisher/viewer per original L case', scope_key: 'synthetic-disposable-runtime' },
+    expected: { authorization: 'Only authorized authenticated users can publish or view within the approved scope.',
+      result: `Demonstrate original #189 ${case_id} criterion ${criterion} with real media and sanitized runtime evidence.` },
+    actual: { rpc_code: 'NOT_RUN' },
+    database_readback: { status: 'not_run', matches_expected: false },
+    negative_authorization: { tested: false, passed: false },
+    browser_interaction: { performed: false, authenticated: false, status: 'NOT RUN' },
+    status: 'not_run',
+  }))
+
   const report = {
     schema,
-    status: 'BLOCKED',
+    status: [...caseResults, browserCase].some(item => item.status === 'FAIL') ? 'FAIL' : 'BLOCKED',
     application_sha: sha,
     runtime_database_marker: marker,
+    database_binding: { runtime_marker_match: true, application_target_match: true },
+    next_app: { ready: browserResult.app_ready, readiness_http_status: browserResult.readiness_http_status,
+      authenticated_browser: browserResult.ran && browserResult.authenticated },
     synthetic_users: {
-      admin: { login: true, canonical_business_user_mapping: true },
-      leader: { login: true, canonical_business_user_mapping: true },
-      member: { login: true, canonical_business_user_mapping: true },
+      admin: { login: true, canonical_business_user_mapping: true,
+        auth_user_id: admin.id, business_user_id: admin.id, role: 'admin' },
+      leader: { login: true, canonical_business_user_mapping: true,
+        auth_user_id: leader.id, business_user_id: leader.id, role: 'leader' },
+      member: { login: true, canonical_business_user_mapping: true,
+        auth_user_id: member.id, business_user_id: member.id, role: 'member' },
     },
-    authorization: { rbac: true, rls: true, application_api: true },
-    browser_uat: { requested: false, ran: false, passed: false, status: 'NOT RUN' },
-    cases: [
-      {
-        case_id: 'auth-canonical-business-identity', actor: 'Admin, Leader, Member',
-        expected: 'Authenticated GoTrue identity maps to one active canonical business user with matching role.',
-        actual: 'Synthetic Admin/Leader/Member login, Auth identity and canonical mapping checks passed.',
-        evidence_scope: 'Disposable local Auth/PostgREST fixture; no hosted runtime.', status: 'PASS',
+    fixture_manifest: {
+      schema: 'rc19-w4-synthetic-fixtures/v1',
+      runtime_marker: marker,
+      runtime_database_container: databaseContainer,
+      actors: [
+        { key: 'admin', auth_user_id: admin.id, business_user_id: admin.id, role: 'admin',
+          brand_scope: 'Admin policy scope', agency_membership: 'Admin behavior unchanged by Agency fixture' },
+        { key: 'leader_in_scope', auth_user_id: leader.id, business_user_id: leader.id, role: 'leader',
+          brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active' },
+        { key: 'member_requester', auth_user_id: member.id, business_user_id: member.id, role: 'member',
+          brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active before replay revocation' },
+        { key: 'member_support_submitter', auth_user_id: memberSupport.id, business_user_id: memberSupport.id,
+          role: 'member', brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active' },
+        { key: 'member_clear_candidate', auth_user_id: memberUnassigned.id, business_user_id: memberUnassigned.id,
+          role: 'member', brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active', assignment: 'unassigned' },
+        { key: 'leader_wrong_brand', auth_user_id: leaderOtherBrand.id, business_user_id: leaderOtherBrand.id,
+          role: 'leader', brand_id: brandIds[1], agency_id: agencyIds.outOfScope, agency_membership: 'active' },
+        { key: 'member_wrong_agency', auth_user_id: memberOutAgency.id, business_user_id: memberOutAgency.id,
+          role: 'member', agency_id: agencyIds.outOfScope, agency_membership: 'active' },
+        { key: 'leader_revoked_agency', auth_user_id: leaderRevoked.id, business_user_id: leaderRevoked.id,
+          role: 'leader', brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'revoked' },
+      ],
+      brands: [{ id: brandIds[0], scope: 'primary synthetic Brand' },
+        { id: brandIds[1], scope: 'wrong-Brand denial' }],
+      agencies: [{ id: agencyIds.inScope, scope: 'authorized synthetic Agency' },
+        { id: agencyIds.outOfScope, scope: 'cross-Agency denial' }],
+      shifts: [
+        { id: scopedShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: '2099-12-01' },
+        { id: foreignShiftId, brand_id: brandIds[1], agency_id: agencyIds.outOfScope, business_date: '2099-12-02' },
+      ],
+      staffing_segments: storedSegments.map(row => ({ id: row.id, shift_id: row.shift_id,
+        segment_index: row.segment_index })),
+      registrations: assignments.map(row => ({ id: row.id, shift_id: row.shift_id,
+        business_user_id: row.user_id, role: row.operational_role, staffing_segment_id: row.staffing_segment_id })),
+      pass_swap_candidates: {
+        clear_replacement: memberUnassigned.id,
+        same_actor_conflict: member.id,
+        cross_agency_candidate: memberOutAgency.id,
+        source_registration_id: assignments.find(row => row.user_id === member.id)?.id ?? null,
+        schedule_overlap_candidate: null,
+        schedule_overlap_status: 'NOT IMPLEMENTED',
       },
-      {
-        case_id: 'agency-membership', actor: 'In-Agency, out-of-Agency, revoked Member',
-        expected: 'Current canonical membership permits only in-scope operations; missing or revoked membership denies.',
-        actual: 'Canonical Agency fixture provisioning is not implemented in this entrypoint.',
-        evidence_scope: 'Source review only.', status: 'BLOCKED',
-      },
-      {
-        case_id: 'external-summary', actor: 'Admin, scoped Leader, Member',
-        expected: 'Authorized CAS mutation and idempotent replay match persisted summary readback.',
-        actual: 'Not exercised by this entrypoint.', evidence_scope: 'No case evidence.', status: 'NOT RUN',
-      },
-      {
-        case_id: 'workforce-full-scope-aggregates', actor: 'Admin, scoped Leader, Member',
-        expected: 'Filtered category/status/late-minute totals equal complete authorized scope before pagination.',
-        actual: 'Not exercised by this entrypoint.', evidence_scope: 'No case evidence.', status: 'NOT RUN',
-      },
-      {
-        case_id: 'pass-swap-receipt-lifecycle', actor: 'Requester, counterpart, Leader, revoked actor',
-        expected: 'Same-key retry returns one persisted row; changed payload and unauthorized replay deny.',
-        actual: 'Not exercised by this entrypoint.', evidence_scope: 'No Auth/PG17 case evidence.', status: 'NOT RUN',
-      },
-      ...Array.from({ length: 11 }, (_, index) => ({
-        case_id: `D${String(index + 1).padStart(2, '0')}`,
-        actor: 'Per Codex 02 case definition',
-        expected: 'Case-specific expected result and persisted readback from Codex 02 mapping.',
-        actual: 'Not run; named business-group mapping is required from Codex 02.',
-        evidence_scope: 'No case evidence.', status: 'NOT RUN',
+      workforce: { month: '2099-12', agency_id: agencyIds.inScope, brand_id: brandIds[0],
+        expected: { total_incidents: 2, total_distinct_shifts: 1, total_distinct_staff: 2,
+          pending_count: 1, confirmed_count: 1, confirmed_late_count: 1, verified_late_minutes_total: 7 } },
+      external_summaries: externalSummaryFixtures,
+      attendance_payroll: { status: 'NOT RUN',
+        expected: 'No temporal Attendance or Payroll row was created or mutated by this fixture runner.' },
+      required_environment_variable_names: [
+        'RC19_W4_EXPECTED_APPLICATION_SHA', 'RC19_W4_RUNTIME_URL',
+        'RC19_W4_RUNTIME_DATABASE_URL', 'RC19_W4_RUNTIME_DATABASE_MARKER',
+        'RC19_W4_RUNTIME_DATABASE_CONTAINER', 'RC19_W4_RUNTIME_ANON_KEY',
+        'RC19_W4_RUNTIME_SERVICE_ROLE_KEY', 'RC19_W4_SYNTHETIC_ADMIN_EMAIL',
+        'RC19_W4_SYNTHETIC_ADMIN_PASSWORD', 'RC19_W4_SYNTHETIC_LEADER_EMAIL',
+        'RC19_W4_SYNTHETIC_LEADER_PASSWORD', 'RC19_W4_SYNTHETIC_MEMBER_EMAIL',
+        'RC19_W4_SYNTHETIC_MEMBER_PASSWORD', 'RC19_W4_RUN_BROWSER_UAT', 'RC19_W4_NEXT_BASE_URL',
+      ],
+      credentials_included: false,
+      independent_database_readback: 'The runtime marker is bound to this report; service-role PostgreSQL readback targets RC19_W4_RUNTIME_DATABASE_CONTAINER in this disposable runtime.',
+    },
+    browser_uat: { requested: browserRequested, ran: browserResult.ran, passed: browserResult.passed,
+      authenticated: browserResult.authenticated, interaction_count: browserResult.interaction_count,
+      expected: browserResult.expected ?? 0, skipped: browserResult.skipped ?? 0,
+      failed: browserResult.failed ?? 0, flaky: browserResult.flaky ?? 0,
+      suite_passed: browserResult.suite_passed ?? false,
+      status: browserResult.status, blocker: browserResult.blocker },
+    browser_cases: browserResult.cases ?? [],
+    business_cases: [
+      ...caseResults.map(item => ({
+      case_id: item.case_id,
+      area: item.case_id.startsWith('agency-') ? 'brand_agency_authorization_boundaries'
+        : item.case_id.startsWith('workforce-') ? 'workforce_reporting'
+          : item.case_id.startsWith('external-summary-') ? 'external_summary' : 'pass_swap_lifecycle',
+      source_case_ids: [item.case_id],
+      source_criteria: [{ id: item.case_id, criterion: item.expected }],
+      actor: { role: item.actor, scope_key: 'synthetic-disposable-runtime' },
+      expected: { authorization: item.expected, result: item.expected },
+      actual: item.actual,
+      database_readback: item.database_readback,
+      negative_authorization: item.negative_authorization,
+      browser_interaction: { performed: false, authenticated: false, status: 'NOT RUN' },
+      status: item.status.toLowerCase(),
       })),
-      {
-        case_id: 'temporal-attendance-payroll', actor: 'Member, Attendance reviewer, Payroll actor',
-        expected: 'Temporal boundaries and source-to-payroll linkage match canonical persisted rows.',
-        actual: 'Not exercised by this entrypoint.', evidence_scope: 'No case evidence.', status: 'NOT RUN',
-      },
-      {
-        case_id: 'persisted-fixture-readback', actor: 'Disposable fixture service role',
-        expected: 'Created shifts, segments and registrations read back exactly from PostgreSQL.',
-        actual: 'Synthetic shift/segment/registration readback checks passed.',
-        evidence_scope: 'Disposable local PostgreSQL fixture; not authenticated application API readback.', status: 'PASS',
-      },
-      {
-        case_id: 'authenticated-browser', actor: 'Admin, Leader, Member',
-        expected: 'Next.js starts at the attested SHA; authenticated browser action and persisted readback pass.',
-        actual: 'This entrypoint does not start Next.js or run a browser.',
-        evidence_scope: 'No browser evidence.', status: 'NOT RUN',
-      },
+      ...originalD,
+      ...originalL,
+      ...[
+        ['calendar-shift-creation-fixture', 'calendar_shift_creation', 'shift fixture creation and canonical database readback'],
+        ['segmented-staffing-fixture', 'segmented_staffing', 'exact segment fixtures and canonical registration readback'],
+        ['shift-registration-fixture', 'shift_registration', 'authorized registration fixture and canonical identity readback'],
+        ['pass-swap-lifecycle-api', 'pass_swap_lifecycle', 'actor action payload receipt and persisted retry lifecycle'],
+        ['temporal-payroll-runtime', 'temporal_payroll', 'Attendance and Payroll effective-time linkage and immutable actual hours'],
+        ['report-revision-snapshot-api', 'report_revision_snapshots', 'approved External Summary immutable revision snapshot'],
+      ].map(([case_id, area, criterion]) => ({
+        case_id, area, source_case_ids: [case_id], source_criteria: [{ id: case_id, criterion }],
+        actor: { role: 'Synthetic Admin, Leader, Member', scope_key: 'synthetic-disposable-runtime' },
+        expected: { authorization: 'Use the active GoTrue actor and its approved role/scope.', result: criterion },
+        actual: { rpc_code: 'NOT_RUN' }, database_readback: { status: 'not_run', matches_expected: false },
+        negative_authorization: { tested: false, passed: false },
+        browser_interaction: { performed: false, authenticated: false, status: 'NOT RUN' }, status: 'not_run',
+      })),
+    ],
+    cases: [
+      ...caseResults,
+      ...(browserResult.cases ?? []),
+      ...[
+        ['pass-swap-actor-action-replay-authorization', 'Replay revalidates actor/action authorization; cross-Agency and revoked membership are denied.'],
+        ['temporal-attendance-payroll', 'Attendance and actual-work temporal boundaries persist into Payroll without changing historical evidence.'],
+        ['kao-184-parse-preview-confirm-readback', 'Synthetic KAO #184 input parses, previews, confirms and reads back through authorized APIs.'],
+      ].map(([case_id, expected]) => ({ case_id, actor: 'Admin, Leader, Member as required', expected,
+        actual: 'NOT RUN: executable API and persisted-readback flow is not implemented in this runner.',
+        evidence_scope: 'No runtime case evidence.', status: 'NOT RUN' })),
+      ...[
+        'D01','D02','D03','D04','D05','D06','D07','D08','D09','D10','D11',
+      ].map((case_id, index) => ({ case_id, actor: 'Original D-series actor per acceptance contract',
+        expected: [
+          'Full A skip to B emergency replacement on exact segment; atomic roster, incident and receipt; preserve A history and other segments.',
+          'Partial replacement preserves A worked interval, evidence, approved actual and payroll references; B is separate with no overlap or double pay.',
+          'Distinguish approved PASS/reassignment/authorized absence from confirmed skip/no-show/late; pending and missing-photo cases are not auto-violations.',
+          'Late or absence without replacement covers Host/Support/Technical, overnight/business month and unknown minutes.',
+          'Unauthorized, cross-Agency/Brand, wrong segment/actor, stale version and locked history deny; concurrency/retry create no duplicate or orphan.',
+          'Draft note survives shift switch, reload/relogin, resume/edit and version conflict without loss or wrong-shift association.',
+          'End-of-shift report uses saved notes, submit/readback/relogin/export snapshot; duplicate/retry/reopen/correction preserve prior revision.',
+          'Monthly employee summary/drilldown counts incidents once; B unaffected; pending/rejected are not confirmed; verified late minutes do not auto-deduct.',
+          'Employee history, notes and internal/external report visibility enforce authorization and privacy.',
+          'Combined A+B+D import/reimport, replacement, attendance, actual approval, payroll, report/history preserve prior fingerprints and no automatic penalty.',
+          'Actual authenticated Admin/Leader/Member API, DB and browser tests; migration/regression/type/lint/build evidence and exact SHA.',
+        ][index], actual: 'NOT RUN: this D-series interaction and persisted-readback flow is not implemented in this runner.',
+        evidence_scope: 'No runtime case evidence.', status: 'NOT RUN' })),
+      ...[
+        ['L01', 'save_link_db_readback_reload_other_account_stale_write'],
+        ['L02', 'publisher_consent_and_actual_video'],
+        ['L03', 'publisher_shift_a_b_a_continuity'],
+        ['L04', 'publisher_reports_navigation_continuity'],
+        ['L05', 'independent_admin_receives_changing_frames'],
+        ['L06', 'independent_leader_receives_changing_frames'],
+        ['L07', 'member_receives_only_permitted_shift_media'],
+        ['L08', 'anonymous_wrong_scope_and_direct_media_denial'],
+        ['L09', 'viewer_reload_reconnect_without_stopping_publisher'],
+        ['L10', 'concurrent_room_isolation_and_duplicate_publisher_guard'],
+        ['L11', 'publisher_stop_ends_viewer_and_releases_resources'],
+        ['L12', 'capture_browser_network_interruption_and_consent_restart'],
+        ['L13', 'token_expiry_revocation_logout_and_termination'],
+        ['L14', 'privacy_no_recording_and_audio_when_available'],
+        ['L15', 'live_reports_calendar_shift_obs_regression_and_resource_metrics'],
+      ].map(([case_id, expected]) => ({ case_id, actor: 'Admin, Leader, Member, publisher/viewer as required',
+        expected, actual: 'NOT RUN: current browser smoke assertions do not demonstrate the original live media criterion.',
+        evidence_scope: 'No full live media/browser evidence.', status: 'NOT RUN' })),
+      browserCase,
     ],
     fixtures: {
-      authenticated_users: authUsers.length + 3,
+      authenticated_users: authUsers.length + 5,
       brands: brandIds.length,
       platforms: 1,
       parent_shifts: 2,
@@ -533,11 +1119,12 @@ async function main() {
       canonical_assignments: assignments.length,
       wrong_brand_denied: true,
       unassigned_member_has_no_assignment: true,
-      wrong_agency_denial: 'blocked_without_authoritative_membership_fixture',
+      wrong_agency_denied: caseResults.some(item => item.case_id === 'agency-wrong-agency-denial' && item.status === 'PASS'),
       anonymous_denied: true,
-      agency_membership: 'not_asserted_by_brand_code',
+      agency_membership_readback_rows: membershipRows.length,
     },
   }
+  persistWorkflowEvidence(report)
   process.stdout.write(`${JSON.stringify(report)}\n`)
 }
 
