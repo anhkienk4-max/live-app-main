@@ -50,3 +50,4 @@ export const ReportExternalSummaryMutationResponseSchema = z.object({
 export type ReportExternalSummaryWorkflowResponse = z.infer<typeof ReportExternalSummaryWorkflowResponseSchema>
 export type ReportExternalSummaryWorkflowRequest = z.infer<typeof ReportExternalSummaryWorkflowRequestSchema>
 export type ReportExternalSummaryWorkflowResult = z.infer<typeof ReportExternalSummaryWorkflowResultSchema>
+export type ReportExternalSummaryMutationResponse = z.infer<typeof ReportExternalSummaryMutationResponseSchema>
