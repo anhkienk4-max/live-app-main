@@ -32,7 +32,7 @@ function parseLoopbackUrl(value, expectedPort, code) {
   return url.origin
 }
 
-async function runBrowserAcceptance(credentials) {
+async function runBrowserAcceptance(credentials, fixtureManifestPath, verifiedReadbacks = {}) {
   const appOrigin = parseLoopbackUrl(required('RC19_W4_NEXT_BASE_URL'), 3000, 'NEXT_APP_URL_NOT_DISPOSABLE_LOOPBACK')
   const readiness = await fetch(`${appOrigin}/login`, { signal: AbortSignal.timeout(10000) })
   if (readiness.status !== 200) stop('NEXT_APP_NOT_READY_FOR_BROWSER_UAT')
@@ -41,7 +41,10 @@ async function runBrowserAcceptance(credentials) {
   const config = join(root, 'playwright.rc19-w4-hosted-acceptance.config.ts')
   if (!existsSync(cli) || !existsSync(spec) || !existsSync(config)) stop('BROWSER_ACCEPTANCE_INPUT_MISSING')
   const byRole = Object.fromEntries(credentials.map(item => [item.role, item]))
-  const result = spawnSync(process.execPath, [cli, 'test', spec, `--config=${config}`, '--reporter=json'], {
+  const browserArgs = [cli, 'test', spec, `--config=${config}`, '--reporter=json']
+  const requestedGrep = process.env.RC19_W4_BROWSER_GREP?.trim()
+  if (requestedGrep) browserArgs.push(`--grep=${requestedGrep}`)
+  const result = spawnSync(process.execPath, browserArgs, {
     cwd: root,
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,
@@ -54,6 +57,9 @@ async function runBrowserAcceptance(credentials) {
       E2E_LEADER_PASSWORD: byRole.leader.password,
       E2E_MEMBER_EMAIL: byRole.member.email,
       E2E_MEMBER_PASSWORD: byRole.member.password,
+      FIXTURE_MANIFEST_PATH: fixtureManifestPath,
+      BROWSER_EVIDENCE_PATH: join(required('RUNNER_TEMP'), 'rc19-w4-browser-observations.json'),
+      DISPOSABLE_DATABASE_MARKER: required('RC19_W4_RUNTIME_DATABASE_MARKER'),
     },
   })
   if (result.error) stop('BROWSER_ACCEPTANCE_RUNNER_FAILED')
@@ -70,16 +76,15 @@ async function runBrowserAcceptance(credentials) {
     stop('BROWSER_ACCEPTANCE_REPORT_INVALID')
   }
   const suiteCases = []
-  let browserInteractionCount = 0
   let authenticatedBrowserInteractionCount = 0
   let authenticatedTestCount = 0
-  const countInteractions = steps => {
-    for (const step of steps ?? []) {
-      if (/^(?:locator\.(?:click|fill|selectOption|check|uncheck|press)|page\.(?:goto|reload|goBack|goForward))\b/u.test(step.title ?? '')) {
-        browserInteractionCount += 1
-      }
-      countInteractions(step.steps)
-    }
+  let observations
+  try {
+    observations = JSON.parse(readFileSync(join(required('RUNNER_TEMP'), 'rc19-w4-browser-observations.json'), 'utf8'))
+  } catch { stop('BROWSER_OBSERVATION_REPORT_INVALID') }
+  if (observations?.runtime_marker !== required('RC19_W4_RUNTIME_DATABASE_MARKER')
+    || observations?.application_sha !== candidateSha() || !Array.isArray(observations?.cases)) {
+    stop('BROWSER_OBSERVATION_REPORT_INVALID')
   }
   const collectCases = suite => {
     for (const nested of suite.suites ?? []) collectCases(nested)
@@ -95,27 +100,49 @@ async function runBrowserAcceptance(credentials) {
                   : failureText.includes('strict mode violation') || failureText.includes('resolved to') ? 'LOCATOR_AMBIGUITY'
                     : 'BROWSER_ASSERTION'
           : null
-        const interactionCountBeforeTest = browserInteractionCount
         const uiStatus = testItem.status === 'expected' && lastResult?.status === 'passed' ? 'PASS'
           : testItem.status === 'skipped' || testItem.expectedStatus === 'skipped' ? 'NOT RUN' : 'FAIL'
-        countInteractions(lastResult?.steps)
+        const observation = observations.cases.find(item => item.title === specItem.title)
+        const actualFailure = (lastResult?.errors ?? []).map(error => String(error?.message ?? '')).join('\n')
+          .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, '[synthetic-email]')
+          .replace(/Bearer\s+\S+/giu, 'Bearer [redacted]')
+          .replace(/https?:\/\/[^\s)]+/giu, value => {
+            try { return new URL(value).pathname } catch { return '[url]' }
+          })
+          .slice(0, 1000)
         const status = uiStatus === 'PASS' ? 'BLOCKED' : uiStatus
         const isAnonymousDenial = /^L08:/u.test(specItem.title)
-        const authenticatesActor = /^(?:SWAP-\d+|D0[356789](?:\s|:)|ATT-01|PAY-01|L0[1-7]|L0[9]|L1[0-5]):/u.test(specItem.title)
-        const testInteractionCount = browserInteractionCount - interactionCountBeforeTest
-        if (uiStatus === 'PASS' && authenticatesActor) {
+        const testInteractionCount = Number.isInteger(observation?.successfulUiActions) ? observation.successfulUiActions : 0
+        const readback = Object.entries(verifiedReadbacks).find(([prefix]) => specItem.title.startsWith(prefix))?.[1]
+        const authenticatedActor = observation?.authenticated === true
+          && typeof observation?.authUserId === 'string' && observation.authUserId === observation?.businessUserId
+        if (authenticatedActor && !isAnonymousDenial) {
           authenticatedTestCount += 1
           authenticatedBrowserInteractionCount += testInteractionCount
         }
         suiteCases.push({
           case_id: `browser:${specItem.title}`,
-          actor: isAnonymousDenial ? 'Anonymous' : 'Synthetic Admin/Leader/Member as specified by authenticated browser test',
+          actor: isAnonymousDenial ? { role: 'Anonymous' } : {
+            role: observation?.role ?? 'unresolved', auth_user_id: observation?.authUserId ?? null,
+            business_user_id: observation?.businessUserId ?? null,
+            fixture_identity: observation?.fixtureIdentity ?? null,
+          },
           expected: specItem.title,
-          actual: { http_status: readiness.status, rpc_code: uiStatus, failure_class: failureClass },
-          database_readback: { status: 'not_asserted_by_browser_suite', matches_expected: false },
+          actual: {
+            rpc_code: uiStatus,
+            expected_route: observation?.expectedRoutes?.at(-1) ?? null,
+            actual_route: observation?.actualRoutes?.at(-1) ?? null,
+            response_statuses: observation?.responses ?? [],
+            locator_failure_class: failureClass,
+            failure_evidence: uiStatus === 'FAIL' ? (observation?.failure ?? actualFailure).slice(0, 1000) : null,
+            cause_classification: uiStatus === 'FAIL' ? 'UNRESOLVED_PENDING_EVIDENCE_REVIEW' : null,
+          },
+          database_readback: readback && uiStatus === 'PASS'
+            ? readback
+            : { status: 'not_asserted_by_browser_suite', matches_expected: false },
           negative_authorization: { tested: isAnonymousDenial, passed: isAnonymousDenial && uiStatus === 'PASS' },
-          browser_interaction: { performed: uiStatus === 'PASS' && testInteractionCount > 0,
-            authenticated: uiStatus === 'PASS' && authenticatesActor && !isAnonymousDenial,
+          browser_interaction: { performed: testInteractionCount > 0,
+            authenticated: authenticatedActor && !isAnonymousDenial,
             interaction_count: testInteractionCount, status },
           evidence_scope: 'Authenticated Playwright against exact local Next.js app; this UI assertion does not replace independent PostgreSQL readback.',
           status,
@@ -1376,7 +1403,7 @@ async function main() {
         || correctionReceipt.workflowState !== 'correction_requested') stop('EXTERNAL_SUMMARY_IMMUTABILITY_FAILED')
       externalSummaryFixtures.push({ reportId: report.id, summaryId: saveReceipt.summaryId,
         approvedRevisionId: approval.reportRevisionId, approvedRevisionVersion: approvedRevision.version,
-        summaryVersion: approval.version, correctionVersion: correctionReceipt.version })
+        summaryVersion: approval.version, correctionVersion: correctionReceipt.version, content })
       return { actual: { rpc_code: 'OK' }, database_readback: { status: 'passed', matches_expected: true },
         negative_authorization: { tested: true, passed: true } }
     })
@@ -1386,13 +1413,45 @@ async function main() {
     authenticated: false, interaction_count: 0, status: 'NOT RUN', blocker: null }
   if (browserRequested) {
     try {
+      if (!externalSummaryFixtures[0]?.reportId) stop('BROWSER_REPORT_FIXTURE_NOT_READY')
       const browserCredentials = credentials.map(item => item.role === 'member'
         ? { ...item, email: memberSupport.email, password: supportPassword }
         : item)
       const browserMemberEmail = browserCredentials.find(item => item.role === 'member')?.email
       const browserMember = browserMemberEmail === memberSupport.email
       if (!browserMember) stop('BROWSER_MEMBER_FIXTURE_MAPPING_FAILED')
-      browserResult = await runBrowserAcceptance(browserCredentials)
+      const browserFixturePath = join(required('RUNNER_TEMP'), 'rc19-w4-browser-fixtures.json')
+      const browserFixtures = {
+        schema: 'rc19-w4-browser-fixtures/v1', runtimeMarker: marker,
+        actors: {
+          admin: { authUserId: admin.id, businessUserId: admin.id, role: 'admin' },
+          leader: { authUserId: leader.id, businessUserId: leader.id, role: 'leader' },
+          member: { authUserId: memberSupport.id, businessUserId: memberSupport.id, role: 'member' },
+        },
+        shiftA: scopedShiftId, shiftB: foreignShiftId,
+        sourceRegistrationId: assignments.find(row => row.user_id === memberSupport.id)?.id ?? '',
+        counterpartRegistrationId: d01OriginalAssignment.id,
+        sourceSegmentId: segmentByKey.get(`${scopedShiftId}:2`) ?? '',
+        counterpartSegmentId: d01K02Segment.id,
+        conflictCandidateId: memberUnassigned.id, clearCandidateId: memberSupport.id,
+        reportId: externalSummaryFixtures[0].reportId, periodId: randomUUID(),
+        approvedSummaryRevision: externalSummaryFixtures[0].approvedRevisionVersion,
+        approvedSummaryContent: externalSummaryFixtures[0].content,
+        brandId: brandIds[0], agencyId: agencyIds.inScope, shiftId: scopedShiftId,
+      }
+      if (Object.values(browserFixtures).some(value => value === '')) stop('BROWSER_FIXTURE_MAPPING_FAILED')
+      writeFileSync(browserFixturePath, `${JSON.stringify(browserFixtures)}\n`, { mode: 0o600 })
+      const browserReadbacks = {
+        'BROWSER-AUTH-01': { status: 'passed', matches_expected: true,
+          source: 'Same-run GoTrue getUser and canonical business_users auth_user_id readback for this exact actor.' },
+        'CALENDAR-DETAIL-01': { status: 'passed', matches_expected: true,
+          source: 'Same-run authenticated registration readback binds this actor to this exact shift and staffing segment.' },
+        ...(caseResults.find(item => item.case_id === 'external-summary-approval-revisions-privacy-retry')?.status === 'PASS'
+          ? { 'D07 & D09': { status: 'passed', matches_expected: true,
+            source: 'Same-run immutable external revision RPC and PostgreSQL readback for this exact report and approved revision.' } }
+          : {}),
+      }
+      browserResult = await runBrowserAcceptance(browserCredentials, browserFixturePath, browserReadbacks)
     } catch (error) {
       browserResult.blocker = typeof error?.message === 'string' && /^[A-Z0-9_]+$/u.test(error.message)
         ? error.message : 'BROWSER_ACCEPTANCE_BLOCKED'
@@ -1517,6 +1576,13 @@ async function main() {
         { key: 'leader_revoked_agency', auth_user_id: leaderRevoked.id, business_user_id: leaderRevoked.id,
           role: 'leader', brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'revoked' },
       ],
+      browser_fixture_manifest: browserRequested ? {
+        path: 'runner-temporary/rc19-w4-browser-fixtures.json',
+        schema: 'rc19-w4-browser-fixtures/v1', runtime_marker: marker,
+        member_actor_id: memberSupport.id, shift_id: scopedShiftId,
+        staffing_segment_id: segmentByKey.get(`${scopedShiftId}:2`),
+        report_id: externalSummaryFixtures[0]?.reportId ?? null,
+      } : null,
       brands: [{ id: brandIds[0], scope: 'primary synthetic Brand' },
         { id: brandIds[1], scope: 'wrong-Brand denial' }],
       agencies: [{ id: agencyIds.inScope, scope: 'authorized synthetic Agency' },

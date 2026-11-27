@@ -139,18 +139,13 @@ export function ShiftOperationalNotesSection({
     action: 'request_correction' | 'reject'
   } | null>(null)
   const [reviewReason, setReviewReason] = React.useState('')
-  const idempotencyKeyRef = React.useRef<string>('')
-  React.useEffect(() => {
-    if (!idempotencyKeyRef.current) {
-      idempotencyKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idemp-session'
-    }
-  }, [])
+  const idempotencyKeyRef = React.useRef<string | null>(null)
   const reviewActionIdempotencyKeysRef = React.useRef<Map<string, string>>(new Map())
 
   const getReviewActionKey = (actionKey: string) => {
     let key = reviewActionIdempotencyKeysRef.current.get(actionKey)
     if (!key) {
-      key = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${actionKey}`
+      key = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
       reviewActionIdempotencyKeysRef.current.set(actionKey, key)
     }
     return key
@@ -245,6 +240,9 @@ export function ShiftOperationalNotesSection({
   const handleSaveNote = async (asDraft: boolean) => {
     if (!currentUser || !noteText.trim()) return
 
+    const idempotencyKey = idempotencyKeyRef.current ?? crypto.randomUUID()
+    idempotencyKeyRef.current = idempotencyKey
+
     setSubmitting(true)
     setSaveState('saving')
     try {
@@ -257,7 +255,7 @@ export function ShiftOperationalNotesSection({
           category,
           note: noteText.trim(),
           affectedUserId: affectedUserId || null,
-          idempotencyKey: idempotencyKeyRef.current,
+          idempotencyKey,
         })
         toast({
           title: isVi ? 'Thành công' : 'Success',
@@ -273,7 +271,7 @@ export function ShiftOperationalNotesSection({
           category,
           note: noteText.trim(),
           affectedUserId: affectedUserId || null,
-          idempotencyKey: idempotencyKeyRef.current,
+          idempotencyKey,
         })
         toast({
           title: isVi ? 'Thành công' : 'Success',
@@ -281,7 +279,7 @@ export function ShiftOperationalNotesSection({
           variant: 'success',
         })
       }
-      idempotencyKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idemp-submitted'
+      idempotencyKeyRef.current = null
       setSaveState('saved')
       setNoteText('')
       setEditingNoteId(null)
@@ -398,7 +396,7 @@ export function ShiftOperationalNotesSection({
     setNoteText(note.note)
     setCategory(note.category)
     setAffectedUserId(note.affected_user_id || '')
-    idempotencyKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'idemp-draft'
+    idempotencyKeyRef.current = null
     setSaveState('idle')
   }
 

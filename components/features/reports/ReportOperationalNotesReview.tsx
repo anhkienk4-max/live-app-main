@@ -2,22 +2,36 @@
 
 import * as React from 'react'
 import {
+  AlertCircle,
   AlertTriangle,
+  Check,
+  Edit3,
   Eye,
   EyeOff,
   FileText,
+  History,
   Lock,
   RefreshCw,
+  Send,
   Shield,
+  X,
 } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import {
   shiftNoteService,
 } from '@/lib/services/shiftNoteService'
-import type { ShiftOperationalNote } from '@/lib/types/database.types'
+import {
+  reportExternalSummaryService,
+  ReportExternalSummaryServiceError,
+} from '@/lib/services/reportExternalSummaryService'
+import type { ReportExternalSummaryWorkflowResponse } from '@/lib/types/reportExternalSummary'
+import type { ShiftOperationalNote, User } from '@/lib/types/database.types'
+import { hasPermission } from '@/lib/permissions'
 
 interface ReportOperationalNotesReviewProps {
   reportId?: string
@@ -28,6 +42,9 @@ interface ReportOperationalNotesReviewProps {
   selectedNoteIds?: string[]
   onSelectionChange?: (noteIds: string[]) => void
   className?: string
+  currentUser?: User | null
+  allowWorkflowActions?: boolean
+  availableRevisions?: Array<{ version: number; createdAt?: string }>
 }
 
 export function ReportOperationalNotesReview({
@@ -39,9 +56,14 @@ export function ReportOperationalNotesReview({
   selectedNoteIds = [],
   onSelectionChange,
   className = '',
+  currentUser = null,
+  allowWorkflowActions = true,
+  availableRevisions = [],
 }: ReportOperationalNotesReviewProps) {
   const { language } = useTranslation()
   const isVi = language === 'vi'
+
+  const canReview = Boolean(currentUser && hasPermission(currentUser, 'reports.review'))
 
   const [notes, setNotes] = React.useState<ShiftOperationalNote[]>([])
   const [incidentsCount, setIncidentsCount] = React.useState(0)
@@ -75,6 +97,48 @@ export function ReportOperationalNotesReview({
   const [error, setError] = React.useState<string | null>(null)
   const [previewAudience, setPreviewAudience] = React.useState<'internal' | 'external'>('internal')
 
+  // Revision inspection state
+  const [selectedRevisionVersion, setSelectedRevisionVersion] = React.useState<number | undefined>(revisionVersion)
+
+  // External Summary Workflow state
+  const [workflowSummary, setWorkflowSummary] = React.useState<ReportExternalSummaryWorkflowResponse['summary'] | null>(null)
+  const [summaryLoading, setSummaryLoading] = React.useState(false)
+  const [summaryActionPending, setSummaryActionPending] = React.useState(false)
+  const [summaryError, setSummaryError] = React.useState<string | null>(null)
+  const [isStaleConflict, setIsStaleConflict] = React.useState(false)
+  const [unauthorizedMessage, setUnauthorizedMessage] = React.useState<string | null>(null)
+  const [editContent, setEditContent] = React.useState('')
+  const [reasonInput, setReasonInput] = React.useState('')
+  const [showReasonDialog, setShowReasonDialog] = React.useState<'reject' | 'correction' | null>(null)
+
+  const loadWorkflowSummary = React.useCallback(async () => {
+    if (!reportId) return
+    setSummaryLoading(true)
+    setSummaryError(null)
+    setIsStaleConflict(false)
+    try {
+      const res = await reportExternalSummaryService.getSummary(reportId)
+      setWorkflowSummary(res.summary)
+      if (res.summary) {
+        setEditContent(res.summary.content)
+      }
+    } catch (err) {
+      if (err instanceof ReportExternalSummaryServiceError) {
+        if (err.status === 404 || err.code === 'REPORT_NOT_FOUND') {
+          setWorkflowSummary(null)
+        } else if (err.status === 403) {
+          setSummaryError('REPORT_EXTERNAL_SUMMARY_FORBIDDEN: Không có quyền truy cập tóm tắt đối tác.')
+        } else {
+          setSummaryError(`${err.code}: ${err.message}`)
+        }
+      } else {
+        setSummaryError(err instanceof Error ? err.message : String(err))
+      }
+    } finally {
+      setSummaryLoading(false)
+    }
+  }, [reportId])
+
   const loadNotes = React.useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -87,8 +151,8 @@ export function ReportOperationalNotesReview({
         const queryParams = new URLSearchParams()
         queryParams.set('report_id', reportId)
         queryParams.set('audience', previewAudience)
-        if (readOnly && revisionVersion !== undefined) {
-          queryParams.set('revision_version', String(revisionVersion))
+        if (selectedRevisionVersion !== undefined) {
+          queryParams.set('revision_version', String(selectedRevisionVersion))
         }
 
         const res = await fetch(`/api/reports/revision-snapshots?${queryParams.toString()}`)
@@ -217,12 +281,144 @@ export function ReportOperationalNotesReview({
     } finally {
       setLoading(false)
     }
-  }, [reportId, revisionVersion, previewAudience, readOnly, shiftId, storedSnapshot, isVi])
+  }, [reportId, selectedRevisionVersion, previewAudience, readOnly, shiftId, storedSnapshot, isVi])
 
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load of report notes
-    void loadNotes()
+    const frame = requestAnimationFrame(() => { void loadNotes() })
+    return () => cancelAnimationFrame(frame)
   }, [loadNotes])
+
+  React.useEffect(() => {
+    if (allowWorkflowActions && reportId) {
+      const frame = requestAnimationFrame(() => { void loadWorkflowSummary() })
+      return () => cancelAnimationFrame(frame)
+    }
+    return undefined
+  }, [allowWorkflowActions, reportId, loadWorkflowSummary])
+
+  const handleWorkflowError = (err: unknown) => {
+    if (err instanceof ReportExternalSummaryServiceError) {
+      if (err.status === 409 || err.code.includes('CONFLICT') || err.code.includes('VERSION')) {
+        setIsStaleConflict(true)
+        setSummaryError('VERSION_CONFLICT: Bản tóm tắt đã được cập nhật bởi một phiên làm việc khác. Vui lòng làm mới dữ liệu.')
+      } else if (err.status === 403 || err.code.includes('FORBIDDEN')) {
+        setUnauthorizedMessage(err.code || 'REPORT_EXTERNAL_SUMMARY_REVIEW_FORBIDDEN: Thao tác bị từ chối do không đủ quyền.')
+        setSummaryError(err.code || 'REPORT_EXTERNAL_SUMMARY_FORBIDDEN: Thao tác bị từ chối do không đủ quyền.')
+      } else {
+        setSummaryError(`${err.code}: ${err.message}`)
+      }
+    } else {
+      setSummaryError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleSaveDraft = async () => {
+    if (!reportId || !editContent.trim()) return
+    setSummaryActionPending(true)
+    setSummaryError(null)
+    setUnauthorizedMessage(null)
+    setIsStaleConflict(false)
+    try {
+      const res = await reportExternalSummaryService.saveDraft({
+        reportId,
+        summaryId: workflowSummary?.id ?? null,
+        content: editContent,
+        expectedVersion: workflowSummary ? workflowSummary.version : 0,
+      })
+      setWorkflowSummary(res.readback.summary)
+      await loadNotes()
+    } catch (err) {
+      handleWorkflowError(err)
+    } finally {
+      setSummaryActionPending(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!reportId || !workflowSummary) return
+    setSummaryActionPending(true)
+    setSummaryError(null)
+    setUnauthorizedMessage(null)
+    setIsStaleConflict(false)
+    try {
+      const res = await reportExternalSummaryService.submit({
+        reportId,
+        summaryId: workflowSummary.id,
+        expectedVersion: workflowSummary.version,
+      })
+      setWorkflowSummary(res.readback.summary)
+      await loadNotes()
+    } catch (err) {
+      handleWorkflowError(err)
+    } finally {
+      setSummaryActionPending(false)
+    }
+  }
+
+  const handleApprove = async () => {
+    if (!reportId || !workflowSummary) return
+    if (!canReview) {
+      setUnauthorizedMessage('REPORT_EXTERNAL_SUMMARY_REVIEW_FORBIDDEN: Chỉ Admin hoặc người có quyền mới có thể phê duyệt.')
+      setSummaryError('REPORT_EXTERNAL_SUMMARY_REVIEW_FORBIDDEN: Thao tác bị từ chối do không đủ quyền.')
+      return
+    }
+    setSummaryActionPending(true)
+    setSummaryError(null)
+    setUnauthorizedMessage(null)
+    setIsStaleConflict(false)
+    try {
+      const res = await reportExternalSummaryService.approve({
+        reportId,
+        summaryId: workflowSummary.id,
+        expectedVersion: workflowSummary.version,
+      })
+      setWorkflowSummary(res.readback.summary)
+      await loadNotes()
+    } catch (err) {
+      handleWorkflowError(err)
+    } finally {
+      setSummaryActionPending(false)
+    }
+  }
+
+  const handleConfirmReason = async () => {
+    if (!reportId || !workflowSummary || !reasonInput.trim()) return
+    if (!canReview) {
+      setUnauthorizedMessage('REPORT_EXTERNAL_SUMMARY_REVIEW_FORBIDDEN: Chỉ Admin hoặc người có quyền mới có thể xem xét tóm tắt.')
+      setSummaryError('REPORT_EXTERNAL_SUMMARY_REVIEW_FORBIDDEN: Thao tác bị từ chối do không đủ quyền.')
+      return
+    }
+    setSummaryActionPending(true)
+    setSummaryError(null)
+    setUnauthorizedMessage(null)
+    setIsStaleConflict(false)
+    try {
+      if (showReasonDialog === 'correction') {
+        const res = await reportExternalSummaryService.requestCorrection({
+          reportId,
+          summaryId: workflowSummary.id,
+          expectedVersion: workflowSummary.version,
+          reason: reasonInput.trim(),
+        })
+        setWorkflowSummary(res.readback.summary)
+      } else if (showReasonDialog === 'reject') {
+        const res = await reportExternalSummaryService.reject({
+          reportId,
+          summaryId: workflowSummary.id,
+          expectedVersion: workflowSummary.version,
+          reason: reasonInput.trim(),
+        })
+        setWorkflowSummary(res.readback.summary)
+      }
+      setShowReasonDialog(null)
+      setReasonInput('')
+      await loadNotes()
+    } catch (err) {
+      handleWorkflowError(err)
+    } finally {
+      setSummaryActionPending(false)
+    }
+  }
 
   const handleToggleNote = (noteId: string) => {
     if (readOnly || !onSelectionChange) return
@@ -242,6 +438,17 @@ export function ReportOperationalNotesReview({
       onSelectionChange(notes.map(n => n.id))
     }
   }
+
+  // Derived revision list
+  const derivedRevisions = React.useMemo(() => {
+    if (availableRevisions.length > 0) return availableRevisions
+    const currentVersion = revisionVersion || 1
+    return Array.from({ length: Math.max(1, currentVersion) }, (_, i) => ({
+      version: i + 1,
+    }))
+  }, [availableRevisions, revisionVersion])
+
+  const isHistoricalSnapshot = selectedRevisionVersion !== undefined && revisionVersion !== undefined && selectedRevisionVersion < revisionVersion
 
   return (
     <div
@@ -299,15 +506,348 @@ export function ReportOperationalNotesReview({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => void loadNotes()}
-            disabled={loading}
+            onClick={() => {
+              void loadNotes()
+              if (allowWorkflowActions && reportId) void loadWorkflowSummary()
+            }}
+            disabled={loading || summaryLoading}
             className="h-7 px-2 text-xs text-muted-foreground"
           >
-            <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3 w-3 mr-1 ${loading || summaryLoading ? 'animate-spin' : ''}`} />
             {isVi ? 'Tải lại' : 'Refresh'}
           </Button>
         </div>
       </div>
+
+      {/* Historical Revision Selector */}
+      {derivedRevisions.length > 1 && (
+        <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-md border border-slate-200 text-xs" data-testid="report-revision-selector-bar">
+          <History className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+          <span className="font-medium text-slate-700">{isVi ? 'Lịch sử phiên bản snapshot:' : 'Snapshot Revisions:'}</span>
+          <div className="flex flex-wrap gap-1">
+            {derivedRevisions.map(rev => (
+              <Button
+                key={rev.version}
+                type="button"
+                variant={selectedRevisionVersion === rev.version ? 'default' : 'outline'}
+                size="sm"
+                className="h-6 px-2 text-[11px]"
+                data-testid={`revision-selector-v${rev.version}`}
+                onClick={() => setSelectedRevisionVersion(rev.version)}
+              >
+                v{rev.version} {rev.version === revisionVersion ? (isVi ? '(Hiện tại)' : '(Current)') : (isVi ? '(Lịch sử)' : '(Historical)')}
+              </Button>
+            ))}
+          </div>
+          {isHistoricalSnapshot && (
+            <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-900 text-[10px] ml-auto" data-testid="immutable-revision-badge">
+              <Lock className="h-3 w-3 mr-1 text-amber-600" />
+              {isVi ? `Bản ghi lịch sử bất biến v${selectedRevisionVersion}` : `Immutable Historical Snapshot v${selectedRevisionVersion}`}
+            </Badge>
+          )}
+        </div>
+      )}
+
+      {/* External Summary Workflow Section */}
+      {allowWorkflowActions && reportId && (
+        <div
+          className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-3"
+          data-testid="external-summary-workflow-card"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span className="text-xs font-semibold text-slate-900">
+                {isVi ? 'Tóm tắt vận hành an toàn đối tác (External Operational Summary)' : 'External Operational Summary Workflow'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {summaryLoading ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              ) : workflowSummary ? (
+                <>
+                  {workflowSummary.workflowState === 'draft' && (
+                    <Badge variant="outline" className="border-slate-300 bg-slate-100 text-slate-800 text-[10px]" data-testid="external-summary-status-draft">
+                      {isVi ? 'Bản nháp' : 'Draft'} v{workflowSummary.version}
+                    </Badge>
+                  )}
+                  {workflowSummary.workflowState === 'submitted' && (
+                    <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800 text-[10px]" data-testid="external-summary-status-submitted">
+                      {isVi ? 'Chờ duyệt' : 'Submitted'} v{workflowSummary.version}
+                    </Badge>
+                  )}
+                  {workflowSummary.workflowState === 'approved' && (
+                    <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 text-[10px]" data-testid="external-summary-status-approved">
+                      <Check className="h-3 w-3 mr-0.5" />
+                      {isVi ? 'Đã duyệt' : 'Approved'} v{workflowSummary.version}
+                    </Badge>
+                  )}
+                  {workflowSummary.workflowState === 'correction_requested' && (
+                    <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-900 text-[10px]" data-testid="external-summary-status-correction-requested">
+                      <AlertCircle className="h-3 w-3 mr-0.5 text-amber-600" />
+                      {isVi ? 'Yêu cầu chỉnh sửa' : 'Correction Requested'} v{workflowSummary.version}
+                    </Badge>
+                  )}
+                  {workflowSummary.workflowState === 'rejected' && (
+                    <Badge variant="outline" className="border-red-300 bg-red-50 text-red-800 text-[10px]" data-testid="external-summary-status-rejected">
+                      <X className="h-3 w-3 mr-0.5" />
+                      {isVi ? 'Bị từ chối' : 'Rejected'} v{workflowSummary.version}
+                    </Badge>
+                  )}
+                </>
+              ) : (
+                <Badge variant="outline" className="border-slate-300 text-slate-500 text-[10px]" data-testid="external-summary-status-draft">
+                  {isVi ? 'Chưa tạo' : 'Not Created'}
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Stale State Conflict Warning */}
+          {isStaleConflict && (
+            <div
+              className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 flex items-center justify-between gap-2"
+              data-testid="external-summary-stale-warning"
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>{summaryError}</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadWorkflowSummary()}
+                className="h-6 px-2 text-[11px] border-amber-400 bg-white"
+              >
+                {isVi ? 'Làm mới dữ liệu' : 'Refresh Data'}
+              </Button>
+            </div>
+          )}
+
+          {/* Error Banner */}
+          {summaryError && !isStaleConflict && (
+            <div
+              className="rounded-md border border-red-200 bg-red-50 p-2.5 text-xs text-red-900 flex items-center justify-between gap-2"
+              data-testid="external-summary-error-banner"
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+                <span>{summaryError}</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadWorkflowSummary()}
+                className="h-6 px-2 text-[11px] border-red-300 text-red-800"
+              >
+                {isVi ? 'Thử lại' : 'Retry'}
+              </Button>
+            </div>
+          )}
+
+          {/* Unauthorized Action Denial Feedback */}
+          {unauthorizedMessage && (
+            <div
+              className="rounded-md border border-red-300 bg-red-100 p-2.5 text-xs text-red-950 font-medium"
+              data-testid="external-summary-unauthorized-msg"
+            >
+              {unauthorizedMessage}
+            </div>
+          )}
+
+          {/* Review Reason Display (for correction_requested / rejected) */}
+          {workflowSummary?.reviewReason && (
+            <div
+              className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 space-y-1"
+              data-testid="external-summary-review-reason"
+            >
+              <span className="font-semibold">{isVi ? 'Ghi chú từ cấp xét duyệt:' : 'Reviewer notes:'}</span>
+              <p className="leading-relaxed">{workflowSummary.reviewReason}</p>
+            </div>
+          )}
+
+          {/* Reason Input Modal/Popover */}
+          {showReasonDialog && (
+            <div className="rounded-md border border-slate-300 bg-white p-3 space-y-2 shadow-sm" data-testid="workflow-reason-dialog">
+              <h5 className="text-xs font-semibold text-slate-800">
+                {showReasonDialog === 'correction'
+                  ? isVi ? 'Nhập lý do yêu cầu chỉnh sửa:' : 'Enter reason for requesting correction:'
+                  : isVi ? 'Nhập lý do từ chối:' : 'Enter reason for rejection:'}
+              </h5>
+              <Input
+                value={reasonInput}
+                onChange={e => setReasonInput(e.target.value)}
+                placeholder={isVi ? 'Nhập chi tiết yêu cầu...' : 'Provide details...'}
+                className="text-xs bg-slate-50"
+                data-testid="workflow-reason-input"
+              />
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowReasonDialog(null)}
+                  className="h-7 text-xs"
+                >
+                  {isVi ? 'Hủy' : 'Cancel'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={showReasonDialog === 'reject' ? 'destructive' : 'default'}
+                  disabled={!reasonInput.trim() || summaryActionPending}
+                  onClick={() => void handleConfirmReason()}
+                  className="h-7 text-xs"
+                  data-testid="confirm-reason-btn"
+                >
+                  {isVi ? 'Xác nhận' : 'Confirm'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Workflow State Specific Editing & Controls */}
+          {(!workflowSummary || workflowSummary.workflowState === 'draft' || workflowSummary.workflowState === 'correction_requested') ? (
+            <div className="space-y-2">
+              <Textarea
+                value={editContent}
+                onChange={e => setEditContent(e.target.value)}
+                placeholder={isVi ? 'Nhập tóm tắt vận hành an toàn gửi đối tác (không chứa tên nhân sự, ghi chú nội bộ hoặc vi phạm)...' : 'Enter external-safe operational summary (no staff names, internal notes or allegations)...'}
+                maxLength={4000}
+                rows={3}
+                className="text-xs bg-white"
+                data-testid="external-summary-input"
+                disabled={summaryActionPending}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[10px] text-muted-foreground">
+                  {editContent.length}/4000 {isVi ? 'ký tự' : 'characters'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleSaveDraft()}
+                    disabled={summaryActionPending || !editContent.trim()}
+                    className="h-7 text-xs"
+                    data-testid="save-external-summary-draft-btn"
+                  >
+                    <Edit3 className="h-3 w-3 mr-1" />
+                    {isVi ? 'Lưu nháp' : 'Save Draft'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleSubmit()}
+                    disabled={summaryActionPending || !workflowSummary?.id}
+                    className="h-7 text-xs"
+                    data-testid="submit-external-summary-btn"
+                  >
+                    <Send className="h-3 w-3 mr-1" />
+                    {isVi ? 'Gửi duyệt' : 'Submit for Review'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : workflowSummary.workflowState === 'submitted' ? (
+            <div className="space-y-2">
+              <div
+                className="rounded border border-blue-200 bg-white p-3 text-xs text-foreground whitespace-pre-wrap leading-relaxed"
+                data-testid="external-summary-submitted-content"
+              >
+                {workflowSummary.content}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <span className="text-[11px] text-blue-800 font-medium">
+                  {isVi ? 'Bản tóm tắt đang chờ duyệt.' : 'Summary is pending review.'}
+                </span>
+                <div className="flex items-center gap-2">
+                  {canReview ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowReasonDialog('correction')}
+                        disabled={summaryActionPending}
+                        className="h-7 text-xs border-amber-300 text-amber-900 hover:bg-amber-50"
+                        data-testid="request-correction-external-summary-btn"
+                      >
+                        {isVi ? 'Yêu cầu sửa' : 'Request Correction'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowReasonDialog('reject')}
+                        disabled={summaryActionPending}
+                        className="h-7 text-xs border-red-300 text-red-800 hover:bg-red-50"
+                        data-testid="reject-external-summary-btn"
+                      >
+                        {isVi ? 'Từ chối' : 'Reject'}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => void handleApprove()}
+                        disabled={summaryActionPending}
+                        className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                        data-testid="approve-external-summary-btn"
+                      >
+                        <Check className="h-3 w-3 mr-1" />
+                        {isVi ? 'Phê duyệt' : 'Approve'}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void handleApprove()}
+                      disabled={summaryActionPending}
+                      className="h-7 text-xs bg-slate-400 text-white cursor-not-allowed"
+                      data-testid="approve-external-summary-btn"
+                      title={isVi ? 'Chỉ Admin/Leader mới có quyền phê duyệt' : 'Only Admin/Leader can approve'}
+                    >
+                      {isVi ? 'Phê duyệt (Cần quyền)' : 'Approve (Unauthorized)'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : workflowSummary.workflowState === 'approved' ? (
+            <div className="space-y-2">
+              <div
+                className="rounded border border-emerald-200 bg-emerald-50/40 p-3 text-xs text-emerald-950 whitespace-pre-wrap leading-relaxed"
+                data-testid="external-summary-approved-content"
+              >
+                {workflowSummary.content}
+              </div>
+              {canReview && (
+                <div className="flex justify-end pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowReasonDialog('correction')}
+                    disabled={summaryActionPending}
+                    className="h-7 text-xs border-amber-300 text-amber-900 hover:bg-amber-50"
+                    data-testid="re-request-correction-btn"
+                  >
+                    {isVi ? 'Yêu cầu sửa lại (Tạo bản sửa đổi mới)' : 'Request Correction (New Revision)'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded border border-red-200 bg-red-50/40 p-3 text-xs text-red-950 whitespace-pre-wrap leading-relaxed">
+              {workflowSummary.content}
+            </div>
+          )}
+        </div>
+      )}
 
       {error ? (
         <div

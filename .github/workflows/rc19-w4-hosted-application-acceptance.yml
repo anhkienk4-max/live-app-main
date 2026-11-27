@@ -26,6 +26,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnostic_realtime:
+        description: Repeat the scoped Realtime diagnostic in this bounded runtime run
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -878,6 +883,9 @@ jobs:
           else
             export RC19_W4_RUN_BROWSER_UAT=false
           fi
+          if [[ "$DIAGNOSTIC_ONLY" == "true" && "$DIAGNOSTIC_BROWSER_UAT" == "true" ]]; then
+            export RC19_W4_BROWSER_GREP='BROWSER-AUTH-01|CALENDAR-DETAIL-01|REPORT-WORKSPACE-01|D07 & D09'
+          fi
           if [[ ! -f scripts/rc19-w4-application-acceptance.mjs ]]; then
             jq '.steps.application = {status:"blocked",code:"LANE01_ACCEPTANCE_ENTRYPOINT_MISSING"}' \
               "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/blocked.json"
@@ -936,7 +944,7 @@ jobs:
                runtime_database_marker_match:(.runtime_database_marker == $marker),
                synthetic_users,authorization,browser_uat,
                cases:[.cases[]|{case_id,status,evidence_scope}],
-               browser_cases:[.browser_cases[]|{case_id,status,actual:{failure_class:.actual.failure_class},database_readback:{status:.database_readback.status,matches_expected:.database_readback.matches_expected},browser_interaction:{performed:.browser_interaction.performed,authenticated:.browser_interaction.authenticated,status:.browser_interaction.status}}],
+               browser_cases:[.browser_cases[]|{case_id,status,actor:{role:.actor.role,auth_user_id:.actor.auth_user_id,business_user_id:.actor.business_user_id,fixture_identity:.actor.fixture_identity},actual:{expected_route:.actual.expected_route,actual_route:.actual.actual_route,response_statuses:.actual.response_statuses,locator_failure_class:.actual.locator_failure_class,failure_evidence:.actual.failure_evidence,cause_classification:.actual.cause_classification},database_readback:{status:.database_readback.status,matches_expected:.database_readback.matches_expected},browser_interaction:{performed:.browser_interaction.performed,authenticated:.browser_interaction.authenticated,interaction_count:.browser_interaction.interaction_count,status:.browser_interaction.status}}],
                fixtures:{authenticated_users:.fixtures.authenticated_users,brands:.fixtures.brands,
                  platforms:.fixtures.platforms,parent_shifts:.fixtures.parent_shifts,
                  staffing_segments:.fixtures.staffing_segments,canonical_assignments:.fixtures.canonical_assignments,
@@ -1012,7 +1020,7 @@ jobs:
             > "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json"
 
       - name: Verify authenticated Realtime delivery against scoped synthetic shift
-        if: inputs.diagnostic_only
+        if: inputs.diagnostic_only && inputs.diagnostic_realtime
         working-directory: rc19-w4-application
         run: |
           set -euo pipefail

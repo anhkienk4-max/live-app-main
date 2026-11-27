@@ -12,6 +12,10 @@ const migrationPath = path.join(root, 'supabase/migrations/20261021120000_global
 const migration = readFileSync(migrationPath, 'utf8')
 const sha = createHash('sha256').update(migration).digest('hex').toUpperCase()
 assert.equal(sha, process.env.REPORT_QUEUE_MIGRATION_SHA256, 'report queue migration SHA mismatch')
+const agencyFilterMigrationPath = path.join(root, 'supabase/migrations/20261128100000_rc19_w4_reports_agency_code_filter.sql')
+const agencyFilterMigration = readFileSync(agencyFilterMigrationPath, 'utf8')
+const agencyFilterSha = createHash('sha256').update(agencyFilterMigration).digest('hex').toUpperCase()
+assert.equal(agencyFilterSha, '9A8AB17AD13A35BAB0CE0EC942FA6A7A353A7D0901B8809FA10CD65E3B808E36', 'report agency filter migration SHA mismatch')
 assert.ok(container && [16,17].includes(major), 'disposable PostgreSQL matrix target required')
 
 function psql(database, input, { allowFailure = false, transaction = false } = {}) {
@@ -44,6 +48,7 @@ assert.notEqual(injected.status,0,'injected PostgreSQL failure must fail the mig
 assert.match(injected.stderr,/REPORT_QUEUE_INJECTED_FAILURE/)
 assert.equal(query("select to_regprocedure('public.get_report_obligation_page(integer,integer,jsonb)') is null"),'t','failed transaction must remove function and grants')
 psql('report_queue',migration,{transaction:true})
+psql('report_queue',agencyFilterMigration,{transaction:true})
 const acl=query("select has_function_privilege('authenticated','public.get_report_obligation_page(integer,integer,jsonb)','EXECUTE')::int || '|' || has_function_privilege('anon','public.get_report_obligation_page(integer,integer,jsonb)','EXECUTE')::int || '|' || (select prosecdef::int from pg_proc where oid='public.get_report_obligation_page(integer,integer,jsonb)'::regprocedure)")
 assert.equal(acl,'1|0|0','RPC must remain SECURITY INVOKER and authenticated-only')
 
@@ -51,23 +56,24 @@ const seed=[]
 for(let i=1;i<=31;i++) {
   const id=`page-${String(i).padStart(2,'0')}`
   const startAt=new Date(Date.UTC(2026,0,2,0,0)-(i-1)*60_000).toISOString()
-  seed.push(`('${id}','2026-01-01','12:00','13:00','${startAt}','completed','page-brand','platform','campaign','Historical ${id}',null,null,null,null,null)`)
+  const agencyCode=['ada','snap','live_ai'][(i-1)%3]
+  seed.push(`('${id}','2026-01-01','12:00','13:00','${startAt}','completed','page-brand','platform','campaign','Historical ${id}','${agencyCode}',null,null,null,null,null)`)
 }
 seed.push(
-  "('direct','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Direct assignment','member',null,null,null,null)",
-  "('direct-support','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Direct Support',null,'member',null,null,null)",
-  "('direct-technical','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Direct Technical',null,null,'member',null,null)",
-  "('unrelated','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Unrelated',null,null,null,null,null)",
-  "('approved','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Approved registration',null,null,null,null,null)",
-  "('manual','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Manual assignment',null,null,null,null,null)",
-  "('pending','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Pending only',null,null,null,null,null)",
-  "('submitted','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Own submitted report',null,null,null,null,null)",
-  "('deleted','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Deleted',null,null,null,now(),null)",
-  "('archived','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Archived',null,null,null,null,now())",
-  "('finalized','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Finalized',null,null,null,null,null)",
-  "('open','2026-01-01','12:00','13:00',now(),'scheduled','other-brand','platform','campaign','Open registration',null,null,null,null,null)"
+  "('direct','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Direct assignment',null,'member',null,null,null,null)",
+  "('direct-support','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Direct Support',null,null,'member',null,null,null)",
+  "('direct-technical','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Direct Technical',null,null,null,'member',null,null)",
+  "('unrelated','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Unrelated',null,null,null,null,null,null)",
+  "('approved','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Approved registration',null,null,null,null,null,null)",
+  "('manual','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Manual assignment',null,null,null,null,null,null)",
+  "('pending','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Pending only',null,null,null,null,null,null)",
+  "('submitted','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Own submitted report',null,null,null,null,null,null)",
+  "('deleted','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Deleted',null,null,null,null,now(),null)",
+  "('archived','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Archived',null,null,null,null,null,now())",
+  "('finalized','2026-01-01','12:00','13:00',now(),'completed','other-brand','platform','campaign','Finalized',null,null,null,null,null,null)",
+  "('open','2026-01-01','12:00','13:00',now(),'scheduled','other-brand','platform','campaign','Open registration',null,null,null,null,null,null)"
 )
-psql('report_queue',`insert into public.shifts(id,date,start_time,end_time,start_at,status,brand_id,platform_id,campaign_id,title,host_id,support_id,technical_id,deleted_at,archived_at) values ${seed.join(',')};
+psql('report_queue',`insert into public.shifts(id,date,start_time,end_time,start_at,status,brand_id,platform_id,campaign_id,title,agency_code,host_id,support_id,technical_id,deleted_at,archived_at) values ${seed.join(',')};
 insert into public.shift_registrations values
 ('approved','member','host','approved'),('manual','member','support','manually_assigned'),('pending','member','technical','pending'),('submitted','member','host','pending'),('open','member','host','pending');
 update public.shifts set end_at=now()+interval '1 hour' where id='open';
@@ -106,8 +112,36 @@ const filtered=asUser('00000000-0000-0000-0000-000000000003',`select public.get_
 const filteredPage=pageResult(filtered)
 assert.equal(filteredPage.total,1)
 assert.equal(filteredPage.rows[0].shift.id,'page-31')
+for (const [agencyCode,expectedTotal] of [['ada',11],['snap',10],['live_ai',10]]) {
+  const scoped=asUser('00000000-0000-0000-0000-000000000003',`select public.get_report_obligation_page(1,10,'{"brandIds":["page-brand"],"agencyCodes":["${agencyCode}"]}'::jsonb)`)
+  assert.equal(scoped.status,0,scoped.stderr)
+  const scopedPage=pageResult(scoped)
+  assert.equal(scopedPage.total,expectedTotal,`${agencyCode} aggregate must be filtered before pagination`)
+  assert.equal(scopedPage.rows.length,Math.min(10,expectedTotal))
+  assert.ok(scopedPage.rows.every(row=>row.shift.agency_code===agencyCode))
+}
+for (const [codes,expectedTotal] of [
+  [['ada','snap'],21], [['ada','live_ai'],21], [['snap','live_ai'],20], [['ada','snap','live_ai'],31],
+]) {
+  const first=asUser('00000000-0000-0000-0000-000000000003',`select public.get_report_obligation_page(1,10,'{"brandIds":["page-brand"],"agencyCodes":${JSON.stringify(codes)} }'::jsonb)`)
+  const firstPage=pageResult(first)
+  assert.equal(firstPage.total,expectedTotal,`${codes.join('+')} totals must be pre-pagination`)
+  assert.equal(firstPage.rows.length,10)
+  assert.ok(firstPage.rows.every(row=>codes.includes(row.shift.agency_code)))
+  const second=asUser('00000000-0000-0000-0000-000000000003',`select public.get_report_obligation_page(2,10,'{"brandIds":["page-brand"],"agencyCodes":${JSON.stringify(codes)} }'::jsonb)`)
+  const secondPage=pageResult(second)
+  assert.equal(secondPage.total,expectedTotal)
+  assert.equal(secondPage.rows.length,10)
+  assert.ok(secondPage.rows.every(row=>codes.includes(row.shift.agency_code)))
+}
+const crossBrand=asUser('00000000-0000-0000-0000-000000000003',`select public.get_report_obligation_page(1,10,'{"brandIds":["other-brand"],"agencyCodes":["snap"]}'::jsonb)`)
+assert.equal(pageResult(crossBrand).total,0,'Brand and Agency predicates must intersect before totals')
+const memberAgency=asUser('00000000-0000-0000-0000-000000000001',`select public.get_report_obligation_page(1,10,'{"agencyCodes":["ada"]}'::jsonb)`)
+assert.equal(pageResult(memberAgency).total,0,'Agency filter must not widen Member row authority')
 for(const [uuid,filter] of [
   ['00000000-0000-0000-0000-000000000001','{"reportStatuses":["invalid"]}'],
+  ['00000000-0000-0000-0000-000000000003','{"agencyCodes":["unknown"]}'],
+  ['00000000-0000-0000-0000-000000000003','{"agencyCodes":[]}'],
   ['00000000-0000-0000-0000-000000000004','{}'],
 ]) {
   const denied=asUser(uuid,`select public.get_report_obligation_page(1,20,'${filter}'::jsonb)`,true)

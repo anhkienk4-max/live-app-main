@@ -976,7 +976,15 @@ export function ReportDetailModal({
                     </Button>
                   </div>
                 )}
-                <ReportOperationalNotesReview shiftId={shift?.id || report.shift_id} reportId={report.id} revisionVersion={report.version_number} readOnly={true} className="mt-4" />
+                <ReportOperationalNotesReview
+                  shiftId={shift?.id || report.shift_id}
+                  reportId={report.id}
+                  revisionVersion={report.version_number}
+                  readOnly={true}
+                  allowWorkflowActions={true}
+                  currentUser={currentUser}
+                  className="mt-4"
+                />
               </CardContent>
             </Card>
           </TabsContent>
