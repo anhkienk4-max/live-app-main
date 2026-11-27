@@ -1,7 +1,7 @@
 {
   "schema": "rc19-w4-application-acceptance/v2",
   "status": "NOT RUN",
-  "application_sha": "ef5bbbc09e8abda9a1a0d0f623e7183cf9a20aa1",
+  "application_sha": "e50c9a7d46cf1457a8e5be7e10d30defe650c923",
   "runtime_database_marker": "DISPOSABLE_PG17_RUNTIME_PENDING",
   "synthetic_users": {
     "admin": {
@@ -20,7 +20,7 @@
   "authorization": {
     "rbac": true,
     "rls": false,
-    "application_api": true
+    "application_api": false
   },
   "browser_uat": {
     "requested": false,
@@ -97,6 +97,14 @@
       "status": "NOT RUN"
     },
     {
+      "case_id": "REP-AGENCY-01",
+      "actor": "Admin, Leader & Member",
+      "expected": "Reports workspace displays Agency and Brand filters, and enforces scope-aware UI banners across Admin, Leader, and Member roles.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT across Admin, Leader, and Member sessions",
+      "status": "NOT RUN"
+    },
+    {
       "case_id": "D08",
       "actor": "Admin",
       "expected": "Monthly workforce employee incident drilldown distinguishes confirmed vs pending/rejected items.",
@@ -124,9 +132,9 @@
       "case_id": "L08",
       "actor": "Unauthenticated / Invalid Actor",
       "expected": "Anonymous actor access denied to protected routes; direct media authorization rejects invalid/unassigned tokens with 401/403.",
-      "actual": "Asserted direct 401/403 rejection for unauthenticated and unauthorized media requests.",
+      "actual": "Awaiting execution against browser and API runtime.",
       "evidence_scope": "Browser navigation and API authorization denial",
-      "status": "PASS"
+      "status": "NOT RUN"
     },
     {
       "case_id": "ATT-01",

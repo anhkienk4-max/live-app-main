@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Download, FileImage, FileSpreadsheet, Filter, Plus, RotateCcw, Search } from 'lucide-react'
+import { Download, FileImage, FileSpreadsheet, Filter, Plus, RotateCcw, Search, Shield } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
   brandService,
@@ -21,6 +21,7 @@ import { useShiftChangeRefresh } from '@/lib/hooks/useShiftChangeRefresh'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils/currency'
 import { reportMetricValue, calculateNullableAnalyticsMetrics } from '@/lib/utils/analytics'
+import { normalizeAgencyCode } from '@/lib/utils/executionSource'
 import {
   downloadReportTemplate,
 } from '@/lib/utils/excelUtils'
@@ -43,6 +44,7 @@ type Filters = {
   brandIds: string[]
   platformIds: string[]
   campaignIds: string[]
+  agencyCodes: string[]
   hostIds: string[]
   supportIds: string[]
   technicalIds: string[]
@@ -57,6 +59,7 @@ const emptyFilters: Filters = {
   brandIds: [],
   platformIds: [],
   campaignIds: [],
+  agencyCodes: [],
   hostIds: [],
   supportIds: [],
   technicalIds: [],
@@ -178,6 +181,10 @@ export function ReportsContainer() {
     if (!shift) return false
     if (filters.start && shift.date < filters.start) return false
     if (filters.end && shift.date > filters.end) return false
+    if (filters.agencyCodes.length > 0) {
+      const shiftAgency = normalizeAgencyCode(shift.agency_code) || normalizeAgencyCode((shift as unknown as { custom_fields?: { Agency?: string } }).custom_fields?.Agency)
+      if (!shiftAgency || !filters.agencyCodes.includes(shiftAgency)) return false
+    }
     if (!matchesMultiSelect(shift.brand_id, filters.brandIds)) return false
     if (!matchesMultiSelect(shift.platform_id, filters.platformIds)) return false
     if (!matchesMultiSelect(shift.campaign_id, filters.campaignIds)) return false
@@ -217,6 +224,24 @@ export function ReportsContainer() {
 
   return (
     <div className="space-y-4">
+      {/* Scope-Aware UI Banners */}
+      {currentUser && hasPermission(currentUser, 'brands.manage') ? (
+        <div data-testid="reports-admin-scope-banner" className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
+          <Shield className="h-4 w-4 text-slate-600 shrink-0" />
+          <span>{t('admin')}: Chế độ quản trị hệ thống — Toàn quyền xem và xét duyệt báo cáo trên tất cả Brand & Agency.</span>
+        </div>
+      ) : currentUser && hasPermission(currentUser, 'reports.review') ? (
+        <div data-testid="reports-leader-scope-banner" className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-900">
+          <Shield className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>Chế độ quản lý đội ngũ (Leader Scope) — Báo cáo trong phạm vi Brand và Agency được phân công.</span>
+        </div>
+      ) : currentUser ? (
+        <div data-testid="reports-member-scope-banner" className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-900">
+          <Shield className="h-4 w-4 text-blue-600 shrink-0" />
+          <span>Chế độ xem cá nhân (Member Scope) — Báo cáo thuộc ca trực được phân công của bạn.</span>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
           <SummaryMetric label={t('reportCount')} value={filteredReports.length.toLocaleString()} />
@@ -279,8 +304,11 @@ export function ReportsContainer() {
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
             <EntityFilter label={t('brand')} value={filters.brandIds} options={brands} onChange={value => setFilters(current => ({ ...current, brandIds: value }))} />
+            <div data-testid="filter-agency">
+              <EntityFilter label="Agency" value={filters.agencyCodes} options={[{ id: 'ada', name: 'ADA' }, { id: 'snap', name: 'SNAP' }, { id: 'live_ai', name: 'Live AI' }]} onChange={value => setFilters(current => ({ ...current, agencyCodes: value }))} />
+            </div>
             <EntityFilter label={t('platform')} value={filters.platformIds} options={platforms} onChange={value => setFilters(current => ({ ...current, platformIds: value }))} />
             <EntityFilter label={t('campaign')} value={filters.campaignIds} options={campaigns} onChange={value => setFilters(current => ({ ...current, campaignIds: value }))} />
             <StatusFilter label={t('reportStatus')} value={filters.reportStatuses} values={['draft', 'in_review', 'confirmed', 'reopened', 'archived']} onChange={value => setFilters(current => ({ ...current, reportStatuses: value }))} />

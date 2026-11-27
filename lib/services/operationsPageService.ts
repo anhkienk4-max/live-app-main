@@ -10,6 +10,7 @@ export interface ListFilters {
   brandIds?: string[]
   platformIds?: string[]
   campaignIds?: string[]
+  agencyCodes?: string[]
   studios?: string[]
   roles?: string[]
   registrationStatuses?: string[]

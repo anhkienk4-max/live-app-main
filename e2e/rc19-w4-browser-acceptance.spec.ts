@@ -167,6 +167,14 @@ function initializeCases() {
       status: isRequiredAcceptanceMode ? 'BLOCKED' : 'NOT RUN',
     },
     {
+      case_id: 'REP-AGENCY-01',
+      actor: 'Admin, Leader & Member',
+      expected: 'Reports workspace displays Agency and Brand filters, and enforces scope-aware UI banners across Admin, Leader, and Member roles.',
+      actual: 'Awaiting execution against authenticated runtime.',
+      evidence_scope: 'Hosted browser UAT across Admin, Leader, and Member sessions',
+      status: 'NOT RUN',
+    },
+    {
       case_id: 'D08',
       actor: 'Admin',
       expected: 'Monthly workforce employee incident drilldown distinguishes confirmed vs pending/rejected items.',
@@ -755,6 +763,49 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
         recordCaseResult('D07/D09', 'BLOCKED', 'UI interaction passed; persisted database readback pending execution against disposable hosted runtime.')
       }
     })
+  })
+
+  test('REP-AGENCY-01: Reports workspace enforces scope banners and renders Agency and Brand filter controls', async ({ browser }) => {
+    // 1. Admin session: verify admin banner & agency filter
+    await withAuthenticatedRole(browser, 'admin', async (page) => {
+      await page.goto('/reports')
+      await page.waitForLoadState('domcontentloaded')
+
+      const adminBanner = page.locator('[data-testid="reports-admin-scope-banner"]')
+      await expect(adminBanner).toBeVisible({ timeout: 20_000 })
+
+      // Open filter panel if collapsed
+      const filterToggle = page.getByRole('button', { name: /Bộ lọc|Filter/i }).first()
+      if (await filterToggle.isVisible()) {
+        await filterToggle.click()
+      }
+
+      const agencyFilter = page.locator('[data-testid="filter-agency"]')
+      await expect(agencyFilter).toBeVisible({ timeout: 15_000 })
+      interactionCount++
+    })
+
+    // 2. Leader session: verify leader scope banner
+    await withAuthenticatedRole(browser, 'leader', async (page) => {
+      await page.goto('/reports')
+      await page.waitForLoadState('domcontentloaded')
+
+      const leaderBanner = page.locator('[data-testid="reports-leader-scope-banner"]')
+      await expect(leaderBanner).toBeVisible({ timeout: 20_000 })
+      interactionCount++
+    })
+
+    // 3. Member session: verify member personal scope banner
+    await withAuthenticatedRole(browser, 'member', async (page) => {
+      await page.goto('/reports')
+      await page.waitForLoadState('domcontentloaded')
+
+      const memberBanner = page.locator('[data-testid="reports-member-scope-banner"]')
+      await expect(memberBanner).toBeVisible({ timeout: 20_000 })
+      interactionCount++
+    })
+
+    recordCaseResult('REP-AGENCY-01', 'PASS', 'Verified Admin, Leader, and Member scope banners and Agency filter control.')
   })
 
   test('D08: Monthly workforce employee incident drilldown distinguishes confirmed vs pending/rejected items', async ({ browser }) => {

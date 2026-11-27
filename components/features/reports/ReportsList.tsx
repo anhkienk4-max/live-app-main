@@ -9,7 +9,7 @@ import { getOperationalReferences, operationalReferenceIdentity } from '@/lib/se
 import { readTransientData } from '@/lib/services/transientDataCache'
 import { invalidatePageCache } from '@/lib/services/operationsPageCache'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, TrendingUp, Trash2, LayoutGrid, Table as TableIcon, List as ListIcon, CalendarDays, MoreHorizontal } from 'lucide-react'
+import { DollarSign, Download, FileImage, FileSpreadsheet, FileText, Filter, Plus, RotateCcw, Search, Shield, TrendingUp, Trash2, LayoutGrid, Table as TableIcon, List as ListIcon, CalendarDays, MoreHorizontal } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
   reportImageService,
@@ -61,6 +61,7 @@ type Filters = {
   brandIds: string[]
   platformIds: string[]
   campaignIds: string[]
+  agencyCodes: string[]
   hostIds: string[]
   supportIds: string[]
   technicalIds: string[]
@@ -75,6 +76,7 @@ const emptyFilters: Filters = {
   brandIds: [],
   platformIds: [],
   campaignIds: [],
+  agencyCodes: [],
   hostIds: [],
   supportIds: [],
   technicalIds: [],
@@ -131,6 +133,7 @@ export function ReportsList() {
       brandIds: p.get('brandIds')?.split(',').filter(Boolean) || [],
       platformIds: p.get('platformIds')?.split(',').filter(Boolean) || [],
       campaignIds: p.get('campaignIds')?.split(',').filter(Boolean) || [],
+      agencyCodes: p.get('agencyCodes')?.split(',').filter(Boolean) || [],
       hostIds: p.get('hostIds')?.split(',').filter(Boolean) || [],
       supportIds: p.get('supportIds')?.split(',').filter(Boolean) || [],
       technicalIds: p.get('technicalIds')?.split(',').filter(Boolean) || [],
@@ -160,16 +163,16 @@ export function ReportsList() {
   const [loadError, setLoadError] = React.useState<unknown>(null)
 
   const encodedFilters = JSON.stringify({ search: filters.search, from: filters.start || undefined, to: filters.end || undefined,
-    brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
+    brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds, agencyCodes: filters.agencyCodes,
     hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds,
     reportStatuses: filters.reportStatuses, metricsStatuses: filters.metricsStatuses })
   const encodedQueueFilters = JSON.stringify({ search: filters.search || undefined, from: filters.start || undefined, to: filters.end || undefined,
-    brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds,
+    brandIds: filters.brandIds, platformIds: filters.platformIds, campaignIds: filters.campaignIds, agencyCodes: filters.agencyCodes,
     hostIds: filters.hostIds, supportIds: filters.supportIds, technicalIds: filters.technicalIds,
     reportStatuses: filters.reportStatuses, metricsStatuses: filters.metricsStatuses })
   // Apply/Reset use exactly the same URL-sourced filter contract in every view.
   const syncFilterUrl = React.useCallback((value: Filters) => {
-    const keys: (keyof Filters)[] = ['search','start','end','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']
+    const keys: (keyof Filters)[] = ['search','start','end','brandIds','platformIds','campaignIds','agencyCodes','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']
     const changes: Record<string,string|null> = { reports_page: null }
     for (const key of keys) {
       const field = value[key]
@@ -182,7 +185,8 @@ export function ReportsList() {
     const fromUrl: Filters = {
       search: p.get('search') || '', start: p.get('start') || '', end: p.get('end') || '',
       brandIds: p.get('brandIds')?.split(',').filter(Boolean) || [], platformIds: p.get('platformIds')?.split(',').filter(Boolean) || [],
-      campaignIds: p.get('campaignIds')?.split(',').filter(Boolean) || [], hostIds: p.get('hostIds')?.split(',').filter(Boolean) || [],
+      campaignIds: p.get('campaignIds')?.split(',').filter(Boolean) || [], agencyCodes: p.get('agencyCodes')?.split(',').filter(Boolean) || [],
+      hostIds: p.get('hostIds')?.split(',').filter(Boolean) || [],
       supportIds: p.get('supportIds')?.split(',').filter(Boolean) || [], technicalIds: p.get('technicalIds')?.split(',').filter(Boolean) || [],
       reportStatuses: p.get('reportStatuses')?.split(',').filter(Boolean) || [], metricsStatuses: p.get('metricsStatuses')?.split(',').filter(Boolean) || [],
     }
@@ -216,7 +220,7 @@ export function ReportsList() {
   const appliedFilterChips = React.useMemo(() => {
     const labels: Record<keyof Filters, string> = {
       search:'Tìm kiếm', start:'Từ ngày', end:'Đến ngày', brandIds:'Brand',
-      platformIds:'Nền tảng', campaignIds:'Campaign', hostIds:'Host',
+      platformIds:'Nền tảng', campaignIds:'Campaign', agencyCodes:'Agency', hostIds:'Host',
       supportIds:'Trợ live', technicalIds:'Kỹ thuật',
       reportStatuses:'Trạng thái báo cáo', metricsStatuses:'Trạng thái số liệu',
     }
@@ -550,6 +554,24 @@ export function ReportsList() {
 
   return (
     <div className="space-y-6" data-route-readiness="ready">
+      {/* Scope-Aware UI Banners */}
+      {currentUser && hasPermission(currentUser, 'brands.manage') ? (
+        <div data-testid="reports-admin-scope-banner" className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
+          <Shield className="h-4 w-4 text-slate-600 shrink-0" />
+          <span>{t('admin')}: Chế độ quản trị hệ thống — Toàn quyền xem và xét duyệt báo cáo trên tất cả Brand & Agency.</span>
+        </div>
+      ) : currentUser && hasPermission(currentUser, 'reports.review') ? (
+        <div data-testid="reports-leader-scope-banner" className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-900">
+          <Shield className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>Chế độ quản lý đội ngũ (Leader Scope) — Báo cáo trong phạm vi Brand và Agency được phân công.</span>
+        </div>
+      ) : currentUser ? (
+        <div data-testid="reports-member-scope-banner" className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-900">
+          <Shield className="h-4 w-4 text-blue-600 shrink-0" />
+          <span>Chế độ xem cá nhân (Member Scope) — Báo cáo thuộc ca trực được phân công của bạn.</span>
+        </div>
+      ) : null}
+
       {currentUser && hasPermission(currentUser, 'reports.submit') && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
           <div><p className="font-semibold">{t('finalReportWorkflow')}</p><p className="text-sm text-muted-foreground">{completedShifts.length ? `${completedShifts.length} ca đang hiển thị trong trang hàng đợi, không phải tổng ca có thể tạo Draft` : t('noReportDraftReady')}</p>{completedShifts.length > 0 && <p className="text-xs text-muted-foreground">{t('reportDraftPolicy')}</p>}</div>
@@ -648,6 +670,9 @@ export function ReportsList() {
             <label className="text-xs font-medium text-foreground">{t('startDate')}<Input className="mt-1.5 bg-background" type="date" value={draftFilters.start} onChange={event => updateFilters(current => ({ ...current, start: event.target.value }))} /></label>
             <label className="text-xs font-medium text-foreground">{t('endDate')}<Input className="mt-1.5 bg-background" type="date" value={draftFilters.end} onChange={event => updateFilters(current => ({ ...current, end: event.target.value }))} /></label>
             <EntityFilter label={t('brand')} value={draftFilters.brandIds} options={brands} onChange={value => updateFilters(current => ({ ...current, brandIds: value }))} />
+            <div data-testid="filter-agency">
+              <EntityFilter label="Agency" value={draftFilters.agencyCodes} options={[{ id: 'ada', name: 'ADA' }, { id: 'snap', name: 'SNAP' }, { id: 'live_ai', name: 'Live AI' }]} onChange={value => updateFilters(current => ({ ...current, agencyCodes: value }))} />
+            </div>
             <EntityFilter label={t('platform')} value={draftFilters.platformIds} options={platforms} onChange={value => updateFilters(current => ({ ...current, platformIds: value }))} />
             <EntityFilter label={t('campaign')} value={draftFilters.campaignIds} options={campaigns} onChange={value => updateFilters(current => ({ ...current, campaignIds: value }))} />
             <EntityFilter label={t('host')} value={draftFilters.hostIds} options={users.filter(user => user.operational_roles?.includes('host')).map(user => ({ id: user.id, name: user.full_name }))} onChange={value => updateFilters(current => ({ ...current, hostIds: value }))} />

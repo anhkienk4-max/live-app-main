@@ -69,6 +69,7 @@ import {
   type ShiftStaffingSegmentOption,
 } from '@/lib/services/supabaseShiftRegistrationService'
 import { addDateOnlyDays, calculateNullableAnalyticsMetrics, startOfBusinessWeek, type AnalyticsMetricKey } from '@/lib/utils/analytics'
+import { normalizeAgencyCode } from '@/lib/utils/executionSource'
 import {
   getSupabaseReportRepository,
   ReportRequestError,
@@ -536,6 +537,11 @@ function filterMockList<T extends { id: string }>(rows: T[], filters: ListFilter
     if (filters.brandIds?.length && !filters.brandIds.includes(row.brand_id ?? '')) return false
     if (filters.platformIds?.length && !filters.platformIds.includes(row.platform_id ?? '')) return false
     if (filters.campaignIds?.length && !filters.campaignIds.includes(row.campaign_id ?? '')) return false
+    if (filters.agencyCodes?.length && row.date) {
+      const shift = item as unknown as Shift
+      const shiftAgency = normalizeAgencyCode(shift.agency_code) || normalizeAgencyCode((shift as unknown as { custom_fields?: { Agency?: string } }).custom_fields?.Agency)
+      if (!shiftAgency || !filters.agencyCodes.includes(shiftAgency)) return false
+    }
     if (filters.from && (row.date ?? '') < filters.from || filters.to && (row.date ?? '') > filters.to) return false
     const studio = (row.studio ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()
     if (filters.studios?.length && !filters.studios.includes(studio || '__unassigned__')) return false
