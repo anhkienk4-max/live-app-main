@@ -1017,6 +1017,13 @@ jobs:
         run: |
           set -euo pipefail
           trap 'rm -f "$RUNNER_TEMP/rc19-w4-realtime-fixture.json"' EXIT
+          if [[ ! -s "$RUNNER_TEMP/rc19-w4-realtime-fixture.json" ]]; then
+            jq '.steps.realtime={status:"blocked",code:"REALTIME_SYNTHETIC_FIXTURE_NOT_CREATED",event_delivery_verified:false}' \
+              "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/realtime-fixture-blocked.json"
+            mv "$RUNNER_TEMP/rc19-w4-app-artifact/realtime-fixture-blocked.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+            echo "Realtime client checks did not run because its independent authenticated fixture was not created." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           realtime_publication_state="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='shifts')::text || '|' || COALESCE((SELECT relreplident::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='shifts'),'missing') || '|' || EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='shifts' AND i.indisprimary)::text")"
           realtime_publication_details="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT pub.pubinsert::text || '|' || pub.pubupdate::text || '|' || pub.pubdelete::text || '|' || pub.pubtruncate::text || '|' || COALESCE(array_to_string(pgt.attnames,','),'ALL') || '|' || CASE WHEN pgt.rowfilter IS NULL THEN 'NO_FILTER' ELSE 'FILTER_PRESENT' END FROM pg_publication_tables pgt JOIN pg_publication pub ON pub.pubname=pgt.pubname WHERE pgt.pubname='supabase_realtime' AND pgt.schemaname='public' AND pgt.tablename='shifts'")"
           realtime_replication_state="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT current_setting('wal_level') || '|' || (SELECT count(*) FROM pg_replication_slots WHERE slot_type='logical' AND plugin='pgoutput')::text || '|' || (SELECT count(*) FROM pg_replication_slots WHERE slot_type='logical' AND plugin='pgoutput' AND active)::text || '|' || (SELECT count(*) FROM pg_stat_replication WHERE state='streaming')::text")"
