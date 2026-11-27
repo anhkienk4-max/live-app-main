@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { z } from 'zod'
-import { readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
+import { hasExactOrigin, readJsonBody, RequestBodyError } from '@/lib/server/apiSecurity'
 import { createClient } from '@/lib/supabase/server'
 import type { ShiftOperationalNoteWorkflowV1Response } from '@/lib/types/shiftOperationalNoteWorkflow'
 
@@ -36,8 +36,7 @@ const statusForCode = (code: string) => {
 
 export async function handleShiftOperationalNoteWorkflow(request: Request): Promise<Response> {
   try {
-    const origin = request.headers.get('origin')
-    if (!origin || origin !== new URL(request.url).origin) return failure('SHIFT_NOTE_ORIGIN_INVALID', 403)
+    if (!hasExactOrigin(request)) return failure('SHIFT_NOTE_ORIGIN_INVALID', 403)
     const parsed = requestSchema.safeParse(await readJsonBody(request, 16_384))
     if (!parsed.success) return failure('SHIFT_NOTE_REQUEST_INVALID', 400)
     const input = parsed.data

@@ -38,7 +38,10 @@ const staffSchema = z.object({
   confirmed_skip_count: z.number().int().nonnegative(), confirmed_absent_count: z.number().int().nonnegative(),
   confirmed_authorized_absence_count: z.number().int().nonnegative(), confirmed_late_count: z.number().int().nonnegative(),
   confirmed_early_leave_count: z.number().int().nonnegative(), approved_pass_count: z.number().int().nonnegative(),
-  approved_swap_count: z.number().int().nonnegative(), unknown_late_minutes_count: z.number().int().nonnegative(),
+  approved_swap_count: z.number().int().nonnegative(),
+  confirmed_planned_reassignment_count: z.number().int().nonnegative(),
+  confirmed_other_count: z.number().int().nonnegative(),
+  unknown_late_minutes_count: z.number().int().nonnegative(),
   verified_late_minutes_total: z.number().int().nonnegative(), items: z.array(itemSchema),
 }).strict()
 
@@ -50,6 +53,16 @@ const responseSchema = z.object({
   totalIncidents: z.number().int().nonnegative(),
   totalDistinctShifts: z.number().int().nonnegative(),
   totalDistinctStaff: z.number().int().nonnegative(),
+  summary: z.object({
+    pendingCount: z.number().int().nonnegative(), confirmedCount: z.number().int().nonnegative(),
+    rejectedCount: z.number().int().nonnegative(), correctedCount: z.number().int().nonnegative(),
+    confirmedSkipCount: z.number().int().nonnegative(), confirmedAbsentCount: z.number().int().nonnegative(),
+    confirmedAuthorizedAbsenceCount: z.number().int().nonnegative(), confirmedLateCount: z.number().int().nonnegative(),
+    confirmedEarlyLeaveCount: z.number().int().nonnegative(), approvedPassCount: z.number().int().nonnegative(),
+    approvedSwapCount: z.number().int().nonnegative(),
+    confirmedPlannedReassignmentCount: z.number().int().nonnegative(), confirmedOtherCount: z.number().int().nonnegative(),
+    unknownLateMinutesCount: z.number().int().nonnegative(), verifiedLateMinutesTotal: z.number().int().nonnegative(),
+  }).strict(),
   staff: z.array(staffSchema),
 }).strict()
 

@@ -31,7 +31,8 @@
       "release/rc19-unified-release-candidate": false,
       "integration/rc19-w4-final-integration": false,
       "fix/rc19-w4-import-staffing": false,
-      "backup/rc19/lane01": false
+      "backup/rc19/lane01": false,
+      "codex/rc19-w4-lane01-backend": false
     }
   }
 }

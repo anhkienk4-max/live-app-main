@@ -176,3 +176,45 @@ export async function withTimeout<T>(
     if (timeoutId) clearTimeout(timeoutId)
   }
 }
+
+const allowedLoopbackHostnames = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
+
+/**
+ * Require an exact Origin in every environment. Host normalization is limited
+ * to explicitly disposable test/development runtimes and still requires an
+ * explicit disposable authorization flag.
+ */
+export function hasExactOrigin(request: Request): boolean {
+  const origin = request.headers.get('origin')
+  if (!origin || !origin.trim() || origin.includes(',')) return false
+
+  let originUrl: URL
+  let requestUrl: URL
+  try {
+    originUrl = new URL(origin)
+    requestUrl = new URL(request.url)
+  } catch {
+    return false
+  }
+
+  if (originUrl.username || originUrl.password || requestUrl.username || requestUrl.password) return false
+  if (origin === requestUrl.origin) return true
+
+  const runtime = process.env.NODE_ENV
+  if (runtime !== 'test' && runtime !== 'development') return false
+  if (process.env.DISPOSABLE_RUNTIME !== 'true') return false
+
+  const environmentMarkers = [
+    process.env.APP_ENV,
+    process.env.NEXT_PUBLIC_APP_ENV,
+    process.env.VERCEL_ENV,
+  ].filter((value): value is string => Boolean(value))
+  if (environmentMarkers.some((value) => value !== 'test' && value !== 'development')) return false
+
+  if (origin !== originUrl.origin || originUrl.protocol !== 'http:' || requestUrl.protocol !== 'http:') return false
+  if (!allowedLoopbackHostnames.has(originUrl.hostname) || !allowedLoopbackHostnames.has(requestUrl.hostname)) return false
+
+  const originPort = originUrl.port || '80'
+  const requestPort = requestUrl.port || '80'
+  return originPort === requestPort
+}

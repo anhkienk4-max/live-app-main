@@ -8,12 +8,18 @@ const admin = async () => ({
 
 const data = {
   month: '2026-11', timezone: 'Asia/Ho_Chi_Minh', pageLimit: 50, pageOffset: 0,
-  totalIncidents: 2, totalDistinctShifts: 1, totalDistinctStaff: 1, staff: [{
+  totalIncidents: 2, totalDistinctShifts: 1, totalDistinctStaff: 1,
+  summary: { pendingCount: 0, confirmedCount: 2, rejectedCount: 0, correctedCount: 0,
+    confirmedSkipCount: 0, confirmedAbsentCount: 0, confirmedAuthorizedAbsenceCount: 0,
+    confirmedLateCount: 2, confirmedEarlyLeaveCount: 0, approvedPassCount: 0, approvedSwapCount: 0,
+    confirmedPlannedReassignmentCount: 0, confirmedOtherCount: 0,
+    unknownLateMinutesCount: 1, verifiedLateMinutesTotal: 7 }, staff: [{
     staff_id: 'staff-a', incident_count: 2, distinct_shift_count: 1,
     pending_count: 0, confirmed_count: 2, rejected_count: 0, corrected_count: 0,
     confirmed_skip_count: 0, confirmed_absent_count: 0, confirmed_authorized_absence_count: 0,
     confirmed_late_count: 2, confirmed_early_leave_count: 0,
     approved_pass_count: 0, approved_swap_count: 0,
+    confirmed_planned_reassignment_count: 0, confirmed_other_count: 0,
     unknown_late_minutes_count: 1, verified_late_minutes_total: 7,
     items: [
       { incidentId: 'incident-a', shiftId: 'shift-a', staffingSegmentId: 'segment-a', role: 'host', businessDate: '2026-11-03', type: 'late', reviewState: 'confirmed', verifiedLateMinutes: 7, version: 2 },
@@ -43,6 +49,7 @@ test('monthly incident API forwards all filters and validates server-authoritati
   assert.equal(payload.data.staff[0].verified_late_minutes_total, 7)
   assert.equal(payload.data.totalDistinctShifts, 1)
   assert.equal(payload.data.totalDistinctStaff, 1)
+  assert.equal(payload.data.summary.verifiedLateMinutesTotal, 7)
 })
 
 test('monthly incident API rejects malformed month without querying the database', async () => {

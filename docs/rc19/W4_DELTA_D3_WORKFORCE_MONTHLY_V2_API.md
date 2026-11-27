@@ -36,11 +36,20 @@ type WorkforceIncidentMonthlyResponse = {
   totalIncidents: number
   totalDistinctShifts: number // COUNT(DISTINCT shift_id) over filtered scope
   totalDistinctStaff: number // COUNT(DISTINCT staff_id) over filtered scope
+  summary: {
+    pendingCount: number; confirmedCount: number; rejectedCount: number; correctedCount: number
+    confirmedSkipCount: number; confirmedAbsentCount: number; confirmedAuthorizedAbsenceCount: number
+    confirmedLateCount: number; confirmedEarlyLeaveCount: number; approvedPassCount: number
+    approvedSwapCount: number; confirmedPlannedReassignmentCount: number; confirmedOtherCount: number
+    unknownLateMinutesCount: number; verifiedLateMinutesTotal: number
+  }
   staff: WorkforceIncidentMonthlyStaffSummary[]
 }
 ```
 
 `totalDistinctShifts` is not calculated by summing each staff member's distinct shift count. Both totals are computed over the complete filtered scope before `LIMIT/OFFSET`, so page 1 and page 2 have identical totals for identical filters. Per-staff aggregates continue to cover the full filtered scope; each staff member's `items` contains only rows from the requested page.
+
+The follow-up migration `20261127090000_rc19_w4_workforce_monthly_full_scope_totals.sql` adds global category, review-state, and verified late-minute totals over that same complete authorized scope. It applies all supported filters before aggregate computation and pagination.
 
 ## Authorization / privacy
 
