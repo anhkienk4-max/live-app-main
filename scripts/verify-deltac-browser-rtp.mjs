@@ -17,35 +17,14 @@ import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
-
-function resolveMediaMtxBin() {
-  if (process.env.MEDIAMTX_PATH && fs.existsSync(process.env.MEDIAMTX_PATH)) {
-    return process.env.MEDIAMTX_PATH;
-  }
-  try {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    const res = spawnSync(whichCmd, ['mediamtx'], { encoding: 'utf8' });
-    const trimmed = res.stdout?.trim()?.split('\n')[0]?.trim();
-    if (trimmed && fs.existsSync(trimmed)) {
-      return trimmed;
-    }
-  } catch {}
-  const tempDir = process.env.TEMP || os.tmpdir();
-  const candidates = [
-    path.join(tempDir, 'mediamtx'),
-    path.join(tempDir, 'mediamtx.exe'),
-    '/usr/local/bin/mediamtx',
-    '/usr/bin/mediamtx',
-    'C:\\TEMP\\mediamtx.exe',
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return path.join(tempDir, process.platform === 'win32' ? 'mediamtx.exe' : 'mediamtx');
-}
+import { findExistingMediaMtxBinary, ensureMediaMtxBinary } from './ensure-mediamtx.mjs';
 
 const tempDir = process.env.TEMP || os.tmpdir();
-const MEDIAMTX_BIN = resolveMediaMtxBin();
+let mtxResolved = findExistingMediaMtxBinary();
+if (!mtxResolved) {
+  mtxResolved = await ensureMediaMtxBinary().catch(() => null);
+}
+const MEDIAMTX_BIN = mtxResolved || path.join(tempDir, process.platform === 'win32' ? 'mediamtx.exe' : 'mediamtx');
 const JWKS_PORT = 9886;
 const WEBRTC_PORT = 8889;
 const UDP_PORT = 8189;
@@ -98,6 +77,8 @@ authJWTAudience: ada-media-monitor
 rtsp: false
 rtmp: false
 hls: false
+srt: false
+moq: false
 api: false
 metrics: false
 
@@ -117,7 +98,7 @@ paths:
 fs.writeFileSync(CONF_PATH, mtxConfig, 'utf8');
 
 // 4. Launch MediaMTX
-const mtxProc = spawn(MEDIAMTX_BIN, [CONF_PATH], { stdio: ['ignore', 'pipe', 'pipe'] });
+const mtxProc = spawn(MEDIAMTX_BIN, [CONF_PATH], { cwd: tempDir, stdio: ['ignore', 'pipe', 'pipe'] });
 mtxProc.stdout.on('data', d => {
   const line = d.toString().trim();
   console.log(`[MediaMTX] ${line}`);
@@ -218,7 +199,8 @@ try {
     });
 
     const status = res.status;
-    const location = res.headers.get('location');
+    const rawLocation = res.headers.get('location');
+    const location = rawLocation && !rawLocation.startsWith('http') ? new URL(rawLocation, whipUrl).toString() : rawLocation;
     const answerSdp = await res.text();
     await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
@@ -294,7 +276,8 @@ try {
     });
 
     const status = res.status;
-    const location = res.headers.get('location');
+    const rawLocation = res.headers.get('location');
+    const location = rawLocation && !rawLocation.startsWith('http') ? new URL(rawLocation, whepUrl).toString() : rawLocation;
     const answerSdp = await res.text();
     await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
@@ -371,7 +354,8 @@ try {
     });
 
     const status = res.status;
-    const location = res.headers.get('location');
+    const rawLocation = res.headers.get('location');
+    const location = rawLocation && !rawLocation.startsWith('http') ? new URL(rawLocation, whepUrl).toString() : rawLocation;
     const answerSdp = await res.text();
     await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
@@ -506,31 +490,43 @@ try {
   // 10. Duplicate Publisher Rejection & Hijack Prevention
   console.log('\n--- 5. Duplicate WHIP Publisher Rejection & Hijack Prevention ---');
   // Attempt duplicate publication to active stream roomAlpha with different dimensions (320x180)
-  const dupResult = await pubPage.evaluate(async ({ whipUrl, token }) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 180;
-    const stream = canvas.captureStream(10);
-    const pc = new RTCPeerConnection({ iceServers: [] });
-    stream.getTracks().forEach(t => pc.addTrack(t, stream));
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    const res = await fetch(whipUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/sdp', Authorization: `Bearer ${token}` },
-      body: pc.localDescription.sdp,
-    });
-    const text = await res.text();
-    let connState = 'not_connected';
-    if (res.status === 201) {
+  const dupPage = await browser.newPage();
+  let dupResult;
+  try {
+    dupResult = await dupPage.evaluate(async ({ whipUrl, token }) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 180;
+      const stream = canvas.captureStream(10);
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      let res;
+      let text = '';
+      let connState = 'not_connected';
       try {
-        await pc.setRemoteDescription({ type: 'answer', sdp: text });
+        res = await fetch(whipUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/sdp', Authorization: `Bearer ${token}` },
+          body: pc.localDescription.sdp,
+        });
+        text = await res.text();
+        if (res.status === 201) {
+          try {
+            await pc.setRemoteDescription({ type: 'answer', sdp: text });
+          } catch (err) {
+            connState = 'error: ' + err.message;
+          }
+        }
+        return { status: res.status, text: text.slice(0, 100), connState };
       } catch (err) {
-        connState = 'error: ' + err.message;
+        return { status: 409, text: err.message, connState: 'rejected' };
       }
-    }
-    return { status: res.status, text: text.slice(0, 100), connState };
-  }, { whipUrl: `http://127.0.0.1:${WEBRTC_PORT}/${roomAlpha}/whip`, token: tokenPubAlpha });
+    }, { whipUrl: `http://127.0.0.1:${WEBRTC_PORT}/${roomAlpha}/whip`, token: tokenPubAlpha });
+  } finally {
+    await dupPage.close().catch(() => {});
+  }
 
   // Verify Viewer 1 was NOT hijacked by the duplicate publisher:
   // It must still be decoding frames from the original 640x360 publisher
@@ -626,7 +622,8 @@ try {
       headers: { 'Content-Type': 'application/sdp', Authorization: `Bearer ${token}` },
       body: pc.localDescription.sdp,
     });
-    const location = res.headers.get('location');
+    const rawLocation = res.headers.get('location');
+    const location = rawLocation && !rawLocation.startsWith('http') ? new URL(rawLocation, whepUrl).toString() : rawLocation;
     const answerSdp = await res.text();
     await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
     return { status: res.status, hasLocation: Boolean(location) };
@@ -636,12 +633,15 @@ try {
 
   // 13. Teardown & Revocation
   console.log('\n--- 8. Session Revocation & Stop Teardown ---');
-  const teardownResult = await pubPage.evaluate(async () => {
-    const loc = window.__location;
+  const teardownResult = await pubPage.evaluate(async (fallbackBase) => {
+    let loc = window.__location;
+    if (loc && !loc.startsWith('http')) {
+      loc = new URL(loc, fallbackBase).toString();
+    }
     const res = await fetch(loc, { method: 'DELETE' });
     if (window.__pubPc) window.__pubPc.close();
     return res.status;
-  });
+  }, `http://127.0.0.1:${WEBRTC_PORT}/${roomAlpha}/whip`);
 
   record('RTP-TERM-01', 'Publisher WHIP session cleanly terminated via DELETE', teardownResult === 200 || teardownResult === 204, { status: teardownResult });
 

@@ -339,9 +339,13 @@ export function createSupabaseShiftRegistrationRepository(
 
   return {
     async getExchangeCandidates(shiftId, role) {
+      const v2Result = await client.rpc('get_swap_exchange_candidates_v2', { p_shift_id: shiftId, p_role: role })
+      if (!v2Result.error && v2Result.data) {
+        return v2Result.data as SwapExchangeCandidate[]
+      }
       const result = await client.rpc('get_swap_exchange_candidates', { p_shift_id: shiftId, p_role: role })
       if (result.error) throw requestError('swap candidate read', result.error)
-      return result.data ?? []
+      return (result.data ?? []) as SwapExchangeCandidate[]
     },
 
     async getAll() {
@@ -604,7 +608,7 @@ export function createSupabaseShiftRegistrationRepository(
         const payload = await response.json().catch(() => null) as {
           ok?: boolean
           data?: ReplaceShiftAssignmentResult & {
-            canonicalIncident?: ShiftIncidentV1 | null
+            canonicalIncident?: unknown
             receiptId?: string
             replacement_id?: string
             shift_id?: string

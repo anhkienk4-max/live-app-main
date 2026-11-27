@@ -419,7 +419,37 @@ export function mapMonthlyResponseToWorkforceIncidentSummary(
   const totals = data.summary
   const allShiftIds = new Set<string>()
 
+  let confirmedSkips = 0
+  let confirmedAbsents = 0
+  let authorizedAbsences = 0
+  let confirmedLates = 0
+  let confirmedEarlyLeaves = 0
+  let approvedPasses = 0
+  let approvedSwaps = 0
+  let plannedReassignments = 0
+  let pendingReviews = 0
+  let rejectedReviews = 0
+  let correctedReviews = 0
+  let totalVerifiedLateMinutes = 0
+  let unknownDurationCount = 0
+
   const staffSummaries: StaffIncidentSummary[] = staff.map(s => {
+    if (!totals) {
+      confirmedSkips += s.confirmed_skip_count ?? 0
+      confirmedAbsents += s.confirmed_absent_count ?? 0
+      authorizedAbsences += s.confirmed_authorized_absence_count ?? 0
+      confirmedLates += s.confirmed_late_count ?? 0
+      confirmedEarlyLeaves += s.confirmed_early_leave_count ?? 0
+      approvedPasses += s.approved_pass_count ?? 0
+      approvedSwaps += s.approved_swap_count ?? 0
+      plannedReassignments += s.confirmed_planned_reassignment_count ?? 0
+      pendingReviews += s.pending_count ?? 0
+      rejectedReviews += s.rejected_count ?? 0
+      correctedReviews += s.corrected_count ?? 0
+      totalVerifiedLateMinutes += s.verified_late_minutes_total ?? 0
+      unknownDurationCount += s.unknown_late_minutes_count ?? 0
+    }
+
     if (Array.isArray(s.items)) {
       for (const item of s.items) {
         if (item.shiftId) allShiftIds.add(item.shiftId)
@@ -437,7 +467,7 @@ export function mapMonthlyResponseToWorkforceIncidentSummary(
       approvedPassCount: s.approved_pass_count,
       approvedSwapCount: s.approved_swap_count,
       authorizedAbsenceCount: s.confirmed_authorized_absence_count,
-      plannedReassignmentCount: s.confirmed_planned_reassignment_count,
+      plannedReassignmentCount: s.confirmed_planned_reassignment_count ?? 0,
       pendingCount: s.pending_count,
       rejectedCount: s.rejected_count,
       correctedCount: s.corrected_count,
@@ -447,25 +477,51 @@ export function mapMonthlyResponseToWorkforceIncidentSummary(
     }
   })
 
+  if (totals) {
+    return {
+      month: data.month,
+      totalIncidents: data.totalIncidents,
+      confirmedViolations: totals.confirmedSkipCount + totals.confirmedAbsentCount,
+      confirmedSkips: totals.confirmedSkipCount,
+      confirmedAbsents: totals.confirmedAbsentCount,
+      confirmedPunctuality: totals.confirmedLateCount + totals.confirmedEarlyLeaveCount,
+      confirmedLates: totals.confirmedLateCount,
+      confirmedEarlyLeaves: totals.confirmedEarlyLeaveCount,
+      approvedChanges: totals.approvedPassCount + totals.approvedSwapCount + (totals.confirmedPlannedReassignmentCount ?? 0),
+      approvedPasses: totals.approvedPassCount,
+      approvedSwaps: totals.approvedSwapCount,
+      authorizedAbsences: totals.confirmedAuthorizedAbsenceCount,
+      plannedReassignments: totals.confirmedPlannedReassignmentCount ?? 0,
+      pendingReviews: totals.pendingCount,
+      rejectedReviews: totals.rejectedCount,
+      correctedReviews: totals.correctedCount,
+      totalVerifiedLateMinutes: totals.verifiedLateMinutesTotal,
+      unknownDurationCount: totals.unknownLateMinutesCount,
+      distinctAffectedShifts: data.totalDistinctShifts ?? allShiftIds.size,
+      distinctAffectedStaff: data.totalDistinctStaff ?? staff.length,
+      staffSummaries,
+    }
+  }
+
   return {
     month: data.month,
     totalIncidents: data.totalIncidents,
-    confirmedViolations: totals.confirmedSkipCount + totals.confirmedAbsentCount,
-    confirmedSkips: totals.confirmedSkipCount,
-    confirmedAbsents: totals.confirmedAbsentCount,
-    confirmedPunctuality: totals.confirmedLateCount + totals.confirmedEarlyLeaveCount,
-    confirmedLates: totals.confirmedLateCount,
-    confirmedEarlyLeaves: totals.confirmedEarlyLeaveCount,
-    approvedChanges: totals.approvedPassCount + totals.approvedSwapCount + totals.confirmedPlannedReassignmentCount,
-    approvedPasses: totals.approvedPassCount,
-    approvedSwaps: totals.approvedSwapCount,
-    authorizedAbsences: totals.confirmedAuthorizedAbsenceCount,
-    plannedReassignments: totals.confirmedPlannedReassignmentCount,
-    pendingReviews: totals.pendingCount,
-    rejectedReviews: totals.rejectedCount,
-    correctedReviews: totals.correctedCount,
-    totalVerifiedLateMinutes: totals.verifiedLateMinutesTotal,
-    unknownDurationCount: totals.unknownLateMinutesCount,
+    confirmedViolations: confirmedSkips + confirmedAbsents + authorizedAbsences,
+    confirmedSkips,
+    confirmedAbsents,
+    confirmedPunctuality: confirmedLates + confirmedEarlyLeaves,
+    confirmedLates,
+    confirmedEarlyLeaves,
+    approvedChanges: approvedPasses + approvedSwaps + plannedReassignments,
+    approvedPasses,
+    approvedSwaps,
+    authorizedAbsences,
+    plannedReassignments,
+    pendingReviews,
+    rejectedReviews,
+    correctedReviews,
+    totalVerifiedLateMinutes,
+    unknownDurationCount,
     distinctAffectedShifts: data.totalDistinctShifts ?? allShiftIds.size,
     distinctAffectedStaff: data.totalDistinctStaff ?? staff.length,
     staffSummaries,

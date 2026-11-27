@@ -7,7 +7,7 @@ import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin'
 import { AttendanceDriveAclError } from '@/lib/utils/attendanceDriveAcl'
 import { inspectAttendanceDriveRoot } from '@/lib/server/attendanceDriveAcl'
-import { readFormDataBody, RequestBodyError, consumeRateLimit, rateLimitResponse } from '@/lib/server/apiSecurity'
+import { readFormDataBody, RequestBodyError, consumeRateLimit, rateLimitResponse, hasExactOrigin } from '@/lib/server/apiSecurity'
 import { attendancePhotoName } from '@/lib/utils/attendancePhotoNaming'
 import { decodeSelfAttendanceEvent } from '@/lib/utils/selfAttendanceContract'
 import { isFeatureEnabled } from '@/lib/flags'
@@ -49,19 +49,6 @@ function mimeFromBytes(bytes:Uint8Array): {mime:string;ext:'jpg'|'png'|'webp'}|n
       &&new TextDecoder().decode(bytes.subarray(8,12))==='WEBP')
     return {mime:'image/webp',ext:'webp'}
   return null
-}
-function hasExactOrigin(request:Request) {
-  const origin=request.headers.get('origin')
-  if(!origin) return false
-  const reqOrigin = new URL(request.url).origin
-  if (origin === reqOrigin) return true
-  if (process.env.NODE_ENV !== 'production') {
-    const isLoopback = (u: string) => u.startsWith('http://127.0.0.1:') || u.startsWith('http://localhost:')
-    if (isLoopback(origin) && isLoopback(reqOrigin)) {
-      return new URL(origin).port === new URL(request.url).port
-    }
-  }
-  return false
 }
 function contextSnapshot(info:z.infer<typeof contextSchema>) {
   return {shift_id:info.shift_id,shift_date:info.date,live_start:info.start_at,

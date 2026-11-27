@@ -4,6 +4,7 @@ import { hasExactOrigin } from '../lib/server/apiSecurity.ts'
 import { createStaffingIncidentReplacementHandler } from '../lib/server/staffingIncidentReplacementHandler.ts'
 import { createStaffingReplacementHandler } from '../lib/server/staffingReplacementHandler.ts'
 import { handleShiftOperationalNoteWorkflow } from '../lib/server/shiftOperationalNoteWorkflowHandler.ts'
+import { createSelfAttendancePhotoPostHandler } from '../lib/server/selfAttendancePhotoHandler.ts'
 
 const environmentKeys = ['NODE_ENV', 'APP_ENV', 'NEXT_PUBLIC_APP_ENV', 'VERCEL_ENV', 'DISPOSABLE_RUNTIME'] as const
 
@@ -73,12 +74,12 @@ test('exact origin is allowed while malformed, forwarded, and cross-origin value
   })
 })
 
-test('staffing and note mutation handlers reject origin failures before resolving an actor', async () => {
+test('staffing, note, and attendance photo mutation handlers reject origin failures before resolving an actor', async () => {
   await withEnvironment({ NODE_ENV: 'production', APP_ENV: 'production', DISPOSABLE_RUNTIME: 'true' }, async () => {
     let resolverCalls = 0
     const resolveUser = async () => {
       resolverCalls += 1
-      return { id: 'auth-1', businessUserId: 'business-1', systemPermission: 'admin' as const }
+      return { id: 'auth-1', businessUserId: 'business-1', systemPermission: 'admin' as const, email: 'test@example.com', role: 'admin' as const }
     }
     const request = () => new Request('http://localhost:3000/api/mutation', {
       method: 'POST', headers: { origin: 'http://127.0.0.1:3000', 'content-type': 'application/json' }, body: '{}',
@@ -86,7 +87,8 @@ test('staffing and note mutation handlers reject origin failures before resolvin
     const incident = await createStaffingIncidentReplacementHandler({ resolveUser })(request())
     const staffing = await createStaffingReplacementHandler({ resolveUser })(request())
     const note = await handleShiftOperationalNoteWorkflow(request())
-    assert.deepEqual([incident.status, staffing.status, note.status], [403, 403, 403])
+    const photo = await createSelfAttendancePhotoPostHandler({ authorize: resolveUser })(request())
+    assert.deepEqual([incident.status, staffing.status, note.status, photo.status], [403, 403, 403, 403])
     assert.equal(resolverCalls, 0)
   })
 })

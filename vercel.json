@@ -32,7 +32,8 @@
       "chore/rc19-w4-release-readiness": false,
       "integration/rc19-w4-codex02": false,
       "integration/rc19-w4-final-integration": false,
-      "fix/rc19-w4-import-staffing": false
+      "fix/rc19-w4-import-staffing": false,
+      "feat/rc19-w4-antigravity-frontend": false
     }
   }
 }

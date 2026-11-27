@@ -17,8 +17,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import {
   shiftNoteService,
 } from '@/lib/services/shiftNoteService'
-import { reportExternalSummaryService } from '@/lib/services/reportExternalSummaryService'
-import type { ReportExternalSummaryWorkflowResponse } from '@/lib/types/reportExternalSummary'
 import type { ShiftOperationalNote } from '@/lib/types/database.types'
 
 interface ReportOperationalNotesReviewProps {
@@ -76,7 +74,6 @@ export function ReportOperationalNotesReview({
   const [snapshotUnavailable, setSnapshotUnavailable] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [previewAudience, setPreviewAudience] = React.useState<'internal' | 'external'>('internal')
-  const [externalSummary, setExternalSummary] = React.useState<ReportExternalSummaryWorkflowResponse['summary'] | null>(null)
 
   const loadNotes = React.useCallback(async () => {
     setLoading(true)
@@ -138,12 +135,6 @@ export function ReportOperationalNotesReview({
             setExternalProjection(data.externalProjection)
           } else {
             setExternalProjection(null)
-          }
-          try {
-            const summaryRes = await reportExternalSummaryService.getSummary(reportId)
-            setExternalSummary(summaryRes.summary)
-          } catch {
-            setExternalSummary(null)
           }
         } else {
           const source = data?.sourceSnapshot
@@ -413,24 +404,17 @@ export function ReportOperationalNotesReview({
                 </span>
               </div>
             </div>
-            {((externalSummary?.workflowState === 'approved' && externalSummary.content) || externalProjection.operationalSummary?.content) && (
+            {externalProjection.operationalSummary?.content && (
               <div className="bg-white p-3 rounded border border-emerald-200 space-y-1.5" data-testid="report-approved-external-summary">
                 <div className="font-semibold text-emerald-950 text-xs">
                   {isVi ? 'Tóm tắt vận hành (Đã duyệt gửi đối tác)' : 'Operational Summary (Approved for External Sharing)'}
                 </div>
                 <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
-                  {externalSummary?.workflowState === 'approved' ? externalSummary.content : externalProjection.operationalSummary?.content}
+                  {externalProjection.operationalSummary.content}
                 </p>
                 <div className="text-[10px] text-muted-foreground pt-0.5">
-                  v{externalSummary?.workflowState === 'approved' ? externalSummary.version : (externalProjection.operationalSummary?.version ?? 1)} · {isVi ? 'Phê duyệt bởi' : 'Approved by'} {externalSummary?.reviewedBy || 'Admin'}
+                  v{externalProjection.operationalSummary.version}
                 </div>
-              </div>
-            )}
-            {externalSummary && externalSummary.workflowState !== 'approved' && !externalProjection.operationalSummary?.content && (
-              <div className="bg-amber-50/70 p-2.5 rounded border border-amber-200/80 text-[11px] text-amber-900" data-testid="report-unapproved-external-summary-note">
-                {isVi
-                  ? `Bản tóm tắt vận hành đang ở trạng thái "${externalSummary.workflowState}" và sẽ chỉ hiển thị cho đối tác sau khi được duyệt.`
-                  : `Operational summary is currently in "${externalSummary.workflowState}" state and will only appear externally after approval.`}
               </div>
             )}
             <p className="text-[11px] text-emerald-800/80 leading-relaxed border-t border-emerald-200/60 pt-2">
