@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "28ded321097176662ddbef67a6ea79146847aadd",
+    "head": "13eeefb60fc36042f3f25f1b886aa59a43f94af3",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -78,6 +78,7 @@
       "app/api/ocr/route.ts",
       "app/api/ocr/vision/route.ts",
       "app/api/operational-files/route.ts",
+      "app/api/operational-notes/workflow-v1/route.ts",
       "app/api/operational-storage-setup/route.ts",
       "app/api/operational-storage/attendance-folders/route.ts",
       "app/api/operations/analytics-snapshot/route.ts",
@@ -90,9 +91,12 @@
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
       "app/api/reports/export/route.ts",
+      "app/api/reports/external-operational-summary/route.ts",
+      "app/api/reports/revision-snapshots/route.ts",
       "app/api/role-defaults/route.ts",
       "app/api/schedule-source-files/route.ts",
       "app/api/staff/invite/route.ts",
+      "app/api/staffing/replacements/incident-v1/route.ts",
       "app/api/staffing/replacements/route.ts",
       "app/api/storage-resources/route.ts",
       "app/api/workforce/actual/route.ts",
@@ -100,6 +104,7 @@
       "app/api/workforce/attendance-import/route.ts",
       "app/api/workforce/attendance-photo-review/route.ts",
       "app/api/workforce/capabilities/route.ts",
+      "app/api/workforce/incidents/monthly/route.ts",
       "app/api/workforce/my-payslip/route.ts",
       "app/api/workforce/overview/route.ts",
       "app/api/workforce/payroll/route.ts",
@@ -121,14 +126,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 97,
-        "components": 198,
-        "lib": 297,
-        "scripts": 193,
-        "supabase": 164,
-        "tests": 400
+        "app": 102,
+        "components": 201,
+        "lib": 311,
+        "scripts": 195,
+        "supabase": 173,
+        "tests": 412
       },
-      "total": 1349
+      "total": 1394
     },
     "tests": {
       "files": [
@@ -165,6 +170,7 @@
         "tests/calendar-filters.test.ts",
         "tests/calendar-range-fetching.test.ts",
         "tests/calendar-role-filter.test.ts",
+        "tests/canonical-agency-membership-pglite.test.ts",
         "tests/cloud-file-ingestion.test.ts",
         "tests/cloud-source-integration.test.ts",
         "tests/cloud-storage-management.test.ts",
@@ -320,6 +326,8 @@
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-compensation-only-payslip.test.ts",
+        "tests/rc19-d3-report-revision-snapshot-pglite.test.ts",
+        "tests/rc19-d3-workforce-server-aggregation.test.ts",
         "tests/rc19-destination-integrity.test.ts",
         "tests/rc19-dynamic-rbac-server-guard.test.ts",
         "tests/rc19-effective-permission.test.ts",
@@ -388,11 +396,14 @@
         "tests/rc19-w4-deltac-webrtc.test.ts",
         "tests/rc19-w4-legacy-segment-compatibility.test.ts",
         "tests/rc19-w4-production-cli-migration-runner.test.ts",
+        "tests/rc19-w4-segment-aware-pass-swap-contract.test.ts",
+        "tests/rc19-w4-segment-aware-pass-swap-frontend.test.ts",
         "tests/rc19-w4-staffing-conflict-api.test.ts",
         "tests/rc19-w4-swap-brand-security-postgres17.test.ts",
         "tests/rc19-w4-swap-brand-security.test.ts",
         "tests/rc19-w4-taskb-issue184-kao-regression.test.ts",
         "tests/rc19-w4-taskb-staffing-semantics.test.ts",
+        "tests/rc19-w4-workforce-monthly-v2-contract.test.ts",
         "tests/rc19-wave3-verification.test.ts",
         "tests/rc19-workforce-authority.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
@@ -400,9 +411,13 @@
         "tests/release-provenance.test.ts",
         "tests/release-smoke-staged.test.ts",
         "tests/report-artifact-export-authority.test.ts",
+        "tests/report-external-summary-handler.test.ts",
+        "tests/report-external-summary-migration-pglite.test.ts",
+        "tests/report-external-summary-service.test.ts",
         "tests/report-history-access.test.ts",
         "tests/report-null-semantics-consumers.test.ts",
         "tests/report-required-metrics.test.ts",
+        "tests/report-revision-snapshot-handler.test.ts",
         "tests/report-save-draft-cas.test.ts",
         "tests/report-storage-security.test.ts",
         "tests/report-work-queue.test.ts",
@@ -453,10 +468,11 @@
         "tests/vision-ocr-phase-a.test.ts",
         "tests/vision-ocr-route.test.ts",
         "tests/workflow-restoration.test.ts",
+        "tests/workforce-incident-monthly-handler.test.ts",
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 323
+      "count": 334
     },
     "migrations": {
       "files": [
@@ -595,9 +611,18 @@
         "supabase/migrations/20261124093722_rc19_w4_attendance_assignment_links.sql",
         "supabase/migrations/20261124104803_rc19_w4_actual_assignment_evidence.sql",
         "supabase/migrations/20261124120000_rc19_w4_import_staffing_integrity.sql",
-        "supabase/migrations/20261124150000_rc19_w4_deltac_live_monitoring_sharing.sql"
+        "supabase/migrations/20261124150000_rc19_w4_deltac_live_monitoring_sharing.sql",
+        "supabase/migrations/20261125042222_rc19_w4_delta_d_incident_foundation.sql",
+        "supabase/migrations/20261125042647_rc19_w4_delta_d_atomic_replacement.sql",
+        "supabase/migrations/20261125175629_rc19_w4_delta_d_workforce_monthly_read_model.sql",
+        "supabase/migrations/20261125175702_rc19_w4_delta_d_note_workflow_v1.sql",
+        "supabase/migrations/20261126051534_rc19_w4_d3_report_revision_snapshot.sql",
+        "supabase/migrations/20261126120000_rc19_w4_d3_external_operational_summary.sql",
+        "supabase/migrations/20261126130000_rc19_w4_canonical_agency_membership.sql",
+        "supabase/migrations/20261126140000_rc19_w4_workforce_monthly_scope_totals.sql",
+        "supabase/migrations/20261126150000_rc19_w4_segment_aware_pass_swap.sql"
       ],
-      "count": 136
+      "count": 145
     }
   },
   "verification": {
@@ -611,5 +636,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-26T02:51:18+07:00"
+  "synced_at": "2026-11-27T04:49:58Z"
 }
