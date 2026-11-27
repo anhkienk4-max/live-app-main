@@ -36,6 +36,7 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /D01_CHANGED_PAYLOAD_NOT_REJECTED/u)
   assert.match(entrypoint, /D01_INCIDENT_RECEIPT_POSTGRES_READBACK_MISMATCH/u)
   assert.match(entrypoint, /D01_NON_ADMIN_EMERGENCY_NOT_DENIED/u)
+  assert.match(entrypoint, /RC19_AGENCY_MEMBERSHIP_REQUIRED/u)
   const agencySeed = entrypoint.indexOf('const { agencyIds, membershipRows } = seedSyntheticAgencyFixtures(databaseContainer, marker')
   const firstRegistration = entrypoint.indexOf('manual_assign_shift_staff_to_segment', agencySeed)
   assert.ok(agencySeed >= 0 && firstRegistration > agencySeed,
@@ -43,6 +44,7 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /UPDATE public\.shifts SET authoritative_agency_id=/u)
   assert.match(entrypoint, /actors\.memberUnassigned\.id, agencyIds\.inScope/u)
   assert.match(entrypoint, /databaseFailureCode\('ASSIGNMENT_FIXTURE_CREATE_FAILED', assigned\.error\)/u)
+  assert.match(entrypoint, /if \(result\.error\) stop\(databaseFailureCode\(code, result\.error\)\)/u)
   assert.match(entrypoint, /DO \$rc19_fixture\$ BEGIN PERFORM set_config\('request\.jwt\.claim\.sub', \$\{fixtureAdminId\}, true\)/u)
   assert.match(entrypoint, /request\.jwt\.claims',[\s\S]*'role', 'authenticated'/u)
   assert.match(entrypoint, /VERBOSITY=verbose/u)

@@ -310,7 +310,7 @@ function seedSyntheticIncidents(databaseContainer, marker, actors, shifts, assig
 }
 
 async function requireNoError(result, code) {
-  if (result.error) stop(code)
+  if (result.error) stop(databaseFailureCode(code, result.error))
   return result.data
 }
 
@@ -870,7 +870,7 @@ async function main() {
         `WITH changed AS (UPDATE private.rc19_business_user_agency_memberships SET status='revoked',effective_until=statement_timestamp(),revoked_at=statement_timestamp(),version=version+1 WHERE business_user_id=${sqlLiteral(member.id)} AND source_version=${sqlLiteral(marker)} AND status='active' RETURNING 1) SELECT count(*) FROM changed`)
       if (revokedMembership !== '1') stop('SWAP_REVOKE_FIXTURE_FAILED')
       const revokedReplay = await invoke()
-      if (!revokedReplay.error || !/SWAP_RECEIPT_REPLAY_NOT_AUTHORIZED|SWAP_RECEIPT_REPLAY_SCOPE_UNRESOLVED|SWAP_ACTOR_NOT_AUTHORIZED/u.test(String(revokedReplay.error.message))) {
+      if (!revokedReplay.error || !/SWAP_RECEIPT_REPLAY_NOT_AUTHORIZED|SWAP_RECEIPT_REPLAY_SCOPE_UNRESOLVED|SWAP_ACTOR_NOT_AUTHORIZED|RC19_AGENCY_MEMBERSHIP_REQUIRED/u.test(String(revokedReplay.error.message))) {
         stop('SWAP_REVOKED_REPLAY_NOT_DENIED')
       }
       if (readDatabase(databaseContainer,
