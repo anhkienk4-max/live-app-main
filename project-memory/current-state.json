@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "b7b2463b6002e543d17e4f5a0bb0892874d385ce",
+    "head": "7c696a75a68d61c3a9e5685aae2393fdbc63908f",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -91,6 +91,8 @@
       "app/api/report-artifacts/route.ts",
       "app/api/report-images/route.ts",
       "app/api/reports/export/route.ts",
+      "app/api/reports/external-operational-summary/route.ts",
+      "app/api/reports/revision-snapshots/route.ts",
       "app/api/role-defaults/route.ts",
       "app/api/schedule-source-files/route.ts",
       "app/api/staff/invite/route.ts",
@@ -124,14 +126,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 100,
+        "app": 102,
         "components": 201,
-        "lib": 305,
-        "scripts": 194,
-        "supabase": 168,
-        "tests": 402
+        "lib": 311,
+        "scripts": 196,
+        "supabase": 175,
+        "tests": 415
       },
-      "total": 1370
+      "total": 1400
     },
     "tests": {
       "files": [
@@ -168,6 +170,7 @@
         "tests/calendar-filters.test.ts",
         "tests/calendar-range-fetching.test.ts",
         "tests/calendar-role-filter.test.ts",
+        "tests/canonical-agency-membership-pglite.test.ts",
         "tests/cloud-file-ingestion.test.ts",
         "tests/cloud-source-integration.test.ts",
         "tests/cloud-storage-management.test.ts",
@@ -323,6 +326,7 @@
         "tests/rc19-catalog-import-regression.test.ts",
         "tests/rc19-command-toolbar.test.tsx",
         "tests/rc19-compensation-only-payslip.test.ts",
+        "tests/rc19-d3-report-revision-snapshot-pglite.test.ts",
         "tests/rc19-destination-integrity.test.ts",
         "tests/rc19-dynamic-rbac-server-guard.test.ts",
         "tests/rc19-effective-permission.test.ts",
@@ -343,6 +347,7 @@
         "tests/rc19-my-payslip.test.ts",
         "tests/rc19-navigation-parity-rbac.test.ts",
         "tests/rc19-open-shifts-notes-sql.test.ts",
+        "tests/rc19-origin-guard.test.ts",
         "tests/rc19-owner23-segmented-staffing.test.ts",
         "tests/rc19-postgres17-concurrency.integration.test.ts",
         "tests/rc19-postgres17-fixture-restore.integration.test.ts",
@@ -386,16 +391,21 @@
         "tests/rc19-u15-ux-quality.test.ts",
         "tests/rc19-ui-functional-integration.test.tsx",
         "tests/rc19-unified-import-postgres17.test.ts",
+        "tests/rc19-w4-application-acceptance-contract.test.ts",
         "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
         "tests/rc19-w4-deltac-live-monitoring.test.ts",
         "tests/rc19-w4-deltac-webrtc.test.ts",
         "tests/rc19-w4-legacy-segment-compatibility.test.ts",
         "tests/rc19-w4-production-cli-migration-runner.test.ts",
+        "tests/rc19-w4-segment-aware-pass-swap-contract.test.ts",
         "tests/rc19-w4-staffing-conflict-api.test.ts",
         "tests/rc19-w4-swap-brand-security-postgres17.test.ts",
         "tests/rc19-w4-swap-brand-security.test.ts",
+        "tests/rc19-w4-swap-receipt-contract.test.ts",
         "tests/rc19-w4-taskb-issue184-kao-regression.test.ts",
         "tests/rc19-w4-taskb-staffing-semantics.test.ts",
+        "tests/rc19-w4-workforce-monthly-v2-contract.test.ts",
+        "tests/rc19-w4-workforce-summary-adapter.test.ts",
         "tests/rc19-wave3-verification.test.ts",
         "tests/rc19-workforce-authority.test.ts",
         "tests/real-dashboard-ocr-smoke.test.ts",
@@ -403,9 +413,12 @@
         "tests/release-provenance.test.ts",
         "tests/release-smoke-staged.test.ts",
         "tests/report-artifact-export-authority.test.ts",
+        "tests/report-external-summary-handler.test.ts",
+        "tests/report-external-summary-migration-pglite.test.ts",
         "tests/report-history-access.test.ts",
         "tests/report-null-semantics-consumers.test.ts",
         "tests/report-required-metrics.test.ts",
+        "tests/report-revision-snapshot-handler.test.ts",
         "tests/report-save-draft-cas.test.ts",
         "tests/report-storage-security.test.ts",
         "tests/report-work-queue.test.ts",
@@ -460,7 +473,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 324
+      "count": 335
     },
     "migrations": {
       "files": [
@@ -603,9 +616,16 @@
         "supabase/migrations/20261125042222_rc19_w4_delta_d_incident_foundation.sql",
         "supabase/migrations/20261125042647_rc19_w4_delta_d_atomic_replacement.sql",
         "supabase/migrations/20261125175629_rc19_w4_delta_d_workforce_monthly_read_model.sql",
-        "supabase/migrations/20261125175702_rc19_w4_delta_d_note_workflow_v1.sql"
+        "supabase/migrations/20261125175702_rc19_w4_delta_d_note_workflow_v1.sql",
+        "supabase/migrations/20261126051534_rc19_w4_d3_report_revision_snapshot.sql",
+        "supabase/migrations/20261126120000_rc19_w4_d3_external_operational_summary.sql",
+        "supabase/migrations/20261126130000_rc19_w4_canonical_agency_membership.sql",
+        "supabase/migrations/20261126140000_rc19_w4_workforce_monthly_scope_totals.sql",
+        "supabase/migrations/20261126150000_rc19_w4_segment_aware_pass_swap.sql",
+        "supabase/migrations/20261127090000_rc19_w4_workforce_monthly_full_scope_totals.sql",
+        "supabase/migrations/20261127100000_rc19_w4_segment_aware_swap_receipts.sql"
       ],
-      "count": 140
+      "count": 147
     }
   },
   "verification": {
@@ -619,5 +639,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-27T05:21:54Z"
+  "synced_at": "2026-11-27T06:38:46Z"
 }
