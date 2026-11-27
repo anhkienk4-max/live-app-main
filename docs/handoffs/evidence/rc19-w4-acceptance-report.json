@@ -1,8 +1,8 @@
 {
   "schema": "rc19-w4-application-acceptance/v2",
   "status": "NOT RUN",
-  "application_sha": "bafbfdcf382be49cd596b1033f6443b92876b32d",
-  "runtime_database_marker": "LOCAL_OFFLINE_SYNTHETIC",
+  "application_sha": "ef5bbbc09e8abda9a1a0d0f623e7183cf9a20aa1",
+  "runtime_database_marker": "DISPOSABLE_PG17_RUNTIME_PENDING",
   "synthetic_users": {
     "admin": {
       "login": false,
@@ -19,13 +19,15 @@
   },
   "authorization": {
     "rbac": true,
-    "rls": true,
+    "rls": false,
     "application_api": true
   },
   "browser_uat": {
     "requested": false,
     "ran": false,
     "passed": false,
+    "authenticated": false,
+    "interaction_count": 0,
     "status": "NOT RUN",
     "reason": "HOSTED_RUNTIME_OR_CREDENTIALS_UNAVAILABLE"
   },
@@ -66,8 +68,8 @@
       "case_id": "D03",
       "actor": "Admin",
       "expected": "Workforce Incident Monthly V2 binds server-authoritative distinct totals across pagination.",
-      "actual": "Awaiting execution against authenticated runtime.",
-      "evidence_scope": "Hosted browser UAT across pagination offsets",
+      "actual": "Awaiting execution against authenticated disposable hosted runtime with persisted readback.",
+      "evidence_scope": "Hosted browser UAT with database readback pending",
       "status": "NOT RUN"
     },
     {
@@ -90,8 +92,8 @@
       "case_id": "D07/D09",
       "actor": "Admin / External Viewer",
       "expected": "Report External Preview respects revision immutability and withholds internal notes and personnel identity.",
-      "actual": "Awaiting execution against authenticated runtime.",
-      "evidence_scope": "Hosted browser UAT with external audience preview",
+      "actual": "Awaiting execution against authenticated disposable hosted runtime with persisted readback.",
+      "evidence_scope": "Hosted browser UAT with database readback pending",
       "status": "NOT RUN"
     },
     {
@@ -106,16 +108,16 @@
       "case_id": "L01",
       "actor": "Admin & Second Session",
       "expected": "Saved live_link persistence and real readback in Shift Detail across reloads/sessions.",
-      "actual": "Awaiting execution against authenticated runtime.",
-      "evidence_scope": "Hosted browser UAT in Shift Detail and second session",
+      "actual": "Awaiting execution against authenticated disposable hosted runtime with persisted readback.",
+      "evidence_scope": "Hosted browser UAT with database readback pending",
       "status": "NOT RUN"
     },
     {
       "case_id": "L02/L03",
       "actor": "Admin / Operator",
       "expected": "Live stream panel displays source video without modal-switch interruption across A->B->A navigation.",
-      "actual": "Awaiting execution against authenticated runtime.",
-      "evidence_scope": "Hosted browser UAT in Live Stream Modal",
+      "actual": "Awaiting execution against authenticated disposable hosted runtime with persisted readback.",
+      "evidence_scope": "Hosted browser UAT with database readback pending",
       "status": "NOT RUN"
     },
     {
@@ -130,25 +132,33 @@
       "case_id": "ATT-01",
       "actor": "Member",
       "expected": "Shift detail attendance tab loads self-attendance panel with segment-scoped context and check-in/out persisted result.",
-      "actual": "Awaiting execution against authenticated runtime.",
-      "evidence_scope": "Hosted browser UAT in Attendance Tab",
+      "actual": "Awaiting execution against authenticated disposable hosted runtime with persisted readback.",
+      "evidence_scope": "Hosted browser UAT with database readback pending",
       "status": "NOT RUN"
     },
     {
       "case_id": "PAY-01",
       "actor": "Member",
       "expected": "My Payslip displays breakdown of approved actual hours without unauthorized auto-deductions.",
-      "actual": "Awaiting execution against authenticated runtime.",
-      "evidence_scope": "Hosted browser UAT in My Payslip Page",
+      "actual": "Awaiting execution against authenticated disposable hosted runtime with persisted readback.",
+      "evidence_scope": "Hosted browser UAT with database readback pending",
       "status": "NOT RUN"
     },
     {
-      "case_id": "RESPONSIVE-VIEWPORTS",
+      "case_id": "RESPONSIVE-LOGIN",
       "actor": "Browser Runtime",
-      "expected": "Multi-screen responsive layout checks across /login, /calendar, /swaps, /workforce, /reports at 320px, 390px, 768px, 1440px with zero horizontal scroll.",
-      "actual": "Verified zero horizontal scroll across 4 breakpoints and 5 affected operational screens.",
+      "expected": "Public /login responsive layout checks at 320px, 390px, 768px, 1440px with zero horizontal scroll.",
+      "actual": "Verified zero horizontal scroll across 4 breakpoints on public /login screen.",
       "evidence_scope": "Multi-screen breakpoint inspection",
       "status": "PASS"
+    },
+    {
+      "case_id": "RESPONSIVE-OPERATIONAL",
+      "actor": "Member",
+      "expected": "Operational workspaces (/calendar, /swaps, /workforce, /reports) responsive layouts at 320px, 390px, 768px, 1440px with zero horizontal scroll under authenticated session.",
+      "actual": "Awaiting authenticated session to verify operational workspace layouts without login redirect.",
+      "evidence_scope": "Authenticated multi-screen breakpoint inspection with database readback pending",
+      "status": "NOT RUN"
     }
   ]
 }

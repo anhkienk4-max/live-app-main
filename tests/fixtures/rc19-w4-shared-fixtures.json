@@ -1,0 +1,13 @@
+{
+  "$schema": "rc19-w4-fixture-manifest/v1",
+  "shiftA": "3d5ecc27-61d1-4ff5-a58b-d6011a0f891f",
+  "shiftB": "b3a3eae1-448d-4888-8fb0-f3193942f24b",
+  "sourceRegistrationId": "reg_source_synthetic_01",
+  "counterpartRegistrationId": "reg_counterpart_synthetic_02",
+  "sourceSegmentId": "seg_source_synthetic_01",
+  "counterpartSegmentId": "seg_counterpart_synthetic_02",
+  "conflictCandidateId": "usr_conflict_candidate_01",
+  "clearCandidateId": "usr_clear_candidate_02",
+  "reportId": "rep-rc19-w4-synthetic-01",
+  "periodId": "period-rc19-w4-01"
+}
