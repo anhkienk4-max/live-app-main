@@ -775,7 +775,7 @@ jobs:
           }
           export RC19_W4_EXPECTED_APPLICATION_SHA="$EXPECTED_APPLICATION_SHA"
           export RC19_W4_NEXT_BASE_URL=http://127.0.0.1:3000
-          pnpm run start -- --hostname 127.0.0.1 --port 3000 \
+          pnpm run start --hostname 127.0.0.1 --port 3000 \
             > "$RUNNER_TEMP/rc19-w4-next-start.log" 2>&1 &
           next_pid=$!
           cleanup_next() { kill "$next_pid" >/dev/null 2>&1 || true; wait "$next_pid" >/dev/null 2>&1 || true; }
