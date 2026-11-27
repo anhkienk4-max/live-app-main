@@ -1,0 +1,64 @@
+name: RC19 W4 Hosted Runtime Diagnostic (No Deploy)
+
+on:
+  push:
+    branches:
+      - integration/rc19-w4-codex02
+    paths:
+      - .github/rc19-w4-runtime-diagnostic.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc19-w4-hosted-runtime-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-diagnostic-pins:
+    name: Verify bounded diagnostic pins
+    runs-on: ubuntu-24.04
+    outputs:
+      application_sha: ${{ steps.reviewed.outputs.application_sha }}
+    steps:
+      - name: Checkout triggering integration commit without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact application and reusable harness pins
+        id: reviewed
+        env:
+          PINNED_HARNESS_SHA: 31123ecc0c110f113c7cf3d5d68fd30080c4fe4d
+        run: |
+          set -euo pipefail
+          marker=.github/rc19-w4-runtime-diagnostic.json
+          [[ -f "$marker" ]] || { echo "::error::Bounded diagnostic marker is missing"; exit 1; }
+          mode="$(jq -er '.mode | strings' "$marker")"
+          reviewed="$(jq -er '.reviewed' "$marker")"
+          application_sha="$(jq -er '.application_sha | strings' "$marker")"
+          harness_sha="$(jq -er '.harness_sha | strings' "$marker")"
+          valid_sha() { [[ ${#1} -eq 40 && "$1" != *[!0-9a-f]* ]]; }
+          [[ "$mode" == "bounded-runtime-diagnostic" && "$reviewed" == true ]]
+          valid_sha "$application_sha"
+          valid_sha "$harness_sha"
+          [[ "$harness_sha" == "$PINNED_HARNESS_SHA" ]]
+          [[ "$(tr -d '[:space:]' < .github/rc19-w4-reviewed-application.sha)" == "$application_sha" ]]
+          git cat-file -e "${application_sha}^{commit}"
+          git cat-file -e "${harness_sha}:.github/workflows/rc19-w4-hosted-application-acceptance.yml"
+          git show "${harness_sha}:.github/workflows/rc19-w4-hosted-application-acceptance.yml" \
+            | rg -q 'diagnostic_only:' || { echo "::error::Pinned harness lacks bounded diagnostic mode"; exit 1; }
+          echo "application_sha=$application_sha" >> "$GITHUB_OUTPUT"
+
+  hosted-runtime-diagnostic:
+    name: Call exact-SHA bounded disposable runtime diagnostic
+    needs: verify-diagnostic-pins
+    if: github.ref == 'refs/heads/integration/rc19-w4-codex02'
+    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@31123ecc0c110f113c7cf3d5d68fd30080c4fe4d
+    with:
+      harness_sha: 31123ecc0c110f113c7cf3d5d68fd30080c4fe4d
+      application_sha: ${{ needs.verify-diagnostic-pins.outputs.application_sha }}
+      run_browser_uat: false
+      diagnostic_only: true

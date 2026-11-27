@@ -1,0 +1,7 @@
+{
+  "mode": "bounded-runtime-diagnostic",
+  "reviewed": true,
+  "application_sha": "0b30745785d4980d05ec1a7d7b9bb1c533770614",
+  "harness_sha": "31123ecc0c110f113c7cf3d5d68fd30080c4fe4d",
+  "diagnostic_id": "RC19-W4-runtime-diagnostic-2026-11-27-01"
+}
