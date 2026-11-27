@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "e3986391d48d49059cc42b254812a5368d41caa6",
+    "head": "aec8e1bb002f776c1aab40b42f06190b9c1f8730",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -129,11 +129,11 @@
         "app": 102,
         "components": 201,
         "lib": 311,
-        "scripts": 195,
+        "scripts": 196,
         "supabase": 173,
-        "tests": 412
+        "tests": 414
       },
-      "total": 1394
+      "total": 1397
     },
     "tests": {
       "files": [
@@ -187,6 +187,7 @@
         "tests/e3-dashboard-domain.test.ts",
         "tests/e4-action-priority.test.ts",
         "tests/e5-operational-attention.test.ts",
+        "tests/ensure-mediamtx.test.ts",
         "tests/f10-analytics-business-timezone.test.ts",
         "tests/f10-report-active-user-rls.test.ts",
         "tests/f11-recursive-audit-sanitizer.test.ts",
@@ -394,6 +395,7 @@
         "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
         "tests/rc19-w4-deltac-live-monitoring.test.ts",
         "tests/rc19-w4-deltac-webrtc.test.ts",
+        "tests/rc19-w4-external-summary-revision-integrity.test.ts",
         "tests/rc19-w4-legacy-segment-compatibility.test.ts",
         "tests/rc19-w4-production-cli-migration-runner.test.ts",
         "tests/rc19-w4-segment-aware-pass-swap-contract.test.ts",
@@ -472,7 +474,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 334
+      "count": 336
     },
     "migrations": {
       "files": [
@@ -636,5 +638,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-27T05:10:58Z"
+  "synced_at": "2026-11-27T06:25:57Z"
 }
