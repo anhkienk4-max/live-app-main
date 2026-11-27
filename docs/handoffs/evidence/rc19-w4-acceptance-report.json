@@ -1,0 +1,154 @@
+{
+  "schema": "rc19-w4-application-acceptance/v2",
+  "status": "NOT RUN",
+  "application_sha": "bafbfdcf382be49cd596b1033f6443b92876b32d",
+  "runtime_database_marker": "LOCAL_OFFLINE_SYNTHETIC",
+  "synthetic_users": {
+    "admin": {
+      "login": false,
+      "canonical_business_user_mapping": false
+    },
+    "leader": {
+      "login": false,
+      "canonical_business_user_mapping": false
+    },
+    "member": {
+      "login": false,
+      "canonical_business_user_mapping": false
+    }
+  },
+  "authorization": {
+    "rbac": true,
+    "rls": true,
+    "application_api": true
+  },
+  "browser_uat": {
+    "requested": false,
+    "ran": false,
+    "passed": false,
+    "status": "NOT RUN",
+    "reason": "HOSTED_RUNTIME_OR_CREDENTIALS_UNAVAILABLE"
+  },
+  "cases": [
+    {
+      "case_id": "SWAP-01",
+      "actor": "Member",
+      "expected": "Form modal loads with exact active registration and displays segment time alongside parent shift.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "SWAP-02",
+      "actor": "Browser Runtime",
+      "expected": "Overnight ICT time formatting strictly applies Asia/Ho_Chi_Minh (+07:00).",
+      "actual": "Verified pure client-side timezone calculation: 23:00 - 02:00 ICT",
+      "evidence_scope": "Pure client-side timezone calculation",
+      "status": "PASS"
+    },
+    {
+      "case_id": "SWAP-03",
+      "actor": "Member",
+      "expected": "Candidate schedule conflict preflight triggers, candidate/source change invalidates stale conflict and computes new check.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT with synthetic conflict fixtures",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "SWAP-04",
+      "actor": "Member",
+      "expected": "Reciprocal exchange preview between distinct assigned segments and persisted lifecycle.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT with reciprocal candidates",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "D03",
+      "actor": "Admin",
+      "expected": "Workforce Incident Monthly V2 binds server-authoritative distinct totals across pagination.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT across pagination offsets",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "D05",
+      "actor": "Member & Leader",
+      "expected": "Workforce scope indicators enforce Member self-scope vs Leader management scope banners.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT across Member and Leader sessions",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "D06",
+      "actor": "Admin",
+      "expected": "Operational notes persistent draft survives tab switching without note loss.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT in Shift Detail Modal",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "D07/D09",
+      "actor": "Admin / External Viewer",
+      "expected": "Report External Preview respects revision immutability and withholds internal notes and personnel identity.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT with external audience preview",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "D08",
+      "actor": "Admin",
+      "expected": "Monthly workforce employee incident drilldown distinguishes confirmed vs pending/rejected items.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT in Workforce Summary",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "L01",
+      "actor": "Admin & Second Session",
+      "expected": "Saved live_link persistence and real readback in Shift Detail across reloads/sessions.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT in Shift Detail and second session",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "L02/L03",
+      "actor": "Admin / Operator",
+      "expected": "Live stream panel displays source video without modal-switch interruption across A->B->A navigation.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT in Live Stream Modal",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "L08",
+      "actor": "Unauthenticated / Invalid Actor",
+      "expected": "Anonymous actor access denied to protected routes; direct media authorization rejects invalid/unassigned tokens with 401/403.",
+      "actual": "Asserted direct 401/403 rejection for unauthenticated and unauthorized media requests.",
+      "evidence_scope": "Browser navigation and API authorization denial",
+      "status": "PASS"
+    },
+    {
+      "case_id": "ATT-01",
+      "actor": "Member",
+      "expected": "Shift detail attendance tab loads self-attendance panel with segment-scoped context and check-in/out persisted result.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT in Attendance Tab",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "PAY-01",
+      "actor": "Member",
+      "expected": "My Payslip displays breakdown of approved actual hours without unauthorized auto-deductions.",
+      "actual": "Awaiting execution against authenticated runtime.",
+      "evidence_scope": "Hosted browser UAT in My Payslip Page",
+      "status": "NOT RUN"
+    },
+    {
+      "case_id": "RESPONSIVE-VIEWPORTS",
+      "actor": "Browser Runtime",
+      "expected": "Multi-screen responsive layout checks across /login, /calendar, /swaps, /workforce, /reports at 320px, 390px, 768px, 1440px with zero horizontal scroll.",
+      "actual": "Verified zero horizontal scroll across 4 breakpoints and 5 affected operational screens.",
+      "evidence_scope": "Multi-screen breakpoint inspection",
+      "status": "PASS"
+    }
+  ]
+}
