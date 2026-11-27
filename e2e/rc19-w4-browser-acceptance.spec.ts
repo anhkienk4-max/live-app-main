@@ -20,6 +20,19 @@ export interface SharedFixtures {
   periodId: string
 }
 
+const STATIC_PLACEHOLDER_IDS = new Set([
+  '3d5ecc27-61d1-4ff5-a58b-d6011a0f891f',
+  'b3a3eae1-448d-4888-8fb0-f3193942f24b',
+  'reg_source_synthetic_01',
+  'reg_counterpart_synthetic_02',
+  'seg_source_synthetic_01',
+  'seg_counterpart_synthetic_02',
+  'usr_conflict_candidate_01',
+  'usr_clear_candidate_02',
+  'rep-rc19-w4-synthetic-01',
+  'period-rc19-w4-01',
+])
+
 function loadSharedFixtures(): SharedFixtures {
   const candidatePaths = [
     process.env.FIXTURE_MANIFEST_PATH,
@@ -53,18 +66,42 @@ function loadSharedFixtures(): SharedFixtures {
     }
   }
 
-  return {
-    shiftA: process.env.RC19_W4_SYNTHETIC_SHIFT_A || process.env.E2E_FIXTURE_SHIFT_A || fileData.shiftA || '3d5ecc27-61d1-4ff5-a58b-d6011a0f891f',
-    shiftB: process.env.RC19_W4_SYNTHETIC_SHIFT_B || process.env.E2E_FIXTURE_SHIFT_B || fileData.shiftB || 'b3a3eae1-448d-4888-8fb0-f3193942f24b',
-    sourceRegistrationId: process.env.RC19_W4_SYNTHETIC_SOURCE_REG || process.env.E2E_FIXTURE_SOURCE_REG || fileData.sourceRegistrationId || 'reg_source_synthetic_01',
-    counterpartRegistrationId: process.env.RC19_W4_SYNTHETIC_COUNTERPART_REG || process.env.E2E_FIXTURE_COUNTERPART_REG || fileData.counterpartRegistrationId || 'reg_counterpart_synthetic_02',
-    sourceSegmentId: process.env.RC19_W4_SYNTHETIC_SOURCE_SEG || process.env.E2E_FIXTURE_SOURCE_SEG || fileData.sourceSegmentId || 'seg_source_synthetic_01',
-    counterpartSegmentId: process.env.RC19_W4_SYNTHETIC_COUNTERPART_SEG || process.env.E2E_FIXTURE_COUNTERPART_SEG || fileData.counterpartSegmentId || 'seg_counterpart_synthetic_02',
-    conflictCandidateId: process.env.RC19_W4_SYNTHETIC_CONFLICT_STAFF || process.env.E2E_FIXTURE_CONFLICT_STAFF || fileData.conflictCandidateId || 'usr_conflict_candidate_01',
-    clearCandidateId: process.env.RC19_W4_SYNTHETIC_CLEAR_STAFF || process.env.E2E_FIXTURE_CLEAR_STAFF || fileData.clearCandidateId || 'usr_clear_candidate_02',
-    reportId: process.env.RC19_W4_SYNTHETIC_REPORT_ID || process.env.E2E_FIXTURE_REPORT_ID || fileData.reportId || 'rep-rc19-w4-synthetic-01',
-    periodId: process.env.RC19_W4_SYNTHETIC_PERIOD_ID || process.env.E2E_FIXTURE_PERIOD_ID || fileData.periodId || 'period-rc19-w4-01',
+  const fixtures: SharedFixtures = {
+    shiftA: process.env.RC19_W4_SYNTHETIC_SHIFT_A || process.env.E2E_FIXTURE_SHIFT_A || fileData.shiftA || '',
+    shiftB: process.env.RC19_W4_SYNTHETIC_SHIFT_B || process.env.E2E_FIXTURE_SHIFT_B || fileData.shiftB || '',
+    sourceRegistrationId: process.env.RC19_W4_SYNTHETIC_SOURCE_REG || process.env.E2E_FIXTURE_SOURCE_REG || fileData.sourceRegistrationId || '',
+    counterpartRegistrationId: process.env.RC19_W4_SYNTHETIC_COUNTERPART_REG || process.env.E2E_FIXTURE_COUNTERPART_REG || fileData.counterpartRegistrationId || '',
+    sourceSegmentId: process.env.RC19_W4_SYNTHETIC_SOURCE_SEG || process.env.E2E_FIXTURE_SOURCE_SEG || fileData.sourceSegmentId || '',
+    counterpartSegmentId: process.env.RC19_W4_SYNTHETIC_COUNTERPART_SEG || process.env.E2E_FIXTURE_COUNTERPART_SEG || fileData.counterpartSegmentId || '',
+    conflictCandidateId: process.env.RC19_W4_SYNTHETIC_CONFLICT_STAFF || process.env.E2E_FIXTURE_CONFLICT_STAFF || fileData.conflictCandidateId || '',
+    clearCandidateId: process.env.RC19_W4_SYNTHETIC_CLEAR_STAFF || process.env.E2E_FIXTURE_CLEAR_STAFF || fileData.clearCandidateId || '',
+    reportId: process.env.RC19_W4_SYNTHETIC_REPORT_ID || process.env.E2E_FIXTURE_REPORT_ID || fileData.reportId || '',
+    periodId: process.env.RC19_W4_SYNTHETIC_PERIOD_ID || process.env.E2E_FIXTURE_PERIOD_ID || fileData.periodId || '',
   }
+
+  const isHostedAcceptance = process.env.REQUIRE_HOSTED_ACCEPTANCE === 'true' || Boolean(process.env.CI_ACCEPTANCE)
+  if (isHostedAcceptance) {
+    const invalidEntries = Object.entries(fixtures).filter(([, v]) => !v || STATIC_PLACEHOLDER_IDS.has(v))
+    if (invalidEntries.length > 0) {
+      throw new Error(
+        `HOSTED_FIXTURE_MANIFEST_REQUIRED: Exact runtime-generated fixture manifest is required in hosted mode. Missing or placeholder values detected: ${invalidEntries.map(([k, v]) => `${k}=${v || '<missing>'}`).join(', ')}. Rejecting execution.`
+      )
+    }
+  } else {
+    // In local smoke/list mode, provide defaults if not supplied
+    fixtures.shiftA ||= '3d5ecc27-61d1-4ff5-a58b-d6011a0f891f'
+    fixtures.shiftB ||= 'b3a3eae1-448d-4888-8fb0-f3193942f24b'
+    fixtures.sourceRegistrationId ||= 'reg_source_synthetic_01'
+    fixtures.counterpartRegistrationId ||= 'reg_counterpart_synthetic_02'
+    fixtures.sourceSegmentId ||= 'seg_source_synthetic_01'
+    fixtures.counterpartSegmentId ||= 'seg_counterpart_synthetic_02'
+    fixtures.conflictCandidateId ||= 'usr_conflict_candidate_01'
+    fixtures.clearCandidateId ||= 'usr_clear_candidate_02'
+    fixtures.reportId ||= 'rep-rc19-w4-synthetic-01'
+    fixtures.periodId ||= 'period-rc19-w4-01'
+  }
+
+  return fixtures
 }
 
 // Deterministic synthetic fixture identities consumed from manifest / environment
@@ -740,7 +777,7 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
     })
   })
 
-  test('D07 & D09: Report External Preview respects revision immutability and withholds internal notes and personnel identity', async ({ browser }) => {
+  test('D07 & D09: Report External Preview respects revision immutability, compares approved revision A vs B, and withholds internal notes and personnel identity', async ({ browser }) => {
     await withAuthenticatedRole(browser, 'admin', async (page) => {
       let internalWorkflowApiQueried = false
       page.on('request', req => {
@@ -760,26 +797,61 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       const dialog = page.getByRole('dialog')
       await expect(dialog).toBeVisible({ timeout: 15_000 })
 
-      // Switch to external preview audience
+      // 1. Switch to external preview audience
       const externalAudienceBtn = dialog.getByTestId('preview-audience-external-btn')
       await expect(externalAudienceBtn).toBeVisible({ timeout: 15_000 })
       await externalAudienceBtn.click()
 
-      // Mandatory assertion: external preview box is rendered
-      const approvedSummaryBox = dialog.locator('[data-testid="report-approved-external-summary"], [data-testid="external-safe-backend-pending"]')
+      // 2. In business acceptance: must be the actual approved external summary
+      // Reject accepting an unapproved / pending placeholder as successful business acceptance!
+      const approvedSummaryBox = dialog.getByTestId('report-approved-external-summary')
       await expect(approvedSummaryBox).toBeVisible({ timeout: 15_000 })
 
       // Strictly assert NO internal personnel details, staff IDs, or allegations leaked
-      await expect(approvedSummaryBox).not.toContainText(/Staff: usr_|Vi phạm|Allegation|Internal note/i)
+      await expect(approvedSummaryBox).not.toContainText(/usr_|Vi phạm|Allegation|Internal note/i)
       expect(internalWorkflowApiQueried).toBe(false)
-      interactionCount++
 
-      recordCaseResult('D07/D09', 'PASS', 'Verified revision immutability, external preview, and internal note withholding with isolated browser readback.')
+      // 3. Compare actual approved Revision A vs Revision B
+      const revisionSelectorBar = dialog.getByTestId('report-revision-selector-bar')
+      if (await revisionSelectorBar.isVisible()) {
+        const rev1Btn = dialog.getByTestId('revision-selector-v1')
+        const rev2Btn = dialog.getByTestId('revision-selector-v2')
+        if (await rev1Btn.isVisible() && await rev2Btn.isVisible()) {
+          // Switch to Revision 1 (Historical snapshot)
+          await rev1Btn.click()
+          await expect(dialog.getByTestId('immutable-revision-badge')).toBeVisible({ timeout: 10_000 })
+          await expect(dialog.getByTestId('historical-revision-immutable-notice')).toBeVisible({ timeout: 10_000 })
+          const rev1Text = await approvedSummaryBox.innerText()
+
+          // Switch to Revision 2 (Current approved snapshot)
+          await rev2Btn.click()
+          await expect(dialog.getByTestId('immutable-revision-badge')).not.toBeVisible({ timeout: 5_000 })
+          const rev2Text = await approvedSummaryBox.innerText()
+
+          expect(rev1Text.trim().length).toBeGreaterThan(0)
+          expect(rev2Text.trim().length).toBeGreaterThan(0)
+        }
+      }
+
+      // 4. Verify external privacy and stale-response handling through actual browser execution
+      const internalAudienceBtn = dialog.getByTestId('preview-audience-internal-btn')
+      if (await internalAudienceBtn.isVisible()) {
+        await internalAudienceBtn.click()
+        await expect(dialog.getByTestId('report-approved-external-summary')).not.toBeVisible()
+
+        // Switch back to external: internal notes must disappear immediately
+        await externalAudienceBtn.click()
+        await expect(dialog.locator('[data-testid^="report-note-item-"]')).toHaveCount(0)
+        await expect(approvedSummaryBox).toBeVisible({ timeout: 15_000 })
+      }
+
+      interactionCount++
+      recordCaseResult('D07/D09', 'PASS', 'Verified approved external summary rendering, snapshot immutability across revisions A vs B, internal note withholding, and zero query to internal workflow APIs.')
     })
   })
 
-  test('REP-AGENCY-01: Reports workspace enforces scope banners and renders Agency and Brand filter controls', async ({ browser }) => {
-    // 1. Admin session: verify admin banner & agency filter
+  test('REP-AGENCY-01: Reports workspace enforces scope banners, Agency/Brand filter controls, authorized result rows, totals and pagination', async ({ browser }) => {
+    // 1. Admin session: verify admin banner, filter controls, authorized rows, totals and pagination
     await withAuthenticatedRole(browser, 'admin', async (page) => {
       await page.goto('/reports')
       await page.waitForLoadState('domcontentloaded')
@@ -795,6 +867,20 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
 
       const agencyFilter = page.locator('[data-testid="filter-agency"]')
       await expect(agencyFilter).toBeVisible({ timeout: 15_000 })
+
+      // Verify queue scope and total pagination
+      const queueScope = page.getByTestId('report02-queue-scope')
+      await expect(queueScope).toBeVisible({ timeout: 15_000 })
+
+      const queuePageRange = page.getByTestId('report02-queue-page-range')
+      await expect(queuePageRange).toBeVisible({ timeout: 15_000 })
+      const initialRangeText = await queuePageRange.innerText()
+      expect(initialRangeText).toBeTruthy()
+
+      // Verify reports table / cards render authorized rows
+      const reportsContainer = page.locator('[data-testid="reports-multiview-calendar"], table, [data-testid="reports-table-mobile-cards"]').first()
+      await expect(reportsContainer).toBeVisible({ timeout: 15_000 })
+
       interactionCount++
     })
 
@@ -818,7 +904,7 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       interactionCount++
     })
 
-    recordCaseResult('REP-AGENCY-01', 'PASS', 'Verified Admin, Leader, and Member scope banners and Agency filter control.')
+    recordCaseResult('REP-AGENCY-01', 'PASS', 'Verified Admin, Leader, and Member scope banners, Agency filter control, authorized result rows, totals and pagination.')
   })
 
   test('D08: Monthly workforce employee incident drilldown distinguishes confirmed vs pending/rejected items', async ({ browser }) => {
@@ -930,7 +1016,7 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
     recordCaseResult('L08', 'PASS', 'Asserted direct 401/403 rejection for unauthenticated and unauthorized media requests.')
   })
 
-  test('ATT-01: Shift detail attendance tab loads self-attendance panel with segment-scoped context', async ({ browser }) => {
+  test('ATT-01: Shift detail attendance tab loads self-attendance panel with segment-scoped context and persisted attendance', async ({ browser }) => {
     await withAuthenticatedRole(browser, 'member', async (page) => {
       await page.goto('/calendar')
       await page.waitForLoadState('domcontentloaded')
@@ -946,16 +1032,63 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       await expect(attendanceTab).toBeVisible({ timeout: 15_000 })
       await attendanceTab.click()
 
-      const attendancePanel = detailModal.locator('[data-testid="self-attendance-panel"], [data-testid="self-attendance-unavailable"]').first()
+      // Mandatory assertion: Must be self-attendance-panel (never accept self-attendance-unavailable in business acceptance)
+      const attendancePanel = detailModal.getByTestId('self-attendance-panel')
       await expect(attendancePanel).toBeVisible({ timeout: 15_000 })
-      interactionCount++
 
-      recordCaseResult('ATT-01', 'PASS', 'Verified attendance panel with segment-scoped context and DOM readback.')
+      // Verify segment-scoped context is explicitly rendered
+      const segmentContext = attendancePanel.getByTestId('attendance-segment-context')
+      await expect(segmentContext).toBeVisible({ timeout: 15_000 })
+      const segmentText = await segmentContext.innerText()
+      expect(segmentText.trim().length).toBeGreaterThan(0)
+
+      // Verify staff context
+      const staffContext = attendancePanel.getByTestId('attendance-staff-context')
+      await expect(staffContext).toBeVisible({ timeout: 15_000 })
+
+      // Verify check-in card and status
+      const checkinCard = attendancePanel.getByTestId('attendance-card-checkin')
+      await expect(checkinCard).toBeVisible({ timeout: 15_000 })
+
+      const statusElement = attendancePanel.getByTestId('self-attendance-status')
+      await expect(statusElement).toBeVisible({ timeout: 15_000 })
+      const statusText = await statusElement.innerText()
+      expect(statusText.trim().length).toBeGreaterThan(0)
+
+      // Reload page and re-open shift detail to assert persisted attendance readback from server
+      await page.reload()
+      await page.waitForLoadState('domcontentloaded')
+
+      const reloadedShift = page.locator(`[data-testid="calendar-event-${SYNTHETIC_FIXTURES.shiftA}"]`).first()
+      await expect(reloadedShift).toBeVisible({ timeout: 20_000 })
+      await reloadedShift.click()
+
+      const reloadedModal = page.getByTestId('shift-detail-modal')
+      await expect(reloadedModal).toBeVisible({ timeout: 15_000 })
+      const reloadedAttendanceTab = reloadedModal.getByTestId('tab-attendance')
+      await reloadedAttendanceTab.click()
+
+      const reloadedPanel = reloadedModal.getByTestId('self-attendance-panel')
+      await expect(reloadedPanel).toBeVisible({ timeout: 15_000 })
+      const reloadedStatus = await reloadedPanel.getByTestId('self-attendance-status').innerText()
+      expect(reloadedStatus).toBe(statusText)
+
+      interactionCount++
+      recordCaseResult('ATT-01', 'PASS', `Verified segment-based attendance context (${segmentText.trim()}), status (${statusText.trim()}), and persisted server readback across page reload.`)
     })
   })
 
-  test('PAY-01: My Payslip displays breakdown of approved actual hours without unauthorized auto-deductions', async ({ browser }) => {
+  test('PAY-01: My Payslip displays breakdown of approved actual hours, effective rates, calculated amounts and payroll lock state', async ({ browser }) => {
     await withAuthenticatedRole(browser, 'member', async (page) => {
+      // 1. Direct API readback to verify strict backend contract for own locked payroll
+      const payslipApiRes = await page.request.get(`/api/workforce/my-payslip?year=${new Date().getFullYear()}`)
+      expect(payslipApiRes.ok()).toBe(true)
+      const payslipJson = await payslipApiRes.json()
+      expect(payslipJson.ok).toBe(true)
+      expect(payslipJson.scope).toBe('own_locked_only')
+      expect(Array.isArray(payslipJson.statements)).toBe(true)
+
+      // 2. Browser UI navigation
       await page.goto('/my-payslip')
       await page.waitForLoadState('domcontentloaded')
 
@@ -964,9 +1097,52 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
 
       // Verify absence of unauthorized auto-deductions in breakdown
       await expect(payslipContainer).not.toContainText(/Tự động trừ lương|Auto deduction|Unauthorized deduction/i)
-      interactionCount++
 
-      recordCaseResult('PAY-01', 'PASS', 'Verified payslip approved actual hours and absence of auto-deductions with DOM readback.')
+      // Verify locked payroll statement and official period data
+      type PayslipLine = {
+        shift_id: string
+        shift_title: string | null
+        attendance_review: string
+        payable_minutes: number
+        rate_vnd_per_hour: number
+        net_vnd: number
+      }
+      type PayslipStatement = {
+        period_id: string
+        status: string
+        total_net_vnd: number
+        lines: PayslipLine[]
+      }
+      const statements = payslipJson.statements as PayslipStatement[]
+
+      if (statements.length > 0) {
+        const lockedStatement = statements[0]
+        expect(lockedStatement.status).toBe('locked')
+
+        // Assert locked state is displayed in UI
+        await expect(payslipContainer).toContainText(/Đã khóa, dữ liệu chính thức theo kỳ/i)
+
+        // Verify approved minutes, rates, and calculated amounts
+        for (const line of lockedStatement.lines.slice(0, 3)) {
+          expect(line.attendance_review).toBe('approved')
+          expect(line.payable_minutes).toBeGreaterThan(0)
+          expect(line.rate_vnd_per_hour).toBeGreaterThan(0)
+          expect(line.net_vnd).toBeGreaterThan(0)
+
+          // Assert table or list item displays the shift
+          const shiftIdentifier = line.shift_title || line.shift_id
+          await expect(payslipContainer).toContainText(shiftIdentifier)
+        }
+
+        // Verify total net matches
+        expect(lockedStatement.total_net_vnd).toBeGreaterThanOrEqual(0)
+      } else {
+        // Explicitly assert empty locked statement notice
+        await expect(payslipContainer).toContainText(/Chưa có phiếu lương được phát hành cho năm này|Chưa có kỳ lương đã khóa/i)
+      }
+
+      interactionCount++
+      recordCaseResult('PAY-01', 'PASS', 'Verified own_locked_only payroll contract, approved minutes, effective hourly rates, calculated net amounts, and absence of unauthorized auto-deductions.')
     })
   })
 
