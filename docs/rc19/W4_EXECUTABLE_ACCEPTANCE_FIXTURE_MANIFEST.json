@@ -37,6 +37,14 @@
     "second_brand_shift": { "business_date": "2099-12-02", "segments": [
       { "segment_index": 1, "start": "10:00", "end": "14:00", "role": "host" }
     ] },
+    "d01_atomic_replacement": { "business_date": "UTC date generated at runtime (yesterday)", "agency": "primary synthetic Agency",
+      "segments": [
+        { "segment_index": 1, "start": "10:00", "end": "11:00", "role": "host", "registrations": [] },
+        { "segment_index": 2, "start": "11:00", "end": "12:00", "role": "host", "original_actor": "member_requester",
+          "replacement_actor": "member_clear_candidate" },
+        { "segment_index": 3, "start": "12:00", "end": "14:00", "role": "host", "registrations": [] }
+      ],
+      "case": "D01 exact-segment emergency skip replacement; actor-bound receipt, identical replay, changed-payload rejection, non-admin denial and independent PostgreSQL readback." },
     "pass_swap": {
       "source_actor": "member_requester",
       "source_registration": "Exact registration on primary shift segment 1",

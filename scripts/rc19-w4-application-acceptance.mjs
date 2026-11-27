@@ -236,6 +236,7 @@ function seedSyntheticAgencyFixtures(databaseContainer, marker, actors, shifts) 
   }
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.inScope)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.outOfScope)} WHERE id=${sqlLiteral(shifts.outOfScope)}`)
+  lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.d01)}`)
   const effectiveFrom = new Date(Date.now() - 60_000).toISOString()
   const now = new Date().toISOString()
   for (const [businessUserId, agencyId, recordKey, status] of memberships) {
@@ -508,12 +509,18 @@ async function main() {
     admin.client, service, brandIds[1], platformId, `RC19 acceptance ${suffix} foreign`, '2099-12-02',
     [segment(1, '10:00', '14:00', 'host')],
   )
+  const d01BusinessDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const d01ShiftId = await createShift(
+    admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} D01 K02 replacement`, d01BusinessDate,
+    [segment(1, '10:00', '11:00', 'host'), segment(2, '11:00', '12:00', 'host'),
+      segment(3, '12:00', '14:00', 'host')],
+  )
 
   const segmentRows = await service.from('shift_staffing_segments')
-    .select('id,shift_id,segment_index').in('shift_id', [scopedShiftId, foreignShiftId])
+    .select('id,shift_id,segment_index,start_at,end_at').in('shift_id', [scopedShiftId, foreignShiftId, d01ShiftId])
   const storedSegments = await requireNoError(segmentRows, 'SEGMENT_FIXTURE_READBACK_FAILED')
-  if (!Array.isArray(storedSegments) || storedSegments.length !== 3
-    || storedSegments.some(row => !row.id || ![scopedShiftId, foreignShiftId].includes(row.shift_id))) {
+  if (!Array.isArray(storedSegments) || storedSegments.length !== 6
+    || storedSegments.some(row => !row.id || ![scopedShiftId, foreignShiftId, d01ShiftId].includes(row.shift_id))) {
     stop('SEGMENT_FIXTURE_READBACK_MISMATCH')
   }
   const segmentByKey = new Map(storedSegments.map(row => [`${row.shift_id}:${row.segment_index}`, row.id]))
@@ -539,18 +546,37 @@ async function main() {
       stop('ASSIGNMENT_FIXTURE_CREATE_MISMATCH')
     }
   }
+  const d01K02Segment = storedSegments.find(row => row.shift_id === d01ShiftId && row.segment_index === 2)
+  if (!d01K02Segment?.id) stop('D01_K02_SEGMENT_FIXTURE_MISSING')
+  const d01ShiftVersion = await service.from('shifts').select('version').eq('id', d01ShiftId).single()
+  const d01ShiftVersionRow = await requireNoError(d01ShiftVersion, 'D01_SHIFT_VERSION_READ_FAILED')
+  const d01Assigned = await admin.client.rpc('manual_assign_shift_staff_to_segment', {
+    p_shift_id: d01ShiftId,
+    p_user_id: member.id,
+    p_role: 'host',
+    p_notes: 'RC19 D01 synthetic original K02 assignment',
+    p_expected_version: d01ShiftVersionRow.version,
+    p_staffing_segment_id: d01K02Segment.id,
+  }).single()
+  const d01OriginalAssignment = await requireNoError(d01Assigned, 'D01_ASSIGNMENT_FIXTURE_CREATE_FAILED')
+  if (!d01OriginalAssignment?.id
+    || d01OriginalAssignment.staffing_segment_id !== d01K02Segment.id
+    || d01OriginalAssignment.user_id !== member.id || d01OriginalAssignment.operational_role !== 'host') {
+    stop('D01_ASSIGNMENT_FIXTURE_CREATE_MISMATCH')
+  }
 
   const databaseContainer = required('RC19_W4_RUNTIME_DATABASE_CONTAINER')
   const { agencyIds, membershipRows } = seedSyntheticAgencyFixtures(databaseContainer, marker, {
     leader, member, memberSupport, memberUnassigned, leaderOtherBrand,
     memberOutAgency, leaderRevoked,
-  }, { inScope: scopedShiftId, outOfScope: foreignShiftId })
+  }, { inScope: scopedShiftId, outOfScope: foreignShiftId, d01: d01ShiftId })
   const agencyReadback = await service.from('shifts')
-    .select('id,authoritative_agency_id').in('id', [scopedShiftId, foreignShiftId])
+    .select('id,authoritative_agency_id').in('id', [scopedShiftId, foreignShiftId, d01ShiftId])
   const agencyRows = await requireNoError(agencyReadback, 'AGENCY_FIXTURE_READBACK_FAILED')
-  if (!Array.isArray(agencyRows) || agencyRows.length !== 2
+  if (!Array.isArray(agencyRows) || agencyRows.length !== 3
     || agencyRows.find(row => row.id === scopedShiftId)?.authoritative_agency_id !== agencyIds.inScope
-    || agencyRows.find(row => row.id === foreignShiftId)?.authoritative_agency_id !== agencyIds.outOfScope) {
+    || agencyRows.find(row => row.id === foreignShiftId)?.authoritative_agency_id !== agencyIds.outOfScope
+    || agencyRows.find(row => row.id === d01ShiftId)?.authoritative_agency_id !== agencyIds.inScope) {
     stop('AGENCY_FIXTURE_READBACK_MISMATCH')
   }
   if (!Array.isArray(membershipRows) || membershipRows.length !== 7
@@ -644,6 +670,74 @@ async function main() {
   }
   const incidentFixtures = seedSyntheticIncidents(databaseContainer, marker, { admin, member, memberSupport },
     { inScope: scopedShiftId }, assignments, storedSegments)
+  let d01Receipt = null
+  await executeCase('delta-d01-atomic-skip-replacement', 'Admin actor; Member A and Member B fixtures',
+    'Replace A with B on exact K02 at its segment boundary; persist one linked pending skip incident and one receipt, preserve A history and other segments, and replay the same key.', async () => {
+      const currentShift = await service.from('shifts').select('version').eq('id', d01ShiftId).single()
+      const shiftRow = await requireNoError(currentShift, 'D01_SHIFT_READBACK_FAILED')
+      const currentRegistration = await service.from('shift_registrations').select('version,status')
+        .eq('id', d01OriginalAssignment.id).single()
+      const registrationRow = await requireNoError(currentRegistration, 'D01_ORIGINAL_REGISTRATION_READBACK_FAILED')
+      if (registrationRow.status !== 'manually_assigned' || !d01K02Segment.start_at) stop('D01_ORIGINAL_FIXTURE_INVALID')
+      const idempotencyKey = randomUUID()
+      const invoke = (actor, reason = 'Synthetic K02 skip replacement') => actor.client.rpc('replace_shift_assignment_with_incident_v1', {
+        p_shift_id: d01ShiftId, p_staffing_segment_id: d01K02Segment.id,
+        p_registration_id: d01OriginalAssignment.id, p_replacement_user_id: memberUnassigned.id,
+        p_role: 'host', p_expected_shift_version: shiftRow.version,
+        p_expected_registration_version: registrationRow.version, p_effective_at: d01K02Segment.start_at,
+        p_reason: reason, p_is_emergency: true, p_idempotency_key: idempotencyKey,
+        p_incident_type: 'skip', p_evidence_reference_id: null,
+      }).single()
+      const response = await requireNoError(await invoke(admin), 'D01_ATOMIC_REPLACEMENT_FAILED')
+      const incident = response?.canonical_incident
+      if (!response?.replacement_id || !incident?.id || incident.shift_id !== d01ShiftId
+        || incident.staffing_segment_id !== d01K02Segment.id
+        || incident.original_registration_id !== d01OriginalAssignment.id
+        || incident.original_staff_id !== member.id || incident.replacement_staff_id !== memberUnassigned.id
+        || incident.incident_type !== 'skip' || incident.review_state !== 'pending') {
+        stop('D01_RESPONSE_MISMATCH')
+      }
+      const replay = await requireNoError(await invoke(admin), 'D01_SAME_KEY_REPLAY_FAILED')
+      if (replay.replacement_id !== response.replacement_id
+        || replay.canonical_incident?.id !== incident.id
+        || replay.registration?.id !== response.registration?.id) stop('D01_SAME_KEY_REPLAY_MISMATCH')
+      const changedPayload = await invoke(admin, 'Changed payload must not be accepted')
+      if (!changedPayload.error || !String(changedPayload.error.message).includes('IDEMPOTENCY_KEY_REUSED')) {
+        stop('D01_CHANGED_PAYLOAD_NOT_REJECTED')
+      }
+      const unauthorizedLeader = await invoke(leader)
+      if (!unauthorizedLeader.error
+        || !/STAFFING_PERMISSION_REQUIRED|ACTOR_NOT_AUTHORIZED|EMERGENCY_REPLACEMENT_ADMIN_ONLY/u.test(String(unauthorizedLeader.error.message))) {
+        stop('D01_NON_ADMIN_EMERGENCY_NOT_DENIED')
+      }
+      const registrationReadback = await service.from('shift_registrations')
+        .select('id,user_id,operational_role,status,staffing_segment_id')
+        .in('id', [d01OriginalAssignment.id, response.registration.id])
+      const registrations = await requireNoError(registrationReadback, 'D01_REGISTRATION_READBACK_FAILED')
+      const original = registrations.find(row => row.id === d01OriginalAssignment.id)
+      const replacement = registrations.find(row => row.id === response.registration.id)
+      if (registrations.length !== 2 || original?.user_id !== member.id || original.status !== 'removed'
+        || replacement?.user_id !== memberUnassigned.id || replacement.status !== 'manually_assigned'
+        || replacement.staffing_segment_id !== d01K02Segment.id) stop('D01_REGISTRATION_STATE_MISMATCH')
+      const postgresCount = readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_staff_incidents i JOIN public.rc19_shift_assignment_replacements r ON r.id=i.replacement_receipt_id WHERE i.id=${sqlLiteral(incident.id)}::uuid AND i.shift_id=${sqlLiteral(d01ShiftId)} AND i.staffing_segment_id=${sqlLiteral(d01K02Segment.id)} AND i.original_registration_id=${sqlLiteral(d01OriginalAssignment.id)} AND i.original_staff_id=${sqlLiteral(member.id)} AND i.replacement_registration_id=${sqlLiteral(response.registration.id)} AND i.replacement_staff_id=${sqlLiteral(memberUnassigned.id)} AND i.incident_type='skip' AND i.review_state='pending' AND r.id=${sqlLiteral(response.replacement_id)}::uuid AND r.idempotency_key=${sqlLiteral(idempotencyKey)}::uuid AND (SELECT count(*) FROM private.rc19_incident_replacement_requests b WHERE b.actor_id=${sqlLiteral(admin.id)} AND b.idempotency_key=${sqlLiteral(idempotencyKey)}::uuid AND b.incident_id=i.id)=1`)
+      if (postgresCount !== '1') stop('D01_INCIDENT_RECEIPT_POSTGRES_READBACK_MISMATCH')
+      const otherSegmentRows = readDatabase(databaseContainer,
+        `SELECT count(*) FROM public.shift_registrations WHERE shift_id=${sqlLiteral(d01ShiftId)} AND staffing_segment_id IN (${sqlLiteral(storedSegments.find(row => row.shift_id === d01ShiftId && row.segment_index === 1).id)},${sqlLiteral(storedSegments.find(row => row.shift_id === d01ShiftId && row.segment_index === 3).id)})`)
+      if (otherSegmentRows !== '0') stop('D01_OTHER_SEGMENTS_CHANGED')
+      const replacementHistory = readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_staff_incidents WHERE shift_id=${sqlLiteral(d01ShiftId)} AND original_staff_id=${sqlLiteral(memberUnassigned.id)} AND incident_type='skip'`)
+      if (replacementHistory !== '0') stop('D01_REPLACEMENT_INHERITED_SKIP_HISTORY')
+      d01Receipt = { shiftId: d01ShiftId, segmentId: d01K02Segment.id,
+        originalRegistrationId: d01OriginalAssignment.id, replacementRegistrationId: response.registration.id,
+        incidentId: incident.id, replacementReceiptId: response.replacement_id, idempotencyKey }
+      return { actual: { rpc_code: 'OK', response: {
+        replacement_id: response.replacement_id, incident_id: incident.id,
+        original_registration_id: incident.original_registration_id,
+        replacement_registration_id: response.registration.id,
+      } }, database_readback: { status: 'passed', matches_expected: true },
+      negative_authorization: { tested: true, passed: true } }
+    })
   const unassignedMemberResult = await service.from('shift_registrations')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', memberUnassigned.id)
@@ -906,17 +1000,20 @@ async function main() {
     ['D09', 'external_summary', 'history_note_and_external_report_privacy_authorization'],
     ['D10', 'import_staffing_updates', 'combined_import_reimport_replacement_attendance_actual_payroll_report_history'],
     ['D11', 'storage_authorization_upload_readback', 'authenticated_api_database_browser_migration_and_provider_evidence'],
-  ].map(([case_id, area, criterion]) => ({
+  ].map(([case_id, area, criterion]) => {
+    const d01Result = case_id === 'D01' ? caseResults.find(item => item.case_id === 'delta-d01-atomic-skip-replacement') : null
+    const resultStatus = d01Result?.status === 'PASS' ? 'passed' : d01Result?.status === 'FAIL' ? 'fail' : 'not_run'
+    return ({
     case_id, area, source_case_ids: [case_id], source_criteria: [{ id: case_id, criterion }],
     actor: { role: 'Admin, Leader, Member per original D case', scope_key: 'synthetic-disposable-runtime' },
     expected: { authorization: 'Original #190 role and scope rules; deny unauthorized and cross-scope actions.',
       result: `Demonstrate original ${case_id} criterion ${criterion} with authenticated API/UI behavior and independent persisted readback.` },
-    actual: { rpc_code: 'NOT_RUN' },
-    database_readback: { status: 'not_run', matches_expected: false },
-    negative_authorization: { tested: false, passed: false },
+    actual: d01Result?.actual ?? { rpc_code: 'NOT_RUN' },
+    database_readback: d01Result?.database_readback ?? { status: 'not_run', matches_expected: false },
+    negative_authorization: d01Result?.negative_authorization ?? { tested: false, passed: false },
     browser_interaction: { performed: false, authenticated: false, status: 'NOT RUN' },
-    status: 'not_run',
-  }))
+    status: resultStatus,
+  })})
   const originalL = [
     ['L01', 'live_monitoring_authorization', 'save_link_db_readback_reload_other_account_stale_write'],
     ['L02', 'live_monitoring_authorization', 'publisher_consent_and_actual_video'],
@@ -990,11 +1087,29 @@ async function main() {
       shifts: [
         { id: scopedShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: '2099-12-01' },
         { id: foreignShiftId, brand_id: brandIds[1], agency_id: agencyIds.outOfScope, business_date: '2099-12-02' },
+        { id: d01ShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: d01BusinessDate,
+          purpose: 'D01 exact K02 atomic skip and replacement',
+          segment_start_at: d01K02Segment.start_at, segment_end_at: d01K02Segment.end_at },
       ],
       staffing_segments: storedSegments.map(row => ({ id: row.id, shift_id: row.shift_id,
         segment_index: row.segment_index })),
-      registrations: assignments.map(row => ({ id: row.id, shift_id: row.shift_id,
-        business_user_id: row.user_id, role: row.operational_role, staffing_segment_id: row.staffing_segment_id })),
+      registrations: [
+        ...assignments.map(row => ({ id: row.id, shift_id: row.shift_id,
+          business_user_id: row.user_id, role: row.operational_role, staffing_segment_id: row.staffing_segment_id })),
+        { id: d01OriginalAssignment.id, shift_id: d01ShiftId, business_user_id: member.id,
+          role: d01OriginalAssignment.operational_role, staffing_segment_id: d01OriginalAssignment.staffing_segment_id,
+          status: d01Receipt ? 'removed_after_D01_replacement' : 'manually_assigned_before_D01_execution' },
+        ...(d01Receipt ? [{ id: d01Receipt.replacementRegistrationId, shift_id: d01ShiftId,
+          business_user_id: memberUnassigned.id, role: 'host', staffing_segment_id: d01K02Segment.id,
+          status: 'manually_assigned_after_D01_replacement' }] : []),
+      ],
+      d01_atomic_replacement: {
+        case_id: 'D01',
+        segment_index: 2,
+        original_actor: member.id,
+        replacement_actor: memberUnassigned.id,
+        receipt: d01Receipt,
+      },
       pass_swap_candidates: {
         clear_replacement: memberUnassigned.id,
         same_actor_conflict: member.id,
@@ -1031,11 +1146,14 @@ async function main() {
     business_cases: [
       ...caseResults.map(item => ({
       case_id: item.case_id,
-      area: item.case_id.startsWith('agency-') ? 'brand_agency_authorization_boundaries'
+      area: item.case_id.startsWith('delta-d01-') ? 'atomic_staffing_replacement'
+        : item.case_id.startsWith('agency-') ? 'brand_agency_authorization_boundaries'
         : item.case_id.startsWith('workforce-') ? 'workforce_reporting'
           : item.case_id.startsWith('external-summary-') ? 'external_summary' : 'pass_swap_lifecycle',
-      source_case_ids: [item.case_id],
-      source_criteria: [{ id: item.case_id, criterion: item.expected }],
+      source_case_ids: item.case_id === 'delta-d01-atomic-skip-replacement' ? ['D01'] : [item.case_id],
+      source_criteria: [{ id: item.case_id === 'delta-d01-atomic-skip-replacement' ? 'D01' : item.case_id,
+        criterion: item.case_id === 'delta-d01-atomic-skip-replacement'
+          ? 'full_segment_skip_emergency_replacement_atomic_receipt_history' : item.expected }],
       actor: { role: item.actor, scope_key: 'synthetic-disposable-runtime' },
       expected: { authorization: item.expected, result: item.expected },
       actual: item.actual,
@@ -1114,9 +1232,9 @@ async function main() {
       authenticated_users: authUsers.length + 5,
       brands: brandIds.length,
       platforms: 1,
-      parent_shifts: 2,
+      parent_shifts: 3,
       staffing_segments: storedSegments.length,
-      canonical_assignments: assignments.length,
+      canonical_assignments: assignments.length + 1 + (d01Receipt ? 1 : 0),
       wrong_brand_denied: true,
       unassigned_member_has_no_assignment: true,
       wrong_agency_denied: caseResults.some(item => item.case_id === 'agency-wrong-agency-denial' && item.status === 'PASS'),

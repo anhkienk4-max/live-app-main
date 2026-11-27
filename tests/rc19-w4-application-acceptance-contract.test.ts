@@ -9,6 +9,7 @@ const fixtureManifest = JSON.parse(readFileSync(new URL('../docs/rc19/W4_EXECUTA
   credentials_included: boolean
   runtime_id_policy: string
   attendance_payroll: { status: string }
+  current_staffing_fixture: { d01_atomic_replacement: { case: string; segments: Array<{ segment_index: number }> } }
 }
 
 test('application acceptance runs actor-backed Agency, Workforce and receipt cases without upgrading unfinished groups', () => {
@@ -30,10 +31,17 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /BROWSER_PERSISTED_READBACK_NOT_ASSERTED/u)
   assert.match(entrypoint, /authenticatedBrowserInteractionCount/u)
   assert.match(entrypoint, /fixture_manifest:[\s\S]*runtime_marker: marker/u)
+  assert.match(entrypoint, /replace_shift_assignment_with_incident_v1/u)
+  assert.match(entrypoint, /D01_SAME_KEY_REPLAY_MISMATCH/u)
+  assert.match(entrypoint, /D01_CHANGED_PAYLOAD_NOT_REJECTED/u)
+  assert.match(entrypoint, /D01_INCIDENT_RECEIPT_POSTGRES_READBACK_MISMATCH/u)
+  assert.match(entrypoint, /D01_NON_ADMIN_EMERGENCY_NOT_DENIED/u)
   assert.equal(fixtureManifest.schema, 'rc19-w4-synthetic-fixtures/v1')
   assert.equal(fixtureManifest.credentials_included, false)
   assert.match(fixtureManifest.runtime_id_policy, /same runtime marker/u)
   assert.equal(fixtureManifest.attendance_payroll.status, 'NOT RUN')
+  assert.match(fixtureManifest.current_staffing_fixture.d01_atomic_replacement.case, /independent PostgreSQL readback/u)
+  assert.deepEqual(fixtureManifest.current_staffing_fixture.d01_atomic_replacement.segments.map(row => row.segment_index), [1, 2, 3])
   assert.match(entrypoint, /authenticated-browser'[\s\S]*status: 'NOT RUN'/u)
   assert.doesNotMatch(entrypoint, /AGENCY_FIXTURE_PROVISIONING_NOT_IMPLEMENTED/u)
   assert.doesNotMatch(entrypoint, /BROWSER_UAT_REQUIRES_SEPARATE_REVIEWED_APP_RUNTIME/u)
