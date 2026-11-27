@@ -885,11 +885,23 @@ jobs:
           set -e
           if [[ "$result" -ne 0 ]]; then
             if [[ "$DIAGNOSTIC_ONLY" == "true" ]]; then
-              jq '.steps.application = {status:"blocked",code:"DIAGNOSTIC_ENTRYPOINT_FAILED"}' \
+              failure_code="$(python3 - "$RUNNER_TEMP/rc19-w4-lane01-acceptance.log" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
+          codes = [line.strip() for line in lines if re.fullmatch(r"[A-Z][A-Z0-9_]{1,119}", line.strip())]
+          print(codes[-1] if codes else "ENTRYPOINT_FAILED_WITHOUT_SAFE_CODE")
+          PY
+          )"
+              jq --arg code "$failure_code" --argjson exit_code "$result" \
+                '.steps.application = {status:"blocked",code:$code,exit_code:$exit_code}' \
                 "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-failed.json"
               jq '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=false' \
                 "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-failed.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
-              echo "::warning::The bounded diagnostic entrypoint failed; sanitized runtime evidence is retained."
+              echo "::warning::The bounded diagnostic entrypoint failed with $failure_code; sanitized runtime evidence is retained."
+              echo "Application diagnostic code: $failure_code" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             jq '.steps.application = {status:"failed",code:"LANE01_ACCEPTANCE_FAILED"}' \
@@ -997,13 +1009,16 @@ jobs:
         working-directory: rc19-w4-application
         run: |
           set -euo pipefail
+          realtime_publication_state="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='shifts')::text || '|' || COALESCE((SELECT relreplident::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='shifts'),'missing') || '|' || EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='shifts' AND i.indisprimary)::text")"
           export REALTIME_URL="$RC19_W4_RUNTIME_URL"
           export REALTIME_ANON_KEY="$RC19_W4_RUNTIME_ANON_KEY"
           export REALTIME_SERVICE_KEY="$RC19_W4_RUNTIME_SERVICE_ROLE_KEY"
           export REALTIME_MEMBER_EMAIL="$RC19_W4_SYNTHETIC_MEMBER_EMAIL"
           export REALTIME_MEMBER_PASSWORD="$RC19_W4_SYNTHETIC_MEMBER_PASSWORD"
           export REALTIME_MARKER="$RC19_W4_RUNTIME_DATABASE_MARKER"
-          node --input-type=module <<'NODE'
+          export REALTIME_PUBLICATION_STATE="$realtime_publication_state"
+          set +e
+          node --input-type=module > "$RUNNER_TEMP/rc19-w4-realtime.log" 2>&1 <<'NODE'
           import { createClient } from '@supabase/supabase-js'
 
           const fail = code => { process.stderr.write(`${code}\n`); process.exit(1) }
@@ -1012,6 +1027,7 @@ jobs:
             new Promise((_, reject) => setTimeout(() => reject(new Error(code)), 15000)),
           ])
           const url = process.env.REALTIME_URL
+          if (!/^true\|[d|f|i]\|true$/u.test(process.env.REALTIME_PUBLICATION_STATE ?? '')) fail('REALTIME_SHIFT_PUBLICATION_CONTRACT_FAILED')
           const member = createClient(url, process.env.REALTIME_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
           const service = createClient(url, process.env.REALTIME_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
           const login = await member.auth.signInWithPassword({ email: process.env.REALTIME_MEMBER_EMAIL, password: process.env.REALTIME_MEMBER_PASSWORD })
@@ -1035,6 +1051,8 @@ jobs:
             await withTimeout(subscribed, 'REALTIME_SUBSCRIPTION_TIMEOUT')
             const changed = await service.from('shifts').update({ title: markerTitle }).eq('id', found.data.id).select('id').maybeSingle()
             if (changed.error || changed.data?.id !== found.data.id) fail('REALTIME_SYNTHETIC_UPDATE_FAILED')
+            const readback = await service.from('shifts').select('id,title').eq('id', found.data.id).maybeSingle()
+            if (readback.error || readback.data?.id !== found.data.id || readback.data?.title !== markerTitle) fail('REALTIME_SYNTHETIC_UPDATE_READBACK_FAILED')
             await withTimeout(event, 'REALTIME_EVENT_TIMEOUT')
           } catch (error) {
             fail(error.message === 'REALTIME_EVENT_TIMEOUT' ? 'REALTIME_EVENT_TIMEOUT' : 'REALTIME_EVENT_DELIVERY_FAILED')
@@ -1044,6 +1062,27 @@ jobs:
           }
           process.stdout.write('Authenticated member received the scoped shift update over Realtime.\n')
           NODE
+          realtime_result=$?
+          set -e
+          if [[ "$realtime_result" -ne 0 ]]; then
+            realtime_code="$(python3 - "$RUNNER_TEMP/rc19-w4-realtime.log" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
+          codes = [line.strip() for line in lines if re.fullmatch(r"[A-Z][A-Z0-9_]{1,119}", line.strip())]
+          print(codes[-1] if codes else "REALTIME_FAILED_WITHOUT_SAFE_CODE")
+          PY
+          )"
+            jq --arg code "$realtime_code" --arg publication "$realtime_publication_state" --argjson exit_code "$realtime_result" \
+              '.steps.realtime={status:"failed",code:$code,exit_code:$exit_code,publication_state:$publication,event_delivery_verified:false}' \
+              "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/realtime-failed.json"
+            mv "$RUNNER_TEMP/rc19-w4-app-artifact/realtime-failed.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+            echo "Realtime diagnostic code: $realtime_code; publication state: $realtime_publication_state" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Authenticated Realtime delivery diagnostic failed with $realtime_code."
+            exit "$realtime_result"
+          fi
           jq '.steps.realtime={status:"passed",authenticated_member:true,authorized_scoped_shift:true,event_delivered:true,synthetic_update_readback:true}' \
             "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/realtime-evidence.json"
           mv "$RUNNER_TEMP/realtime-evidence.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
