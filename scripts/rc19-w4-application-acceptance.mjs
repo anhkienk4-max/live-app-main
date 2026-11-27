@@ -246,7 +246,10 @@ function seedSyntheticAgencyFixtures(databaseContainer, marker, actors, shifts) 
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.inScope)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.outOfScope)} WHERE id=${sqlLiteral(shifts.outOfScope)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.d01)}`)
-  const effectiveFrom = new Date(Date.now() - 60_000).toISOString()
+  // D01 is a historical emergency replacement at the previous day's segment boundary.
+  // Keep this synthetic membership effective before that timestamp so the production
+  // temporal-membership trigger evaluates the fixture actor as a valid original subject.
+  const effectiveFrom = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
   const now = new Date().toISOString()
   for (const [businessUserId, agencyId, recordKey, status] of memberships) {
     const digest = sourceHash(`${marker}:${businessUserId}:${agencyId}:${recordKey}:${status}`)
@@ -671,7 +674,7 @@ async function main() {
     'Each GoTrue actor session resolves to the matching active canonical business user; anonymous PostgREST access is denied.', async () => {
       const ids = [admin.id, leader.id, member.id]
       const storedCount = readDatabase(databaseContainer,
-        `SELECT count(*) FROM public.business_users WHERE id IN (${ids.map(sqlLiteral).join(',')}) AND auth_user_id=id AND status='active' AND account_status='active' AND deleted_at IS NULL AND archived_at IS NULL`)
+        `SELECT count(*) FROM public.business_users WHERE id IN (${ids.map(sqlLiteral).join(',')}) AND auth_user_id::text=id AND status='active' AND account_status='active' AND deleted_at IS NULL AND archived_at IS NULL`)
       if (storedCount !== '3' || !anonymousRead.error) stop('AUTH_CANONICAL_IDENTITY_POSTGRES_READBACK_MISMATCH')
       return { actual: { rpc_code: 'AUTHENTICATED_GOTRUE_AND_ANONYMOUS_DENIED' },
         database_readback: { status: 'passed', matches_expected: true },

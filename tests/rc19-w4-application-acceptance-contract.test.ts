@@ -37,6 +37,8 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /D01_INCIDENT_RECEIPT_POSTGRES_READBACK_MISMATCH/u)
   assert.match(entrypoint, /D01_NON_ADMIN_EMERGENCY_NOT_DENIED/u)
   assert.match(entrypoint, /RC19_AGENCY_MEMBERSHIP_REQUIRED/u)
+  assert.match(entrypoint, /Date\.now\(\) - 48 \* 60 \* 60 \* 1000/u)
+  assert.match(entrypoint, /auth_user_id::text=id/u)
   const agencySeed = entrypoint.indexOf('const { agencyIds, membershipRows } = seedSyntheticAgencyFixtures(databaseContainer, marker')
   const firstRegistration = entrypoint.indexOf('manual_assign_shift_staff_to_segment', agencySeed)
   assert.ok(agencySeed >= 0 && firstRegistration > agencySeed,
