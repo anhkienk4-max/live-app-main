@@ -415,6 +415,18 @@ export const shiftIncidentService = {
 function mapMonthlyResponseToWorkforceIncidentSummary(
   data: WorkforceIncidentMonthlyResponse,
 ): WorkforceIncidentSummary {
+  if (
+    typeof data.totalDistinctShifts !== 'number' ||
+    !Number.isFinite(data.totalDistinctShifts) ||
+    typeof data.totalDistinctStaff !== 'number' ||
+    !Number.isFinite(data.totalDistinctStaff)
+  ) {
+    throw new ShiftIncidentServiceError(
+      'WORKFORCE_INCIDENT_SUMMARY_INVALID: Authoritative v2 distinct totals missing',
+      'WORKFORCE_INCIDENT_SUMMARY_INVALID',
+    )
+  }
+
   const staff = data.staff || []
   let confirmedSkips = 0
   let confirmedAbsents = 0
@@ -428,7 +440,6 @@ function mapMonthlyResponseToWorkforceIncidentSummary(
   let correctedReviews = 0
   let totalVerifiedLateMinutes = 0
   let unknownDurationCount = 0
-  const allShiftIds = new Set<string>()
 
   const staffSummaries: StaffIncidentSummary[] = staff.map(s => {
     confirmedSkips += s.confirmed_skip_count
@@ -443,12 +454,6 @@ function mapMonthlyResponseToWorkforceIncidentSummary(
     correctedReviews += s.corrected_count
     totalVerifiedLateMinutes += s.verified_late_minutes_total
     unknownDurationCount += s.unknown_late_minutes_count
-
-    if (Array.isArray(s.items)) {
-      for (const item of s.items) {
-        if (item.shiftId) allShiftIds.add(item.shiftId)
-      }
-    }
 
     return {
       staffId: s.staff_id,
@@ -474,7 +479,7 @@ function mapMonthlyResponseToWorkforceIncidentSummary(
   return {
     month: data.month,
     totalIncidents: data.totalIncidents,
-    confirmedViolations: confirmedSkips + confirmedAbsents + authorizedAbsences,
+    confirmedViolations: confirmedSkips + confirmedAbsents,
     confirmedSkips,
     confirmedAbsents,
     confirmedPunctuality: confirmedLates + confirmedEarlyLeaves,
@@ -490,8 +495,8 @@ function mapMonthlyResponseToWorkforceIncidentSummary(
     correctedReviews,
     totalVerifiedLateMinutes,
     unknownDurationCount,
-    distinctAffectedShifts: data.totalDistinctShifts ?? allShiftIds.size,
-    distinctAffectedStaff: data.totalDistinctStaff ?? staff.length,
+    distinctAffectedShifts: data.totalDistinctShifts,
+    distinctAffectedStaff: data.totalDistinctStaff,
     staffSummaries,
   }
 }

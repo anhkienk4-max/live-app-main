@@ -16,6 +16,8 @@ test('D3 server aggregation: preserves server-authoritative monthly total when t
       pageLimit: 50,
       pageOffset: 0,
       totalIncidents: 150, // 150 total incidents in month, exceeding pageLimit 50
+      totalDistinctShifts: 65, // Server-authoritative total across entire filtered scope
+      totalDistinctStaff: 2,   // Server-authoritative total across entire filtered scope
       staff: [
         {
           staff_id: 'staff-01',
@@ -108,7 +110,7 @@ test('D3 server aggregation: preserves server-authoritative monthly total when t
     assert.equal(summary.confirmedSkips, 18)
     assert.equal(summary.confirmedAbsents, 9)
     assert.equal(summary.authorizedAbsences, 3)
-    assert.equal(summary.confirmedViolations, 30)
+    assert.equal(summary.confirmedViolations, 27) // 18 skips + 9 absents; authorized absence is not an operational violation
     assert.equal(summary.confirmedLates, 75)
     assert.equal(summary.confirmedEarlyLeaves, 22)
     assert.equal(summary.confirmedPunctuality, 97)
@@ -118,6 +120,42 @@ test('D3 server aggregation: preserves server-authoritative monthly total when t
     assert.equal(summary.totalVerifiedLateMinutes, 830)
     assert.equal(summary.unknownDurationCount, 4)
     assert.equal(summary.distinctAffectedStaff, 2)
+    assert.equal(summary.distinctAffectedShifts, 65)
+  } finally {
+    process.env = originalEnv
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('D3 server aggregation: fails closed when authoritative v2 totals are missing', async () => {
+  const originalEnv = { ...process.env }
+  const originalFetch = globalThis.fetch
+  try {
+    process.env.NODE_ENV = 'development'
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'false'
+
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      month: '2026-11',
+      timezone: 'Asia/Ho_Chi_Minh',
+      pageLimit: 50,
+      pageOffset: 0,
+      totalIncidents: 10,
+      staff: [],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    await assert.rejects(
+      async () => {
+        await shiftIncidentService.getWorkforceSummary({ month: '2026-11' })
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof ShiftIncidentServiceError)
+        assert.equal(err.code, 'WORKFORCE_INCIDENT_SUMMARY_INVALID')
+        return true
+      },
+    )
   } finally {
     process.env = originalEnv
     globalThis.fetch = originalFetch
