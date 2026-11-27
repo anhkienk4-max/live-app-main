@@ -1,31 +1,71 @@
 name: RC19 W4 Hosted Application Acceptance Caller (No Deploy)
 
 on:
-  workflow_dispatch:
-    inputs:
-      application_sha:
-        description: Exact reviewed application SHA present in the pinned harness allowlist
-        required: true
-        type: string
-      run_browser_uat:
-        description: Run browser UAT only when the reviewed candidate includes Lane 01 and Antigravity acceptance prerequisites
-        required: false
-        default: false
-        type: boolean
+  push:
+    branches:
+      - integration/rc19-w4-codex02
+    paths:
+      - .github/rc19-w4-acceptance-ready.json
 
 permissions:
   contents: read
 
 concurrency:
-  group: rc19-w4-hosted-application-acceptance-caller-${{ inputs.application_sha }}
+  group: rc19-w4-hosted-application-acceptance-caller-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  verify-reviewed-candidate-marker:
+    name: Verify reviewed application and harness SHAs
+    runs-on: ubuntu-24.04
+    outputs:
+      application_sha: ${{ steps.reviewed.outputs.application_sha }}
+    steps:
+      - name: Checkout caller commit without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify release-ready marker against pinned source refs
+        id: reviewed
+        env:
+          REVIEWED_HARNESS_SHA: 38dd7ae7a374fbb4505b5a95e79c79f060377b42
+        run: |
+          set -euo pipefail
+          marker=.github/rc19-w4-acceptance-ready.json
+          [[ -f "$marker" ]] || { echo "::error::Acceptance-ready marker is missing"; exit 1; }
+          application_sha="$(jq -er '.application_sha | strings' "$marker")"
+          harness_sha="$(jq -er '.harness_sha | strings' "$marker")"
+          contract="$(jq -er '.acceptance_contract | strings' "$marker")"
+          reviewed="$(jq -er '.reviewed' "$marker")"
+          valid_sha() { [[ ${#1} -eq 40 && "$1" != *[!0-9a-f]* ]]; }
+          valid_sha "$application_sha"
+          valid_sha "$harness_sha"
+          [[ "$reviewed" == true ]]
+          [[ "$contract" == "rc19-w4-application-acceptance/v2" ]]
+          [[ "$harness_sha" == "$REVIEWED_HARNESS_SHA" ]]
+          git cat-file -e "${REVIEWED_HARNESS_SHA}:.github/workflows/rc19-w4-hosted-application-acceptance.yml"
+          git show "${REVIEWED_HARNESS_SHA}:.github/workflows/rc19-w4-hosted-application-acceptance.yml" \
+            | rg -q 'rc19-w4-application-acceptance/v2' || {
+              echo "::error::Pinned harness does not implement the v2 acceptance contract"; exit 1;
+            }
+          [[ "$(tr -d '[:space:]' < .github/rc19-w4-reviewed-application.sha)" == "$application_sha" ]]
+          git cat-file -e "${application_sha}^{commit}"
+          git cat-file -e "${application_sha}:scripts/rc19-w4-application-acceptance.mjs"
+          git show "${application_sha}:scripts/rc19-w4-application-acceptance.mjs" \
+            | rg -q 'rc19-w4-application-acceptance/v2' || {
+              echo "::error::Reviewed application SHA does not implement the v2 acceptance report contract"; exit 1;
+            }
+          echo "application_sha=$application_sha" >> "$GITHUB_OUTPUT"
+
   hosted-application-acceptance:
     name: Call pinned disposable hosted acceptance harness
+    needs: verify-reviewed-candidate-marker
     if: github.ref == 'refs/heads/integration/rc19-w4-codex02'
     uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@38dd7ae7a374fbb4505b5a95e79c79f060377b42
     with:
       harness_sha: 38dd7ae7a374fbb4505b5a95e79c79f060377b42
-      application_sha: ${{ inputs.application_sha }}
-      run_browser_uat: ${{ inputs.run_browser_uat }}
+      application_sha: ${{ needs.verify-reviewed-candidate-marker.outputs.application_sha }}
+      run_browser_uat: true

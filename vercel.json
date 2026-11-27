@@ -30,6 +30,7 @@
       "release/rc19-c5.4-candidate": false,
       "release/rc19-unified-release-candidate": false,
       "chore/rc19-w4-release-readiness": false,
+      "integration/rc19-w4-codex02": false,
       "integration/rc19-w4-final-integration": false,
       "fix/rc19-w4-import-staffing": false
     }

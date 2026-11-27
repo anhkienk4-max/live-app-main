@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       run_browser_uat:
-        description: Run the Lane 01 browser acceptance suite when its reviewed entrypoint exists
+        description: Require authenticated browser acceptance from the reviewed candidate
         required: false
         default: false
         type: boolean
@@ -195,8 +195,10 @@ jobs:
           [[ "$auth_image" == *'gotrue:v2.198.0' ]] || { echo "::error::GoTrue image is not the verified pinned version"; exit 1; }
           [[ "$rest_image" == *'postgrest:v16.6' ]] || { echo "::error::PostgREST image is not the verified pinned version"; exit 1; }
           auth_db_identity="$(docker inspect "$auth_container_id" | python3 -c 'import json,sys; from urllib.parse import urlsplit; c=json.load(sys.stdin)[0]; env=dict(x.split("=",1) for x in c["Config"]["Env"] if "=" in x); u=urlsplit(env.get("GOTRUE_DB_DATABASE_URL", "")); print(f"{u.hostname}:{u.port}{u.path}")')"
+          rest_db_identity="$(docker inspect "$rest_container_id" | python3 -c 'import json,sys; from urllib.parse import urlsplit; c=json.load(sys.stdin)[0]; env=dict(x.split("=",1) for x in c["Config"]["Env"] if "=" in x); u=urlsplit(env.get("PGRST_DB_URI", "")); print(f"{u.hostname}:{u.port}{u.path}")')"
           expected_db_identity="${database_container}:5432/postgres"
           [[ "$auth_db_identity" == "$expected_db_identity" ]] || { echo "::error::GoTrue database identity does not match the marked candidate database"; exit 1; }
+          [[ "$rest_db_identity" == "$expected_db_identity" ]] || { echo "::error::PostgREST database identity does not match the marked candidate database"; exit 1; }
           docker exec "$database_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -c "COMMENT ON DATABASE postgres IS '$RUN_MARKER'" \
             -c 'CREATE TABLE public.rc19_w4_application_runtime_probe (marker text PRIMARY KEY)' \
@@ -206,6 +208,40 @@ jobs:
           migration_count="$(docker exec "$database_container_id" psql -U postgres -d postgres -Atqc 'SELECT count(*) FROM supabase_migrations.schema_migrations')"
           latest_migration="$(docker exec "$database_container_id" psql -U postgres -d postgres -Atqc 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 1')"
           [[ "$migration_count" =~ ^[0-9]+$ && -n "$latest_migration" ]] || { echo "::error::Canonical migration ledger is empty or unavailable"; exit 1; }
+          receipts_file="$RUNNER_TEMP/rc19-w4-app-migration-receipts.txt"
+          docker exec "$database_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atq \
+            -c 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version' > "$receipts_file"
+          auth_tables_file="$RUNNER_TEMP/rc19-w4-auth-tables.txt"
+          extensions_file="$RUNNER_TEMP/rc19-w4-extensions.tsv"
+          docker exec "$database_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atq \
+            -c "SELECT table_name FROM information_schema.tables WHERE table_schema='auth' ORDER BY table_name" \
+            > "$auth_tables_file"
+          docker exec "$database_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -At -F $'\t' \
+            -c 'SELECT extname, extversion FROM pg_extension ORDER BY extname' > "$extensions_file"
+          python3 - "$receipts_file" "$RUNNER_TEMP/rc19-w4-app-migration-evidence.json" "$auth_tables_file" "$extensions_file" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          receipts_path, output_path, auth_tables, extensions = map(Path, sys.argv[1:])
+          files = sorted(Path("supabase/migrations").glob("*.sql"), key=lambda p: p.name)
+          migrations = [{
+              "version": path.name.split("_", 1)[0],
+              "filename": path.name,
+              "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+          } for path in files]
+          receipts = [line.strip() for line in receipts_path.read_text().splitlines() if line.strip()]
+          expected = [migration["version"] for migration in migrations]
+          if not migrations or expected != receipts:
+              raise SystemExit("Canonical migration files and disposable runtime receipts differ")
+          json.dump({
+              "files": migrations,
+              "executed_receipts": receipts,
+              "auth_catalog_tables": auth_tables.read_text().splitlines(),
+              "extensions": [line.split("\t", 1) for line in extensions.read_text().splitlines() if line],
+          }, output_path.open("w"), separators=(",", ":"))
+          PY
           synthetic_prefix="rc19-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           admin_email="${synthetic_prefix}-admin@example.test"
           leader_email="${synthetic_prefix}-leader@example.test"
@@ -213,7 +249,7 @@ jobs:
           admin_password="$(openssl rand -hex 24)Aa9!"
           leader_password="$(openssl rand -hex 24)Lb7!"
           member_password="$(openssl rand -hex 24)Mc5!"
-          for secret in "$admin_password" "$leader_password" "$member_password" "$service_role_key"; do echo "::add-mask::$secret"; done
+          for secret in "$admin_password" "$leader_password" "$member_password" "$service_role_key" "$anon_key"; do echo "::add-mask::$secret"; done
           {
             echo "RC19_W4_RUNTIME_URL=$api_url"
             echo "RC19_W4_RUNTIME_ANON_KEY=$anon_key"
@@ -226,6 +262,11 @@ jobs:
             echo "RC19_W4_SYNTHETIC_LEADER_PASSWORD=$leader_password"
             echo "RC19_W4_SYNTHETIC_MEMBER_EMAIL=$member_email"
             echo "RC19_W4_SYNTHETIC_MEMBER_PASSWORD=$member_password"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$api_url"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$anon_key"
+            echo "SUPABASE_URL=$api_url"
+            echo "SUPABASE_SECRET_KEY=$service_role_key"
+            echo "NEXT_PUBLIC_USE_MOCK_DATA=false"
           } >> "$GITHUB_ENV"
           jq -n \
             --arg harness_sha "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
@@ -237,8 +278,10 @@ jobs:
             --arg latest_migration "$latest_migration" \
             --arg gotrue "$auth_image" --arg gotrue_id "$auth_image_id" \
             --arg postgrest "$rest_image" --arg postgrest_id "$rest_image_id" \
-            --arg connection "$auth_db_identity" \
-            '{scope:"application-acceptance",deployment:false,harness_sha:$harness_sha,application_sha:$application_sha,steps:{migrations:{status:"passed",count:($migration_count|tonumber),latest:$latest_migration},runtime:{status:"passed",database:$database,marker:$marker,postgres_version:$version,gotrue:$gotrue,gotrue_image_id:$gotrue_id,postgrest:$postgrest,postgrest_image_id:$postgrest_id,gotrue_database_identity:$connection,auth_health:true,postgrest_ready:true}}}' \
+            --arg auth_connection "$auth_db_identity" \
+            --arg rest_connection "$rest_db_identity" \
+            --slurpfile migration_evidence "$RUNNER_TEMP/rc19-w4-app-migration-evidence.json" \
+            '{scope:"application-acceptance",deployment:false,harness_sha:$harness_sha,application_sha:$application_sha,steps:{migrations:{status:"passed",count:($migration_count|tonumber),latest:$latest_migration,evidence:$migration_evidence[0]},runtime:{status:"passed",database:$database,marker:$marker,postgres_version:$version,gotrue:$gotrue,gotrue_image_id:$gotrue_id,postgrest:$postgrest,postgrest_image_id:$postgrest_id,gotrue_database_identity:$auth_connection,postgrest_database_identity:$rest_connection,auth_health:true,postgrest_ready:true}}}' \
             > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
 
       - name: Install pinned Playwright browser for requested browser UAT
@@ -246,12 +289,36 @@ jobs:
         working-directory: rc19-w4-application
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Run Lane 01 canonical synthetic identity and application acceptance
+      - name: Build and start Next.js against the marked disposable runtime
         working-directory: rc19-w4-application
         env:
           RUN_BROWSER_UAT: ${{ inputs.run_browser_uat }}
+          EXPECTED_APPLICATION_SHA: ${{ inputs.application_sha }}
         run: |
           set -euo pipefail
+          pnpm run build > "$RUNNER_TEMP/rc19-w4-next-build.log" 2>&1 || {
+            echo "::error::Next.js production build failed; raw build output is withheld."; exit 1;
+          }
+          export RC19_W4_EXPECTED_APPLICATION_SHA="$EXPECTED_APPLICATION_SHA"
+          export RC19_W4_NEXT_BASE_URL=http://127.0.0.1:3000
+          pnpm run start -- --hostname 127.0.0.1 --port 3000 \
+            > "$RUNNER_TEMP/rc19-w4-next-start.log" 2>&1 &
+          next_pid=$!
+          cleanup_next() { kill "$next_pid" >/dev/null 2>&1 || true; wait "$next_pid" >/dev/null 2>&1 || true; }
+          trap cleanup_next EXIT
+          ready=false
+          for attempt in $(seq 1 60); do
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/login || true)"
+            if [[ "$status" == "200" ]]; then ready=true; break; fi
+            kill -0 "$next_pid" 2>/dev/null || break
+            sleep 2
+          done
+          [[ "$ready" == true ]] || { echo "::error::Next.js did not become ready against the disposable Supabase runtime; raw logs are withheld."; exit 1; }
+          jq '.steps.next = {status:"passed",ready:true,readiness_http_status:200,host:"127.0.0.1",port:3000,production_build:true,uses_disposable_runtime_environment:true}' \
+            "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" \
+            > "$RUNNER_TEMP/rc19-w4-app-artifact/next.json"
+          mv "$RUNNER_TEMP/rc19-w4-app-artifact/next.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
+
           report="$RUNNER_TEMP/rc19-w4-lane01-acceptance.json"
           if [[ "$RUN_BROWSER_UAT" == "true" ]]; then
             export RC19_W4_RUN_BROWSER_UAT=true
@@ -276,22 +343,65 @@ jobs:
             echo "::error::Lane 01 application acceptance failed; raw output is withheld."
             exit "$result"
           fi
-          jq -e '
-            .schema == "rc19-w4-application-acceptance/v1" and
+          jq --arg browser_requested "$RUN_BROWSER_UAT" -e '
+            .schema == "rc19-w4-application-acceptance/v2" and
             .status == "passed" and
             .synthetic_users.admin.login == true and .synthetic_users.admin.canonical_business_user_mapping == true and
             .synthetic_users.leader.login == true and .synthetic_users.leader.canonical_business_user_mapping == true and
             .synthetic_users.member.login == true and .synthetic_users.member.canonical_business_user_mapping == true and
-            .authorization.rbac == true and .authorization.rls == true and .authorization.application_api == true and
-            ((.browser_uat.ran == false) or (.browser_uat.ran == true and .browser_uat.passed == true))
+            .database_binding.runtime_marker_match == true and
+            .database_binding.application_target_match == true and
+            .next_app.ready == true and
+            ((.browser_uat.ran == true and .browser_uat.passed == true and .browser_uat.authenticated == true and .browser_uat.interaction_count > 0) or
+              ($browser_requested == "false" and .browser_uat.ran == false and .browser_uat.passed == false)) and
+            (.business_cases | type == "array" and length > 0) and
+            (([.business_cases[].area] | unique | sort) == [
+              "atomic_staffing_replacement", "attendance_segment_boundaries", "brand_agency_authorization_boundaries",
+              "calendar_shift_creation", "external_summary", "import_staffing_updates", "live_monitoring_authorization",
+              "operational_notes_lifecycle", "pass_swap_lifecycle", "report_revision_snapshots", "segmented_staffing",
+              "shift_registration", "storage_authorization_upload_readback", "temporal_payroll", "workforce_reporting"
+            ]) and
+            (([.business_cases[].source_case_ids[]] | unique) as $source_cases |
+              ((["D01","D02","D03","D04","D05","D06","D07","D08","D09","D10","D11",
+                 "L01","L02","L03","L04","L05","L06","L07","L08","L09","L10","L11","L12","L13","L14","L15"] - $source_cases) | length == 0)) and
+            (([.business_cases[].source_criteria[] | {key:.id,value:.criterion}] | from_entries) as $criteria |
+              ($criteria | keys | sort) == ["L01","L02","L03","L04","L05","L06","L07","L08","L09","L10","L11","L12","L13","L14","L15"] and
+              $criteria.L01 == "save_link_db_readback_reload_other_account_stale_write" and
+              $criteria.L02 == "publisher_consent_and_actual_video" and
+              $criteria.L03 == "publisher_shift_a_b_a_continuity" and
+              $criteria.L04 == "publisher_reports_navigation_continuity" and
+              $criteria.L05 == "independent_admin_receives_changing_frames" and
+              $criteria.L06 == "independent_leader_receives_changing_frames" and
+              $criteria.L07 == "member_receives_only_permitted_shift_media" and
+              $criteria.L08 == "anonymous_wrong_scope_and_direct_media_denial" and
+              $criteria.L09 == "viewer_reload_reconnect_without_stopping_publisher" and
+              $criteria.L10 == "concurrent_room_isolation_and_duplicate_publisher_guard" and
+              $criteria.L11 == "publisher_stop_ends_viewer_and_releases_resources" and
+              $criteria.L12 == "capture_browser_network_interruption_and_consent_restart" and
+              $criteria.L13 == "token_expiry_revocation_logout_and_termination" and
+              $criteria.L14 == "privacy_no_recording_and_audio_when_available" and
+              $criteria.L15 == "live_reports_calendar_shift_obs_regression_and_resource_metrics") and
+            ([.business_cases[] | ([.source_criteria[].id] - .source_case_ids | length == 0)] | all) and
+            ([.business_cases[] |
+              (.case_id | type == "string" and length > 0) and
+              (.actor.role | type == "string" and length > 0) and
+              (.actor.scope_key | type == "string" and length > 0) and
+              (.expected.authorization | type == "string" and length > 0) and
+              (.expected.result | type == "string" and length > 0) and
+              ((.actual.http_status | type == "number") or (.actual.rpc_code | type == "string")) and
+              .database_readback.status == "passed" and .database_readback.matches_expected == true and
+              .negative_authorization.tested == true and .negative_authorization.passed == true and
+              (.source_criteria | type == "array" and length > 0) and
+              .status == "passed"] | all) and
+            (([.business_cases[].case_id] | unique | length) == (.business_cases | length))
           ' "$report" > /dev/null || {
             jq '.steps.application = {status:"failed",code:"LANE01_ACCEPTANCE_CONTRACT_INVALID"}' \
               "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/failed.json"
             mv "$RUNNER_TEMP/rc19-w4-app-artifact/failed.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
-            echo "::error::Lane 01 acceptance report did not satisfy the role, mapping, RBAC/RLS, API, and optional browser contract"
+            echo "::error::Lane 01 report lacked authenticated Next.js, database readback, per-case authorization or original D/L acceptance evidence"
             exit 1
           }
-          jq -c '{schema,status,synthetic_users:{admin:{login:.synthetic_users.admin.login,mapping:.synthetic_users.admin.canonical_business_user_mapping},leader:{login:.synthetic_users.leader.login,mapping:.synthetic_users.leader.canonical_business_user_mapping},member:{login:.synthetic_users.member.login,mapping:.synthetic_users.member.canonical_business_user_mapping}},authorization:{rbac:.authorization.rbac,rls:.authorization.rls,application_api:.authorization.application_api},browser_uat:{ran:.browser_uat.ran,passed:.browser_uat.passed}}' "$report" \
+          jq -c '{schema,status,synthetic_users:{admin:{login:.synthetic_users.admin.login,mapping:.synthetic_users.admin.canonical_business_user_mapping},leader:{login:.synthetic_users.leader.login,mapping:.synthetic_users.leader.canonical_business_user_mapping},member:{login:.synthetic_users.member.login,mapping:.synthetic_users.member.canonical_business_user_mapping}},database_binding:{runtime_marker_match:.database_binding.runtime_marker_match,application_target_match:.database_binding.application_target_match},next_app:{ready:.next_app.ready,readiness_http_status:.next_app.readiness_http_status,authenticated_browser:.next_app.authenticated_browser},browser_uat:{ran:.browser_uat.ran,passed:.browser_uat.passed,authenticated:.browser_uat.authenticated,interaction_count:.browser_uat.interaction_count},business_cases:[.business_cases[]|{case_id,area,source_case_ids,source_criteria,actor:{role:.actor.role,scope_key:.actor.scope_key},expected:{authorization:.expected.authorization,result:.expected.result},actual:{http_status:.actual.http_status,rpc_code:.actual.rpc_code},database_readback:{status:.database_readback.status,matches_expected:.database_readback.matches_expected},negative_authorization:{tested:.negative_authorization.tested,passed:.negative_authorization.passed},browser_interaction:{performed:.browser_interaction.performed,authenticated:.browser_interaction.authenticated,status:.browser_interaction.status},status}]}' "$report" \
             > "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json"
 
       - name: Merge sanitized runtime and application acceptance evidence

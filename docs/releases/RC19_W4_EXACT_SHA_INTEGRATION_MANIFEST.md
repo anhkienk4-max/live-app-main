@@ -13,6 +13,7 @@ acceptance passed.
 | Delta B: Import and staffing | `fix/rc19-w4-import-staffing` | `f28f94ff5772944d7dc6e089af54af12a8376ffb` | PR #188, open/unmerged. Source checkpoint only. |
 | Delta C: Live Monitoring | `fix/rc19-w4-live-monitoring-sharing` | `1065e070546daa7997364df42d8ae438c2a94722` | PR #191, draft. Source checkpoint only; WAN acceptance is outstanding. |
 | Lane 01: backend and contracts | `backup/rc19/lane01` | `24839cb6eafe019f178195c06fadc5cb66e5f86c` | Immutable recovery/source checkpoint. Includes Lane 01 acceptance entrypoint and backend work; exact app candidate is not yet reviewed/allowlisted. |
+| Lane 01 guarded backend checkpoint | `codex/rc19-w4-lane01-backend` | source `015adc54400873f8c8223ff85da2c26e9ef6b043`; memory follow-up `db7c3b4a4fdd8b2a9ea8f07767aff47022d1496d` | Published after this task began; source commit parent is `24839cb6…`, not this Codex branch or the `38dd7ae7…` release baseline. Acceptance-entrypoint inspection found v1 reporting, browser `ran=false`, aggregate authorization flags and Agency denial unasserted. This is a backend source checkpoint, not a v2 hosted acceptance candidate; it is not allowlisted. |
 | Frontend pairing | `backup/rc19/w4-frontend` | `634a2533b47d7b1e844483102cadd20d77532337` | Immutable frontend checkpoint; actual pairing/browser acceptance outstanding. |
 | Delta D frontend | `backup/rc19/w4-delta-d-frontend-src` | `1a1e8476e528716b736f9905bc4da7d964e22369` | Immutable Delta D frontend checkpoint; overlaps both backend and Delta B UI files. |
 | Delta D1 source | `backup/rc19/w4-d1` | `b924939ca21952f0f9730e9c0ad3ff63cc39b0fb` | Immutable atomic replacement source checkpoint. |
@@ -43,7 +44,7 @@ remains **not reviewed for integration** unless stated otherwise.
 | Segment-aware PASS/Swap and receipt idempotency | Lane 01 `24839cb6…` | `segmentAwarePassSwap.ts`, registration/swap service and API contracts, `database.types.ts` | `20261126150000_rc19_w4_segment_aware_pass_swap.sql`; requires segment staffing and canonical Agency membership | `tests/rc19-w4-segment-aware-pass-swap-contract.test.ts`, `tests/rc19-issue93-pass-swap.test.ts` | Verify exact registration/segment IDs, capacity, role/Agency, retry authorization and payload-bound receipts. Existing `38dd7ae7…` C4 shared incident typing is separate and already present. Not integrated/accepted. |
 | Origin Guard | `backup/rc19/w4-d123-review-wip@ff181a11557b86a8b9c2598e6be9676ba071efb7`; Lane 01 source | Runtime-origin and disposable-environment guards in media/storage source and tests; exact file set to be reviewed from the checkpoint diff before selection | No new migration approved by this manifest | `tests/origin-guard-security.test.ts` exists on WIP source | WIP only. Review strict runtime check AND disposable flag, and negative cases. Do not copy wholesale or count WIP evidence as PASS. Not integrated. |
 | Frontend pairing | `backup/rc19/w4-frontend@634a2533b47d7b1e844483102cadd20d77532337`; Delta D frontend `backup/rc19/w4-delta-d-frontend-src@1a1e8476e528716b736f9905bc4da7d964e22369` | attendance, import, staffing segments, shift detail/notes, staff/workforce incident, report snapshot, swap and live UI; typed API use | No independent migration; must follow the selected backend contracts | `e2e/rc19-w4-import-staffing.spec.ts`, `e2e/rc19-w4-live-monitoring-sharing.spec.ts`, `scripts/verify-d1-review-pairing-uat.mjs` at source refs | High overlap with backend-owned components and among frontend checkpoints. Antigravity owns these paths. Pair only after API/type review; screenshots are optional evidence, not implementation. Not integrated or browser accepted. |
-| Release Engineering and shared runtime | `chore/rc19-w4-release-readiness@38dd7ae7a374fbb4505b5a95e79c79f060377b42` | `.github/workflows/rc19-w4-hosted-application-acceptance.yml`, `.github/workflows/rc19-w4-infrastructure-rehearsal.yml`, `.github/rc19-w4-reviewed-application.sha`, harness contract, `scripts/rc19-w4-application-acceptance.mjs` expected | Runs canonical candidate migrations in a fresh disposable Supabase runtime; no remote migration | CI runs `45789031016` and `45789030990`, scoped exactly to this SHA | Keep harness refs immutable and action pins. Current allowlisted app SHA lacks the Lane 01 acceptance entrypoint. Caller prepared separately; actual application runtime remains not run. |
+| Release Engineering and shared runtime | `chore/rc19-w4-release-readiness@38dd7ae7a374fbb4505b5a95e79c79f060377b42` | `.github/workflows/rc19-w4-hosted-application-acceptance.yml`, `.github/workflows/rc19-w4-infrastructure-rehearsal.yml`, `.github/rc19-w4-reviewed-application.sha`, harness contract | Runs canonical candidate migrations in a fresh disposable Supabase runtime; no remote migration | CI runs `45789031016` and `45789030990`, scoped exactly to this SHA | Keep harness refs immutable and action pins. Current allowlisted app SHA lacks the v2 acceptance entrypoint; newly published Lane 01 `015adc54…` is a backend source checkpoint with v1 reporting and does not meet it. The corrected harness is developed on the current Codex 02 branch; its caller is push-triggered only by a reviewed-ready marker. Actual application runtime remains not run. |
 
 ## Migration and type convergence order
 
@@ -55,8 +56,9 @@ order, not authorization to apply migrations to any environment.
 2. Import/staffing integrity: `20261124120000`.
 3. Live Monitoring sharing: `20261124150000`.
 4. D1 incident foundation and atomic replacement: `20261125042222`, `20261125042647`.
-5. D2 notes workflow: `20261125175702`.
-6. D3 workforce read model: `20261125175629`.
+5. D3 workforce read model: `20261125175629` (requires the D1 incident table).
+6. D2 notes workflow: `20261125175702` (also references D1 incidents; independent
+   of the D3 workforce read model).
 7. D3 report revision snapshots: `20261126051534`.
 8. External operational summary: `20261126120000` (requires the report/revision
    foundations above; do not assume it depends on the later membership migration).
@@ -69,6 +71,41 @@ The final order must be derived from migration contents and references, not time
 alone. Reconcile the External Summary, Agency Membership and Workforce prerequisites
 against SQL dependencies before running the hosted application workflow. The hosted
 fresh-stack path must run only from a reviewed, exact application SHA.
+
+Independent SQL inspection confirms that the D3 workforce read model queries the D1
+incident foundation, and D2 adds a foreign key to that same foundation. Therefore
+both follow D1; D3's migration timestamp precedes D2 by 33 seconds, but there is no
+D2-to-D3 dependency. Keep the report snapshot migration after the existing report
+revision foundation, External Summary after report snapshot sources, canonical
+Agency membership before authorized-scope totals, and membership before
+segment-aware PASS/Swap. This is source dependency review only; no migration was run.
+
+## Independent reproduction and isolated test preparation
+
+- **KAO #184 / Delta B:** the source regression fixture is a 2026-11-26 08:00–22:00
+  Shopee Live KAO shift split into 08:00–12:00, 12:00–17:00 and 17:00–22:00
+  segments. It exercises host requirements 2/1/2, support 1/1/1, technical `KT0`
+  equal to zero, total positions (host 5, support 3, technical 0), staff-hours
+  (23/14/0), inline title edit round-trip, duplicate re-import, safe update and
+  readback/conflict guards. Reproduce only from the exact reviewed Delta B source
+  with its synthetic fixture against isolated PGlite/PG17; the checked-in KAO test
+  is source evidence, not a run or acceptance result from this branch. Do not use
+  Production/Staging data.
+- **Drive G11:** before any OAuth or upload, identify an Owner-authorized isolated
+  test account and empty test folder, confirm the permitted Drive scope and cleanup
+  owner, and use run-unique synthetic content. Required evidence is upload plus
+  provider readback/hash, private ACL inspection, authorized same-Agency access,
+  denied cross-Agency and unauthenticated reads, and cleanup/revocation. Capture
+  only sanitized pass/fail, status and content hash; never retain OAuth tokens,
+  file contents, personal data or raw provider responses. This is a test plan only;
+  no Drive account, OAuth flow or upload was accessed here.
+- **Migration ledger:** collect exact-runtime evidence from the isolated hosted
+  rehearsal: full ordered local migration filenames and SHA-256, actual ordered
+  `supabase_migrations.schema_migrations` receipts, PostgreSQL version, extension
+  versions, Auth catalog tables, and GoTrue/PostgREST database identities. Compare
+  the files and receipts from the same run and preserve sanitized evidence beside
+  its application and harness SHAs. Fresh-stack receipts do not prove historical
+  Production provenance or upgrade/rollback readiness.
 
 `lib/types/database.types.ts`, `lib/types/shiftIncidentContract.ts`,
 `lib/types/shiftOperationalNoteWorkflow.ts`, `lib/types/workforceIncidentMonth.ts`,
@@ -98,9 +135,10 @@ apply generated type patches from multiple backups.
 - Source refs fetched; SHA and file-diff inventories recorded above.
 - No Delta A–D, Lane 01, or Antigravity code has been applied by this manifest.
 - PR #187, #188, #191 and #192 remain unmerged; review status remains source-only.
-- The manual caller is local preparation only. GitHub will not dispatch it until
-  its workflow is made available from the repository's default branch; do not
-  publish it until the target branch's effective no-deployment guard is verified.
+- The push caller listens only to the Codex 02 branch and the reviewed-ready marker;
+  current guard/caller commits do not match that path and cannot start business
+  acceptance. The marker must not be created until Lane 01's candidate, harness
+  allowlist and caller pins are reviewed together.
 - Codex 01 must supply the reviewed application candidate and acceptance result.
 - Antigravity must supply contract-paired frontend and browser/L01–L15 evidence.
 - Before convergence, review provenance, changed code, overlaps, exact migration
