@@ -16,6 +16,25 @@ test('D3 server aggregation: preserves server-authoritative monthly total when t
       pageLimit: 50,
       pageOffset: 0,
       totalIncidents: 150, // 150 total incidents in month, exceeding pageLimit 50
+      totalDistinctShifts: 65,
+      totalDistinctStaff: 2,
+      summary: {
+        pendingCount: 7,
+        confirmedCount: 135,
+        rejectedCount: 5,
+        correctedCount: 3,
+        confirmedSkipCount: 18,
+        confirmedAbsentCount: 9,
+        confirmedAuthorizedAbsenceCount: 3,
+        confirmedLateCount: 75,
+        confirmedEarlyLeaveCount: 22,
+        approvedPassCount: 5,
+        approvedSwapCount: 3,
+        confirmedPlannedReassignmentCount: 0,
+        confirmedOtherCount: 0,
+        unknownLateMinutesCount: 4,
+        verifiedLateMinutesTotal: 830,
+      },
       staff: [
         {
           staff_id: 'staff-01',
@@ -108,7 +127,7 @@ test('D3 server aggregation: preserves server-authoritative monthly total when t
     assert.equal(summary.confirmedSkips, 18)
     assert.equal(summary.confirmedAbsents, 9)
     assert.equal(summary.authorizedAbsences, 3)
-    assert.equal(summary.confirmedViolations, 30)
+    assert.equal(summary.confirmedViolations, 27)
     assert.equal(summary.confirmedLates, 75)
     assert.equal(summary.confirmedEarlyLeaves, 22)
     assert.equal(summary.confirmedPunctuality, 97)
@@ -118,6 +137,7 @@ test('D3 server aggregation: preserves server-authoritative monthly total when t
     assert.equal(summary.totalVerifiedLateMinutes, 830)
     assert.equal(summary.unknownDurationCount, 4)
     assert.equal(summary.distinctAffectedStaff, 2)
+    assert.equal(summary.distinctAffectedShifts, 65)
   } finally {
     process.env = originalEnv
     globalThis.fetch = originalFetch

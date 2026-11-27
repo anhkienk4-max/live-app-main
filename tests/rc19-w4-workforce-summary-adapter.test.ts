@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mapMonthlyResponseToWorkforceIncidentSummary } from '@/lib/services/shiftIncidentService'
+import {
+  mapMonthlyResponseToWorkforceIncidentSummary,
+  ShiftIncidentServiceError,
+} from '@/lib/services/shiftIncidentService'
 
 test('Workforce summary adapter uses full-scope totals independently of the staff detail page', () => {
   const summary = mapMonthlyResponseToWorkforceIncidentSummary({
@@ -54,6 +57,7 @@ test('Workforce summary adapter uses full-scope totals independently of the staf
   assert.equal(summary.confirmedSkips, 4)
   assert.equal(summary.confirmedAbsents, 2)
   assert.equal(summary.confirmedViolations, 6)
+  assert.equal(summary.authorizedAbsences, 1)
   assert.equal(summary.confirmedPunctuality, 4)
   assert.equal(summary.plannedReassignments, 2)
   assert.equal(summary.pendingReviews, 2)
@@ -61,4 +65,24 @@ test('Workforce summary adapter uses full-scope totals independently of the staf
   assert.equal(summary.distinctAffectedShifts, 9)
   assert.equal(summary.distinctAffectedStaff, 7)
   assert.equal(summary.staffSummaries.length, 1)
+})
+
+test('Workforce summary adapter fails closed when full-scope v2 totals are missing', () => {
+  const incompleteResponse = {
+    month: '2026-11',
+    timezone: 'Asia/Ho_Chi_Minh',
+    pageLimit: 1,
+    pageOffset: 0,
+    totalIncidents: 1,
+    totalDistinctShifts: 1,
+    totalDistinctStaff: 1,
+    summary: undefined,
+    staff: [],
+  }
+
+  assert.throws(
+    () => mapMonthlyResponseToWorkforceIncidentSummary(incompleteResponse as never),
+    error => error instanceof ShiftIncidentServiceError
+      && error.code === 'WORKFORCE_V2_TOTALS_REQUIRED',
+  )
 })
