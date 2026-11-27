@@ -92,3 +92,22 @@ test('staffing, note, and attendance photo mutation handlers reject origin failu
     assert.equal(resolverCalls, 0)
   })
 })
+
+test('mutation handlers reject a missing Origin before resolving an actor', async () => {
+  await withEnvironment({ NODE_ENV: 'development', DISPOSABLE_RUNTIME: 'true' }, async () => {
+    let resolverCalls = 0
+    const resolveUser = async () => {
+      resolverCalls += 1
+      return { id: 'auth-1', businessUserId: 'business-1', systemPermission: 'admin' as const, email: 'test@example.com', role: 'admin' as const }
+    }
+    const request = () => new Request('http://localhost:3000/api/mutation', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+    })
+    const incident = await createStaffingIncidentReplacementHandler({ resolveUser })(request())
+    const staffing = await createStaffingReplacementHandler({ resolveUser })(request())
+    const note = await handleShiftOperationalNoteWorkflow(request())
+    const photo = await createSelfAttendancePhotoPostHandler({ authorize: resolveUser })(request())
+    assert.deepEqual([incident.status, staffing.status, note.status, photo.status], [403, 403, 403, 403])
+    assert.equal(resolverCalls, 0)
+  })
+})

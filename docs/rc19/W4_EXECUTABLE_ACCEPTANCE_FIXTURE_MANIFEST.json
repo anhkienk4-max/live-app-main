@@ -51,8 +51,12 @@
       "clear_replacement_candidate": "member_clear_candidate",
       "self_candidate_denial": "member_requester",
       "cross_agency_candidate": "member_wrong_agency",
-      "overlap_conflict_candidate": null,
-      "overlap_case_status": "NOT RUN"
+      "reciprocal_exchange_shift": "Runtime generated shift with two host segments (10:00–12:00, 12:00–14:00)",
+      "approval_invalidation_shift": "Runtime generated same-day 12:30–14:00 host segment; assigned only after candidate acceptance",
+      "overlap_conflict_candidate": "member_clear_candidate",
+      "lifecycle_cases": ["create", "concurrent_retry", "same_key_replay", "changed_payload_rejection", "changed_action_rejection", "wrong_actor_denial", "cross_agency_denial", "stale_version_rejection", "candidate_accept", "accept_replay", "leader_approval", "partial_segment_pass", "reciprocal_segment_exchange", "candidate_rejection", "requester_cancellation", "approval_time_conflict_invalidation", "revoked_membership_replay_denial"],
+      "lifecycle_execution_status": "SOURCE_IMPLEMENTED_NOT_EXECUTED",
+      "expiry_status": "BLOCKED: current published swap RPC/schema exposes no expiry transition or expired state"
     }
   },
   "workforce_expected": {

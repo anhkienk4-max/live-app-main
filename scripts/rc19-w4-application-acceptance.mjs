@@ -246,6 +246,8 @@ function seedSyntheticAgencyFixtures(databaseContainer, marker, actors, shifts) 
   }
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.inScope)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.realtime)}`)
+  lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.swap)}`)
+  lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.swapConflict)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.outOfScope)} WHERE id=${sqlLiteral(shifts.outOfScope)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.d01)}`)
   // D01 is a historical emergency replacement at the previous day's segment boundary.
@@ -514,6 +516,12 @@ async function main() {
     })
     await requireNoError(scope, 'LEADER_SCOPE_FIXTURE_CREATE_FAILED')
   }
+  const swapApprovalScope = await admin.client.rpc('rc19_set_leader_brand_scope', {
+    p_user_id: leader.id, p_brand_id: brandIds[0], p_scope_key: 'shifts.manage', p_enabled: true,
+    p_expected_version: 0, p_valid_from: new Date(Date.now() - 5000).toISOString(),
+    p_valid_until: null, p_reason: 'Disposable PASS/Swap leader approval fixture',
+  })
+  await requireNoError(swapApprovalScope, 'LEADER_SWAP_APPROVAL_SCOPE_FIXTURE_FAILED')
   for (const actorId of [leader.id, leaderRevoked.id]) {
     const scope = await admin.client.rpc('rc19_set_leader_brand_scope', {
       p_user_id: actorId,
@@ -547,12 +555,20 @@ async function main() {
     admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} realtime`, '2099-12-03',
     [segment(1, '10:00', '14:00', 'host')],
   )
+  const swapShiftId = await createShift(
+    admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} reciprocal segment exchange`, '2099-12-04',
+    [segment(1, '10:00', '12:00', 'host'), segment(2, '12:00', '14:00', 'host')],
+  )
+  const swapConflictShiftId = await createShift(
+    admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} post-acceptance conflict`, '2099-12-04',
+    [segment(1, '12:30', '14:00', 'host')],
+  )
 
   const segmentRows = await service.from('shift_staffing_segments')
-    .select('id,shift_id,segment_index,start_at,end_at').in('shift_id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId])
+    .select('id,shift_id,segment_index,start_at,end_at').in('shift_id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, swapShiftId, swapConflictShiftId])
   const storedSegments = await requireNoError(segmentRows, 'SEGMENT_FIXTURE_READBACK_FAILED')
-  if (!Array.isArray(storedSegments) || storedSegments.length !== 7
-    || storedSegments.some(row => !row.id || ![scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId].includes(row.shift_id))) {
+  if (!Array.isArray(storedSegments) || storedSegments.length !== 10
+    || storedSegments.some(row => !row.id || ![scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, swapShiftId, swapConflictShiftId].includes(row.shift_id))) {
     stop('SEGMENT_FIXTURE_READBACK_MISMATCH')
   }
   const segmentByKey = new Map(storedSegments.map(row => [`${row.shift_id}:${row.segment_index}`, row.id]))
@@ -560,15 +576,17 @@ async function main() {
   const { agencyIds, membershipRows } = seedSyntheticAgencyFixtures(databaseContainer, marker, {
     leader, member, realtimeMember, memberSupport, memberUnassigned, leaderOtherBrand,
     memberOutAgency, leaderRevoked,
-  }, { inScope: scopedShiftId, realtime: realtimeShiftId, outOfScope: foreignShiftId, d01: d01ShiftId })
+  }, { inScope: scopedShiftId, realtime: realtimeShiftId, outOfScope: foreignShiftId, d01: d01ShiftId, swap: swapShiftId, swapConflict: swapConflictShiftId })
   const agencyReadback = await service.from('shifts')
-    .select('id,brand_id,authoritative_agency_id').in('id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId])
+    .select('id,brand_id,authoritative_agency_id').in('id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, swapShiftId, swapConflictShiftId])
   const agencyRows = await requireNoError(agencyReadback, 'AGENCY_FIXTURE_READBACK_FAILED')
-  if (!Array.isArray(agencyRows) || agencyRows.length !== 4
+  if (!Array.isArray(agencyRows) || agencyRows.length !== 6
     || agencyRows.find(row => row.id === scopedShiftId)?.authoritative_agency_id !== agencyIds.inScope
     || agencyRows.find(row => row.id === foreignShiftId)?.authoritative_agency_id !== agencyIds.outOfScope
     || agencyRows.find(row => row.id === d01ShiftId)?.authoritative_agency_id !== agencyIds.inScope
     || agencyRows.find(row => row.id === realtimeShiftId)?.authoritative_agency_id !== agencyIds.inScope
+    || agencyRows.find(row => row.id === swapShiftId)?.authoritative_agency_id !== agencyIds.inScope
+    || agencyRows.find(row => row.id === swapConflictShiftId)?.authoritative_agency_id !== agencyIds.inScope
     || agencyRows.find(row => row.id === realtimeShiftId)?.brand_id !== brandIds[0]) {
     stop('AGENCY_FIXTURE_READBACK_MISMATCH')
   }
@@ -603,6 +621,22 @@ async function main() {
       || assignmentRow.user_id !== assignment.actorId || assignmentRow.operational_role !== assignment.role) {
       stop('ASSIGNMENT_FIXTURE_CREATE_MISMATCH')
     }
+  }
+  const swapAssignments = []
+  for (const [userId, segmentIndex] of [[member.id, 1], [memberSupport.id, 2]]) {
+    const staffingSegmentId = segmentByKey.get(`${swapShiftId}:${segmentIndex}`)
+    if (!staffingSegmentId) stop('SWAP_SEGMENT_FIXTURE_MISSING')
+    const versionResult = await service.from('shifts').select('version').eq('id', swapShiftId).single()
+    const versionRow = await requireNoError(versionResult, 'SWAP_SHIFT_VERSION_FIXTURE_FAILED')
+    const assigned = await admin.client.rpc('manual_assign_shift_staff_to_segment', {
+      p_shift_id: swapShiftId, p_user_id: userId, p_role: 'host',
+      p_notes: 'RC19 reciprocal segment exchange fixture', p_expected_version: versionRow.version,
+      p_staffing_segment_id: staffingSegmentId,
+    }).single()
+    const row = await requireNoError(assigned, 'SWAP_ASSIGNMENT_FIXTURE_FAILED')
+    if (!row?.id || row.user_id !== userId || row.staffing_segment_id !== staffingSegmentId
+      || row.operational_role !== 'host') stop('SWAP_ASSIGNMENT_FIXTURE_MISMATCH')
+    swapAssignments.push(row)
   }
   const d01K02Segment = storedSegments.find(row => row.shift_id === d01ShiftId && row.segment_index === 2)
   if (!d01K02Segment?.id) stop('D01_K02_SEGMENT_FIXTURE_MISSING')
@@ -713,6 +747,28 @@ async function main() {
 
   const caseResults = []
   const externalSummaryFixtures = []
+  const passSwapFixtures = []
+  const passSwapSubcaseResults = []
+  const passSwapSubcaseExpectations = [
+    ['pass-swap-concurrent-create-replay', 'Concurrent same-UUID CREATE, subsequent retry and one persisted request/receipt.'],
+    ['pass-swap-payload-action-actor-binding', 'Changed payload/action and a different actor cannot reuse the request receipt.'],
+    ['pass-swap-cross-agency-and-clear-preflight', 'A clear same-Agency candidate passes preflight; an out-of-Agency candidate is denied.'],
+    ['pass-swap-stale-version-and-candidate-acceptance', 'Stale version is rejected and the authorized candidate accepts once with same-key replay.'],
+    ['pass-swap-leader-approval-exact-segment-pass', 'Scoped Leader approval replaces the exact registration and segment while preserving the old row.'],
+    ['pass-swap-reciprocal-segment-exchange', 'Reciprocal exchange creates active registrations on each other’s exact segments.'],
+    ['pass-swap-candidate-rejection-and-requester-cancellation', 'Candidate rejection and requester cancellation persist their distinct terminal states.'],
+    ['pass-swap-approval-conflict-invalidation', 'A new candidate overlap after acceptance denies Leader approval and preserves the source assignment.'],
+    ['pass-swap-revoked-membership-replay', 'Replay after Agency membership revocation is denied and revocation is independently read back.'],
+  ]
+  const recordPassSwapSubcase = (caseId, actor, rpcCode, negativeAuthorization = false) => {
+    const expected = passSwapSubcaseExpectations.find(([id]) => id === caseId)?.[1]
+    if (!expected) stop('SWAP_SUBCASE_CONTRACT_MISSING')
+    passSwapSubcaseResults.push({ case_id: caseId, actor,
+      expected, actual: { rpc_code: rpcCode },
+      database_readback: { status: 'passed', matches_expected: true },
+      negative_authorization: { tested: negativeAuthorization, passed: negativeAuthorization },
+      evidence_scope: 'Authenticated GoTrue API/RPC with independent disposable PostgreSQL readback', status: 'PASS' })
+  }
   async function executeCase(caseId, actor, expected, run) {
     const startedAt = new Date().toISOString()
     try {
@@ -889,12 +945,28 @@ async function main() {
         negative_authorization: { tested: true, passed: true } }
     })
   await executeCase('pass-swap-same-key-concurrency-and-replay', 'Requester Member',
-    'Concurrent same-key create calls and later replay resolve to one persisted request; changed payload is rejected.', async () => {
+    'Exact-segment PASS, reciprocal Exchange, submit/accept/reject/Leader approval/cancel, conflict validation, same-key replay after authorization changes, and persisted assignment identities.', async () => {
       const source = assignments.find(row => row.user_id === member.id)
+      const sourceSegment = storedSegments.find(row => row.id === source?.staffing_segment_id)
+      if (!source || !sourceSegment) stop('SWAP_SOURCE_ASSIGNMENT_FIXTURE_MISSING')
       const key = randomUUID()
       const payload = { source_registration_id: source.id, mode: 'replacement', reason: 'RC19 acceptance',
         target_shift_id: null, replacement_staff_id: memberUnassigned.id,
         counterpart_registration_id: null, notes: 'Disposable receipt acceptance' }
+      const preflight = await member.client.rpc('check_shift_swap_conflict', {
+        p_source_registration_id: source.id, p_mode: 'replacement', p_replacement_staff_id: memberUnassigned.id,
+        p_target_shift_id: null, p_counterpart_registration_id: null,
+      })
+      if (preflight.error || preflight.data !== 'VERIFIED_CLEAR') stop('SWAP_CLEAR_CANDIDATE_PREFLIGHT_FAILED')
+      const crossAgency = await member.client.rpc('shift_swap_operation_v1', {
+        p_action: 'create', p_request_id: null,
+        p_payload: { ...payload, replacement_staff_id: memberOutAgency.id }, p_idempotency_key: randomUUID(),
+      })
+      if (!crossAgency.error || !String(crossAgency.error.message).includes('RC19_AGENCY_MEMBERSHIP_REQUIRED')) {
+        stop('SWAP_CROSS_AGENCY_CANDIDATE_NOT_DENIED')
+      }
+      recordPassSwapSubcase('pass-swap-cross-agency-and-clear-preflight', 'Requester Member and cross-Agency Member',
+        'VERIFIED_CLEAR plus RC19_AGENCY_MEMBERSHIP_REQUIRED', true)
       const invoke = () => member.client.rpc('shift_swap_operation_v1', {
         p_action: 'create', p_request_id: null, p_payload: payload, p_idempotency_key: key,
       }).single()
@@ -922,13 +994,187 @@ async function main() {
       if (!crossActor.error || !/SWAP_ACTOR_NOT_AUTHORIZED|SWAP_NOT_OWNER|SWAP_REQUEST_NOT_AUTHORIZED/u.test(String(crossActor.error.message))) {
         stop('SWAP_CROSS_ACTOR_MUTATION_NOT_DENIED')
       }
-      const readback = await service.from('swap_requests').select('id,requester_id,source_registration_id,status')
+      recordPassSwapSubcase('pass-swap-concurrent-create-replay', 'Requester Member', 'ONE_REQUEST_ONE_RECEIPT')
+      recordPassSwapSubcase('pass-swap-payload-action-actor-binding', 'Requester Member and wrong actor',
+        'SWAP_IDEMPOTENCY_KEY_REUSED_AND_SWAP_NOT_OWNER', true)
+      const staleAccept = await memberUnassigned.client.rpc('shift_swap_operation_v1', {
+        p_action: 'accept', p_request_id: firstRow.id,
+        p_payload: { expected_version: firstRow.version + 99, notes: 'Stale acceptance must fail' }, p_idempotency_key: randomUUID(),
+      })
+      if (!staleAccept.error || !/STALE|VERSION/u.test(String(staleAccept.error.message))) stop('SWAP_STALE_VERSION_NOT_REJECTED')
+      const acceptKey = randomUUID()
+      const accepted = await requireNoError(await memberUnassigned.client.rpc('shift_swap_operation_v1', {
+        p_action: 'accept', p_request_id: firstRow.id,
+        p_payload: { expected_version: firstRow.version, notes: 'Synthetic candidate acceptance' }, p_idempotency_key: acceptKey,
+      }).single(), 'SWAP_CANDIDATE_ACCEPT_FAILED')
+      if (accepted.status !== 'accepted' || accepted.requester_id !== member.id
+        || accepted.replacement_staff_id !== memberUnassigned.id) stop('SWAP_CANDIDATE_ACCEPT_STATE_MISMATCH')
+      const acceptedReplay = await requireNoError(await memberUnassigned.client.rpc('shift_swap_operation_v1', {
+        p_action: 'accept', p_request_id: firstRow.id,
+        p_payload: { expected_version: firstRow.version, notes: 'Synthetic candidate acceptance' }, p_idempotency_key: acceptKey,
+      }).single(), 'SWAP_CANDIDATE_ACCEPT_REPLAY_FAILED')
+      if (acceptedReplay.id !== accepted.id || acceptedReplay.version !== accepted.version) stop('SWAP_ACCEPT_REPLAY_MISMATCH')
+      recordPassSwapSubcase('pass-swap-stale-version-and-candidate-acceptance', 'Clear candidate Member',
+        'STALE_VERSION_DENIED_AND_ACCEPTED_REPLAY_STABLE', true)
+      const approvalKey = randomUUID()
+      const approved = await requireNoError(await leader.client.rpc('shift_swap_operation_v1', {
+        p_action: 'approve', p_request_id: firstRow.id,
+        p_payload: { expected_version: accepted.version, notes: 'Synthetic scoped Leader approval' }, p_idempotency_key: approvalKey,
+      }).single(), 'SWAP_LEADER_APPROVAL_FAILED')
+      if (approved.status !== 'completed' || approved.approved_by !== leader.id
+        || approved.source_registration_id !== source.id) stop('SWAP_LEADER_APPROVAL_STATE_MISMATCH')
+      const readback = await service.from('swap_requests').select('id,requester_id,source_registration_id,status,approved_by,version')
         .eq('id', firstRow.id).maybeSingle()
       const stored = await requireNoError(readback, 'SWAP_PERSISTED_READBACK_FAILED')
-      if (!stored || stored.id !== firstRow.id || stored.requester_id !== member.id || stored.source_registration_id !== source.id) stop('SWAP_PERSISTED_READBACK_MISMATCH')
-      const receiptCount = readDatabase(databaseContainer,
-        `SELECT count(*) FROM private.rc19_swap_operation_receipts WHERE actor_id=${sqlLiteral(member.id)} AND idempotency_key=${sqlLiteral(key)}::uuid AND response->>'id'=${sqlLiteral(firstRow.id)}`)
-      if (receiptCount !== '1') stop('SWAP_RECEIPT_POSTGRES_READBACK_MISMATCH')
+      if (!stored || stored.id !== firstRow.id || stored.requester_id !== member.id || stored.source_registration_id !== source.id
+        || stored.status !== 'completed' || stored.approved_by !== leader.id) stop('SWAP_PERSISTED_READBACK_MISMATCH')
+      const registrationRead = await service.from('shift_registrations')
+        .select('id,user_id,operational_role,status,staffing_segment_id')
+        .eq('shift_id', source.shift_id).in('user_id', [member.id, memberUnassigned.id])
+      const registrationRows = await requireNoError(registrationRead, 'SWAP_REGISTRATION_READBACK_FAILED')
+      const retiredSource = registrationRows.find(row => row.id === source.id)
+      const acceptedReplacement = registrationRows.find(row => row.user_id === memberUnassigned.id
+        && row.operational_role === source.operational_role && row.staffing_segment_id === source.staffing_segment_id
+        && row.status === 'approved')
+      if (retiredSource?.status !== 'cancelled' || !acceptedReplacement) stop('SWAP_EXACT_SEGMENT_PASS_READBACK_MISMATCH')
+      recordPassSwapSubcase('pass-swap-leader-approval-exact-segment-pass', 'Scoped Leader',
+        'COMPLETED_EXACT_SEGMENT_REPLACEMENT')
+      const swapShiftSource = swapAssignments.find(row => row.user_id === member.id)
+      const swapShiftCounterpart = swapAssignments.find(row => row.user_id === memberSupport.id)
+      const exchangeConflict = await member.client.rpc('check_shift_swap_conflict', {
+        p_source_registration_id: swapShiftSource.id, p_mode: 'exchange', p_replacement_staff_id: null,
+        p_target_shift_id: swapShiftId, p_counterpart_registration_id: swapShiftCounterpart.id,
+      })
+      if (exchangeConflict.error || exchangeConflict.data !== 'VERIFIED_CLEAR') stop('SWAP_EXCHANGE_PREFLIGHT_FAILED')
+      const exchangePayload = { source_registration_id: swapShiftSource.id, mode: 'exchange',
+        reason: 'RC19 reciprocal segment exchange', target_shift_id: swapShiftId,
+        replacement_staff_id: null, counterpart_registration_id: swapShiftCounterpart.id,
+        notes: 'Exact segment identities must exchange' }
+      const exchange = await requireNoError(await member.client.rpc('shift_swap_operation_v1', {
+        p_action: 'create', p_request_id: null, p_payload: exchangePayload, p_idempotency_key: randomUUID(),
+      }).single(), 'SWAP_EXCHANGE_SUBMIT_FAILED')
+      const exchangeAccepted = await requireNoError(await memberSupport.client.rpc('shift_swap_operation_v1', {
+        p_action: 'accept', p_request_id: exchange.id,
+        p_payload: { expected_version: exchange.version, notes: 'Synthetic reciprocal acceptance' },
+        p_idempotency_key: randomUUID(),
+      }).single(), 'SWAP_EXCHANGE_ACCEPT_FAILED')
+      const exchangeApproved = await requireNoError(await leader.client.rpc('shift_swap_operation_v1', {
+        p_action: 'approve', p_request_id: exchange.id,
+        p_payload: { expected_version: exchangeAccepted.version, notes: 'Synthetic reciprocal Leader approval' },
+        p_idempotency_key: randomUUID(),
+      }).single(), 'SWAP_EXCHANGE_APPROVAL_FAILED')
+      if (exchangeApproved.status !== 'completed') stop('SWAP_EXCHANGE_NOT_COMPLETED')
+      const exchangedRegsResult = await service.from('shift_registrations')
+        .select('id,user_id,operational_role,status,staffing_segment_id').eq('shift_id', swapShiftId)
+      const exchangedRegs = await requireNoError(exchangedRegsResult, 'SWAP_EXCHANGE_REGISTRATION_READBACK_FAILED')
+      const segmentOne = segmentByKey.get(`${swapShiftId}:1`)
+      const segmentTwo = segmentByKey.get(`${swapShiftId}:2`)
+      const memberInTwo = exchangedRegs.find(row => row.user_id === member.id && row.status === 'approved')
+      const supportInOne = exchangedRegs.find(row => row.user_id === memberSupport.id && row.status === 'approved')
+      if (!exchangedRegs.some(row => row.id === swapShiftSource.id && row.status === 'cancelled')
+        || !exchangedRegs.some(row => row.id === swapShiftCounterpart.id && row.status === 'cancelled')
+        || memberInTwo?.staffing_segment_id !== segmentTwo || supportInOne?.staffing_segment_id !== segmentOne) {
+        stop('SWAP_EXCHANGE_EXACT_SEGMENT_READBACK_MISMATCH')
+      }
+      recordPassSwapSubcase('pass-swap-reciprocal-segment-exchange', 'Requester, counterpart and scoped Leader',
+        'COMPLETED_RECIPROCAL_SEGMENT_EXCHANGE')
+      const invalidationPayload = { source_registration_id: memberInTwo.id, mode: 'replacement',
+        reason: 'RC19 post-acceptance conflict invalidation', target_shift_id: null,
+        replacement_staff_id: memberUnassigned.id, counterpart_registration_id: null,
+        notes: 'Approval must revalidate the candidate interval' }
+      const invalidationRequest = await requireNoError(await member.client.rpc('shift_swap_operation_v1', {
+        p_action: 'create', p_request_id: null, p_payload: invalidationPayload, p_idempotency_key: randomUUID(),
+      }).single(), 'SWAP_INVALIDATION_REQUEST_CREATE_FAILED')
+      const invalidationAccepted = await requireNoError(await memberUnassigned.client.rpc('shift_swap_operation_v1', {
+        p_action: 'accept', p_request_id: invalidationRequest.id,
+        p_payload: { expected_version: invalidationRequest.version, notes: 'Accept before conflict is introduced' },
+        p_idempotency_key: randomUUID(),
+      }).single(), 'SWAP_INVALIDATION_CANDIDATE_ACCEPT_FAILED')
+      const conflictSegment = segmentByKey.get(`${swapConflictShiftId}:1`)
+      const conflictShiftVersionResult = await service.from('shifts').select('version').eq('id', swapConflictShiftId).single()
+      const conflictShiftVersion = await requireNoError(conflictShiftVersionResult, 'SWAP_INVALIDATION_SHIFT_VERSION_FAILED')
+      const conflictAssignmentResult = await admin.client.rpc('manual_assign_shift_staff_to_segment', {
+        p_shift_id: swapConflictShiftId, p_user_id: memberUnassigned.id, p_role: 'host',
+        p_notes: 'Introduce synthetic overlap after candidate acceptance',
+        p_expected_version: conflictShiftVersion.version, p_staffing_segment_id: conflictSegment,
+      }).single()
+      const conflictAssignment = await requireNoError(conflictAssignmentResult, 'SWAP_INVALIDATION_CONFLICT_FIXTURE_FAILED')
+      if (!conflictAssignment?.id || conflictAssignment.user_id !== memberUnassigned.id
+        || conflictAssignment.staffing_segment_id !== conflictSegment) stop('SWAP_INVALIDATION_CONFLICT_FIXTURE_MISMATCH')
+      const invalidatedApproval = await leader.client.rpc('shift_swap_operation_v1', {
+        p_action: 'approve', p_request_id: invalidationRequest.id,
+        p_payload: { expected_version: invalidationAccepted.version, notes: 'Must reject newly conflicting candidate' },
+        p_idempotency_key: randomUUID(),
+      })
+      if (!invalidatedApproval.error || !/SHIFT_CONFLICT|REPLACEMENT_ALREADY_ASSIGNED|CONFLICT/u.test(String(invalidatedApproval.error.message))) {
+        stop('SWAP_APPROVAL_DID_NOT_REVALIDATE_CANDIDATE_CONFLICT')
+      }
+      const invalidationRead = await service.from('swap_requests').select('id,status,version')
+        .eq('id', invalidationRequest.id).maybeSingle()
+      const invalidationStored = await requireNoError(invalidationRead, 'SWAP_INVALIDATION_REQUEST_READBACK_FAILED')
+      const invalidatedSourceRead = await service.from('shift_registrations')
+        .select('id,status,staffing_segment_id').eq('id', memberInTwo.id).maybeSingle()
+      const invalidatedSource = await requireNoError(invalidatedSourceRead, 'SWAP_INVALIDATION_SOURCE_READBACK_FAILED')
+      if (invalidationStored?.status !== 'accepted' || invalidationStored.version !== invalidationAccepted.version
+        || invalidatedSource?.status !== 'approved' || invalidatedSource.staffing_segment_id !== segmentTwo) {
+        stop('SWAP_INVALIDATION_ROLLBACK_READBACK_MISMATCH')
+      }
+      const conflictAssignmentRead = await service.from('shift_registrations')
+        .select('id,user_id,status,staffing_segment_id').eq('id', conflictAssignment.id).maybeSingle()
+      const persistedConflictAssignment = await requireNoError(conflictAssignmentRead, 'SWAP_INVALIDATION_CONFLICT_READBACK_FAILED')
+      if (persistedConflictAssignment?.user_id !== memberUnassigned.id
+        || persistedConflictAssignment.status !== 'manually_assigned'
+        || persistedConflictAssignment.staffing_segment_id !== conflictSegment) {
+        stop('SWAP_INVALIDATION_CONFLICT_READBACK_MISMATCH')
+      }
+      recordPassSwapSubcase('pass-swap-approval-conflict-invalidation', 'Candidate and scoped Leader',
+        'APPROVAL_CONFLICT_DENIED_SOURCE_PRESERVED')
+      const supportSource = assignments.find(row => row.user_id === memberSupport.id)
+      const supportRequestPayload = { source_registration_id: supportSource.id, mode: 'replacement',
+        reason: 'RC19 candidate rejection fixture', target_shift_id: null,
+        replacement_staff_id: memberUnassigned.id, counterpart_registration_id: null, notes: 'Reject then cancel fixture' }
+      const rejectedRequest = await requireNoError(await memberSupport.client.rpc('shift_swap_operation_v1', {
+        p_action: 'create', p_request_id: null, p_payload: supportRequestPayload, p_idempotency_key: randomUUID(),
+      }).single(), 'SWAP_REJECTION_REQUEST_CREATE_FAILED')
+      const rejected = await requireNoError(await memberUnassigned.client.rpc('shift_swap_operation_v1', {
+        p_action: 'respond_reject', p_request_id: rejectedRequest.id,
+        p_payload: { expected_version: rejectedRequest.version, notes: 'Synthetic candidate rejection' },
+        p_idempotency_key: randomUUID(),
+      }).single(), 'SWAP_CANDIDATE_REJECTION_FAILED')
+      if (rejected.status !== 'rejected') stop('SWAP_CANDIDATE_REJECTION_STATE_MISMATCH')
+      const cancelRequest = await requireNoError(await memberSupport.client.rpc('shift_swap_operation_v1', {
+        p_action: 'create', p_request_id: null, p_payload: { ...supportRequestPayload, reason: 'RC19 cancellation fixture' },
+        p_idempotency_key: randomUUID(),
+      }).single(), 'SWAP_CANCELLATION_REQUEST_CREATE_FAILED')
+      const cancelled = await requireNoError(await memberSupport.client.rpc('shift_swap_operation_v1', {
+        p_action: 'cancel', p_request_id: cancelRequest.id,
+        p_payload: { expected_version: cancelRequest.version, reason: 'Requester cancelled synthetic request' },
+        p_idempotency_key: randomUUID(),
+      }).single(), 'SWAP_REQUEST_CANCELLATION_FAILED')
+      if (cancelled.status !== 'cancelled') stop('SWAP_CANCELLATION_STATE_MISMATCH')
+      const lifecycleRows = await service.from('swap_requests').select('id,status')
+        .in('id', [firstRow.id, exchange.id, rejectedRequest.id, cancelRequest.id])
+      const lifecycle = await requireNoError(lifecycleRows, 'SWAP_LIFECYCLE_DATABASE_READBACK_FAILED')
+      if (new Map(lifecycle.map(row => [row.id, row.status])).get(firstRow.id) !== 'completed'
+        || new Map(lifecycle.map(row => [row.id, row.status])).get(exchange.id) !== 'completed'
+        || new Map(lifecycle.map(row => [row.id, row.status])).get(rejectedRequest.id) !== 'rejected'
+        || new Map(lifecycle.map(row => [row.id, row.status])).get(cancelRequest.id) !== 'cancelled') {
+        stop('SWAP_LIFECYCLE_DATABASE_READBACK_MISMATCH')
+      }
+      recordPassSwapSubcase('pass-swap-candidate-rejection-and-requester-cancellation',
+        'Candidate Member and requester Member', 'REJECTED_AND_CANCELLED_READBACK')
+      const receiptReadback = readDatabase(databaseContainer,
+        `SELECT count(*) FROM private.rc19_swap_operation_receipts WHERE (actor_id=${sqlLiteral(member.id)} AND idempotency_key=${sqlLiteral(key)}::uuid AND response->>'id'=${sqlLiteral(firstRow.id)}) OR (actor_id=${sqlLiteral(memberUnassigned.id)} AND idempotency_key=${sqlLiteral(acceptKey)}::uuid AND response->>'id'=${sqlLiteral(firstRow.id)}) OR (actor_id=${sqlLiteral(leader.id)} AND idempotency_key=${sqlLiteral(approvalKey)}::uuid AND response->>'id'=${sqlLiteral(firstRow.id)})`)
+      if (receiptReadback !== '3') stop('SWAP_LIFECYCLE_RECEIPT_POSTGRES_READBACK_MISMATCH')
+      passSwapFixtures.push({ passRequestId: firstRow.id, passSourceRegistrationId: source.id,
+        passReplacementRegistrationId: acceptedReplacement.id, passSegmentId: source.staffing_segment_id,
+        exchangeRequestId: exchange.id, exchangeSourceRegistrationId: swapShiftSource.id,
+        exchangeCounterpartRegistrationId: swapShiftCounterpart.id, exchangeSegmentIds: [segmentOne, segmentTwo],
+        rejectedRequestId: rejectedRequest.id, cancelledRequestId: cancelRequest.id,
+        invalidationRequestId: invalidationRequest.id, conflictShiftId: swapConflictShiftId,
+        conflictAssignmentId: conflictAssignment.id, invalidationState: invalidationStored.status,
+        states: { pass: stored.status, exchange: exchangeApproved.status,
+          rejection: rejected.status, cancellation: cancelled.status } })
       const revokedMembership = readDatabase(databaseContainer,
         `WITH changed AS (UPDATE private.rc19_business_user_agency_memberships SET status='revoked',effective_until=statement_timestamp(),revoked_at=statement_timestamp(),version=version+1 WHERE business_user_id=${sqlLiteral(member.id)} AND source_version=${sqlLiteral(marker)} AND status='active' RETURNING 1) SELECT count(*) FROM changed`)
       if (revokedMembership !== '1') stop('SWAP_REVOKE_FIXTURE_FAILED')
@@ -940,9 +1186,18 @@ async function main() {
         `SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(member.id)} AND source_version=${sqlLiteral(marker)} AND status='revoked'`) !== '1') {
         stop('SWAP_REVOKED_MEMBERSHIP_POSTGRES_READBACK_MISMATCH')
       }
+      recordPassSwapSubcase('pass-swap-revoked-membership-replay', 'Requester after Agency revocation',
+        'REPLAY_DENIED_AFTER_MEMBERSHIP_REVOCATION', true)
       return { actual: { rpc_code: 'OK' }, database_readback: { status: 'passed', matches_expected: true },
         negative_authorization: { tested: true, passed: true } }
     })
+  caseResults.push({ case_id: 'pass-swap-expiry', actor: 'Synthetic requester/candidate/Leader',
+    expected: 'A pending or accepted request expires at its approved action deadline and cannot mutate registrations after expiry.',
+    actual: { rpc_code: 'NOT_IMPLEMENTED_NO_EXPIRED_SWAP_STATUS_OR_OPERATION' },
+    database_readback: { status: 'not_run', matches_expected: false },
+    negative_authorization: { tested: false, passed: false },
+    evidence_scope: 'Source contract review only; current swap schema and RPC expose no expired state or expiry transition.',
+    started_at: new Date().toISOString(), completed_at: new Date().toISOString(), status: 'BLOCKED' })
   await executeCase('external-summary-approval-revisions-privacy-retry', 'Member submitter and Admin reviewer',
     'Authenticated draft/submit/approve calls create replay receipts, immutable approved revision data and an external projection without personnel details.', async () => {
       const externalActor = memberSupport
@@ -1185,11 +1440,20 @@ async function main() {
           segment_start_at: d01K02Segment.start_at, segment_end_at: d01K02Segment.end_at },
         { id: realtimeShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: '2099-12-03',
           purpose: 'dedicated authenticated Realtime delivery and wrong-scope event denial' },
+        { id: swapShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: '2099-12-04',
+          purpose: 'reciprocal exact-segment PASS/Swap exchange' },
+        { id: swapConflictShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: '2099-12-04',
+          purpose: 'approval-time candidate conflict invalidation' },
       ],
       staffing_segments: storedSegments.map(row => ({ id: row.id, shift_id: row.shift_id,
         segment_index: row.segment_index })),
       registrations: [
         ...assignments.map(row => ({ id: row.id, shift_id: row.shift_id,
+          business_user_id: row.user_id, role: row.operational_role, staffing_segment_id: row.staffing_segment_id })),
+        { id: realtimeRegistration.id, shift_id: realtimeRegistration.shift_id,
+          business_user_id: realtimeRegistration.user_id, role: realtimeRegistration.operational_role,
+          staffing_segment_id: realtimeRegistration.staffing_segment_id },
+        ...swapAssignments.map(row => ({ id: row.id, shift_id: row.shift_id,
           business_user_id: row.user_id, role: row.operational_role, staffing_segment_id: row.staffing_segment_id })),
         { id: d01OriginalAssignment.id, shift_id: d01ShiftId, business_user_id: member.id,
           role: d01OriginalAssignment.operational_role, staffing_segment_id: d01OriginalAssignment.staffing_segment_id,
@@ -1206,13 +1470,17 @@ async function main() {
         receipt: d01Receipt,
       },
       pass_swap_candidates: {
-        clear_replacement: memberUnassigned.id,
+        clear_replacement_candidate: memberUnassigned.id,
+        candidate_initial_state: 'unassigned before business case execution',
+        candidate_post_case_state: passSwapFixtures.length ? 'assigned by accepted PASS and approval-invalidation fixture' : 'unchanged by PASS/Swap case',
         same_actor_conflict: member.id,
         cross_agency_candidate: memberOutAgency.id,
         source_registration_id: assignments.find(row => row.user_id === member.id)?.id ?? null,
-        schedule_overlap_candidate: null,
-        schedule_overlap_status: 'NOT IMPLEMENTED',
+        schedule_overlap_candidate: swapConflictShiftId,
+        schedule_overlap_status: passSwapFixtures.length ? 'APPROVAL_REVALIDATION_DENIED_AND_ROLLED_BACK' : 'NOT RUN',
+        lifecycle: passSwapFixtures,
       },
+      pass_swap_expiry: { status: 'BLOCKED', reason: 'Published RPC and swap_requests schema expose no expiry transition or expired state.' },
       workforce: { month: '2099-12', agency_id: agencyIds.inScope, brand_id: brandIds[0],
         expected: { total_incidents: 2, total_distinct_shifts: 1, total_distinct_staff: 2,
           pending_count: 1, confirmed_count: 1, confirmed_late_count: 1, verified_late_minutes_total: 7 } },
@@ -1263,7 +1531,6 @@ async function main() {
         ['calendar-shift-creation-fixture', 'calendar_shift_creation', 'shift fixture creation and canonical database readback'],
         ['segmented-staffing-fixture', 'segmented_staffing', 'exact segment fixtures and canonical registration readback'],
         ['shift-registration-fixture', 'shift_registration', 'authorized registration fixture and canonical identity readback'],
-        ['pass-swap-lifecycle-api', 'pass_swap_lifecycle', 'actor action payload receipt and persisted retry lifecycle'],
         ['temporal-payroll-runtime', 'temporal_payroll', 'Attendance and Payroll effective-time linkage and immutable actual hours'],
         ['report-revision-snapshot-api', 'report_revision_snapshots', 'approved External Summary immutable revision snapshot'],
       ].map(([case_id, area, criterion]) => ({
@@ -1277,9 +1544,13 @@ async function main() {
     ],
     cases: [
       ...caseResults,
+      ...passSwapSubcaseExpectations.map(([case_id, expected]) => passSwapSubcaseResults.find(item => item.case_id === case_id)
+        ?? { case_id, actor: 'Synthetic requester/candidate/Leader per case', expected,
+          actual: { rpc_code: 'NOT_RUN' }, database_readback: { status: 'not_run', matches_expected: false },
+          negative_authorization: { tested: false, passed: false },
+          evidence_scope: 'No case execution evidence.', status: 'NOT RUN' }),
       ...(browserResult.cases ?? []),
       ...[
-        ['pass-swap-actor-action-replay-authorization', 'Replay revalidates actor/action authorization; cross-Agency and revoked membership are denied.'],
         ['temporal-attendance-payroll', 'Attendance and actual-work temporal boundaries persist into Payroll without changing historical evidence.'],
         ['kao-184-parse-preview-confirm-readback', 'Synthetic KAO #184 input parses, previews, confirms and reads back through authorized APIs.'],
       ].map(([case_id, expected]) => ({ case_id, actor: 'Admin, Leader, Member as required', expected,
@@ -1327,9 +1598,9 @@ async function main() {
       authenticated_users: authUsers.length + 6,
       brands: brandIds.length,
       platforms: 1,
-      parent_shifts: 4,
+      parent_shifts: 6,
       staffing_segments: storedSegments.length,
-      canonical_assignments: assignments.length + 1 + (d01Receipt ? 1 : 0),
+      canonical_assignments: assignments.length + swapAssignments.length + 2 + (d01Receipt ? 1 : 0),
       wrong_brand_denied: true,
       unassigned_member_has_no_assignment: true,
       wrong_agency_denied: caseResults.some(item => item.case_id === 'agency-wrong-agency-denial' && item.status === 'PASS'),
