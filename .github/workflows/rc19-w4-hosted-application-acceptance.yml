@@ -17,7 +17,12 @@ on:
         default: false
         type: boolean
       diagnostic_only:
-        description: Run the bounded runtime diagnostic without strict business acceptance or browser UAT
+        description: Run the bounded runtime diagnostic without strict business acceptance
+        required: false
+        default: false
+        type: boolean
+      diagnostic_browser_uat:
+        description: Permit real authenticated browser workflows within a reviewed bounded runtime diagnostic
         required: false
         default: false
         type: boolean
@@ -711,7 +716,7 @@ jobs:
             > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
 
       - name: Install pinned Playwright browser for requested browser UAT
-        if: inputs.run_browser_uat && !inputs.diagnostic_only
+        if: inputs.run_browser_uat && (!inputs.diagnostic_only || inputs.diagnostic_browser_uat)
         working-directory: rc19-w4-application
         run: pnpm exec playwright install --with-deps chromium
 
@@ -759,6 +764,7 @@ jobs:
         env:
           RUN_BROWSER_UAT: ${{ inputs.run_browser_uat }}
           DIAGNOSTIC_ONLY: ${{ inputs.diagnostic_only }}
+          DIAGNOSTIC_BROWSER_UAT: ${{ inputs.diagnostic_browser_uat }}
           EXPECTED_APPLICATION_SHA: ${{ inputs.application_sha }}
         run: |
           set -euo pipefail
@@ -864,8 +870,8 @@ jobs:
           mv "$RUNNER_TEMP/rc19-w4-app-artifact/next.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
 
           report="$RUNNER_TEMP/rc19-w4-lane01-acceptance.json"
-          if [[ "$DIAGNOSTIC_ONLY" == "true" && "$RUN_BROWSER_UAT" == "true" ]]; then
-            echo "::error::Bounded runtime diagnostics cannot request browser UAT"; exit 1
+          if [[ "$DIAGNOSTIC_ONLY" == "true" && "$RUN_BROWSER_UAT" == "true" && "$DIAGNOSTIC_BROWSER_UAT" != "true" ]]; then
+            echo "::error::Browser UAT in a bounded diagnostic requires its separately reviewed request marker"; exit 1
           fi
           if [[ "$RUN_BROWSER_UAT" == "true" ]]; then
             export RC19_W4_RUN_BROWSER_UAT=true
@@ -898,7 +904,7 @@ jobs:
               jq --arg code "$failure_code" --argjson exit_code "$result" \
                 '.steps.application = {status:"blocked",code:$code,exit_code:$exit_code}' \
                 "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-failed.json"
-              jq '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=false' \
+              jq --argjson requested "$RUN_BROWSER_UAT" '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=$requested' \
                 "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-failed.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
               echo "::warning::The bounded diagnostic entrypoint failed with $failure_code; sanitized runtime evidence is retained."
               echo "Application diagnostic code: $failure_code" >> "$GITHUB_STEP_SUMMARY"
@@ -920,7 +926,7 @@ jobs:
             ' "$report" > /dev/null || {
               jq '.steps.application = {status:"blocked",code:"DIAGNOSTIC_REPORT_INVALID"}' \
                 "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-invalid.json"
-              jq '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=false' \
+              jq --argjson requested "$RUN_BROWSER_UAT" '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=$requested' \
                 "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-invalid.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
               echo "::warning::The diagnostic report did not prove exact-SHA Auth and canonical identity; strict acceptance remains unrun."
               exit 0
@@ -930,6 +936,7 @@ jobs:
                runtime_database_marker_match:(.runtime_database_marker == $marker),
                synthetic_users,authorization,browser_uat,
                cases:[.cases[]|{case_id,status,evidence_scope}],
+               browser_cases:[.browser_cases[]|{case_id,status,database_readback:{status:.database_readback.status,matches_expected:.database_readback.matches_expected},browser_interaction:{performed:.browser_interaction.performed,authenticated:.browser_interaction.authenticated,status:.browser_interaction.status}}],
                fixtures:{authenticated_users:.fixtures.authenticated_users,brands:.fixtures.brands,
                  platforms:.fixtures.platforms,parent_shifts:.fixtures.parent_shifts,
                  staffing_segments:.fixtures.staffing_segments,canonical_assignments:.fixtures.canonical_assignments,
@@ -937,10 +944,10 @@ jobs:
                  wrong_agency_denial:.fixtures.wrong_agency_denial,anonymous_denied:.fixtures.anonymous_denied}}
             ' "$report" > "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json"
             jq --slurpfile app "$RUNNER_TEMP/rc19-w4-app-artifact/lane01-acceptance.json" \
-              '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=false | .steps.application = {status:"diagnostic",evidence:$app[0]}' \
+              --argjson requested "$RUN_BROWSER_UAT" '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=$requested | .steps.application = {status:"diagnostic",evidence:$app[0]}' \
               "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic.json"
             mv "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
-            echo "Bounded diagnostic completed. Strict business acceptance and browser UAT were not run." >> "$GITHUB_STEP_SUMMARY"
+            echo "Bounded runtime diagnostic completed. Strict final business acceptance was not run; browser UAT requested=$RUN_BROWSER_UAT." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           jq --arg browser_requested "$RUN_BROWSER_UAT" -e '
@@ -1009,76 +1016,138 @@ jobs:
         working-directory: rc19-w4-application
         run: |
           set -euo pipefail
+          trap 'rm -f "$RUNNER_TEMP/rc19-w4-realtime-fixture.json"' EXIT
           realtime_publication_state="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='shifts')::text || '|' || COALESCE((SELECT relreplident::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='shifts'),'missing') || '|' || EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='shifts' AND i.indisprimary)::text")"
           realtime_publication_details="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT pub.pubinsert::text || '|' || pub.pubupdate::text || '|' || pub.pubdelete::text || '|' || pub.pubtruncate::text || '|' || COALESCE(array_to_string(pgt.attnames,','),'ALL') || '|' || CASE WHEN pgt.rowfilter IS NULL THEN 'NO_FILTER' ELSE 'FILTER_PRESENT' END FROM pg_publication_tables pgt JOIN pg_publication pub ON pub.pubname=pgt.pubname WHERE pgt.pubname='supabase_realtime' AND pgt.schemaname='public' AND pgt.tablename='shifts'")"
           realtime_replication_state="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT current_setting('wal_level') || '|' || (SELECT count(*) FROM pg_replication_slots WHERE slot_type='logical' AND plugin='pgoutput')::text || '|' || (SELECT count(*) FROM pg_replication_slots WHERE slot_type='logical' AND plugin='pgoutput' AND active)::text || '|' || (SELECT count(*) FROM pg_stat_replication WHERE state='streaming')::text")"
           realtime_container="${RC19_W4_RUNTIME_DATABASE_CONTAINER/supabase_db_/supabase_realtime_}"
+          realtime_image="$(docker inspect --format '{{.Config.Image}}|{{.Image}}' "$realtime_container" 2>/dev/null || echo unavailable)"
           realtime_container_state="$(docker inspect --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$realtime_container" 2>/dev/null || echo unavailable)"
+          realtime_image="$(docker inspect --format '{{.Config.Image}}|{{.Image}}' "$realtime_container" 2>/dev/null || echo unavailable)"
           export REALTIME_URL="$RC19_W4_RUNTIME_URL"
           export REALTIME_ANON_KEY="$RC19_W4_RUNTIME_ANON_KEY"
           export REALTIME_SERVICE_KEY="$RC19_W4_RUNTIME_SERVICE_ROLE_KEY"
-          export REALTIME_MEMBER_EMAIL="$RC19_W4_SYNTHETIC_MEMBER_EMAIL"
-          export REALTIME_MEMBER_PASSWORD="$RC19_W4_SYNTHETIC_MEMBER_PASSWORD"
+          export REALTIME_FIXTURE_PATH="$RUNNER_TEMP/rc19-w4-realtime-fixture.json"
           export REALTIME_MARKER="$RC19_W4_RUNTIME_DATABASE_MARKER"
           export REALTIME_PUBLICATION_STATE="$realtime_publication_state"
+          export REALTIME_DATABASE_CONTAINER="$RC19_W4_RUNTIME_DATABASE_CONTAINER"
           set +e
           node --input-type=module > "$RUNNER_TEMP/rc19-w4-realtime.log" 2>&1 <<'NODE'
           import { createClient } from '@supabase/supabase-js'
+          import { readFileSync } from 'node:fs'
+          import { execFileSync } from 'node:child_process'
+          import { createRequire } from 'node:module'
+          import { dirname, resolve } from 'node:path'
 
-          let channelStatus = 'NOT_CREATED'
-          let receivedEvent = false
-          let matchingEvent = false
-          let receivedEventType = 'NONE'
-          const fail = code => {
-            process.stderr.write(`${code}\n`)
-            process.stderr.write(`RC19_REALTIME_DIAGNOSTIC ${JSON.stringify({ channel_status: channelStatus, received_event: receivedEvent, matching_event: matchingEvent, event_type: receivedEventType })}\n`)
-            process.exit(1)
-          }
-          const withTimeout = (promise, code) => Promise.race([
-            promise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error(code)), 15000)),
+          const require = createRequire(import.meta.url)
+          const realtimePackagePath = resolve(dirname(require.resolve('@supabase/supabase-js/package.json')), '../realtime-js/package.json')
+          const versions = { supabase_js: require('@supabase/supabase-js/package.json').version,
+            realtime_js: JSON.parse(readFileSync(realtimePackagePath, 'utf8')).version }
+          const fixture = JSON.parse(readFileSync(process.env.REALTIME_FIXTURE_PATH, 'utf8'))
+          const marker = process.env.REALTIME_MARKER
+          const diagnostic = { status: 'failed', fixture_marker_match: fixture.runtime_marker === marker,
+            actor_identity_match: false, active_membership_and_scope: false, authenticated_token_bound: false,
+            subscription_status: 'NOT_CREATED', subscription_ready: false, row_readback: false,
+            wal_progressed: false, matching_decoded_event: false, wrong_scope_event_denied: false,
+            realtime_versions: versions, event_type: 'NONE', update_wal: null }
+          const emit = () => process.stderr.write(`RC19_REALTIME_DIAGNOSTIC ${JSON.stringify(diagnostic)}\n`)
+          const fail = code => { process.stderr.write(`${code}\n`); emit(); process.exit(1) }
+          const withTimeout = (promise, code, ms = 15000) => Promise.race([
+            promise, new Promise((_, reject) => setTimeout(() => reject(new Error(code)), ms)),
           ])
-          const url = process.env.REALTIME_URL
-          if (!/^true\|[d|f|i]\|true$/u.test(process.env.REALTIME_PUBLICATION_STATE ?? '')) fail('REALTIME_SHIFT_PUBLICATION_CONTRACT_FAILED')
-          const member = createClient(url, process.env.REALTIME_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
-          const service = createClient(url, process.env.REALTIME_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
-          const login = await member.auth.signInWithPassword({ email: process.env.REALTIME_MEMBER_EMAIL, password: process.env.REALTIME_MEMBER_PASSWORD })
-          if (login.error || !login.data.session) fail('REALTIME_SYNTHETIC_MEMBER_LOGIN_FAILED')
-          const found = await service.from('shifts').select('id').like('title', 'RC19 acceptance % scoped').limit(1).maybeSingle()
-          if (found.error || !found.data?.id) fail('REALTIME_SCOPED_SHIFT_FIXTURE_MISSING')
-          const visible = await member.from('shifts').select('id').eq('id', found.data.id).maybeSingle()
-          if (visible.error || visible.data?.id !== found.data.id) fail('REALTIME_MEMBER_SCOPE_READ_FAILED')
-          const markerTitle = `RC19 diagnostic ${process.env.REALTIME_MARKER}`
-          let resolveEvent
-          const event = new Promise(resolve => { resolveEvent = resolve })
-          const channel = member.channel(`rc19-w4-diagnostic-${process.env.REALTIME_MARKER}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'shifts' }, payload => {
-              receivedEvent = true
-              receivedEventType = typeof payload.eventType === 'string' ? payload.eventType : 'UNKNOWN'
-              if (payload.new?.id === found.data.id && payload.new?.title === markerTitle) {
-                matchingEvent = true
-                resolveEvent(true)
-              }
-            })
-          const subscribed = new Promise((resolve, reject) => channel.subscribe(status => {
-            channelStatus = status
-            if (status === 'SUBSCRIBED') resolve(true)
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') reject(new Error('REALTIME_SUBSCRIPTION_FAILED'))
-          }))
-          try {
-            await withTimeout(subscribed, 'REALTIME_SUBSCRIPTION_TIMEOUT')
-            const changed = await service.from('shifts').update({ title: markerTitle }).eq('id', found.data.id).select('id').maybeSingle()
-            if (changed.error || changed.data?.id !== found.data.id) fail('REALTIME_SYNTHETIC_UPDATE_FAILED')
-            const readback = await service.from('shifts').select('id,title').eq('id', found.data.id).maybeSingle()
-            if (readback.error || readback.data?.id !== found.data.id || readback.data?.title !== markerTitle) fail('REALTIME_SYNTHETIC_UPDATE_READBACK_FAILED')
-            await withTimeout(event, 'REALTIME_EVENT_TIMEOUT')
-          } catch (error) {
-            fail(error.message === 'REALTIME_EVENT_TIMEOUT' ? 'REALTIME_EVENT_TIMEOUT' : 'REALTIME_EVENT_DELIVERY_FAILED')
-          } finally {
-            await member.removeChannel(channel)
-            await member.auth.signOut()
+          if (!diagnostic.fixture_marker_match || !/^\|?true\|[dfi]\|true$/u.test(process.env.REALTIME_PUBLICATION_STATE ?? '')) fail('REALTIME_FIXTURE_OR_PUBLICATION_CONTRACT_FAILED')
+          if (versions.supabase_js !== '2.110.5' || versions.realtime_js !== '2.110.5') fail('REALTIME_CLIENT_VERSION_DRIFT')
+          const makeClient = () => createClient(process.env.REALTIME_URL, process.env.REALTIME_ANON_KEY,
+            { auth: { persistSession: false, autoRefreshToken: false } })
+          const member = makeClient()
+          const wrong = makeClient()
+          const service = createClient(process.env.REALTIME_URL, process.env.REALTIME_SERVICE_KEY,
+            { auth: { persistSession: false, autoRefreshToken: false } })
+          const clients = [member, wrong]
+          const channels = []
+          const psql = sql => execFileSync('docker', ['exec', process.env.REALTIME_DATABASE_CONTAINER,
+            'psql', '-U', 'postgres', '-d', 'postgres', '-Atqc', sql], { encoding: 'utf8' }).trim()
+          const safeUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value ?? '')
+          if (![fixture.actor?.auth_user_id, fixture.actor?.shift_id, fixture.actor?.registration_id,
+            fixture.actor?.staffing_segment_id, fixture.actor?.brand_id, fixture.actor?.agency_id,
+            fixture.wrong_scope_actor?.auth_user_id].every(safeUuid)) fail('REALTIME_FIXTURE_ID_INVALID')
+          const logins = await Promise.all([
+            member.auth.signInWithPassword({ email: fixture.actor.email, password: fixture.actor.password }),
+            wrong.auth.signInWithPassword({ email: fixture.wrong_scope_actor.email, password: fixture.wrong_scope_actor.password }),
+          ])
+          const [login, wrongLogin] = logins
+          if (login.error || !login.data.session || wrongLogin.error || !wrongLogin.data.session) fail('REALTIME_SYNTHETIC_ACTOR_LOGIN_FAILED')
+          const identity = await member.auth.getUser()
+          diagnostic.actor_identity_match = !identity.error && identity.data.user?.id === fixture.actor.auth_user_id
+            && login.data.user?.id === fixture.actor.business_user_id
+          const jwt = JSON.parse(Buffer.from(login.data.session.access_token.split('.')[1], 'base64url').toString('utf8'))
+          diagnostic.authenticated_token_bound = jwt.sub === fixture.actor.auth_user_id && jwt.role === 'authenticated'
+            && Number(jwt.exp) > Math.floor(Date.now() / 1000)
+          await Promise.all([member.realtime.setAuth(login.data.session.access_token), wrong.realtime.setAuth(wrongLogin.data.session.access_token)])
+          const visible = await member.from('shifts').select('id,brand_id,authoritative_agency_id').eq('id', fixture.actor.shift_id).maybeSingle()
+          const registration = await member.from('shift_registrations').select('id,shift_id,user_id,staffing_segment_id')
+            .eq('id', fixture.actor.registration_id).maybeSingle()
+          const denied = await wrong.from('shifts').select('id').eq('id', fixture.actor.shift_id)
+          if (visible.error || visible.data?.id !== fixture.actor.shift_id || visible.data.brand_id !== fixture.actor.brand_id
+            || visible.data.authoritative_agency_id !== fixture.actor.agency_id || registration.error
+            || registration.data?.user_id !== fixture.actor.business_user_id || registration.data?.shift_id !== fixture.actor.shift_id
+            || registration.data?.staffing_segment_id !== fixture.actor.staffing_segment_id
+            || denied.error || (denied.data?.length ?? 0) !== 0) fail('REALTIME_FIXTURE_AUTHORIZATION_READBACK_FAILED')
+          const dbScope = psql(`SELECT count(*) FROM public.business_users u JOIN private.rc19_business_user_agency_memberships m ON m.business_user_id=u.id JOIN public.shifts s ON s.id='${fixture.actor.shift_id}' JOIN public.shift_registrations r ON r.id='${fixture.actor.registration_id}' WHERE u.id='${fixture.actor.business_user_id}' AND u.auth_user_id::text='${fixture.actor.auth_user_id}' AND u.status='active' AND u.account_status='active' AND u.deleted_at IS NULL AND u.archived_at IS NULL AND m.agency_id='${fixture.actor.agency_id}' AND m.status='active' AND m.revoked_at IS NULL AND m.source_version='${marker}' AND (m.effective_from IS NULL OR m.effective_from<=statement_timestamp()) AND (m.effective_until IS NULL OR m.effective_until>statement_timestamp()) AND s.brand_id='${fixture.actor.brand_id}' AND s.authoritative_agency_id='${fixture.actor.agency_id}' AND r.user_id=u.id AND r.shift_id=s.id AND r.staffing_segment_id='${fixture.actor.staffing_segment_id}'`)
+          diagnostic.active_membership_and_scope = fixture.actor.database_scope_proof === true && dbScope === '1'
+          if (!diagnostic.actor_identity_match || !diagnostic.authenticated_token_bound || !diagnostic.active_membership_and_scope) fail('REALTIME_AUTH_OR_MEMBERSHIP_PROOF_FAILED')
+          const markerTitle = `RC19 diagnostic ${marker}`
+          let resolveMemberEvent
+          let resolveWrongEvent
+          const memberEvent = new Promise(resolve => { resolveMemberEvent = resolve })
+          const wrongEvent = new Promise(resolve => { resolveWrongEvent = resolve })
+          const onEvent = (target, payload) => {
+            if (payload.eventType !== 'UPDATE' || payload.new?.id !== fixture.actor.shift_id) return
+            if (target === 'member' && payload.new?.title === markerTitle) {
+              diagnostic.matching_decoded_event = true
+              diagnostic.event_type = payload.eventType
+              resolveMemberEvent(true)
+            } else if (target === 'wrong') resolveWrongEvent(true)
           }
-          process.stdout.write('Authenticated member received the scoped shift update over Realtime.\n')
+          const subscribe = async (client, key, handler) => {
+            let status = 'NOT_CREATED'
+            const channel = client.channel(`rc19-w4-${key}-${marker}`)
+              .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'shifts', filter: `id=eq.${fixture.actor.shift_id}` }, handler)
+            channels.push([client, channel])
+            const promise = new Promise((resolve, reject) => channel.subscribe(value => {
+              status = value
+              if (key === 'member') diagnostic.subscription_status = value
+              if (value === 'SUBSCRIBED') resolve(true)
+              if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(value)) reject(new Error('REALTIME_SUBSCRIPTION_FAILED'))
+            }))
+            await withTimeout(promise, 'REALTIME_SUBSCRIPTION_TIMEOUT')
+            return status
+          }
+          try {
+            await Promise.all([subscribe(member, 'member', payload => onEvent('member', payload)),
+              subscribe(wrong, 'wrong-scope', payload => onEvent('wrong', payload))])
+            diagnostic.subscription_ready = true
+            const before = psql("SELECT json_build_object('wal',pg_current_wal_lsn()::text,'slot',coalesce((SELECT confirmed_flush_lsn::text FROM pg_replication_slots WHERE slot_type='logical' AND plugin='pgoutput' AND active LIMIT 1),'none'),'streaming',(SELECT count(*) FROM pg_stat_replication WHERE state='streaming'))::text")
+            const changed = await service.from('shifts').update({ title: markerTitle }).eq('id', fixture.actor.shift_id).select('id').maybeSingle()
+            if (changed.error || changed.data?.id !== fixture.actor.shift_id) fail('REALTIME_SYNTHETIC_UPDATE_FAILED')
+            const readback = await service.from('shifts').select('id,title').eq('id', fixture.actor.shift_id).maybeSingle()
+            diagnostic.row_readback = !readback.error && readback.data?.id === fixture.actor.shift_id && readback.data?.title === markerTitle
+            if (!diagnostic.row_readback) fail('REALTIME_SYNTHETIC_UPDATE_READBACK_FAILED')
+            await withTimeout(memberEvent, 'REALTIME_EVENT_TIMEOUT')
+            diagnostic.update_wal = { before, after: psql("SELECT json_build_object('wal',pg_current_wal_lsn()::text,'slot',coalesce((SELECT confirmed_flush_lsn::text FROM pg_replication_slots WHERE slot_type='logical' AND plugin='pgoutput' AND active LIMIT 1),'none'),'streaming',(SELECT count(*) FROM pg_stat_replication WHERE state='streaming'))::text") }
+            diagnostic.wal_progressed = diagnostic.update_wal.before !== diagnostic.update_wal.after
+            const wrongDelivered = await Promise.race([wrongEvent.then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 1500))])
+            diagnostic.wrong_scope_event_denied = !wrongDelivered
+            if (!diagnostic.matching_decoded_event || !diagnostic.wal_progressed || !diagnostic.wrong_scope_event_denied) fail('REALTIME_EVENT_OR_SCOPE_ASSERTION_FAILED')
+            diagnostic.status = 'passed'
+          } catch (error) {
+            fail(error.message === 'REALTIME_EVENT_TIMEOUT' ? 'REALTIME_EVENT_TIMEOUT' : 'REALTIME_EVENT_DELIVERY_OR_SUBSCRIPTION_FAILED')
+          } finally {
+            await Promise.all(channels.map(([client, channel]) => client.removeChannel(channel).catch(() => undefined)))
+            await Promise.all(clients.map(client => client.auth.signOut().catch(() => undefined)))
+          }
+          emit()
+          process.stdout.write('Dedicated authenticated Realtime actor received the scoped committed shift update.\n')
           NODE
           realtime_result=$?
           set -e
@@ -1097,15 +1166,14 @@ jobs:
               diagnostic = json.loads(diagnostic_line)
           except json.JSONDecodeError:
               diagnostic = {}
-          Path(sys.argv[2]).write_text(json.dumps({
-              "status": "failed",
-              "channel_status": diagnostic.get("channel_status") if diagnostic.get("channel_status") in {"SUBSCRIBED", "CHANNEL_ERROR", "TIMED_OUT", "CLOSED", "NOT_CREATED"} else "UNKNOWN",
-              "received_event": diagnostic.get("received_event") is True,
-              "matching_event": diagnostic.get("matching_event") is True,
-              "event_type": diagnostic.get("event_type") if diagnostic.get("event_type") in {"INSERT", "UPDATE", "DELETE", "UNKNOWN", "NONE"} else "UNKNOWN",
-              "raw_log_sha256": __import__("hashlib").sha256(log_path.read_bytes()).hexdigest(),
-              "raw_log_in_artifact": False,
-          }, separators=(",", ":")))
+          safe_keys = {"fixture_marker_match", "actor_identity_match", "active_membership_and_scope",
+              "authenticated_token_bound", "subscription_status", "subscription_ready", "row_readback",
+              "wal_progressed", "matching_decoded_event", "wrong_scope_event_denied", "realtime_versions",
+              "event_type", "update_wal"}
+          safe = {key: value for key, value in diagnostic.items() if key in safe_keys}
+          safe.update({"status": "failed", "raw_log_sha256": __import__("hashlib").sha256(log_path.read_bytes()).hexdigest(),
+              "raw_log_in_artifact": False})
+          Path(sys.argv[2]).write_text(json.dumps(safe, separators=(",", ":")))
           print(codes[-1] if codes else "REALTIME_FAILED_WITHOUT_SAFE_CODE")
           PY
           )"
@@ -1165,15 +1233,29 @@ jobs:
               "raw_log_in_artifact": False,
           }, separators=(",", ":")))
           PY
-            jq --arg code "$realtime_code" --arg publication "$realtime_publication_state" --arg publication_details "$realtime_publication_details" --arg replication "$realtime_replication_state" --argjson exit_code "$realtime_result" --slurpfile diag "$RUNNER_TEMP/rc19-w4-realtime-diagnostic.json" --slurpfile service "$RUNNER_TEMP/rc19-w4-realtime-service-summary.json" \
-              '.steps.realtime={status:"failed",code:$code,exit_code:$exit_code,publication_state:$publication,publication_details:$publication_details,replication_state:$replication,event_delivery_verified:false,client:$diag[0],service:$service[0]}' \
+            jq --arg code "$realtime_code" --arg image "$realtime_image" --arg publication "$realtime_publication_state" --arg publication_details "$realtime_publication_details" --arg replication "$realtime_replication_state" --argjson exit_code "$realtime_result" --slurpfile diag "$RUNNER_TEMP/rc19-w4-realtime-diagnostic.json" --slurpfile service "$RUNNER_TEMP/rc19-w4-realtime-service-summary.json" \
+              '.steps.realtime={status:"failed",code:$code,exit_code:$exit_code,image:$image,publication_state:$publication,publication_details:$publication_details,replication_state:$replication,event_delivery_verified:false,client:$diag[0],service:$service[0]}' \
               "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/realtime-failed.json"
             mv "$RUNNER_TEMP/rc19-w4-app-artifact/realtime-failed.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
             echo "Realtime diagnostic code: $realtime_code; publication: $realtime_publication_state; operations/columns: $realtime_publication_details; replication: $realtime_replication_state; service: $realtime_container_state" >> "$GITHUB_STEP_SUMMARY"
             echo "::error::Authenticated Realtime delivery diagnostic failed with $realtime_code."
             exit "$realtime_result"
           fi
-            jq '.steps.realtime={status:"passed",authenticated_member:true,authorized_scoped_shift:true,event_delivered:true,exact_shift_and_marker_matched:true,subscription_filter:"client_side_exact_row_check",synthetic_update_readback:true}' \
+            python3 - "$RUNNER_TEMP/rc19-w4-realtime.log" "$RUNNER_TEMP/rc19-w4-realtime-diagnostic.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
+          line = next((item.removeprefix("RC19_REALTIME_DIAGNOSTIC ") for item in lines if item.startswith("RC19_REALTIME_DIAGNOSTIC ")), "{}")
+          data = json.loads(line)
+          allowed = {"status", "fixture_marker_match", "actor_identity_match", "active_membership_and_scope",
+              "authenticated_token_bound", "subscription_status", "subscription_ready", "row_readback",
+              "wal_progressed", "matching_decoded_event", "wrong_scope_event_denied", "realtime_versions",
+              "event_type", "update_wal"}
+          safe = {key: value for key, value in data.items() if key in allowed}
+          Path(sys.argv[2]).write_text(json.dumps(safe, separators=(",", ":")))
+          PY
+            jq --arg image "$realtime_image" --arg state "$realtime_container_state" --arg publication "$realtime_publication_state" --arg details "$realtime_publication_details" --arg replication "$realtime_replication_state" --slurpfile diag "$RUNNER_TEMP/rc19-w4-realtime-diagnostic.json" '.steps.realtime=$diag[0] + {image:$image,container_state:$state,publication_state:$publication,publication_details:$details,replication_state:$replication}' \
             "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/realtime-evidence.json"
           mv "$RUNNER_TEMP/realtime-evidence.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
 
