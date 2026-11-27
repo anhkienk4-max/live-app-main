@@ -1010,6 +1010,7 @@ jobs:
         run: |
           set -euo pipefail
           realtime_publication_state="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='shifts')::text || '|' || COALESCE((SELECT relreplident::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='shifts'),'missing') || '|' || EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='shifts' AND i.indisprimary)::text")"
+          realtime_publication_details="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT pub.pubinsert::text || '|' || pub.pubupdate::text || '|' || pub.pubdelete::text || '|' || pub.pubtruncate::text || '|' || COALESCE(array_to_string(pgt.attnames,','),'ALL') || '|' || CASE WHEN pgt.rowfilter IS NULL THEN 'NO_FILTER' ELSE 'FILTER_PRESENT' END FROM pg_publication_tables pgt JOIN pg_publication pub ON pub.pubname=pgt.pubname WHERE pgt.pubname='supabase_realtime' AND pgt.schemaname='public' AND pgt.tablename='shifts'")"
           realtime_replication_state="$(docker exec "$RC19_W4_RUNTIME_DATABASE_CONTAINER" psql -U postgres -d postgres -Atqc "SELECT current_setting('wal_level') || '|' || (SELECT count(*) FROM pg_replication_slots WHERE slot_type='logical' AND plugin='pgoutput')::text || '|' || (SELECT count(*) FROM pg_replication_slots WHERE slot_type='logical' AND plugin='pgoutput' AND active)::text || '|' || (SELECT count(*) FROM pg_stat_replication WHERE state='streaming')::text")"
           realtime_container="${RC19_W4_RUNTIME_DATABASE_CONTAINER/supabase_db_/supabase_realtime_}"
           realtime_container_state="$(docker inspect --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$realtime_container" 2>/dev/null || echo unavailable)"
@@ -1132,6 +1133,8 @@ jobs:
               if "subscription" in lowered: categories.add("SUBSCRIPTION")
               if not categories: categories.add("OTHER_ERROR")
           safe_classes = set()
+          safe_labels = set()
+          safe_label_pattern = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
           for line in lines:
               lowered = line.lower()
               if "table is not in publication" in lowered or "not part of the publication" in lowered: safe_classes.add("TABLE_NOT_PUBLISHED")
@@ -1140,22 +1143,33 @@ jobs:
               if "replication slot" in lowered and ("inactive" in lowered or "not found" in lowered): safe_classes.add("REPLICATION_SLOT_UNAVAILABLE")
               if "publication" in lowered and ("not found" in lowered or "does not exist" in lowered): safe_classes.add("PUBLICATION_UNAVAILABLE")
               if "decode" in lowered or "invalid input syntax" in lowered: safe_classes.add("PAYLOAD_DECODE")
+              try:
+                  record = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              if not isinstance(record, dict):
+                  continue
+              for key in ("event", "error_type", "error_code", "reason_code", "component"):
+                  value = record.get(key)
+                  if isinstance(value, str) and safe_label_pattern.fullmatch(value):
+                      safe_labels.add(f"{key.upper()}:{value}")
           if not safe_classes and lines: safe_classes.add("OTHER_ERROR")
           Path(sys.argv[2]).write_text(json.dumps({
               "container_state": sys.argv[3],
               "error_line_count": len(lines),
               "error_categories": sorted(categories),
               "safe_error_classes": sorted(safe_classes),
+              "safe_structured_error_labels": sorted(safe_labels)[:20],
               "raw_log_sha256": hashlib.sha256(raw).hexdigest(),
               "raw_log_bytes": len(raw),
               "raw_log_in_artifact": False,
           }, separators=(",", ":")))
           PY
-            jq --arg code "$realtime_code" --arg publication "$realtime_publication_state" --arg replication "$realtime_replication_state" --argjson exit_code "$realtime_result" --slurpfile diag "$RUNNER_TEMP/rc19-w4-realtime-diagnostic.json" --slurpfile service "$RUNNER_TEMP/rc19-w4-realtime-service-summary.json" \
-              '.steps.realtime={status:"failed",code:$code,exit_code:$exit_code,publication_state:$publication,replication_state:$replication,event_delivery_verified:false,client:$diag[0],service:$service[0]}' \
+            jq --arg code "$realtime_code" --arg publication "$realtime_publication_state" --arg publication_details "$realtime_publication_details" --arg replication "$realtime_replication_state" --argjson exit_code "$realtime_result" --slurpfile diag "$RUNNER_TEMP/rc19-w4-realtime-diagnostic.json" --slurpfile service "$RUNNER_TEMP/rc19-w4-realtime-service-summary.json" \
+              '.steps.realtime={status:"failed",code:$code,exit_code:$exit_code,publication_state:$publication,publication_details:$publication_details,replication_state:$replication,event_delivery_verified:false,client:$diag[0],service:$service[0]}' \
               "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/realtime-failed.json"
             mv "$RUNNER_TEMP/rc19-w4-app-artifact/realtime-failed.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
-            echo "Realtime diagnostic code: $realtime_code; publication: $realtime_publication_state; replication: $realtime_replication_state; service: $realtime_container_state" >> "$GITHUB_STEP_SUMMARY"
+            echo "Realtime diagnostic code: $realtime_code; publication: $realtime_publication_state; operations/columns: $realtime_publication_details; replication: $realtime_replication_state; service: $realtime_container_state" >> "$GITHUB_STEP_SUMMARY"
             echo "::error::Authenticated Realtime delivery diagnostic failed with $realtime_code."
             exit "$realtime_result"
           fi
