@@ -506,7 +506,7 @@ jobs:
               OR argument_defaults <> $expected_defaults$''::text, 20, 0$expected_defaults$
               OR authenticated_execute IS DISTINCT FROM true
               OR anon_execute IS DISTINCT FROM false
-              OR service_role_execute IS DISTINCT FROM false
+              OR service_role_execute IS DISTINCT FROM true
               OR public_execute IS DISTINCT FROM false THEN
               RAISE EXCEPTION 'STAFFING_BASELINE_RPC_CONTRACT_DRIFT';
             END IF;
@@ -515,7 +515,7 @@ jobs:
           $staffing_baseline_bridge$;
           COMMIT;
           SQL
-          echo "df42c97503903b0623c35a8f09d54a2b75c82942e8ba15826c7a5ce7665041b8  supabase/migrations/$staffing_bridge_filename" | sha256sum --check
+          echo "ad680723d7ea3b2e87f3f18d6e4820d011d3880a5d4262c0ccf4cd83c7b8fdda  supabase/migrations/$staffing_bridge_filename" | sha256sum --check
           supabase db push --skip-vault > "$RUNNER_TEMP/rc19-w4-staffing-rpc-baseline-bridge.log" 2>&1 || {
             capture_supabase_start_failure "$RUNNER_TEMP/rc19-w4-staffing-rpc-baseline-bridge.log" "disposable_staffing_rpc_baseline_bridge"
             echo "::error::Disposable staffing RPC predecessor bridge failed; sanitized evidence was recorded."; exit 1;
@@ -643,6 +643,7 @@ jobs:
               "source_fixture_git_blob": "2663f27b260e99597456d85c00c745b1bded9927",
               "source_fixture_origin_commit": "d5a973dc0a86eb05a78ecc07b982eb2944e159a4",
               "expected_rpc_definition_md5": "1932821b475b9030fa5c8e3f6b782691",
+              "expected_predecessor_service_role_execute": True,
               "scope": "disposable predecessor reconciliation bridge; verifies exact historical RPC definition, security metadata and grants before drop; excluded from canonical and historical upgrade evidence",
           }
           receipts = [line.strip() for line in receipts_path.read_text().splitlines() if line.strip()]
@@ -654,7 +655,7 @@ jobs:
               raise SystemExit("Disposable bridge bytes differ from the reviewed production-derived fixture")
           if sto02_bridge["sha256"] != "7f531cc4ce8bbc62c1d89c1c3a31bcee45a6249f0b5e8da7be98b862a39abc7f":
               raise SystemExit("Disposable STO-02 bridge bytes differ from the reviewed production-derived baseline")
-          if staffing_bridge["sha256"] != "df42c97503903b0623c35a8f09d54a2b75c82942e8ba15826c7a5ce7665041b8":
+          if staffing_bridge["sha256"] != "ad680723d7ea3b2e87f3f18d6e4820d011d3880a5d4262c0ccf4cd83c7b8fdda":
               raise SystemExit("Disposable staffing RPC bridge bytes differ from the reviewed predecessor reconciliation")
           json.dump({
               "files": migrations,
