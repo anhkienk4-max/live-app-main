@@ -84,7 +84,7 @@ jobs:
           [[ -d supabase/migrations ]] || { echo "::error::Reviewed candidate has no canonical Supabase migrations"; exit 1; }
           [[ -f supabase/config.toml ]] || { echo "::error::Reviewed candidate has no Supabase CLI config"; exit 1; }
           [[ -f pnpm-lock.yaml ]] || { echo "::error::Reviewed candidate has no frozen pnpm lockfile"; exit 1; }
-          if rg -n -i '(^|\s)(create|alter|drop)\s+(table|schema)\s+(if\s+(not\s+)?exists\s+)?auth\.' supabase/migrations; then
+          if grep -R -n -i -E '(^|[[:space:]])(create|alter|drop)[[:space:]]+(table|schema)[[:space:]]+(if[[:space:]]+(not[[:space:]]+)?exists[[:space:]]+)?auth\.' supabase/migrations; then
             echo "::error::Candidate migrations include direct managed Auth schema DDL"; exit 1;
           fi
 
