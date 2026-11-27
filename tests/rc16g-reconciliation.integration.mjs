@@ -3,6 +3,21 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
 const catalog = JSON.parse(readFileSync('tests/fixtures/rc16g_staging_catalog.json', 'utf8'))
+const rc15BaselineBytes = readFileSync('tests/fixtures/rc15_production_shift_rpc_baseline.sql')
+const rc15BaselineSql = rc15BaselineBytes.toString('utf8')
+assert.equal(createHash('sha256').update(rc15BaselineBytes).digest('hex'),
+  '5d888b0617921d0ac1b23595002d740ef70535bc1beb35cbb0d087f0ea5dced8',
+  'RC15 Production RPC fixture bytes changed')
+assert.equal(rc15BaselineBytes.length, 15797)
+assert.equal(rc15BaselineBytes.toString('binary').match(/\r\n/g)?.length ?? 0, 167)
+assert.equal((rc15BaselineSql.match(/^CREATE OR REPLACE FUNCTION public\./gm) ?? []).length, 3)
+assert.doesNotMatch(rc15BaselineSql, /^(?:CREATE|ALTER|DROP)\s+(?:TABLE|SCHEMA|ROLE)\b/im)
+assert.doesNotMatch(rc15BaselineSql, /^(?:GRANT|REVOKE)\b/im)
+assert.deepEqual([...rc15BaselineSql.matchAll(/^-- Baseline .* pg_get_functiondef md5 ([0-9a-f]{32})$/gm)].map(m => m[1]), [
+  '2133950d90a0610b76d4b6623abf4621',
+  '6737e74fb449e7745b3847b3f95ec0a0',
+  'c7b743aa97b19c678ff6f84d6c9b8a2c',
+])
 export function verifyManifest(manifest) {
   assert.equal(manifest.target, 'legacy-rc13a-only')
   assert.deepEqual(manifest.steps.map(s => s.version),
@@ -110,8 +125,35 @@ export async function runReconciliation({ sql, start }) {
   const beforeRpc = await sql(`select oid::regprocedure,proacl,prosecdef,proconfig from pg_proc
     where oid in ('public.create_shift(jsonb)'::regprocedure,'public.update_shift(text,jsonb,boolean)'::regprocedure,
     'public.update_shift(text,jsonb,boolean,integer)'::regprocedure) order by oid::regprocedure::text;`,database)
+  const preRc15Fingerprints = await sql(`select p.oid::regprocedure::text || '|' || md5(pg_get_functiondef(p.oid))
+    from pg_proc p where p.oid in (
+      'public.create_shift(jsonb)'::regprocedure,
+      'public.update_shift(text,jsonb,boolean)'::regprocedure,
+      'public.update_shift(text,jsonb,boolean,integer)'::regprocedure)
+    order by p.oid::regprocedure::text;`,database)
+  if (process.env.RC16_PG_MAJOR === '17') {
+    assert.deepEqual(preRc15Fingerprints.trim().split('\n'), [
+      'create_shift(jsonb)|65bfe7dc925fae3364167ef56c896694',
+      'update_shift(text,jsonb,boolean)|6737e74fb449e7745b3847b3f95ec0a0',
+      'update_shift(text,jsonb,boolean,integer)|095d89911f6157a9ce088b9c4da950ed',
+    ])
+    const predecessorSourceFields = await sql(`select p.oid::regprocedure::text || '|' ||
+      (position('execution_source' in pg_get_functiondef(p.oid)) > 0)::text
+      from pg_proc p where p.oid in (
+        'public.create_shift(jsonb)'::regprocedure,
+        'public.update_shift(text,jsonb,boolean)'::regprocedure,
+        'public.update_shift(text,jsonb,boolean,integer)'::regprocedure)
+      order by p.oid::regprocedure::text;`,database)
+    assert.deepEqual(predecessorSourceFields.trim().split('\n'), [
+      'create_shift(jsonb)|true',
+      'update_shift(text,jsonb,boolean)|false',
+      'update_shift(text,jsonb,boolean,integer)|true',
+    ])
+  }
   await fail(readFileSync('supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql','utf8'),
     /RC15_SHIFT_RPC_DEFINITION_DRIFT/,database)
+  assert.equal((await sql("select count(*) from supabase_migrations.schema_migrations where version='20261011092015';",database)).trim(),'0')
+  pass('PG17 immediately-before-RC15 fingerprints isolate create_shift and four-argument update_shift drift; failed bare replay records no receipt')
   pass('legacy rejects Production-only RPC patch')
   for (const db of [database,'rc16g_fresh']) {
     for (const step of manifest.steps) await apply(step, db)
@@ -235,9 +277,40 @@ export async function runReconciliation({ sql, start }) {
   await apply(manifest.steps[2],badDb)
   pass('unexpected constraints/RPC drift roll back atomically and remain retryable after verified restoration')
   // Recorded Production RPC baseline demonstrates why it must use its own release manifest.
-  await sql(readFileSync('tests/fixtures/rc15_production_shift_rpc_baseline.sql','utf8'),'rc16g_production')
+  await sql(rc15BaselineSql,'rc16g_production')
+  const bridgedRpcContract = await sql(`select p.oid::regprocedure::text || '|' || md5(pg_get_functiondef(p.oid)) || '|' ||
+      p.prosecdef::text || '|' || coalesce(array_to_string(p.proconfig,','),'∅') || '|' ||
+      pg_get_userbyid(p.proowner) || '|' || coalesce(pg_get_expr(p.proargdefaults,0),'∅') || '|' ||
+      has_function_privilege('authenticated',p.oid,'EXECUTE')::text || '|' ||
+      has_function_privilege('service_role',p.oid,'EXECUTE')::text || '|' ||
+      has_function_privilege('anon',p.oid,'EXECUTE')::text || '|' ||
+      exists(select 1 from aclexplode(p.proacl) a where a.grantee=0 and a.privilege_type='EXECUTE')::text
+    from pg_proc p where p.oid in (
+      'public.create_shift(jsonb)'::regprocedure,
+      'public.update_shift(text,jsonb,boolean)'::regprocedure,
+      'public.update_shift(text,jsonb,boolean,integer)'::regprocedure)
+    order by p.oid::regprocedure::text;`, 'rc16g_production')
+  assert.deepEqual(bridgedRpcContract.trim().split('\n'), [
+    'create_shift(jsonb)|2133950d90a0610b76d4b6623abf4621|true|search_path=""|postgres|∅|true|true|false|false',
+    'update_shift(text,jsonb,boolean)|6737e74fb449e7745b3847b3f95ec0a0|true|search_path=""|postgres|false|false|true|false|false',
+    'update_shift(text,jsonb,boolean,integer)|c7b743aa97b19c678ff6f84d6c9b8a2c|true|search_path=""|postgres|∅|true|true|false|false',
+  ])
   await sql(readFileSync('supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql','utf8'),'rc16g_production')
+  assert.equal((await sql("select count(*) from supabase_migrations.schema_migrations where version='20261011092015';",'rc16g_production')).trim(),'0',
+    'Raw SQL rehearsal must not invent a migration receipt')
   await fail(readFileSync(manifest.steps[2].path,'utf8'),/RC16G_SHIFT_RPC_DEFINITION_DRIFT/,'rc16g_production')
   pass('Production RPC branch rejects legacy reconciliation; automatic migration discovery excludes both files')
+  const rc15DriftMarker='-- Baseline p_shift_id text, p_patch jsonb, p_confirm_impact boolean, p_expected_version integer; pg_get_functiondef md5 c7b743aa97b19c678ff6f84d6c9b8a2c'
+  const driftAt=rc15BaselineSql.indexOf(rc15DriftMarker)
+  assert.notEqual(driftAt,-1)
+  const driftedBaseline=rc15BaselineSql.slice(0,driftAt)+rc15BaselineSql.slice(driftAt).replace(
+    "message = 'SHIFT_NOT_FOUND';", "message = 'RC15_SYNTHETIC_FUNCTION_DRIFT';")
+  assert.notEqual(driftedBaseline,rc15BaselineSql)
+  await sql(driftedBaseline,'rc16g_failure')
+  await fail(readFileSync('supabase/migrations/20261011092015_rc15_shift_rpc_compatibility.sql','utf8'),
+    /RC15_SHIFT_RPC_DEFINITION_DRIFT/,'rc16g_failure')
+  assert.equal((await sql("select count(*) from supabase_migrations.schema_migrations where version='20261011092015';",'rc16g_failure')).trim(),'0',
+    'Unexpected RPC drift must fail without creating a migration receipt')
+  pass('RC15 guard still rejects targeted unexpected function drift without a synthetic receipt')
   console.log(`PASS: ${passed} RC1.6G compatibility scenarios; all writes disposable only`)
 }

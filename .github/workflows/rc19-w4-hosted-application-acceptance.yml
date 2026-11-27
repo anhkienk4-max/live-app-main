@@ -124,6 +124,9 @@ jobs:
         run: |
           set -euo pipefail
           project_id="rc19-w4-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          canonical_migrations="$RUNNER_TEMP/rc19-w4-canonical-migrations"
+          bridge_version=20261011092014
+          bridge_filename="${bridge_version}_rc15_disposable_production_rpc_baseline_bridge.sql"
           python3 - "$project_id" <<'PY'
           from pathlib import Path
           import re
@@ -172,7 +175,7 @@ jobs:
             local containers_file="$RUNNER_TEMP/rc19-w4-failed-containers.txt"
             local evidence_file="$RUNNER_TEMP/rc19-w4-startup-failure.json"
             docker ps -a --format '{{.Names}}|{{.Image}}|{{.Status}}' > "$containers_file" || true
-            python3 - "$log_file" "$stage" "$containers_file" "$evidence_file" <<'PY'
+            python3 - "$log_file" "$stage" "$containers_file" "$evidence_file" "$canonical_migrations" <<'PY'
           import hashlib
           import json
           import re
@@ -183,6 +186,7 @@ jobs:
           stage = sys.argv[2]
           containers_path = Path(sys.argv[3])
           output_path = Path(sys.argv[4])
+          migrations_root = Path(sys.argv[5])
           raw = log_path.read_bytes() if log_path.exists() else b""
           decoded = raw.decode("utf-8", errors="replace")
           patterns = [
@@ -205,7 +209,7 @@ jobs:
           ))
           sqlstates = sorted(set(re.findall(r"SQLSTATE(?:\s|:|=)+([0-9A-Z]{5})", decoded, re.I)))
           migrations = []
-          for path in sorted(Path("supabase/migrations").glob("*.sql"), key=lambda item: item.name):
+          for path in sorted(migrations_root.glob("*.sql"), key=lambda item: item.name):
               migrations.append({
                   "filename": path.name,
                   "version": path.name.split("_", 1)[0],
@@ -217,7 +221,7 @@ jobs:
           )))
           token_sources = {
               token: [item["filename"] for item in migrations
-                      if token in (Path("supabase/migrations") / item["filename"]).read_text()]
+                      if token in (migrations_root / item["filename"]).read_text()]
               for token in error_tokens
           }
           unique_token_sources = sorted(set(
@@ -257,9 +261,120 @@ jobs:
             jq -r '"Supabase startup diagnostic: " + .steps.startup.code + " at " + .steps.startup.stage + "; raw log omitted (sha256 " + .steps.startup.raw_log_sha256 + ")"' \
               "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" >> "$GITHUB_STEP_SUMMARY"
           }
+          # Supabase startup normally auto-applies migrations. Keep this job-local
+          # runtime empty until we can reproduce the verified pre-RC15 baseline.
+          mv supabase/migrations "$canonical_migrations"
+          mkdir -p supabase/migrations
           supabase start > "$RUNNER_TEMP/rc19-w4-app-start.log" 2>&1 || {
             capture_supabase_start_failure "$RUNNER_TEMP/rc19-w4-app-start.log" "fresh_start"
             echo "::error::Fresh candidate Supabase stack failed during fresh_start; sanitized evidence was recorded."; exit 1;
+          }
+          database_container="supabase_db_${project_id}"
+          database_container_id="$(docker ps --filter "name=^/${database_container}$" --format '{{.ID}}')"
+          [[ -n "$database_container_id" ]] || { echo "::error::Unique candidate database container is missing"; exit 1; }
+          python3 - "$canonical_migrations" "$RUNNER_TEMP/rc19-w4-rc15-predecessors.txt" <<'PY'
+          from pathlib import Path
+          import sys
+
+          source = Path(sys.argv[1])
+          paths = sorted(source.glob("*.sql"), key=lambda item: item.name)
+          target = "20261011092015_rc15_shift_rpc_compatibility.sql"
+          names = [path.name for path in paths]
+          if target not in names:
+              raise SystemExit("Canonical RC15 target migration is missing")
+          target_index = names.index(target)
+          if target_index == 0 or names[target_index - 1] != "20261011091925_rc15_storage_route_prerequisites.sql":
+              raise SystemExit("Canonical RC15 predecessor ordering changed; bridge placement needs review")
+          predecessors = paths[:target_index]
+          if not predecessors:
+              raise SystemExit("No canonical migrations precede RC15")
+          Path(sys.argv[2]).write_text("\n".join(path.name for path in predecessors) + "\n")
+          for path in predecessors:
+              (Path("supabase/migrations") / path.name).write_bytes(path.read_bytes())
+          PY
+          supabase db push --skip-vault > "$RUNNER_TEMP/rc19-w4-pre-rc15-migrations.log" 2>&1 || {
+            capture_supabase_start_failure "$RUNNER_TEMP/rc19-w4-pre-rc15-migrations.log" "canonical_pre_rc15_migrations"
+            echo "::error::Canonical predecessor migrations failed in the disposable runtime; sanitized evidence was recorded."; exit 1;
+          }
+          predecessor_count="$(wc -l < "$RUNNER_TEMP/rc19-w4-rc15-predecessors.txt" | tr -d '[:space:]')"
+          [[ "$predecessor_count" =~ ^[0-9]+$ && "$predecessor_count" -gt 0 ]]
+          predecessor_receipts="$(docker exec "$database_container_id" psql -U postgres -d postgres -Atqc 'SELECT count(*) FROM supabase_migrations.schema_migrations')"
+          [[ "$predecessor_receipts" == "$predecessor_count" ]] || {
+            echo "::error::Pre-RC15 database ledger does not match the canonical predecessor batch"; exit 1;
+          }
+          # This is a disposable-only bridge. Its bytes are copied unchanged from
+          # the reviewed, production-derived fixture; its receipt belongs only to
+          # this synthetic runtime and is reported separately from canonical replay.
+          echo '5d888b0617921d0ac1b23595002d740ef70535bc1beb35cbb0d087f0ea5dced8  tests/fixtures/rc15_production_shift_rpc_baseline.sql' | sha256sum --check
+          cp tests/fixtures/rc15_production_shift_rpc_baseline.sql "supabase/migrations/$bridge_filename"
+          supabase db push --skip-vault > "$RUNNER_TEMP/rc19-w4-rc15-baseline-bridge.log" 2>&1 || {
+            capture_supabase_start_failure "$RUNNER_TEMP/rc19-w4-rc15-baseline-bridge.log" "disposable_rc15_baseline_bridge"
+            echo "::error::Disposable RC15 baseline bridge failed; sanitized evidence was recorded."; exit 1;
+          }
+          bridge_receipt="$(docker exec "$database_container_id" psql -U postgres -d postgres -Atqc "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version='$bridge_version'")"
+          [[ "$bridge_receipt" == 1 ]] || { echo "::error::Disposable baseline bridge receipt is missing"; exit 1; }
+          docker exec "$database_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -At -F '|' -c "
+            SELECT p.oid::regprocedure::text, md5(pg_get_functiondef(p.oid)), p.prosecdef,
+              coalesce(array_to_string(p.proconfig,','),'∅'), pg_get_userbyid(p.proowner),
+              coalesce(pg_get_expr(p.proargdefaults,0),'∅'),
+              has_function_privilege('authenticated',p.oid,'EXECUTE'),
+              has_function_privilege('service_role',p.oid,'EXECUTE'),
+              has_function_privilege('anon',p.oid,'EXECUTE'),
+              exists(select 1 from aclexplode(p.proacl) a where a.grantee=0 and a.privilege_type='EXECUTE')
+            FROM pg_proc p WHERE p.oid IN (
+              'public.create_shift(jsonb)'::regprocedure,
+              'public.update_shift(text,jsonb,boolean)'::regprocedure,
+              'public.update_shift(text,jsonb,boolean,integer)'::regprocedure)
+            ORDER BY p.oid::regprocedure::text" > "$RUNNER_TEMP/rc19-w4-rc15-baseline-contract.txt"
+          python3 - "$RUNNER_TEMP/rc19-w4-rc15-baseline-contract.txt" <<'PY'
+          from pathlib import Path
+          import sys
+
+          actual = Path(sys.argv[1]).read_text().strip().splitlines()
+          expected = [
+              "create_shift(jsonb)|2133950d90a0610b76d4b6623abf4621|t|search_path=\"\"|postgres|∅|t|t|f|f",
+              "update_shift(text,jsonb,boolean)|6737e74fb449e7745b3847b3f95ec0a0|t|search_path=\"\"|postgres|false|f|t|f|f",
+              "update_shift(text,jsonb,boolean,integer)|c7b743aa97b19c678ff6f84d6c9b8a2c|t|search_path=\"\"|postgres|∅|t|t|f|f",
+          ]
+          # Verify expected values against the fixture's annotations at runtime too.
+          fixture = Path("rc19-w4-application/tests/fixtures/rc15_production_shift_rpc_baseline.sql")
+          if not fixture.exists():
+              fixture = Path("tests/fixtures/rc15_production_shift_rpc_baseline.sql")
+          import re
+          annotated = re.findall(r"^-- Baseline .* pg_get_functiondef md5 ([0-9a-f]{32})$", fixture.read_text(), re.M)
+          if len(annotated) != 3:
+              raise SystemExit("RC15 baseline fixture annotations are incomplete")
+          if annotated != [
+              "2133950d90a0610b76d4b6623abf4621",
+              "6737e74fb449e7745b3847b3f95ec0a0",
+              "c7b743aa97b19c678ff6f84d6c9b8a2c",
+          ]:
+              raise SystemExit("RC15 fixture annotations changed from the reviewed production baseline")
+          if [line.split("|", 1)[1] for line in actual] != [line.split("|", 1)[1] for line in expected]:
+              raise SystemExit("Disposable RC15 bridge fingerprint/security contract mismatch")
+          if actual != expected:
+              raise SystemExit("Disposable RC15 bridge metadata or execution privileges differ")
+          PY
+          target_index="$(awk 'END{print NR}' "$RUNNER_TEMP/rc19-w4-rc15-predecessors.txt")"
+          python3 - "$canonical_migrations" "$target_index" "$bridge_filename" <<'PY'
+          from pathlib import Path
+          import sys
+
+          source = Path(sys.argv[1])
+          target_index = int(sys.argv[2])
+          files = sorted(source.glob("*.sql"), key=lambda item: item.name)
+          target = "20261011092015_rc15_shift_rpc_compatibility.sql"
+          names = [path.name for path in files]
+          start = names.index(target)
+          if start != target_index:
+              raise SystemExit("Canonical migration inventory changed during the disposable replay")
+          active = Path("supabase/migrations")
+          for path in files[start:]:
+              (active / path.name).write_bytes(path.read_bytes())
+          PY
+          supabase db push --skip-vault > "$RUNNER_TEMP/rc19-w4-remaining-migrations.log" 2>&1 || {
+            capture_supabase_start_failure "$RUNNER_TEMP/rc19-w4-remaining-migrations.log" "rc15_and_remaining_canonical_migrations"
+            echo "::error::RC15 or a later canonical migration failed in the disposable runtime; sanitized evidence was recorded."; exit 1;
           }
           supabase stop --no-backup > /dev/null 2>&1 || { echo "::error::Could not stop stack for cold-start check"; exit 1; }
           supabase start > "$RUNNER_TEMP/rc19-w4-app-cold-start.log" 2>&1 || {
@@ -315,25 +430,44 @@ jobs:
             > "$auth_tables_file"
           docker exec "$database_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -At -F $'\t' \
             -c 'SELECT extname, extversion FROM pg_extension ORDER BY extname' > "$extensions_file"
-          python3 - "$receipts_file" "$RUNNER_TEMP/rc19-w4-app-migration-evidence.json" "$auth_tables_file" "$extensions_file" <<'PY'
+          python3 - "$receipts_file" "$RUNNER_TEMP/rc19-w4-app-migration-evidence.json" "$auth_tables_file" "$extensions_file" "$canonical_migrations" "$bridge_filename" "$RUNNER_TEMP/rc19-w4-rc15-baseline-contract.txt" <<'PY'
           import hashlib
           import json
           import sys
           from pathlib import Path
 
-          receipts_path, output_path, auth_tables, extensions = map(Path, sys.argv[1:])
-          files = sorted(Path("supabase/migrations").glob("*.sql"), key=lambda p: p.name)
+          receipts_path, output_path, auth_tables, extensions = map(Path, sys.argv[1:5])
+          canonical_dir = Path(sys.argv[5])
+          bridge_path = Path("supabase/migrations") / sys.argv[6]
+          rpc_contract_path = Path(sys.argv[7])
+          files = sorted(canonical_dir.glob("*.sql"), key=lambda p: p.name)
           migrations = [{
               "version": path.name.split("_", 1)[0],
               "filename": path.name,
               "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
           } for path in files]
+          bridge = {
+              "version": bridge_path.name.split("_", 1)[0],
+              "filename": bridge_path.name,
+              "sha256": hashlib.sha256(bridge_path.read_bytes()).hexdigest(),
+              "source_fixture": "tests/fixtures/rc15_production_shift_rpc_baseline.sql",
+              "source_fixture_sha256": hashlib.sha256((Path("tests/fixtures/rc15_production_shift_rpc_baseline.sql")).read_bytes()).hexdigest(),
+              "source_fixture_git_blob": "1ee87ba2a091621afad7b738104e4b645201ff6a",
+              "source_fixture_origin_commit": "3400f373",
+              "source_fixture_crlf_sequences": (Path("tests/fixtures/rc15_production_shift_rpc_baseline.sql").read_bytes().count(b"\r\n")),
+              "scope": "disposable baseline bridge; excluded from canonical and historical upgrade evidence",
+          }
           receipts = [line.strip() for line in receipts_path.read_text().splitlines() if line.strip()]
           expected = [migration["version"] for migration in migrations]
-          if not migrations or expected != receipts:
-              raise SystemExit("Canonical migration files and disposable runtime receipts differ")
+          expected_receipts = sorted(expected + [bridge["version"]])
+          if not migrations or expected_receipts != receipts:
+              raise SystemExit("Canonical migration files, disposable bridge, and executed runtime receipts differ")
+          if bridge["sha256"] != "5d888b0617921d0ac1b23595002d740ef70535bc1beb35cbb0d087f0ea5dced8":
+              raise SystemExit("Disposable bridge bytes differ from the reviewed production-derived fixture")
           json.dump({
               "files": migrations,
+              "disposable_baseline_bridge": bridge,
+              "rc15_predecessor_rpc_contract": rpc_contract_path.read_text().splitlines(),
               "executed_receipts": receipts,
               "auth_catalog_tables": auth_tables.read_text().splitlines(),
               "extensions": [line.split("\t", 1) for line in extensions.read_text().splitlines() if line],
