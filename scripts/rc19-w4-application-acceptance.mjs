@@ -381,7 +381,7 @@ async function createActor(service, url, anonKey, role, email, password, suffix)
     || row.deleted_at !== null || row.archived_at !== null) {
     stop(`BUSINESS_USER_MAPPING_MISMATCH_${suffix.toUpperCase()}`)
   }
-  return { id: authId, client }
+  return { id: authId, email, client }
 }
 
 function segment(segmentIndex, startTime, endTime, operationalRole) {
