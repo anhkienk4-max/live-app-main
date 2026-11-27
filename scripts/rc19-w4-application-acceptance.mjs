@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 
-const schema = 'rc19-w4-application-acceptance/v1'
+const schema = 'rc19-w4-application-acceptance/v2'
 const root = process.cwd()
 
 function stop(code) {
@@ -391,14 +391,69 @@ async function main() {
 
   const report = {
     schema,
-    status: 'passed',
+    status: 'BLOCKED',
+    application_sha: sha,
+    runtime_database_marker: marker,
     synthetic_users: {
       admin: { login: true, canonical_business_user_mapping: true },
       leader: { login: true, canonical_business_user_mapping: true },
       member: { login: true, canonical_business_user_mapping: true },
     },
     authorization: { rbac: true, rls: true, application_api: true },
-    browser_uat: { ran: false, passed: false },
+    browser_uat: { requested: false, ran: false, passed: false, status: 'NOT RUN' },
+    cases: [
+      {
+        case_id: 'auth-canonical-business-identity', actor: 'Admin, Leader, Member',
+        expected: 'Authenticated GoTrue identity maps to one active canonical business user with matching role.',
+        actual: 'Synthetic Admin/Leader/Member login, Auth identity and canonical mapping checks passed.',
+        evidence_scope: 'Disposable local Auth/PostgREST fixture; no hosted runtime.', status: 'PASS',
+      },
+      {
+        case_id: 'agency-membership', actor: 'In-Agency, out-of-Agency, revoked Member',
+        expected: 'Current canonical membership permits only in-scope operations; missing or revoked membership denies.',
+        actual: 'Canonical Agency fixture provisioning is not implemented in this entrypoint.',
+        evidence_scope: 'Source review only.', status: 'BLOCKED',
+      },
+      {
+        case_id: 'external-summary', actor: 'Admin, scoped Leader, Member',
+        expected: 'Authorized CAS mutation and idempotent replay match persisted summary readback.',
+        actual: 'Not exercised by this entrypoint.', evidence_scope: 'No case evidence.', status: 'NOT RUN',
+      },
+      {
+        case_id: 'workforce-full-scope-aggregates', actor: 'Admin, scoped Leader, Member',
+        expected: 'Filtered category/status/late-minute totals equal complete authorized scope before pagination.',
+        actual: 'Not exercised by this entrypoint.', evidence_scope: 'No case evidence.', status: 'NOT RUN',
+      },
+      {
+        case_id: 'pass-swap-receipt-lifecycle', actor: 'Requester, counterpart, Leader, revoked actor',
+        expected: 'Same-key retry returns one persisted row; changed payload and unauthorized replay deny.',
+        actual: 'Not exercised by this entrypoint.', evidence_scope: 'No Auth/PG17 case evidence.', status: 'NOT RUN',
+      },
+      ...Array.from({ length: 11 }, (_, index) => ({
+        case_id: `D${String(index + 1).padStart(2, '0')}`,
+        actor: 'Per Codex 02 case definition',
+        expected: 'Case-specific expected result and persisted readback from Codex 02 mapping.',
+        actual: 'Not run; named business-group mapping is required from Codex 02.',
+        evidence_scope: 'No case evidence.', status: 'NOT RUN',
+      })),
+      {
+        case_id: 'temporal-attendance-payroll', actor: 'Member, Attendance reviewer, Payroll actor',
+        expected: 'Temporal boundaries and source-to-payroll linkage match canonical persisted rows.',
+        actual: 'Not exercised by this entrypoint.', evidence_scope: 'No case evidence.', status: 'NOT RUN',
+      },
+      {
+        case_id: 'persisted-fixture-readback', actor: 'Disposable fixture service role',
+        expected: 'Created shifts, segments and registrations read back exactly from PostgreSQL.',
+        actual: 'Synthetic shift/segment/registration readback checks passed.',
+        evidence_scope: 'Disposable local PostgreSQL fixture; not authenticated application API readback.', status: 'PASS',
+      },
+      {
+        case_id: 'authenticated-browser', actor: 'Admin, Leader, Member',
+        expected: 'Next.js starts at the attested SHA; authenticated browser action and persisted readback pass.',
+        actual: 'This entrypoint does not start Next.js or run a browser.',
+        evidence_scope: 'No browser evidence.', status: 'NOT RUN',
+      },
+    ],
     fixtures: {
       authenticated_users: authUsers.length + 3,
       brands: brandIds.length,
