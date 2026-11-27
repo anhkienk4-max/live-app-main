@@ -23,6 +23,8 @@ export type CampaignStatus = 'draft' | 'active' | 'completed' | 'cancelled'
 
 export type SwapStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'approved' | 'completed'
 export type SwapMode = 'replacement' | 'move' | 'exchange'
+/** UUID token retained by the client until the mutation result is known. */
+export type SwapIdempotencyKey = string
 
 export interface LifecycleMetadata {
   deleted_at?: string

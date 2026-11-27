@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const migration = readFileSync(new URL('../supabase/migrations/20261126150000_rc19_w4_segment_aware_pass_swap.sql', import.meta.url), 'utf8')
+const receiptMigration = readFileSync(new URL('../supabase/migrations/20261127100000_rc19_w4_segment_aware_swap_receipts.sql', import.meta.url), 'utf8')
 
 function body(name: string) {
   const start = migration.indexOf(`function public.${name}(`)
@@ -55,10 +56,12 @@ test('PASS preserves approved daily/campaign timing and the live-start denial', 
   assert.match(approve, /EXCHANGE_DURING_LIVE_NOT_ALLOWED/u)
 })
 
-test('existing version-fenced approval remains the only authenticated approval entrypoint', () => {
+test('version-fenced approval remains behind the authenticated receipt entrypoint', () => {
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.approve_shift_swap_request\(text,text\)\s+FROM PUBLIC, anon, authenticated, service_role/u)
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.approve_shift_swap_request\(text,text,integer\)\s+TO authenticated/u)
   assert.match(migration, /W4_SEGMENT_SWAP_RPC_PRIVILEGE_CHECK_FAILED/u)
+  assert.match(receiptMigration, /REVOKE ALL ON FUNCTION public\.approve_shift_swap_request\(text,text,integer\) FROM PUBLIC, anon, authenticated, service_role/u)
+  assert.match(receiptMigration, /GRANT EXECUTE ON FUNCTION public\.shift_swap_operation_v1\(text,text,jsonb,uuid\) TO authenticated/u)
 })
 
 test('swap mutations check canonical active Agency membership for incoming assignments', () => {

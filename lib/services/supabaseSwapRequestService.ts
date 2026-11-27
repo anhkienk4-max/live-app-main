@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import type { OperationalRole, SwapConflictCheckInput, SwapConflictCheckStatus, SwapRequest, SwapStatus } from '@/lib/types/database.types'
+import type { OperationalRole, SwapConflictCheckInput, SwapConflictCheckStatus, SwapIdempotencyKey, SwapRequest, SwapStatus } from '@/lib/types/database.types'
 
 const swapRequestColumns = [
   'id','requester_id','source_registration_id','source_shift_id','target_shift_id','counterpart_registration_id','counterpart_id','operational_role','mode','status','reason','notes','created_at','updated_at','version','responded_at','responded_by','approved_at','approved_by','completed_at','shift_id','original_staff_id','replacement_staff_id','new_host_id','new_support_id','new_technical_id','approval_history','deleted_at','deleted_by','deletion_reason',
@@ -110,16 +110,117 @@ export function swapFromRow(row: NullableSwapRow): SwapRequest {
 function rows<T>(op:string, r:{data:T[]|null;error:SupabaseErrorShape|null}):T[] { if(r.error) throw requestError(op,r.error); return r.data ?? [] }
 function one<T>(op:string, r:{data:T|null;error:SupabaseErrorShape|null}):T { if(r.error) throw requestError(op,r.error); if(r.data===null) throw new SwapRequestError(`Supabase ${op} returned no persisted row.`,'SWAP_WRITE_NOT_APPLIED'); return r.data }
 
+type SwapOperation = 'create' | 'approve' | 'accept' | 'respond_reject' | 'reject' | 'cancel'
+type PendingSwapKey = { key: string }
+const pendingSwapKeys = new Map<string, PendingSwapKey>()
+const swapKeyStoragePrefix = 'rc19:swap-operation:v1:'
+
+function swapOperationSlot(action: SwapOperation, identity: string): string {
+  return `${swapKeyStoragePrefix}${action}:${encodeURIComponent(identity)}`
+}
+
+function pendingKeyFor(slot: string): string | null {
+  const memoryKey = pendingSwapKeys.get(slot)?.key
+  if (memoryKey) return memoryKey
+  if (typeof window === 'undefined') return null
+  try {
+    const saved = window.sessionStorage.getItem(slot)
+    if (!saved) return null
+    const parsed = JSON.parse(saved) as Partial<PendingSwapKey>
+    if (typeof parsed.key !== 'string') return null
+    pendingSwapKeys.set(slot, { key: parsed.key })
+    return parsed.key
+  } catch {
+    return null
+  }
+}
+
+function writePendingKey(slot: string, key: string): void {
+  pendingSwapKeys.set(slot, { key })
+  if (typeof window !== 'undefined') {
+    try { window.sessionStorage.setItem(slot, JSON.stringify({ key })) } catch {
+      pendingSwapKeys.delete(slot)
+      throw new SwapRequestError('Persistent retry storage is unavailable for this swap operation.', 'SWAP_IDEMPOTENCY_STORAGE_UNAVAILABLE')
+    }
+  }
+}
+
+function clearPendingKey(slot: string, key: string): void {
+  if (pendingSwapKeys.get(slot)?.key === key) pendingSwapKeys.delete(slot)
+  if (typeof window !== 'undefined') {
+    try {
+      const current = window.sessionStorage.getItem(slot)
+      if (current && (JSON.parse(current) as Partial<PendingSwapKey>).key === key) window.sessionStorage.removeItem(slot)
+    } catch { /* storage may be unavailable or malformed */ }
+  }
+}
+
+function validIdempotencyKey(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value)
+}
+
+function newIdempotencyKey(): string {
+  if (typeof globalThis.crypto?.randomUUID !== 'function') {
+    throw new SwapRequestError('Secure UUID generation is unavailable for this swap operation.', 'SWAP_IDEMPOTENCY_KEY_UNAVAILABLE')
+  }
+  return globalThis.crypto.randomUUID()
+}
+
+function resolveSwapIdempotencyKey(action: SwapOperation, identity: string, explicit?: SwapIdempotencyKey): { key: SwapIdempotencyKey; slot?: string } {
+  if (explicit !== undefined) {
+    if (!validIdempotencyKey(explicit)) throw new SwapRequestError('A valid UUID idempotency key is required.', 'SWAP_IDEMPOTENCY_KEY_INVALID')
+    return { key: explicit }
+  }
+  const slot = swapOperationSlot(action, identity)
+  const pending = pendingKeyFor(slot)
+  const key = pending ?? newIdempotencyKey()
+  if (!pending) writePendingKey(slot, key)
+  return { key, slot }
+}
+
+async function swapOperation(
+  client: SupabaseClient,
+  op: string,
+  action: SwapOperation,
+  requestId: string | null,
+  identity: string,
+  payload: Record<string, unknown>,
+  explicitKey?: SwapIdempotencyKey,
+): Promise<SwapRequest> {
+  const resolved = resolveSwapIdempotencyKey(action, identity, explicitKey)
+  let result: { data: NullableSwapRow | null; error: SupabaseErrorShape | null }
+  try {
+    result = await client.rpc('shift_swap_operation_v1', {
+      p_action: action,
+      p_request_id: requestId,
+      p_payload: payload,
+      p_idempotency_key: resolved.key,
+    }).single() as typeof result
+  } catch (error) {
+    // A transport exception can occur after PostgreSQL committed. Keep the key
+    // so a retry replays the same transaction and response.
+    throw error
+  }
+  if (result.error) {
+    // PostgREST can report a transport failure as an RPC error object. Keep
+    // the key for every error until a successful row proves the outcome.
+    throw requestError(op, result.error)
+  }
+  const request = swapFromRow(one(op, result) as unknown as NullableSwapRow)
+  if (resolved.slot) clearPendingKey(resolved.slot, resolved.key)
+  return request
+}
+
 export interface SupabaseSwapRequestRepository {
   getAll(): Promise<SwapRequest[]>
   getPending(): Promise<SwapRequest[]>
   verifyConflict(data: SwapConflictCheckInput): Promise<SwapConflictCheckStatus>
-  create(data: { shift_id?: string; sourceRegistrationId: string; targetShiftId?: string | null; replacementStaffId?: string | null; counterpartRegistrationId?: string | null; operational_role?: OperationalRole; replacement_staff_id?: string; reason: string; notes?: string; mode: 'replacement' | 'exchange' }): Promise<SwapRequest>
-  approve(id: string, notes?: string, expectedVersion?: number): Promise<SwapRequest>
-  reject(id: string, notes?: string, expectedVersion?: number): Promise<SwapRequest>
-  cancel(id: string, reason: string, expectedVersion?: number): Promise<SwapRequest>
-  accept(id: string, notes?: string, expectedVersion?: number): Promise<SwapRequest>
-  respond(id: string, action: 'accept' | 'reject', notes?: string, expectedVersion?: number): Promise<SwapRequest>
+  create(data: { shift_id?: string; sourceRegistrationId: string; targetShiftId?: string | null; replacementStaffId?: string | null; counterpartRegistrationId?: string | null; operational_role?: OperationalRole; replacement_staff_id?: string; reason: string; notes?: string; mode: 'replacement' | 'exchange' }, idempotencyKey?: SwapIdempotencyKey): Promise<SwapRequest>
+  approve(id: string, notes?: string, expectedVersion?: number, idempotencyKey?: SwapIdempotencyKey): Promise<SwapRequest>
+  reject(id: string, notes?: string, expectedVersion?: number, idempotencyKey?: SwapIdempotencyKey): Promise<SwapRequest>
+  cancel(id: string, reason: string, expectedVersion?: number, idempotencyKey?: SwapIdempotencyKey): Promise<SwapRequest>
+  accept(id: string, notes?: string, expectedVersion?: number, idempotencyKey?: SwapIdempotencyKey): Promise<SwapRequest>
+  respond(id: string, action: 'accept' | 'reject', notes?: string, expectedVersion?: number, idempotencyKey?: SwapIdempotencyKey): Promise<SwapRequest>
 }
 
 export function createSupabaseSwapRequestRepository(client: SupabaseClient): SupabaseSwapRequestRepository {
@@ -139,39 +240,37 @@ export function createSupabaseSwapRequestRepository(client: SupabaseClient): Sup
       if (result.data === 'VERIFIED_CLEAR' || result.data === 'CONFLICT') return result.data
       return 'UNKNOWN'
     },
-    async create(data) {
+    async create(data, idempotencyKey) {
       if (!data.sourceRegistrationId) throw new SwapRequestError('A source registration is required.', 'SOURCE_REGISTRATION_REQUIRED')
-      const result = await client.rpc('create_shift_swap_request', {
-        p_source_registration_id: data.sourceRegistrationId,
-        p_mode: data.mode,
-        p_target_shift_id: data.targetShiftId ?? null,
-        p_replacement_staff_id: data.replacementStaffId ?? data.replacement_staff_id ?? null,
-        p_counterpart_registration_id: data.counterpartRegistrationId ?? null,
-        p_reason: data.reason,
-        p_notes: data.notes ?? null,
-      }).single()
-      // fallback to legacy RPC if new fails due to missing overload — try legacy
-      return swapFromRow(one('swap request create', result) as unknown as NullableSwapRow)
+      return swapOperation(client, 'swap request create', 'create', null, data.sourceRegistrationId, {
+        source_registration_id: data.sourceRegistrationId,
+        mode: data.mode,
+        reason: data.reason,
+        target_shift_id: data.targetShiftId ?? null,
+        replacement_staff_id: data.replacementStaffId ?? data.replacement_staff_id ?? null,
+        counterpart_registration_id: data.counterpartRegistrationId ?? null,
+        notes: data.notes ?? null,
+      }, idempotencyKey)
     },
-    async approve(id, notes, expectedVersion) {
-      const result = await client.rpc('approve_shift_swap_request', { p_request_id: id, p_notes: notes ?? null, p_expected_version: expectedVersion ?? null }).single()
-      return swapFromRow(one('swap request approve', result) as unknown as NullableSwapRow)
+    async approve(id, notes, expectedVersion, idempotencyKey) {
+      if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) throw new SwapRequestError('An expected request version is required.', 'EXPECTED_VERSION_REQUIRED')
+      return swapOperation(client, 'swap request approve', 'approve', id, id, { notes: notes ?? null, expected_version: expectedVersion }, idempotencyKey)
     },
-    async reject(id, notes, expectedVersion) {
-      const result = await client.rpc('reject_shift_swap_request', { p_request_id: id, p_notes: notes ?? null, p_expected_version: expectedVersion ?? null }).single()
-      return swapFromRow(one('swap request reject', result) as unknown as NullableSwapRow)
+    async reject(id, notes, expectedVersion, idempotencyKey) {
+      if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) throw new SwapRequestError('An expected request version is required.', 'EXPECTED_VERSION_REQUIRED')
+      return swapOperation(client, 'swap request reject', 'reject', id, id, { notes: notes ?? null, expected_version: expectedVersion }, idempotencyKey)
     },
-    async accept(id, notes, expectedVersion) {
-      const result = await client.rpc('respond_shift_swap_request', { p_request_id: id, p_action: 'accept', p_notes: notes ?? null, p_expected_version: expectedVersion ?? null }).single()
-      return swapFromRow(one('swap request accept', result) as unknown as NullableSwapRow)
+    async accept(id, notes, expectedVersion, idempotencyKey) {
+      if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) throw new SwapRequestError('An expected request version is required.', 'EXPECTED_VERSION_REQUIRED')
+      return swapOperation(client, 'swap request accept', 'accept', id, id, { notes: notes ?? null, expected_version: expectedVersion }, idempotencyKey)
     },
-    async respond(id, action, notes, expectedVersion) {
-      const result = await client.rpc('respond_shift_swap_request', { p_request_id: id, p_action: action, p_notes: notes ?? null, p_expected_version: expectedVersion ?? null }).single()
-      return swapFromRow(one('swap request response', result) as unknown as NullableSwapRow)
+    async respond(id, action, notes, expectedVersion, idempotencyKey) {
+      if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) throw new SwapRequestError('An expected request version is required.', 'EXPECTED_VERSION_REQUIRED')
+      return swapOperation(client, `swap request ${action}`, action === 'accept' ? 'accept' : 'respond_reject', id, id, { notes: notes ?? null, expected_version: expectedVersion }, idempotencyKey)
     },
-    async cancel(id, reason, expectedVersion) {
-      const result = await client.rpc('cancel_own_shift_swap_request', { p_request_id: id, p_reason: reason, p_expected_version: expectedVersion ?? null }).single()
-      return swapFromRow(one('swap request cancel', result) as unknown as NullableSwapRow)
+    async cancel(id, reason, expectedVersion, idempotencyKey) {
+      if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) throw new SwapRequestError('An expected request version is required.', 'EXPECTED_VERSION_REQUIRED')
+      return swapOperation(client, 'swap request cancel', 'cancel', id, id, { reason, expected_version: expectedVersion }, idempotencyKey)
     },
   }
 }
