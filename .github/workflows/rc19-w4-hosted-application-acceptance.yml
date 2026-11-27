@@ -127,6 +127,9 @@ jobs:
           canonical_migrations="$RUNNER_TEMP/rc19-w4-canonical-migrations"
           bridge_version=20261011092014
           bridge_filename="${bridge_version}_rc15_disposable_production_rpc_baseline_bridge.sql"
+          sto02_bridge_version=20261103195518
+          sto02_bridge_filename="${sto02_bridge_version}_rc19_w4_disposable_sto02_baseline_bridge.sql"
+          sto02_baseline_source="$GITHUB_WORKSPACE/supabase/proposals/rc19-sto02-resource-registry/20261027150000_rc19_sto02_resource_registry.sql"
           python3 - "$project_id" <<'PY'
           from pathlib import Path
           import re
@@ -386,26 +389,68 @@ jobs:
               raise SystemExit("Disposable RC15 bridge metadata or execution privileges differ")
           PY
           cat "$RUNNER_TEMP/rc19-w4-rc15-baseline-contract.txt"
-          target_index="$(awk 'END{print NR}' "$RUNNER_TEMP/rc19-w4-rc15-predecessors.txt")"
-          python3 - "$canonical_migrations" "$target_index" "$bridge_filename" <<'PY'
+          python3 - "$canonical_migrations" "$bridge_filename" "$RUNNER_TEMP/rc19-w4-before-c2-migrations.txt" <<'PY'
           from pathlib import Path
           import sys
 
           source = Path(sys.argv[1])
-          target_index = int(sys.argv[2])
           files = sorted(source.glob("*.sql"), key=lambda item: item.name)
-          target = "20261011092015_rc15_shift_rpc_compatibility.sql"
+          rc15_target = "20261011092015_rc15_shift_rpc_compatibility.sql"
+          c2_target = "20261103195519_rc19_c2_resource_public_and_app_edit.sql"
           names = [path.name for path in files]
-          start = names.index(target)
-          if start != target_index:
-              raise SystemExit("Canonical migration inventory changed during the disposable replay")
+          if rc15_target not in names or c2_target not in names:
+              raise SystemExit("Canonical RC15 or C2 migration is missing")
+          start = names.index(rc15_target)
+          c2_index = names.index(c2_target)
+          if c2_index <= start or names[c2_index - 1] != "20261103093137_rc19_unified_import_agency_supplemental_fields.sql":
+              raise SystemExit("Canonical migration dependency immediately before C2 changed; bridge placement needs review")
+          active = Path("supabase/migrations")
+          before_c2 = files[start:c2_index]
+          if not before_c2 or before_c2[0].name != rc15_target:
+              raise SystemExit("Canonical post-RC15 migration batch is empty or misordered")
+          Path(sys.argv[3]).write_text("\n".join(path.name for path in before_c2) + "\n")
+          for path in before_c2:
+              (active / path.name).write_bytes(path.read_bytes())
+          PY
+          supabase db push --skip-vault > "$RUNNER_TEMP/rc19-w4-post-rc15-before-c2-migrations.log" 2>&1 || {
+            capture_supabase_start_failure "$RUNNER_TEMP/rc19-w4-post-rc15-before-c2-migrations.log" "rc15_through_c2_predecessor_migrations"
+            echo "::error::RC15 through the canonical C2 predecessor failed in the disposable runtime; sanitized evidence was recorded."; exit 1;
+          }
+          before_c2_count="$(wc -l < "$RUNNER_TEMP/rc19-w4-before-c2-migrations.txt" | tr -d '[:space:]')"
+          [[ "$before_c2_count" =~ ^[0-9]+$ && "$before_c2_count" -gt 0 ]]
+          before_c2_receipts="$(docker exec "$database_container_id" psql -U postgres -d postgres -Atqc 'SELECT count(*) FROM supabase_migrations.schema_migrations')"
+          [[ "$before_c2_receipts" == "$((predecessor_count + before_c2_count + 1))" ]] || {
+            echo "::error::Ledger does not contain exactly the canonical RC15 predecessor and pre-C2 batches plus the RC15 baseline bridge"; exit 1;
+          }
+          [[ -f "$sto02_baseline_source" ]] || { echo "::error::Pinned harness is missing the reviewed STO-02 baseline source"; exit 1; }
+          sto02_source_blob="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD:supabase/proposals/rc19-sto02-resource-registry/20261027150000_rc19_sto02_resource_registry.sql)"
+          [[ "$sto02_source_blob" == "74d19f25bb69f463160b17b8bcb5a74437e2ce38" ]] || {
+            echo "::error::Pinned STO-02 baseline Git blob differs from the reviewed source"; exit 1;
+          }
+          echo "7f531cc4ce8bbc62c1d89c1c3a31bcee45a6249f0b5e8da7be98b862a39abc7f  $sto02_baseline_source" | sha256sum --check
+          cp "$sto02_baseline_source" "supabase/migrations/$sto02_bridge_filename"
+          supabase db push --skip-vault > "$RUNNER_TEMP/rc19-w4-sto02-baseline-bridge.log" 2>&1 || {
+            capture_supabase_start_failure "$RUNNER_TEMP/rc19-w4-sto02-baseline-bridge.log" "disposable_sto02_baseline_bridge"
+            echo "::error::Disposable STO-02 baseline bridge failed; sanitized evidence was recorded."; exit 1;
+          }
+          sto02_bridge_receipt="$(docker exec "$database_container_id" psql -U postgres -d postgres -Atqc "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version='$sto02_bridge_version'")"
+          [[ "$sto02_bridge_receipt" == 1 ]] || { echo "::error::Disposable STO-02 baseline bridge receipt is missing"; exit 1; }
+          python3 - "$canonical_migrations" "$sto02_bridge_filename" <<'PY'
+          from pathlib import Path
+          import sys
+
+          source = Path(sys.argv[1])
+          files = sorted(source.glob("*.sql"), key=lambda item: item.name)
+          c2_target = "20261103195519_rc19_c2_resource_public_and_app_edit.sql"
+          names = [path.name for path in files]
+          start = names.index(c2_target)
           active = Path("supabase/migrations")
           for path in files[start:]:
               (active / path.name).write_bytes(path.read_bytes())
           PY
-          supabase db push --skip-vault > "$RUNNER_TEMP/rc19-w4-remaining-migrations.log" 2>&1 || {
-            capture_supabase_start_failure "$RUNNER_TEMP/rc19-w4-remaining-migrations.log" "rc15_and_remaining_canonical_migrations"
-            echo "::error::RC15 or a later canonical migration failed in the disposable runtime; sanitized evidence was recorded."; exit 1;
+          supabase db push --skip-vault > "$RUNNER_TEMP/rc19-w4-c2-and-remaining-migrations.log" 2>&1 || {
+            capture_supabase_start_failure "$RUNNER_TEMP/rc19-w4-c2-and-remaining-migrations.log" "c2_and_remaining_canonical_migrations"
+            echo "::error::C2 or a later canonical migration failed in the disposable runtime; sanitized evidence was recorded."; exit 1;
           }
           supabase stop --no-backup > /dev/null 2>&1 || { echo "::error::Could not stop stack for cold-start check"; exit 1; }
           supabase start > "$RUNNER_TEMP/rc19-w4-app-cold-start.log" 2>&1 || {
@@ -461,7 +506,7 @@ jobs:
             > "$auth_tables_file"
           docker exec "$database_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -At -F $'\t' \
             -c 'SELECT extname, extversion FROM pg_extension ORDER BY extname' > "$extensions_file"
-          python3 - "$receipts_file" "$RUNNER_TEMP/rc19-w4-app-migration-evidence.json" "$auth_tables_file" "$extensions_file" "$canonical_migrations" "$bridge_filename" "$RUNNER_TEMP/rc19-w4-rc15-baseline-contract.txt" <<'PY'
+          python3 - "$receipts_file" "$RUNNER_TEMP/rc19-w4-app-migration-evidence.json" "$auth_tables_file" "$extensions_file" "$canonical_migrations" "$bridge_filename" "$RUNNER_TEMP/rc19-w4-rc15-baseline-contract.txt" "$sto02_bridge_filename" "$sto02_baseline_source" <<'PY'
           import hashlib
           import json
           import sys
@@ -471,6 +516,8 @@ jobs:
           canonical_dir = Path(sys.argv[5])
           bridge_path = Path("supabase/migrations") / sys.argv[6]
           rpc_contract_path = Path(sys.argv[7])
+          sto02_bridge_path = Path("supabase/migrations") / sys.argv[8]
+          sto02_source_path = Path(sys.argv[9])
           files = sorted(canonical_dir.glob("*.sql"), key=lambda p: p.name)
           migrations = [{
               "version": path.name.split("_", 1)[0],
@@ -488,16 +535,28 @@ jobs:
               "source_fixture_crlf_sequences": (Path("tests/fixtures/rc15_production_shift_rpc_baseline.sql").read_bytes().count(b"\r\n")),
               "scope": "disposable baseline bridge; excluded from canonical and historical upgrade evidence",
           }
+          sto02_bridge = {
+              "version": sto02_bridge_path.name.split("_", 1)[0],
+              "filename": sto02_bridge_path.name,
+              "sha256": hashlib.sha256(sto02_bridge_path.read_bytes()).hexdigest(),
+              "source_fixture": "supabase/proposals/rc19-sto02-resource-registry/20261027150000_rc19_sto02_resource_registry.sql",
+              "source_fixture_sha256": hashlib.sha256(sto02_source_path.read_bytes()).hexdigest(),
+              "source_fixture_git_blob": "74d19f25bb69f463160b17b8bcb5a74437e2ce38",
+              "source_fixture_origin_commit": "31f69aaf1fd6c1eec32902c7bd1e055b96ec3b35",
+              "scope": "disposable production-derived C2 predecessor bridge; excluded from canonical and historical upgrade evidence",
+          }
           receipts = [line.strip() for line in receipts_path.read_text().splitlines() if line.strip()]
           expected = [migration["version"] for migration in migrations]
-          expected_receipts = sorted(expected + [bridge["version"]])
+          expected_receipts = sorted(expected + [bridge["version"], sto02_bridge["version"]])
           if not migrations or expected_receipts != receipts:
               raise SystemExit("Canonical migration files, disposable bridge, and executed runtime receipts differ")
           if bridge["sha256"] != "5d888b0617921d0ac1b23595002d740ef70535bc1beb35cbb0d087f0ea5dced8":
               raise SystemExit("Disposable bridge bytes differ from the reviewed production-derived fixture")
+          if sto02_bridge["sha256"] != "7f531cc4ce8bbc62c1d89c1c3a31bcee45a6249f0b5e8da7be98b862a39abc7f":
+              raise SystemExit("Disposable STO-02 bridge bytes differ from the reviewed production-derived baseline")
           json.dump({
               "files": migrations,
-              "disposable_baseline_bridge": bridge,
+              "disposable_baseline_bridges": [bridge, sto02_bridge],
               "rc15_predecessor_rpc_contract": rpc_contract_path.read_text().splitlines(),
               "executed_receipts": receipts,
               "auth_catalog_tables": auth_tables.read_text().splitlines(),
