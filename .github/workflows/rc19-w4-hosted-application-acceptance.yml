@@ -194,6 +194,23 @@ jobs:
               (r"health check.*(failed|timeout)|unhealthy|context deadline exceeded|timed out", "SUPABASE_CONTAINER_START_TIMEOUT"),
           ]
           code = next((label for pattern, label in patterns if re.search(pattern, decoded, re.I)), "UNCLASSIFIED_SUPABASE_START_FAILURE")
+          filename_pattern = r"\b\d{14}_[A-Za-z0-9_.-]+\.sql\b"
+          observed_files = sorted(set(re.findall(filename_pattern, decoded)))
+          failed_files = sorted(set(
+              filename
+              for line in decoded.splitlines()
+              if re.search(r"migration|sql|apply", line, re.I)
+              and re.search(r"failed|failure|error|could not|unable", line, re.I)
+              for filename in re.findall(filename_pattern, line)
+          ))
+          sqlstates = sorted(set(re.findall(r"SQLSTATE(?:\s|:|=)+([0-9A-Z]{5})", decoded, re.I)))
+          migrations = []
+          for path in sorted(Path("supabase/migrations").glob("*.sql"), key=lambda item: item.name):
+              migrations.append({
+                  "filename": path.name,
+                  "version": path.name.split("_", 1)[0],
+                  "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+              })
           containers = []
           for line in containers_path.read_text().splitlines() if containers_path.exists() else []:
               parts = line.split("|", 2)
@@ -207,6 +224,12 @@ jobs:
               "raw_log_bytes": len(raw),
               "raw_log_lines": len(decoded.splitlines()),
               "raw_log_in_artifact": False,
+              "candidate_migrations": migrations,
+              "candidate_migration_count": len(migrations),
+              "log_observed_migration_filenames": observed_files,
+              "failed_migration_filenames": failed_files,
+              "sqlstates": sqlstates,
+              "executed_ledger_receipts": {"status": "not_verified", "versions": [], "count": None},
               "container_states": containers,
           }
           output_path.write_text(json.dumps(evidence, separators=(",", ":")))
