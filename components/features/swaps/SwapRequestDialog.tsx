@@ -1,7 +1,8 @@
 'use client'
 import * as React from 'react'
-import { Calendar, Clock, Moon, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Calendar, Clock, Moon, AlertCircle, CheckCircle2, Loader2, ArrowRightLeft } from 'lucide-react'
 import type { Shift, ShiftRegistration, User, UserDirectoryEntry, SwapExchangeCandidate } from '@/lib/types/database.types'
+import type { ShiftStaffingSegmentOption } from '@/lib/services/supabaseShiftRegistrationService'
 import { userService, shiftRegistrationService, shiftService, swapRequestService, isStaffedRegistration } from '@/lib/services/dataService'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -12,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { useTranslation } from '@/lib/i18n'
 import { formatShiftTimeRange } from '@/lib/utils/shiftUtils'
+import { formatSegmentCode, formatSegmentTimeRange } from '@/lib/utils/swapUi'
 import { validateSwapTiming } from '@/lib/utils/swapValidation'
 
 const EMPTY_SHIFT_ROWS: Shift[] = []
@@ -126,16 +128,35 @@ export function SwapRequestDialog({
     return () => { active = false }
   }, [open, mode, shifts.length, targetPage, targetSearch, targetKey])
 
+  const [sourceSegments, setSourceSegments] = React.useState<ShiftStaffingSegmentOption[]>([])
+  React.useEffect(() => {
+    if (!open || !sourceShift.id) return
+    let active = true
+    void shiftRegistrationService.getSegmentsForShift(sourceShift.id).then(segs => {
+      if (active) setSourceSegments(segs)
+    }).catch(() => {
+      if (active) setSourceSegments([])
+    })
+    return () => {
+      active = false
+      setSourceSegments([])
+    }
+  }, [open, sourceShift.id])
+
   const currentTarget = shifts.length > 0 || targetSnapshot?.key === targetKey
   const targetLoading = open && mode === 'exchange' && shifts.length === 0 && !currentTarget
   const targetError = shifts.length === 0 && targetSnapshot?.key === targetKey ? targetSnapshot.error : null
   const sourceRows = shifts.length > 0 ? shifts : targetSnapshot?.key === targetKey ? targetSnapshot.items : EMPTY_SHIFT_ROWS
   const targetShifts = React.useMemo(
-    () => sourceRows.filter(shift => shift.id !== sourceShift.id && shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
-      .filter(shift => shifts.length === 0 || !targetSearch || [shift.id, shift.title ?? '', shift.date, shift.studio ?? ''].some(field => field.toLowerCase().includes(targetSearch.trim().toLowerCase())))
-      .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time) || a.id.localeCompare(b.id))
-      .slice(0, pageSize),
-    [sourceRows, sourceShift.id, targetSearch, shifts.length],
+    () => {
+      const base = sourceRows.filter(shift => shift.status === 'scheduled' && !shift.deleted_at && !shift.archived_at)
+        .filter(shift => shifts.length === 0 || !targetSearch || [shift.id, shift.title ?? '', shift.date, shift.studio ?? ''].some(field => field.toLowerCase().includes(targetSearch.trim().toLowerCase())))
+      const list = sourceShift && !base.some(s => s.id === sourceShift.id)
+        ? [sourceShift, ...base]
+        : base
+      return list.sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time) || a.id.localeCompare(b.id)).slice(0, pageSize)
+    },
+    [sourceRows, sourceShift, targetSearch, shifts.length],
   )
   const targetTotal = shifts.length > 0 ? targetShifts.length : targetSnapshot?.key === targetKey ? targetSnapshot.total : 0
   const maxPage = Math.max(1, Math.ceil(targetTotal / pageSize))
@@ -145,12 +166,16 @@ export function SwapRequestDialog({
     if (!open || mode !== 'exchange' || !targetShiftId || !targetIsOnPage) return
     let active = true
     void shiftRegistrationService.getExchangeCandidates(targetShiftId, sourceRegistration.operational_role).then(candidates => {
-      if (active) setCounterpartSnapshot({key: candidateKey, rows: candidates.filter(candidate => candidate.user_id !== currentUser.id), error: null})
+      if (active) setCounterpartSnapshot({
+        key: candidateKey,
+        rows: candidates.filter(candidate => candidate.user_id !== currentUser.id && candidate.registration_id !== sourceRegistration.id),
+        error: null,
+      })
     }).catch(error => {
       if (active) setCounterpartSnapshot({key: candidateKey, rows: [], error: error instanceof Error ? error.message : 'COUNTERPART_LOAD_FAILED'})
     })
     return () => { active = false }
-  }, [open, mode, targetShiftId, targetIsOnPage, candidateKey, currentUser.id, sourceRegistration.operational_role])
+  }, [open, mode, targetShiftId, targetIsOnPage, candidateKey, currentUser.id, sourceRegistration.operational_role, sourceRegistration.id])
 
   // Server-side conflict verification preserves schedule privacy.
   React.useEffect(() => {
@@ -253,6 +278,14 @@ export function SwapRequestDialog({
                 <Badge variant="default" className="text-[10px] capitalize py-0 px-2 h-4">
                   {t(sourceRegistration.operational_role)}
                 </Badge>
+                {sourceRegistration.staffing_segment_id && (() => {
+                  const seg = sourceSegments.find(s => s.id === sourceRegistration.staffing_segment_id)
+                  return (
+                    <Badge variant="outline" className="text-[10px] font-mono py-0 px-1.5 h-4">
+                      {formatSegmentCode(seg?.segment_index)}
+                    </Badge>
+                  )
+                })()}
                 {sourceShift.crosses_midnight && (
                   <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 py-0 px-1 h-4">
                     <Moon className="h-2.5 w-2.5 mr-0.5 inline" />
@@ -263,7 +296,15 @@ export function SwapRequestDialog({
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
               <span className="inline-flex items-center gap-1"><Calendar className="h-3 w-3" /> {sourceShift.date}</span>
-              <span className="inline-flex items-center gap-1 font-mono"><Clock className="h-3 w-3" /> {formatShiftTimeRange(sourceShift)}</span>
+              {(() => {
+                const seg = sourceSegments.find(s => s.id === sourceRegistration.staffing_segment_id)
+                const segTime = formatSegmentTimeRange(seg?.start_at, seg?.end_at)
+                return (
+                  <span className="inline-flex items-center gap-1 font-mono">
+                    <Clock className="h-3 w-3" /> {segTime || formatShiftTimeRange(sourceShift)}
+                  </span>
+                )
+              })()}
               {sourceShift.studio && <span>· Studio {sourceShift.studio}</span>}
               <span>({sourceShift.timezone || 'ICT / GMT+7'})</span>
             </div>
@@ -341,6 +382,48 @@ export function SwapRequestDialog({
                   Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.
                 </p>
               )}
+
+              {/* PASS Summary Card */}
+              {replacementId && directory.find(u => u.id === replacementId) && (
+                <div data-testid="pass-summary-card" className="rounded-lg border p-3 bg-muted/20 space-y-2 mt-2">
+                  <div className="flex items-center justify-between gap-2 border-b pb-1.5">
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                      Tóm tắt phân công PASS
+                    </span>
+                    <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                      Chỉ chuyển khung giờ này
+                    </Badge>
+                  </div>
+                  <div className="grid gap-2 text-xs sm:grid-cols-2">
+                    <div>
+                      <span className="text-muted-foreground block text-[11px]">Ca tổng</span>
+                      <span className="font-medium text-foreground">{sourceShift.title || 'Ca trực'} ({sourceShift.date})</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-[11px]">Khung giờ PASS & Vai trò</span>
+                      {(() => {
+                        const seg = sourceSegments.find(s => s.id === sourceRegistration.staffing_segment_id)
+                        const segCode = formatSegmentCode(seg?.segment_index)
+                        const segTime = formatSegmentTimeRange(seg?.start_at, seg?.end_at) || formatShiftTimeRange(sourceShift)
+                        return (
+                          <span className="font-semibold text-primary font-mono">{segCode} · {segTime} ({t(sourceRegistration.operational_role)})</span>
+                        )
+                      })()}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-[11px]">Người đang phân công</span>
+                      <span className="font-medium">{currentUser.full_name}</span>
+                      <span className="block text-[10px] text-muted-foreground font-mono truncate">ID: {sourceRegistration.id}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-[11px]">Người nhận thay</span>
+                      <span className="font-medium text-foreground">{directory.find(u => u.id === replacementId)?.full_name}</span>
+                      <span className="block text-[10px] text-muted-foreground font-mono truncate">ID: {replacementId}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -384,7 +467,15 @@ export function SwapRequestDialog({
                   <Select value={counterpartId} disabled={targetCandidatesLoading || Boolean(currentCandidate?.error)} onValueChange={setCounterpartId}>
                     <SelectTrigger className="mt-1"><SelectValue placeholder="Chọn người đổi chéo" /></SelectTrigger>
                     <SelectContent className="max-h-64 overflow-y-auto">
-                      {targetRegistrations.map(candidate => <SelectItem key={candidate.registration_id} value={candidate.registration_id}>{candidate.full_name}</SelectItem>)}
+                      {targetRegistrations.map(candidate => {
+                        const segCode = formatSegmentCode(candidate.segment_index)
+                        const segTime = formatSegmentTimeRange(candidate.effective_start_at, candidate.effective_end_at)
+                        return (
+                          <SelectItem key={candidate.registration_id} value={candidate.registration_id}>
+                            {candidate.full_name} · {segCode} {segTime ? `(${segTime})` : ''} · ID: {candidate.registration_id.slice(0, 8)}...
+                          </SelectItem>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
                 </label>
@@ -418,6 +509,63 @@ export function SwapRequestDialog({
                   Điều kiện cuối cùng được kiểm tra lại khi gửi và khi duyệt.
                 </p>
               )}
+
+              {/* Before & After Exchange Preview Card */}
+              {counterpartId && (() => {
+                const candidate = targetRegistrations.find(i => i.registration_id === counterpartId)
+                const selectedTargetShift = targetShifts.find(s => s.id === targetShiftId)
+                if (!candidate || !selectedTargetShift) return null
+                const srcSeg = sourceSegments.find(s => s.id === sourceRegistration.staffing_segment_id)
+                const srcCode = formatSegmentCode(srcSeg?.segment_index)
+                const srcTime = formatSegmentTimeRange(srcSeg?.start_at, srcSeg?.end_at) || formatShiftTimeRange(sourceShift)
+                const tgtCode = formatSegmentCode(candidate.segment_index)
+                const tgtTime = formatSegmentTimeRange(candidate.effective_start_at, candidate.effective_end_at) || formatShiftTimeRange(selectedTargetShift)
+                const isSameShift = sourceShift.id === selectedTargetShift.id
+
+                return (
+                  <div data-testid="swap-exchange-preview" className="rounded-lg border p-3 bg-muted/20 space-y-2 mt-2">
+                    <div className="flex items-center justify-between gap-2 border-b pb-1.5">
+                      <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+                        Xem trước kết quả đổi ca (Before & After)
+                      </span>
+                      {isSameShift && (
+                        <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                          Đổi khung giờ trong cùng ca
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="grid gap-3 text-xs sm:grid-cols-2">
+                      <div className="space-y-1.5 rounded-md border p-2 bg-background/50">
+                        <span className="text-[11px] font-semibold text-muted-foreground block uppercase tracking-wider">
+                          1. Trước khi đổi (Before)
+                        </span>
+                        <div className="text-[11px] space-y-1">
+                          <p>
+                            <strong className="text-foreground">Bạn:</strong> {sourceShift.title || 'Ca trực'} · <span className="font-mono text-primary font-medium">{srcCode} ({srcTime})</span>
+                          </p>
+                          <p>
+                            <strong className="text-foreground">{candidate.full_name}:</strong> {selectedTargetShift.title || 'Ca đích'} · <span className="font-mono text-primary font-medium">{tgtCode} ({tgtTime})</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 rounded-md border border-primary/30 p-2 bg-primary/5">
+                        <span className="text-[11px] font-semibold text-primary block uppercase tracking-wider">
+                          2. Sau khi duyệt (After Approval)
+                        </span>
+                        <div className="text-[11px] space-y-1">
+                          <p>
+                            <strong className="text-foreground">Bạn sẽ làm:</strong> {selectedTargetShift.title || 'Ca đích'} · <span className="font-mono text-primary font-semibold">{tgtCode} ({tgtTime})</span>
+                          </p>
+                          <p>
+                            <strong className="text-foreground">{candidate.full_name} sẽ làm:</strong> {sourceShift.title || 'Ca trực'} · <span className="font-mono text-primary font-semibold">{srcCode} ({srcTime})</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </>
           )}
           <label className="text-xs font-medium block">Lý do đổi ca <span className="text-destructive">*</span>

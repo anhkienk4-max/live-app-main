@@ -29,6 +29,8 @@ export interface WorkforceIncidentMonthlyStaffSummary {
   confirmed_early_leave_count: number
   approved_pass_count: number
   approved_swap_count: number
+  confirmed_planned_reassignment_count: number
+  confirmed_other_count: number
   unknown_late_minutes_count: number
   verified_late_minutes_total: number
   items: WorkforceIncidentMonthlyItem[]
@@ -40,5 +42,29 @@ export interface WorkforceIncidentMonthlyResponse {
   pageLimit: number
   pageOffset: number
   totalIncidents: number
+  /** Count over the complete authorized and filtered scope, before pagination. */
+  totalDistinctShifts: number
+  /** Count over the complete authorized and filtered scope, before pagination. */
+  totalDistinctStaff: number
+  /** Full authorized and filtered category, review-state, and late-minute totals. */
+  summary: WorkforceIncidentMonthlyTotals
   staff: WorkforceIncidentMonthlyStaffSummary[]
+}
+
+export interface WorkforceIncidentMonthlyTotals {
+  pendingCount: number
+  confirmedCount: number
+  rejectedCount: number
+  correctedCount: number
+  confirmedSkipCount: number
+  confirmedAbsentCount: number
+  confirmedAuthorizedAbsenceCount: number
+  confirmedLateCount: number
+  confirmedEarlyLeaveCount: number
+  approvedPassCount: number
+  approvedSwapCount: number
+  confirmedPlannedReassignmentCount: number
+  confirmedOtherCount: number
+  unknownLateMinutesCount: number
+  verifiedLateMinutesTotal: number
 }

@@ -255,6 +255,7 @@ jobs:
             echo "RC19_W4_RUNTIME_ANON_KEY=$anon_key"
             echo "RC19_W4_RUNTIME_SERVICE_ROLE_KEY=$service_role_key"
             echo "RC19_W4_RUNTIME_DATABASE_URL=$db_url"
+            echo "RC19_W4_RUNTIME_DATABASE_CONTAINER=$database_container"
             echo "RC19_W4_RUNTIME_DATABASE_MARKER=$RUN_MARKER"
             echo "RC19_W4_SYNTHETIC_ADMIN_EMAIL=$admin_email"
             echo "RC19_W4_SYNTHETIC_ADMIN_PASSWORD=$admin_password"

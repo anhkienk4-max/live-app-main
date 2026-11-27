@@ -1,6 +1,7 @@
 import { getAuthMode } from '@/lib/auth/authMode'
 import { createClient } from '@/lib/supabase/client'
 import type { ShiftIncidentV1 } from '@/lib/types/shiftIncidentContract'
+import type { WorkforceIncidentMonthlyResponse } from '@/lib/types/workforceIncidentMonth'
 
 export interface ShiftIncidentRecord extends ShiftIncidentV1 {
   shiftDate?: string | null
@@ -221,34 +222,47 @@ export const shiftIncidentService = {
     const targetMonth = params?.month || new Date().toISOString().slice(0, 7)
 
     if (getAuthMode() === 'supabase') {
-      const client = createClient()
-      const { data, error } = await client.rpc('get_workforce_incident_summary', {
-        p_month: targetMonth,
-        p_employee_id: params?.employeeId || null,
-        p_role: params?.role || null,
-        p_brand_id: params?.brandId || null,
-        p_agency_id: params?.agencyId || null,
-        p_platform: params?.platform || null,
-        p_status: params?.status || null,
-        p_incident_type: params?.incidentType || null,
-      })
+      const searchParams = new URLSearchParams()
+      searchParams.set('month', targetMonth)
+      if (params?.employeeId) searchParams.set('staff_id', params.employeeId)
+      if (params?.brandId && params.brandId !== 'all') searchParams.set('brand_id', params.brandId)
+      if (params?.role && params.role !== 'all') {
+        const validRoles = ['host', 'support', 'technical']
+        if (validRoles.includes(params.role)) {
+          searchParams.set('role', params.role)
+        }
+      }
+      if (params?.agencyId && params.agencyId !== 'all') searchParams.set('agency_id', params.agencyId)
+      if (params?.platform && params.platform !== 'all') searchParams.set('platform_id', params.platform)
+      if (params?.status && params.status !== 'all') searchParams.set('status', params.status)
+      if (params?.incidentType && params.incidentType !== 'all') searchParams.set('incident_type', params.incidentType)
 
-      if (error) {
-        const isMissingRelation =
-          error.code === '42P01' ||
-          error.code === '42883' ||
-          error.code === 'PGRST202' ||
-          error.message?.includes('get_workforce_incident_summary') ||
-          error.message?.includes('shift_incidents')
+      let res: Response
+      try {
+        res = await fetch(`/api/workforce/incidents/monthly?${searchParams.toString()}`)
+      } catch (err: unknown) {
         throw new ShiftIncidentServiceError(
-          isMissingRelation
-            ? 'SCHEMA_NOT_DEPLOYED: Tính năng Tổng hợp sự cố nhân sự chưa được triển khai trên môi trường này.'
-            : `WORKFORCE_SUMMARY_FAILED: ${error.message}`,
-          isMissingRelation ? 'SCHEMA_NOT_DEPLOYED' : 'READ_FAILED',
+          `WORKFORCE_SUMMARY_NETWORK_ERROR: ${err instanceof Error ? err.message : String(err)}`,
+          'NETWORK_ERROR',
         )
       }
 
-      return data as WorkforceIncidentSummary
+      if (res.status === 404 || res.status === 503) {
+        throw new ShiftIncidentServiceError(
+          'SCHEMA_NOT_DEPLOYED: Tính năng Tổng hợp sự cố nhân sự chưa được triển khai trên môi trường này.',
+          'SCHEMA_NOT_DEPLOYED',
+        )
+      }
+
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null)
+        const code = errorBody?.error?.code || `HTTP_${res.status}`
+        throw new ShiftIncidentServiceError(`WORKFORCE_SUMMARY_FAILED: ${code}`, code)
+      }
+
+      const json = await res.json()
+      const monthlyData: WorkforceIncidentMonthlyResponse = json?.data ?? json
+      return mapMonthlyResponseToWorkforceIncidentSummary(monthlyData)
     }
 
     // Filter in-memory items
@@ -396,4 +410,64 @@ export const shiftIncidentService = {
   resetIncidents(incidents: ShiftIncidentRecord[] = []) {
     inMemoryIncidents = [...incidents]
   },
+}
+
+export function mapMonthlyResponseToWorkforceIncidentSummary(
+  data: WorkforceIncidentMonthlyResponse,
+): WorkforceIncidentSummary {
+  const staff = data.staff || []
+  const totals = data.summary
+  const allShiftIds = new Set<string>()
+
+  const staffSummaries: StaffIncidentSummary[] = staff.map(s => {
+    if (Array.isArray(s.items)) {
+      for (const item of s.items) {
+        if (item.shiftId) allShiftIds.add(item.shiftId)
+      }
+    }
+
+    return {
+      staffId: s.staff_id,
+      staffName: s.staff_id,
+      totalIncidents: s.incident_count,
+      skipCount: s.confirmed_skip_count,
+      absentCount: s.confirmed_absent_count,
+      lateCount: s.confirmed_late_count,
+      earlyLeaveCount: s.confirmed_early_leave_count,
+      approvedPassCount: s.approved_pass_count,
+      approvedSwapCount: s.approved_swap_count,
+      authorizedAbsenceCount: s.confirmed_authorized_absence_count,
+      plannedReassignmentCount: s.confirmed_planned_reassignment_count,
+      pendingCount: s.pending_count,
+      rejectedCount: s.rejected_count,
+      correctedCount: s.corrected_count,
+      verifiedLateMinutes: s.verified_late_minutes_total,
+      unknownDurationCount: s.unknown_late_minutes_count,
+      distinctShifts: s.distinct_shift_count,
+    }
+  })
+
+  return {
+    month: data.month,
+    totalIncidents: data.totalIncidents,
+    confirmedViolations: totals.confirmedSkipCount + totals.confirmedAbsentCount,
+    confirmedSkips: totals.confirmedSkipCount,
+    confirmedAbsents: totals.confirmedAbsentCount,
+    confirmedPunctuality: totals.confirmedLateCount + totals.confirmedEarlyLeaveCount,
+    confirmedLates: totals.confirmedLateCount,
+    confirmedEarlyLeaves: totals.confirmedEarlyLeaveCount,
+    approvedChanges: totals.approvedPassCount + totals.approvedSwapCount + totals.confirmedPlannedReassignmentCount,
+    approvedPasses: totals.approvedPassCount,
+    approvedSwaps: totals.approvedSwapCount,
+    authorizedAbsences: totals.confirmedAuthorizedAbsenceCount,
+    plannedReassignments: totals.confirmedPlannedReassignmentCount,
+    pendingReviews: totals.pendingCount,
+    rejectedReviews: totals.rejectedCount,
+    correctedReviews: totals.correctedCount,
+    totalVerifiedLateMinutes: totals.verifiedLateMinutesTotal,
+    unknownDurationCount: totals.unknownLateMinutesCount,
+    distinctAffectedShifts: data.totalDistinctShifts ?? allShiftIds.size,
+    distinctAffectedStaff: data.totalDistinctStaff ?? staff.length,
+    staffSummaries,
+  }
 }

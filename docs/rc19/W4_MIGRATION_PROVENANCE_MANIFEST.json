@@ -1,0 +1,107 @@
+{
+  "schema": "rc19-w4-migration-provenance/v1",
+  "source_branch": "codex/rc19-w4-lane01-backend",
+  "source_base_sha": "db7c3b4a4fdd8b2a9ea8f07767aff47022d1496d",
+  "environment_scope": "candidate source only; no Production or Staging access or writes",
+  "provenance": {
+    "source": "Repository SQL migration files reviewed in dependency order; hashes are SHA-256 of exact working-tree bytes.",
+    "historical_aliases": [],
+    "historical_alias_review": "No alternate filenames or alias records were found for the listed versions in project-memory/current-state.json or docs/rc19 at this checkpoint.",
+    "receipt_provenance": "The new PASS/Swap receipt ledger has no prior production receipt table or backfill source identified. The migration creates an empty private ledger; do not fabricate receipts. Existing D3 external-summary and C4 staffing-replacement receipts are feature-specific and are not schema-compatible with PASS/Swap request rows."
+  },
+  "required_dependency_chain": [
+    {
+      "version": "20261125042222",
+      "file": "supabase/migrations/20261125042222_rc19_w4_delta_d_incident_foundation.sql",
+      "purpose": "D1 canonical incident foundation required by the D3 revision snapshot migration."
+    },
+    {
+      "version": "20261125042647",
+      "file": "supabase/migrations/20261125042647_rc19_w4_delta_d_atomic_replacement.sql",
+      "purpose": "D1 atomic replacement and linked incident transaction; precedes D2/D3 consumers."
+    },
+    {
+      "version": "20261125175702",
+      "file": "supabase/migrations/20261125175702_rc19_w4_delta_d_note_workflow_v1.sql",
+      "purpose": "D2 persisted note workflow required by the D3 report revision snapshot."
+    },
+    {
+      "version": "20261126051534",
+      "file": "supabase/migrations/20261126051534_rc19_w4_d3_report_revision_snapshot.sql",
+      "purpose": "D3 immutable source and external projection snapshots; required before external summary mutations."
+    }
+  ],
+  "migrations": [
+    {
+      "version": "20261126051534",
+      "file": "supabase/migrations/20261126051534_rc19_w4_d3_report_revision_snapshot.sql",
+      "sha256": "80a15a77318cc97f9e00e68ddceac7e1fa24f5e1e5d8d23717ce5114e238b59f",
+      "source_provenance": "D3 follow-up; captures immutable note/incident snapshots with each report revision, without historical backfill.",
+      "depends_on": ["20261125042222", "20261125175702"],
+      "execution_order": 1,
+      "acceptance_scope": "Verify existing report revisions remain unchanged and new source snapshots are transactionally linked to new revisions."
+    },
+    {
+      "version": "20261126120000",
+      "file": "supabase/migrations/20261126120000_rc19_w4_d3_external_operational_summary.sql",
+      "sha256": "bd4877a717ff00d806f9a07d21736b9f56aad8c61b1f3042b7d20b40f33b9cf8",
+      "source_provenance": "Existing candidate migration; External Summary foundations and receipt precedent.",
+      "depends_on": ["20261126051534"],
+      "execution_order": 2,
+      "acceptance_scope": "Historical upgrade and fresh disposable runtime are separate; validate the existing source ledger and replay behavior."
+    },
+    {
+      "version": "20261126130000",
+      "file": "supabase/migrations/20261126130000_rc19_w4_canonical_agency_membership.sql",
+      "sha256": "eb377b46e13942b9f4e027d9eaf38bff1160f9fd655557f7dc194aa030c27d8a",
+      "source_provenance": "Existing candidate migration; canonical Agency FK and membership enforcement dependency.",
+      "depends_on": ["20261126120000"],
+      "execution_order": 3,
+      "acceptance_scope": "Fresh runtime must prove schema and role/ACL parity; historical upgrade must preserve existing membership ledger."
+    },
+    {
+      "version": "20261126140000",
+      "file": "supabase/migrations/20261126140000_rc19_w4_workforce_monthly_scope_totals.sql",
+      "sha256": "2ba1c3fa37d1d55005d2945256820de0671ad6d84130516a064774ff394740ba",
+      "source_provenance": "Existing candidate migration; Workforce Monthly V2 aggregate foundation.",
+      "depends_on": ["20261126130000"],
+      "execution_order": 4,
+      "acceptance_scope": "Verify scoped aggregate semantics and API readback on both fresh and historical candidate baselines."
+    },
+    {
+      "version": "20261126150000",
+      "file": "supabase/migrations/20261126150000_rc19_w4_segment_aware_pass_swap.sql",
+      "sha256": "eb05b4d9fbcb6bdaef7e5b1b330f20cce6e066718e70d560e73ed6786bfcc184",
+      "source_provenance": "Existing candidate migration; segment-aware PASS/Swap exact registration/segment guards and version-fenced RPCs.",
+      "depends_on": ["20261126130000"],
+      "execution_order": 5,
+      "acceptance_scope": "Review the exact source file hash and mutation signatures before receipt wrapper installation."
+    },
+    {
+      "version": "20261127090000",
+      "file": "supabase/migrations/20261127090000_rc19_w4_workforce_monthly_full_scope_totals.sql",
+      "sha256": "43076b5627685c5178389fe077341d1f73f307d189a4a31bd50c01a356fcec0d",
+      "source_provenance": "Candidate addition; global full-authorized-scope category, status and late-minute totals.",
+      "depends_on": ["20261126140000"],
+      "execution_order": 6,
+      "acceptance_scope": "Compare category/status/late-minute totals to source rows after all supported filters and before page slicing."
+    },
+    {
+      "version": "20261127100000",
+      "file": "supabase/migrations/20261127100000_rc19_w4_segment_aware_swap_receipts.sql",
+      "sha256": "47ed618ab388026e6b7653fa9cae873d46494371bf11f07351450acfa0b6da44",
+      "source_provenance": "Current candidate change; actor/action/request/payload-bound PASS/Swap receipts and authenticated wrapper.",
+      "depends_on": ["20261126130000", "20261126150000"],
+      "execution_order": 7,
+      "acceptance_scope": "Do not mark accepted until fresh marked disposable PG17/Auth execution and historical baseline upgrade prove privileges, dependencies, RLS, receipts, rollback, and retry."
+    }
+  ],
+  "required_disposable_runtime_ledger_evidence": [
+    "Fresh marked disposable PG17 baseline with schema, extensions, roles, grants/default grants, triggers/event triggers, RLS, and existing migration ledger recorded.",
+    "Historical Production-compatible baseline export and exact migration ledger, without applying changes to Production or Staging.",
+    "Apply in execution_order and capture start/end, exact SHA, ledger row, statements, grants, dependency checks, and readback for each migration.",
+    "Prove intentional failure rolls back fully; prove corrected retry succeeds exactly once and same-key retry returns the persisted result.",
+    "Authenticate real Admin, Leader, and Member identities; test role/Brand/Agency boundaries, direct legacy RPC denial, response loss/retry, and receipt integrity.",
+    "Keep fresh-runtime acceptance separate from historical-upgrade acceptance; neither an empty database nor CLI dry-run is migration readiness proof."
+  ]
+}

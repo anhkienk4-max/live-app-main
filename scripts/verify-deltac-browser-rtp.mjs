@@ -11,17 +11,45 @@
  * Zero HTTP fallback. Measured telemetry only (no nominal assumptions).
  */
 import { chromium } from '@playwright/test';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import http from 'node:http';
+import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const MEDIAMTX_BIN = process.env.MEDIAMTX_PATH || path.join(process.env.TEMP, 'mediamtx.exe');
+function resolveMediaMtxBin() {
+  if (process.env.MEDIAMTX_PATH && fs.existsSync(process.env.MEDIAMTX_PATH)) {
+    return process.env.MEDIAMTX_PATH;
+  }
+  try {
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    const res = spawnSync(whichCmd, ['mediamtx'], { encoding: 'utf8' });
+    const trimmed = res.stdout?.trim()?.split('\n')[0]?.trim();
+    if (trimmed && fs.existsSync(trimmed)) {
+      return trimmed;
+    }
+  } catch {}
+  const tempDir = process.env.TEMP || os.tmpdir();
+  const candidates = [
+    path.join(tempDir, 'mediamtx'),
+    path.join(tempDir, 'mediamtx.exe'),
+    '/usr/local/bin/mediamtx',
+    '/usr/bin/mediamtx',
+    'C:\\TEMP\\mediamtx.exe',
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return path.join(tempDir, process.platform === 'win32' ? 'mediamtx.exe' : 'mediamtx');
+}
+
+const tempDir = process.env.TEMP || os.tmpdir();
+const MEDIAMTX_BIN = resolveMediaMtxBin();
 const JWKS_PORT = 9886;
 const WEBRTC_PORT = 8889;
 const UDP_PORT = 8189;
-const CONF_PATH = path.join(process.env.TEMP, 'mediamtx-browser-rtp.yml');
+const CONF_PATH = path.join(tempDir, 'mediamtx-browser-rtp.yml');
 
 // 1. Generate ES256 keypair for JWT signing
 const keyPair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });

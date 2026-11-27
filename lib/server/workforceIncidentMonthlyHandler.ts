@@ -12,6 +12,10 @@ const querySchema = z.object({
   staff_id: z.string().trim().min(1).max(128).optional(),
   brand_id: z.string().trim().min(1).max(128).optional(),
   role: z.enum(['host', 'support', 'technical']).optional(),
+  agency_id: z.string().uuid().optional(),
+  platform_id: z.string().trim().min(1).max(128).optional(),
+  status: z.enum(['pending', 'confirmed', 'rejected', 'corrected']).optional(),
+  incident_type: z.enum(incidentTypes).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).max(100000).default(0),
 }).strict()
@@ -34,7 +38,10 @@ const staffSchema = z.object({
   confirmed_skip_count: z.number().int().nonnegative(), confirmed_absent_count: z.number().int().nonnegative(),
   confirmed_authorized_absence_count: z.number().int().nonnegative(), confirmed_late_count: z.number().int().nonnegative(),
   confirmed_early_leave_count: z.number().int().nonnegative(), approved_pass_count: z.number().int().nonnegative(),
-  approved_swap_count: z.number().int().nonnegative(), unknown_late_minutes_count: z.number().int().nonnegative(),
+  approved_swap_count: z.number().int().nonnegative(),
+  confirmed_planned_reassignment_count: z.number().int().nonnegative(),
+  confirmed_other_count: z.number().int().nonnegative(),
+  unknown_late_minutes_count: z.number().int().nonnegative(),
   verified_late_minutes_total: z.number().int().nonnegative(), items: z.array(itemSchema),
 }).strict()
 
@@ -44,6 +51,18 @@ const responseSchema = z.object({
   pageLimit: z.number().int().min(1).max(100),
   pageOffset: z.number().int().min(0).max(100000),
   totalIncidents: z.number().int().nonnegative(),
+  totalDistinctShifts: z.number().int().nonnegative(),
+  totalDistinctStaff: z.number().int().nonnegative(),
+  summary: z.object({
+    pendingCount: z.number().int().nonnegative(), confirmedCount: z.number().int().nonnegative(),
+    rejectedCount: z.number().int().nonnegative(), correctedCount: z.number().int().nonnegative(),
+    confirmedSkipCount: z.number().int().nonnegative(), confirmedAbsentCount: z.number().int().nonnegative(),
+    confirmedAuthorizedAbsenceCount: z.number().int().nonnegative(), confirmedLateCount: z.number().int().nonnegative(),
+    confirmedEarlyLeaveCount: z.number().int().nonnegative(), approvedPassCount: z.number().int().nonnegative(),
+    approvedSwapCount: z.number().int().nonnegative(),
+    confirmedPlannedReassignmentCount: z.number().int().nonnegative(), confirmedOtherCount: z.number().int().nonnegative(),
+    unknownLateMinutesCount: z.number().int().nonnegative(), verifiedLateMinutesTotal: z.number().int().nonnegative(),
+  }).strict(),
   staff: z.array(staffSchema),
 }).strict()
 
@@ -63,21 +82,25 @@ export function createWorkforceIncidentMonthlyHandler(options: Options = {}) {
       const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams.entries()))
       if (!parsed.success) return failure('WORKFORCE_MONTH_QUERY_INVALID', 400)
 
-      const { month, staff_id, brand_id, role, limit, offset } = parsed.data
+      const { month, staff_id, brand_id, role, agency_id, platform_id, status, incident_type, limit, offset } = parsed.data
       const db = options.createClient
         ? await options.createClient()
         : await (await import('@/lib/supabase/server')).createClient()
-      const result = await db.rpc('rc19_workforce_incident_monthly', {
+      const result = await db.rpc('rc19_workforce_incident_monthly_v2', {
         p_month: `${month}-01`,
         p_staff_id: staff_id ?? null,
         p_brand_id: brand_id ?? null,
         p_role: role ?? null,
+        p_agency_id: agency_id ?? null,
+        p_platform_id: platform_id ?? null,
+        p_review_state: status ?? null,
+        p_incident_type: incident_type ?? null,
         p_limit: limit,
         p_offset: offset,
       })
       if (result.error) {
         const message = result.error.message ?? ''
-        if (/WORKFORCE_(ACTOR_NOT_AUTHORIZED|SELF_SCOPE_REQUIRED|READ_REQUIRED|BRAND_SCOPE_REQUIRED)/u.test(message))
+        if (/WORKFORCE_(ACTOR_NOT_AUTHORIZED|SELF_SCOPE_REQUIRED|READ_REQUIRED|BRAND_SCOPE_REQUIRED|AGENCY_SCOPE_REQUIRED)/u.test(message))
           return failure(message.match(/WORKFORCE_[A-Z_]+/u)?.[0] ?? 'PERMISSION_DENIED', 403)
         if (message.includes('WORKFORCE_MONTH_INVALID')) return failure('WORKFORCE_MONTH_QUERY_INVALID', 400)
         return failure('WORKFORCE_INCIDENT_SUMMARY_UNAVAILABLE', 503)

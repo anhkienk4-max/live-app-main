@@ -23,6 +23,8 @@ export type CampaignStatus = 'draft' | 'active' | 'completed' | 'cancelled'
 
 export type SwapStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'approved' | 'completed'
 export type SwapMode = 'replacement' | 'move' | 'exchange'
+/** UUID token retained by the client until the mutation result is known. */
+export type SwapIdempotencyKey = string
 
 export interface LifecycleMetadata {
   deleted_at?: string
@@ -312,6 +314,14 @@ export interface SwapExchangeCandidate {
   registration_id: string
   user_id: string
   full_name: string
+  operational_role?: OperationalRole
+  shift_id?: string
+  staffing_segment_id?: string | null
+  segment_index?: number | null
+  effective_start_at?: string | null
+  effective_end_at?: string | null
+  brand_id?: string | null
+  authoritative_agency_id?: string | null
 }
 
 export type SupplementalShiftFieldType = 'text' | 'number' | 'boolean' | 'date' | 'time'

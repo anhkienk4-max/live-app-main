@@ -123,16 +123,56 @@ test('Supabase service sends explicit mode and exact registration identifiers', 
   await repository.create({
     sourceRegistrationId: 'reg-1', targetShiftId: 'shift-2', counterpartRegistrationId: 'reg-2',
     replacementStaffId: null, operational_role: 'host', reason: 'coverage', notes: 'swap', mode: 'exchange',
-  })
-  await repository.reject('swap-1', 'not available')
+  }, '11111111-1111-4111-8111-111111111111')
+  await repository.reject('swap-1', 'not available', 4, '22222222-2222-4222-8222-222222222222')
   assert.deepEqual(calls[0], {
-    name: 'create_shift_swap_request',
+    name: 'shift_swap_operation_v1',
     args: {
-      p_source_registration_id: 'reg-1', p_mode: 'exchange', p_reason: 'coverage',
-      p_target_shift_id: 'shift-2', p_replacement_staff_id: null,
-      p_counterpart_registration_id: 'reg-2', p_notes: 'swap',
+      p_action: 'create', p_request_id: null,
+      p_payload: {
+        source_registration_id: 'reg-1', mode: 'exchange', reason: 'coverage',
+        target_shift_id: 'shift-2', replacement_staff_id: null,
+        counterpart_registration_id: 'reg-2', notes: 'swap',
+      },
+      p_idempotency_key: '11111111-1111-4111-8111-111111111111',
     },
   })
-  assert.equal(calls[1].name, 'reject_shift_swap_request')
-  assert.deepEqual(calls[1].args, { p_request_id: 'swap-1', p_notes: 'not available', p_expected_version: null })
+  assert.equal(calls[1].name, 'shift_swap_operation_v1')
+  assert.deepEqual(calls[1].args, {
+    p_action: 'reject', p_request_id: 'swap-1',
+    p_payload: { notes: 'not available', expected_version: 4 },
+    p_idempotency_key: '22222222-2222-4222-8222-222222222222',
+  })
+})
+
+test('Supabase service retains one key after an uncertain create response', async () => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = []
+  const row = {
+    id: 'swap-retry', requester_id: 'user-retry', source_registration_id: 'reg-retry', source_shift_id: 'shift-retry',
+    target_shift_id: null, counterpart_registration_id: null, counterpart_id: null,
+    operational_role: 'host', mode: 'replacement', status: 'pending', reason: 'coverage', notes: null,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', approval_history: [],
+  }
+  let attempt = 0
+  const client = {
+    from: () => ({ select: () => ({}) }),
+    rpc: (name: string, args: Record<string, unknown>) => {
+      calls.push({ name, args })
+      attempt += 1
+      return { single: async () => attempt === 1
+        ? { data: null, error: { code: 'PGRST000', message: 'socket closed after commit' } }
+        : { data: row, error: null } }
+    },
+  } as unknown as SupabaseClient
+  const repository = createSupabaseSwapRequestRepository(client)
+  const input = {
+    sourceRegistrationId: 'reg-retry', reason: 'coverage', mode: 'replacement' as const,
+    replacementStaffId: 'replacement-1',
+  }
+  await assert.rejects(() => repository.create(input), /socket closed after commit/)
+  await repository.create(input)
+  assert.equal(calls.length, 2)
+  assert.equal(calls[0].name, 'shift_swap_operation_v1')
+  assert.equal(calls[0].args.p_idempotency_key, calls[1].args.p_idempotency_key)
+  assert.match(String(calls[0].args.p_idempotency_key), /^[0-9a-f-]{36}$/iu)
 })
