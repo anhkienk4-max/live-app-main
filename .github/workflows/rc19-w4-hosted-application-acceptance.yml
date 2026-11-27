@@ -174,8 +174,17 @@ jobs:
             local log_file="$1" stage="$2"
             local containers_file="$RUNNER_TEMP/rc19-w4-failed-containers.txt"
             local evidence_file="$RUNNER_TEMP/rc19-w4-startup-failure.json"
+            local receipts_file="$RUNNER_TEMP/rc19-w4-failed-migration-receipts.txt"
+            local receipts_status="not_verified"
             docker ps -a --format '{{.Names}}|{{.Image}}|{{.Status}}' > "$containers_file" || true
-            python3 - "$log_file" "$stage" "$containers_file" "$evidence_file" "$canonical_migrations" <<'PY'
+            : > "$receipts_file"
+            if [[ -n "${database_container_id:-}" ]] && docker inspect "$database_container_id" >/dev/null 2>&1; then
+              if docker exec "$database_container_id" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atq \
+                -c 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version' > "$receipts_file" 2>/dev/null; then
+                receipts_status="verified"
+              fi
+            fi
+            python3 - "$log_file" "$stage" "$containers_file" "$evidence_file" "$canonical_migrations" "$receipts_file" "$receipts_status" <<'PY'
           import hashlib
           import json
           import re
@@ -187,6 +196,8 @@ jobs:
           containers_path = Path(sys.argv[3])
           output_path = Path(sys.argv[4])
           migrations_root = Path(sys.argv[5])
+          receipts_path = Path(sys.argv[6])
+          receipts_status = sys.argv[7]
           raw = log_path.read_bytes() if log_path.exists() else b""
           decoded = raw.decode("utf-8", errors="replace")
           patterns = [
@@ -216,9 +227,21 @@ jobs:
                   "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
               })
           error_tokens = sorted(set(re.findall(
-              r"\b(?:RC\d{1,2}_[A-Z0-9_]+|OPERATIONAL_SETTINGS_NOT_CONFIGURED)\b",
+              r"\b(?:RC\d{1,2}_[A-Z0-9_]+|C2_[A-Z0-9_]+|OPERATIONAL_SETTINGS_NOT_CONFIGURED)\b",
               decoded,
           )))
+          sanitized_errors = []
+          for line in decoded.splitlines():
+              if not re.search(r"\b(?:ERROR|FATAL):", line, re.I):
+                  continue
+              safe = re.sub(r"\x1b\[[0-9;]*m", "", line)
+              safe = re.sub(r"'(?:''|[^'])*'", "[literal]", safe)
+              safe = re.sub(r'"(?:\\.|[^"\\])*"', "[identifier]", safe)
+              safe = re.sub(r"https?://\S+", "[url]", safe)
+              safe = re.sub(r"[\w.+-]+@[\w.-]+", "[email]", safe)
+              safe = re.sub(r"\s+", " ", safe).strip()
+              sanitized_errors.append(safe[:300])
+          ledger_versions = [line.strip() for line in receipts_path.read_text().splitlines() if line.strip()]
           token_sources = {
               token: [item["filename"] for item in migrations
                       if token in (migrations_root / item["filename"]).read_text()]
@@ -250,7 +273,12 @@ jobs:
               "error_token_migration_sources": token_sources,
               "failure_migration_candidate": unique_token_sources[0] if len(unique_token_sources) == 1 else None,
               "failure_candidate_status": "single_source_match" if len(unique_token_sources) == 1 else "unresolved",
-              "executed_ledger_receipts": {"status": "not_verified", "versions": [], "count": None},
+              "sanitized_error_lines": sanitized_errors[:12],
+              "executed_ledger_receipts": {
+                  "status": receipts_status,
+                  "versions": ledger_versions if receipts_status == "verified" else [],
+                  "count": len(ledger_versions) if receipts_status == "verified" else None,
+              },
               "container_states": containers,
           }
           output_path.write_text(json.dumps(evidence, separators=(",", ":")))
