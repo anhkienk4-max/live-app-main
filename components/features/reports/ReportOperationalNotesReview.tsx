@@ -66,6 +66,10 @@ export function ReportOperationalNotesReview({
       liveDurationMinutes?: number | null
       dashboardPlatform: string
     }
+    operationalSummary?: {
+      version: number
+      content: string
+    } | null
   } | null>(null)
   const [loading, setLoading] = React.useState(!readOnly)
   const [schemaUnavailable, setSchemaUnavailable] = React.useState(false)
@@ -409,18 +413,20 @@ export function ReportOperationalNotesReview({
                 </span>
               </div>
             </div>
-            {externalSummary?.workflowState === 'approved' && (
+            {((externalSummary?.workflowState === 'approved' && externalSummary.content) || externalProjection.operationalSummary?.content) && (
               <div className="bg-white p-3 rounded border border-emerald-200 space-y-1.5" data-testid="report-approved-external-summary">
                 <div className="font-semibold text-emerald-950 text-xs">
                   {isVi ? 'Tóm tắt vận hành (Đã duyệt gửi đối tác)' : 'Operational Summary (Approved for External Sharing)'}
                 </div>
-                <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{externalSummary.content}</p>
+                <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
+                  {externalSummary?.workflowState === 'approved' ? externalSummary.content : externalProjection.operationalSummary?.content}
+                </p>
                 <div className="text-[10px] text-muted-foreground pt-0.5">
-                  v{externalSummary.version} · {isVi ? 'Phê duyệt bởi' : 'Approved by'} {externalSummary.reviewedBy || 'Admin'}
+                  v{externalSummary?.workflowState === 'approved' ? externalSummary.version : (externalProjection.operationalSummary?.version ?? 1)} · {isVi ? 'Phê duyệt bởi' : 'Approved by'} {externalSummary?.reviewedBy || 'Admin'}
                 </div>
               </div>
             )}
-            {externalSummary && externalSummary.workflowState !== 'approved' && (
+            {externalSummary && externalSummary.workflowState !== 'approved' && !externalProjection.operationalSummary?.content && (
               <div className="bg-amber-50/70 p-2.5 rounded border border-amber-200/80 text-[11px] text-amber-900" data-testid="report-unapproved-external-summary-note">
                 {isVi
                   ? `Bản tóm tắt vận hành đang ở trạng thái "${externalSummary.workflowState}" và sẽ chỉ hiển thị cho đối tác sau khi được duyệt.`

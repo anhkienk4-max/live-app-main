@@ -260,7 +260,8 @@ export const shiftIncidentService = {
         throw new ShiftIncidentServiceError(`WORKFORCE_SUMMARY_FAILED: ${code}`, code)
       }
 
-      const monthlyData: WorkforceIncidentMonthlyResponse = await res.json()
+      const json = await res.json()
+      const monthlyData: WorkforceIncidentMonthlyResponse = json?.data ?? json
       return mapMonthlyResponseToWorkforceIncidentSummary(monthlyData)
     }
 
