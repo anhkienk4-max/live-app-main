@@ -232,6 +232,7 @@ function seedSyntheticAgencyFixtures(databaseContainer, marker, actors, shifts) 
   const memberships = [
     [actors.leader.id, agencyIds.inScope, 'leader-in-scope', 'active'],
     [actors.member.id, agencyIds.inScope, 'member-in-scope', 'active'],
+    [actors.realtimeMember.id, agencyIds.inScope, 'realtime-member-in-scope', 'active'],
     [actors.memberSupport.id, agencyIds.inScope, 'member-support-in-scope', 'active'],
     [actors.memberUnassigned.id, agencyIds.inScope, 'member-unassigned-in-scope', 'active'],
     [actors.leaderOtherBrand.id, agencyIds.outOfScope, 'leader-other-brand', 'active'],
@@ -244,6 +245,7 @@ function seedSyntheticAgencyFixtures(databaseContainer, marker, actors, shifts) 
     lines.push(`INSERT INTO private.rc19_agencies (id,source_system,authoritative_key,display_name,source_version,source_snapshot_sha256) VALUES (${sqlLiteral(id)},${sqlLiteral(sourceSystem)},${sqlLiteral(key)},${sqlLiteral(name)},${sqlLiteral(sourceVersion)},${sqlLiteral(digest)})`)
   }
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.inScope)}`)
+  lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.realtime)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.outOfScope)} WHERE id=${sqlLiteral(shifts.outOfScope)}`)
   lines.push(`UPDATE public.shifts SET authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} WHERE id=${sqlLiteral(shifts.d01)}`)
   // D01 is a historical emergency replacement at the previous day's segment boundary.
@@ -473,13 +475,18 @@ async function main() {
   const supportPassword = `${randomBytes(24).toString('base64url')}Aa9!`
   const unassignedPassword = `${randomBytes(24).toString('base64url')}Ub7!`
   const foreignLeaderPassword = `${randomBytes(24).toString('base64url')}Lf5!`
-  const [memberSupport, memberUnassigned, leaderOtherBrand] = await Promise.all([
+  const realtimeMemberEmail = `rc19-${randomUUID()}-realtime@example.test`
+  const realtimeMemberPassword = `${randomBytes(24).toString('base64url')}Rt8!`
+  const outAgencyEmail = `rc19-${randomUUID()}-out-agency@example.test`
+  const outAgencyPassword = `${randomBytes(24).toString('base64url')}Aa3!`
+  const [memberSupport, memberUnassigned, leaderOtherBrand, realtimeMember] = await Promise.all([
     createActor(service, url, anonKey, 'member', `rc19-${randomUUID()}-support@example.test`, supportPassword, 'member-support'),
     createActor(service, url, anonKey, 'member', `rc19-${randomUUID()}-unassigned@example.test`, unassignedPassword, 'member-unassigned'),
     createActor(service, url, anonKey, 'leader', `rc19-${randomUUID()}-other-brand@example.test`, foreignLeaderPassword, 'leader-other-brand'),
+    createActor(service, url, anonKey, 'member', realtimeMemberEmail, realtimeMemberPassword, 'member-realtime'),
   ])
   const [memberOutAgency, leaderRevoked] = await Promise.all([
-    createActor(service, url, anonKey, 'member', `rc19-${randomUUID()}-out-agency@example.test`, `${randomBytes(24).toString('base64url')}Aa3!`, 'member-out-agency'),
+    createActor(service, url, anonKey, 'member', outAgencyEmail, outAgencyPassword, 'member-out-agency'),
     createActor(service, url, anonKey, 'leader', `rc19-${randomUUID()}-revoked@example.test`, `${randomBytes(24).toString('base64url')}Rb9!`, 'leader-revoked'),
   ])
 
@@ -536,31 +543,39 @@ async function main() {
     [segment(1, '10:00', '11:00', 'host'), segment(2, '11:00', '12:00', 'host'),
       segment(3, '12:00', '14:00', 'host')],
   )
+  const realtimeShiftId = await createShift(
+    admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} realtime`, '2099-12-03',
+    [segment(1, '10:00', '14:00', 'host')],
+  )
 
   const segmentRows = await service.from('shift_staffing_segments')
-    .select('id,shift_id,segment_index,start_at,end_at').in('shift_id', [scopedShiftId, foreignShiftId, d01ShiftId])
+    .select('id,shift_id,segment_index,start_at,end_at').in('shift_id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId])
   const storedSegments = await requireNoError(segmentRows, 'SEGMENT_FIXTURE_READBACK_FAILED')
-  if (!Array.isArray(storedSegments) || storedSegments.length !== 6
-    || storedSegments.some(row => !row.id || ![scopedShiftId, foreignShiftId, d01ShiftId].includes(row.shift_id))) {
+  if (!Array.isArray(storedSegments) || storedSegments.length !== 7
+    || storedSegments.some(row => !row.id || ![scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId].includes(row.shift_id))) {
     stop('SEGMENT_FIXTURE_READBACK_MISMATCH')
   }
   const segmentByKey = new Map(storedSegments.map(row => [`${row.shift_id}:${row.segment_index}`, row.id]))
   const databaseContainer = required('RC19_W4_RUNTIME_DATABASE_CONTAINER')
   const { agencyIds, membershipRows } = seedSyntheticAgencyFixtures(databaseContainer, marker, {
-    leader, member, memberSupport, memberUnassigned, leaderOtherBrand,
+    leader, member, realtimeMember, memberSupport, memberUnassigned, leaderOtherBrand,
     memberOutAgency, leaderRevoked,
-  }, { inScope: scopedShiftId, outOfScope: foreignShiftId, d01: d01ShiftId })
+  }, { inScope: scopedShiftId, realtime: realtimeShiftId, outOfScope: foreignShiftId, d01: d01ShiftId })
   const agencyReadback = await service.from('shifts')
-    .select('id,authoritative_agency_id').in('id', [scopedShiftId, foreignShiftId, d01ShiftId])
+    .select('id,brand_id,authoritative_agency_id').in('id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId])
   const agencyRows = await requireNoError(agencyReadback, 'AGENCY_FIXTURE_READBACK_FAILED')
-  if (!Array.isArray(agencyRows) || agencyRows.length !== 3
+  if (!Array.isArray(agencyRows) || agencyRows.length !== 4
     || agencyRows.find(row => row.id === scopedShiftId)?.authoritative_agency_id !== agencyIds.inScope
     || agencyRows.find(row => row.id === foreignShiftId)?.authoritative_agency_id !== agencyIds.outOfScope
-    || agencyRows.find(row => row.id === d01ShiftId)?.authoritative_agency_id !== agencyIds.inScope) {
+    || agencyRows.find(row => row.id === d01ShiftId)?.authoritative_agency_id !== agencyIds.inScope
+    || agencyRows.find(row => row.id === realtimeShiftId)?.authoritative_agency_id !== agencyIds.inScope
+    || agencyRows.find(row => row.id === realtimeShiftId)?.brand_id !== brandIds[0]) {
     stop('AGENCY_FIXTURE_READBACK_MISMATCH')
   }
-  if (!Array.isArray(membershipRows) || membershipRows.length !== 7
+  if (!Array.isArray(membershipRows) || membershipRows.length !== 8
     || membershipRows.find(row => row.businessUserId === member.id)?.agencyId !== agencyIds.inScope
+    || membershipRows.find(row => row.businessUserId === realtimeMember.id)?.agencyId !== agencyIds.inScope
+    || membershipRows.find(row => row.businessUserId === realtimeMember.id)?.status !== 'active'
     || membershipRows.find(row => row.businessUserId === memberOutAgency.id)?.agencyId !== agencyIds.outOfScope
     || membershipRows.find(row => row.businessUserId === leaderRevoked.id)?.status !== 'revoked') {
     stop('AGENCY_MEMBERSHIP_FIXTURE_READBACK_MISMATCH')
@@ -608,6 +623,51 @@ async function main() {
     || d01OriginalAssignment.user_id !== member.id || d01OriginalAssignment.operational_role !== 'host') {
     stop('D01_ASSIGNMENT_FIXTURE_CREATE_MISMATCH')
   }
+  const realtimeSegment = storedSegments.find(row => row.shift_id === realtimeShiftId && row.segment_index === 1)
+  if (!realtimeSegment?.id) stop('REALTIME_SEGMENT_FIXTURE_MISSING')
+  const realtimeVersion = await service.from('shifts').select('version').eq('id', realtimeShiftId).single()
+  const realtimeVersionRow = await requireNoError(realtimeVersion, 'REALTIME_SHIFT_VERSION_READ_FAILED')
+  const realtimeAssigned = await admin.client.rpc('manual_assign_shift_staff_to_segment', {
+    p_shift_id: realtimeShiftId,
+    p_user_id: realtimeMember.id,
+    p_role: 'host',
+    p_notes: 'RC19 disposable Realtime diagnostic fixture',
+    p_expected_version: realtimeVersionRow.version,
+    p_staffing_segment_id: realtimeSegment.id,
+  }).single()
+  if (realtimeAssigned.error) stop(databaseFailureCode('REALTIME_ASSIGNMENT_FIXTURE_CREATE_FAILED', realtimeAssigned.error))
+  const realtimeRegistration = realtimeAssigned.data
+  if (!realtimeRegistration?.id || realtimeRegistration.staffing_segment_id !== realtimeSegment.id
+    || realtimeRegistration.user_id !== realtimeMember.id || realtimeRegistration.operational_role !== 'host') {
+    stop('REALTIME_ASSIGNMENT_FIXTURE_CREATE_MISMATCH')
+  }
+  const realtimeActorShift = await realtimeMember.client.from('shifts').select('id,brand_id,authoritative_agency_id')
+    .eq('id', realtimeShiftId).maybeSingle()
+  const realtimeActorVisible = await requireNoError(realtimeActorShift, 'REALTIME_MEMBER_SHIFT_READ_FAILED')
+  const realtimeActorRegistration = await realtimeMember.client.from('shift_registrations')
+    .select('id,shift_id,user_id,staffing_segment_id').eq('id', realtimeRegistration.id).maybeSingle()
+  const realtimeActorRegistrationRow = await requireNoError(realtimeActorRegistration, 'REALTIME_MEMBER_REGISTRATION_READ_FAILED')
+  if (realtimeActorVisible?.id !== realtimeShiftId || realtimeActorVisible.brand_id !== brandIds[0]
+    || realtimeActorVisible.authoritative_agency_id !== agencyIds.inScope
+    || realtimeActorRegistrationRow?.id !== realtimeRegistration.id
+    || realtimeActorRegistrationRow.user_id !== realtimeMember.id
+    || realtimeActorRegistrationRow.shift_id !== realtimeShiftId) stop('REALTIME_MEMBER_SCOPE_FIXTURE_READBACK_MISMATCH')
+  const realtimeMembershipProof = readDatabase(databaseContainer,
+    `SELECT count(*) FROM public.business_users u JOIN private.rc19_business_user_agency_memberships m ON m.business_user_id=u.id JOIN public.shifts s ON s.id=${sqlLiteral(realtimeShiftId)} JOIN public.shift_registrations r ON r.id=${sqlLiteral(realtimeRegistration.id)} WHERE u.id=${sqlLiteral(realtimeMember.id)} AND u.auth_user_id::text=${sqlLiteral(realtimeMember.id)} AND u.status='active' AND u.account_status='active' AND u.deleted_at IS NULL AND u.archived_at IS NULL AND m.agency_id=${sqlLiteral(agencyIds.inScope)} AND m.status='active' AND m.revoked_at IS NULL AND m.source_version=${sqlLiteral(marker)} AND (m.effective_from IS NULL OR m.effective_from<=statement_timestamp()) AND (m.effective_until IS NULL OR m.effective_until>statement_timestamp()) AND s.brand_id=${sqlLiteral(brandIds[0])} AND s.authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} AND r.user_id=u.id AND r.shift_id=s.id AND r.staffing_segment_id=${sqlLiteral(realtimeSegment.id)}`)
+  if (realtimeMembershipProof !== '1') stop('REALTIME_MEMBER_DATABASE_SCOPE_PROOF_FAILED')
+  const wrongScopeRealtimeRead = await memberOutAgency.client.from('shifts').select('id').eq('id', realtimeShiftId)
+  const wrongScopeRealtimeRows = await requireNoError(wrongScopeRealtimeRead, 'REALTIME_WRONG_SCOPE_READ_FAILED')
+  if (!Array.isArray(wrongScopeRealtimeRows) || wrongScopeRealtimeRows.length !== 0) stop('REALTIME_WRONG_AGENCY_SHIFT_VISIBLE')
+  const realtimeFixturePath = join(required('RUNNER_TEMP'), 'rc19-w4-realtime-fixture.json')
+  writeFileSync(realtimeFixturePath, `${JSON.stringify({
+    runtime_marker: marker,
+    actor: { auth_user_id: realtimeMember.id, business_user_id: realtimeMember.id,
+      email: realtimeMemberEmail, password: realtimeMemberPassword, brand_id: brandIds[0],
+      agency_id: agencyIds.inScope, shift_id: realtimeShiftId, registration_id: realtimeRegistration.id,
+      staffing_segment_id: realtimeSegment.id, database_scope_proof: true },
+    wrong_scope_actor: { auth_user_id: memberOutAgency.id, email: outAgencyEmail,
+      password: outAgencyPassword, agency_id: agencyIds.outOfScope },
+  })}\n`, { mode: 0o600 })
 
   const leaderBrandsResult = await leader.client.rpc('rc19_current_leader_brand_ids', {
     p_scope_key: 'shifts.read',
@@ -982,7 +1042,13 @@ async function main() {
     authenticated: false, interaction_count: 0, status: 'NOT RUN', blocker: null }
   if (browserRequested) {
     try {
-      browserResult = await runBrowserAcceptance(credentials)
+      const browserCredentials = credentials.map(item => item.role === 'member'
+        ? { ...item, email: memberSupport.email, password: supportPassword }
+        : item)
+      const browserMemberEmail = browserCredentials.find(item => item.role === 'member')?.email
+      const browserMember = browserMemberEmail === memberSupport.email
+      if (!browserMember) stop('BROWSER_MEMBER_FIXTURE_MAPPING_FAILED')
+      browserResult = await runBrowserAcceptance(browserCredentials)
     } catch (error) {
       browserResult.blocker = typeof error?.message === 'string' && /^[A-Z0-9_]+$/u.test(error.message)
         ? error.message : 'BROWSER_ACCEPTANCE_BLOCKED'
@@ -1092,6 +1158,9 @@ async function main() {
           brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active' },
         { key: 'member_requester', auth_user_id: member.id, business_user_id: member.id, role: 'member',
           brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active before replay revocation' },
+        { key: 'member_realtime', auth_user_id: realtimeMember.id, business_user_id: realtimeMember.id, role: 'member',
+          brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active; independent of PASS/Swap revocation',
+          shift_id: realtimeShiftId, registration_id: realtimeRegistration.id, database_scope_proof: true },
         { key: 'member_support_submitter', auth_user_id: memberSupport.id, business_user_id: memberSupport.id,
           role: 'member', brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active' },
         { key: 'member_clear_candidate', auth_user_id: memberUnassigned.id, business_user_id: memberUnassigned.id,
@@ -1113,6 +1182,8 @@ async function main() {
         { id: d01ShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: d01BusinessDate,
           purpose: 'D01 exact K02 atomic skip and replacement',
           segment_start_at: d01K02Segment.start_at, segment_end_at: d01K02Segment.end_at },
+        { id: realtimeShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: '2099-12-03',
+          purpose: 'dedicated authenticated Realtime delivery and wrong-scope event denial' },
       ],
       staffing_segments: storedSegments.map(row => ({ id: row.id, shift_id: row.shift_id,
         segment_index: row.segment_index })),
@@ -1252,10 +1323,10 @@ async function main() {
       browserCase,
     ],
     fixtures: {
-      authenticated_users: authUsers.length + 5,
+      authenticated_users: authUsers.length + 6,
       brands: brandIds.length,
       platforms: 1,
-      parent_shifts: 3,
+      parent_shifts: 4,
       staffing_segments: storedSegments.length,
       canonical_assignments: assignments.length + 1 + (d01Receipt ? 1 : 0),
       wrong_brand_denied: true,
