@@ -69,3 +69,6 @@ jobs:
       harness_sha: 3b745ca9cd9c315ab6a5a2e62ebae2cb7b9eda36
       application_sha: ${{ needs.verify-reviewed-candidate-marker.outputs.application_sha }}
       run_browser_uat: true
+      diagnostic_only: true
+      diagnostic_browser_uat: true
+      diagnostic_realtime: false
