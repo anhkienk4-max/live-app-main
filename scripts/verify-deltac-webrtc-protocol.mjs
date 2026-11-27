@@ -30,32 +30,27 @@ function findMediaMtxBinary() {
   if (process.env.MEDIAMTX_PATH && existsSync(process.env.MEDIAMTX_PATH)) {
     return { bin: process.env.MEDIAMTX_PATH, isWsl: false }
   }
-  const linuxCandidates = [
-    '/tmp/mediamtx-bin/mediamtx',
-    '/home/antigravity/bin/mediamtx',
-    '/usr/local/bin/mediamtx',
-    join(tmpdir(), 'mediamtx'),
-  ]
-  for (const c of linuxCandidates) {
-    if (existsSync(c)) return { bin: c, isWsl: false }
-  }
+  try {
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which'
+    const res = spawnSync(whichCmd, ['mediamtx'], { encoding: 'utf8' })
+    const trimmed = res.stdout?.trim()?.split('\n')[0]?.trim()
+    if (trimmed && existsSync(trimmed)) {
+      return { bin: trimmed, isWsl: false }
+    }
+  } catch {}
+  const tempDir = process.env.TEMP || tmpdir()
   const candidates = [
-    join(tmpdir(), 'mediamtx.exe'),
-    join(process.env.TEMP || 'C:\\TEMP', 'mediamtx.exe'),
-    'C:\\Users\\KienNguyen\\AppData\\Local\\Temp\\mediamtx.exe',
+    join(tempDir, 'mediamtx'),
+    join(tempDir, 'mediamtx.exe'),
+    '/usr/local/bin/mediamtx',
+    '/usr/bin/mediamtx',
+    'C:\\TEMP\\mediamtx.exe',
   ]
   for (const c of candidates) {
     if (existsSync(c)) return { bin: c, isWsl: false }
   }
   try {
-    const res = spawnSync('which', ['mediamtx'], { encoding: 'utf8' })
-    const trimmed = res.stdout?.trim()
-    if (trimmed && existsSync(trimmed)) {
-      return { bin: trimmed, isWsl: false }
-    }
-  } catch {}
-  try {
-    const res = spawnSync('wsl', ['-e', 'sh', '-c', 'which mediamtx || ls /tmp/mediamtx-bin/mediamtx 2>/dev/null'], { encoding: 'utf8' })
+    const res = spawnSync('wsl', ['-e', 'sh', '-c', 'which mediamtx || ls /tmp/mediamtx 2>/dev/null'], { encoding: 'utf8' })
     const trimmed = res.stdout?.trim()
     if (trimmed && trimmed.includes('mediamtx')) {
       return { bin: trimmed.split('\n')[0], isWsl: true }
