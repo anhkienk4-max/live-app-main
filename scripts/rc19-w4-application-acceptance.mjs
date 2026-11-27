@@ -655,9 +655,9 @@ async function main() {
   const realtimeMembershipProof = readDatabase(databaseContainer,
     `SELECT count(*) FROM public.business_users u JOIN private.rc19_business_user_agency_memberships m ON m.business_user_id=u.id JOIN public.shifts s ON s.id=${sqlLiteral(realtimeShiftId)} JOIN public.shift_registrations r ON r.id=${sqlLiteral(realtimeRegistration.id)} WHERE u.id=${sqlLiteral(realtimeMember.id)} AND u.auth_user_id::text=${sqlLiteral(realtimeMember.id)} AND u.status='active' AND u.account_status='active' AND u.deleted_at IS NULL AND u.archived_at IS NULL AND m.agency_id=${sqlLiteral(agencyIds.inScope)} AND m.status='active' AND m.revoked_at IS NULL AND m.source_version=${sqlLiteral(marker)} AND (m.effective_from IS NULL OR m.effective_from<=statement_timestamp()) AND (m.effective_until IS NULL OR m.effective_until>statement_timestamp()) AND s.brand_id=${sqlLiteral(brandIds[0])} AND s.authoritative_agency_id=${sqlLiteral(agencyIds.inScope)} AND r.user_id=u.id AND r.shift_id=s.id AND r.staffing_segment_id=${sqlLiteral(realtimeSegment.id)}`)
   if (realtimeMembershipProof !== '1') stop('REALTIME_MEMBER_DATABASE_SCOPE_PROOF_FAILED')
-  const wrongScopeRealtimeRead = await memberOutAgency.client.from('shifts').select('id').eq('id', realtimeShiftId)
+  const wrongScopeRealtimeRead = await leaderOtherBrand.client.from('shifts').select('id').eq('id', realtimeShiftId)
   const wrongScopeRealtimeRows = await requireNoError(wrongScopeRealtimeRead, 'REALTIME_WRONG_SCOPE_READ_FAILED')
-  if (!Array.isArray(wrongScopeRealtimeRows) || wrongScopeRealtimeRows.length !== 0) stop('REALTIME_WRONG_AGENCY_SHIFT_VISIBLE')
+  if (!Array.isArray(wrongScopeRealtimeRows) || wrongScopeRealtimeRows.length !== 0) stop('REALTIME_WRONG_BRAND_SHIFT_VISIBLE')
   const realtimeFixturePath = join(required('RUNNER_TEMP'), 'rc19-w4-realtime-fixture.json')
   writeFileSync(realtimeFixturePath, `${JSON.stringify({
     runtime_marker: marker,
@@ -665,8 +665,8 @@ async function main() {
       email: realtimeMemberEmail, password: realtimeMemberPassword, brand_id: brandIds[0],
       agency_id: agencyIds.inScope, shift_id: realtimeShiftId, registration_id: realtimeRegistration.id,
       staffing_segment_id: realtimeSegment.id, database_scope_proof: true },
-    wrong_scope_actor: { auth_user_id: memberOutAgency.id, email: outAgencyEmail,
-      password: outAgencyPassword, agency_id: agencyIds.outOfScope },
+    wrong_scope_actor: { auth_user_id: leaderOtherBrand.id, email: leaderOtherBrand.email,
+      password: foreignLeaderPassword, brand_id: brandIds[1], agency_id: agencyIds.outOfScope },
   })}\n`, { mode: 0o600 })
 
   const leaderBrandsResult = await leader.client.rpc('rc19_current_leader_brand_ids', {
@@ -1160,7 +1160,8 @@ async function main() {
           brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active before replay revocation' },
         { key: 'member_realtime', auth_user_id: realtimeMember.id, business_user_id: realtimeMember.id, role: 'member',
           brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active; independent of PASS/Swap revocation',
-          shift_id: realtimeShiftId, registration_id: realtimeRegistration.id, database_scope_proof: true },
+          shift_id: realtimeShiftId, registration_id: realtimeRegistration.id, database_scope_proof: true,
+          negative_actor_key: 'leader_wrong_brand' },
         { key: 'member_support_submitter', auth_user_id: memberSupport.id, business_user_id: memberSupport.id,
           role: 'member', brand_id: brandIds[0], agency_id: agencyIds.inScope, agency_membership: 'active' },
         { key: 'member_clear_candidate', auth_user_id: memberUnassigned.id, business_user_id: memberUnassigned.id,
