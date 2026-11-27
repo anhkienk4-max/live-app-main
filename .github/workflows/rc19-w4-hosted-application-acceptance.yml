@@ -1026,10 +1026,11 @@ jobs:
 
           let channelStatus = 'NOT_CREATED'
           let receivedEvent = false
+          let matchingEvent = false
           let receivedEventType = 'NONE'
           const fail = code => {
             process.stderr.write(`${code}\n`)
-            process.stderr.write(`RC19_REALTIME_DIAGNOSTIC ${JSON.stringify({ channel_status: channelStatus, received_event: receivedEvent, event_type: receivedEventType })}\n`)
+            process.stderr.write(`RC19_REALTIME_DIAGNOSTIC ${JSON.stringify({ channel_status: channelStatus, received_event: receivedEvent, matching_event: matchingEvent, event_type: receivedEventType })}\n`)
             process.exit(1)
           }
           const withTimeout = (promise, code) => Promise.race([
@@ -1050,10 +1051,13 @@ jobs:
           let resolveEvent
           const event = new Promise(resolve => { resolveEvent = resolve })
           const channel = member.channel(`rc19-w4-diagnostic-${process.env.REALTIME_MARKER}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'shifts', filter: `id=eq.${found.data.id}` }, payload => {
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'shifts' }, payload => {
               receivedEvent = true
               receivedEventType = typeof payload.eventType === 'string' ? payload.eventType : 'UNKNOWN'
-              if (payload.new?.title === markerTitle) resolveEvent(true)
+              if (payload.new?.id === found.data.id && payload.new?.title === markerTitle) {
+                matchingEvent = true
+                resolveEvent(true)
+              }
             })
           const subscribed = new Promise((resolve, reject) => channel.subscribe(status => {
             channelStatus = status
@@ -1096,6 +1100,7 @@ jobs:
               "status": "failed",
               "channel_status": diagnostic.get("channel_status") if diagnostic.get("channel_status") in {"SUBSCRIBED", "CHANNEL_ERROR", "TIMED_OUT", "CLOSED", "NOT_CREATED"} else "UNKNOWN",
               "received_event": diagnostic.get("received_event") is True,
+              "matching_event": diagnostic.get("matching_event") is True,
               "event_type": diagnostic.get("event_type") if diagnostic.get("event_type") in {"INSERT", "UPDATE", "DELETE", "UNKNOWN", "NONE"} else "UNKNOWN",
               "raw_log_sha256": __import__("hashlib").sha256(log_path.read_bytes()).hexdigest(),
               "raw_log_in_artifact": False,
@@ -1126,10 +1131,21 @@ jobs:
               if "postgres" in lowered or "postgres_changes" in lowered: categories.add("POSTGRES_CHANGES")
               if "subscription" in lowered: categories.add("SUBSCRIPTION")
               if not categories: categories.add("OTHER_ERROR")
+          safe_classes = set()
+          for line in lines:
+              lowered = line.lower()
+              if "table is not in publication" in lowered or "not part of the publication" in lowered: safe_classes.add("TABLE_NOT_PUBLISHED")
+              if "invalid jwt" in lowered or "jwt expired" in lowered or "token is expired" in lowered: safe_classes.add("JWT_AUTH")
+              if "permission denied" in lowered or "unauthorized" in lowered or "rls" in lowered: safe_classes.add("AUTHORIZATION")
+              if "replication slot" in lowered and ("inactive" in lowered or "not found" in lowered): safe_classes.add("REPLICATION_SLOT_UNAVAILABLE")
+              if "publication" in lowered and ("not found" in lowered or "does not exist" in lowered): safe_classes.add("PUBLICATION_UNAVAILABLE")
+              if "decode" in lowered or "invalid input syntax" in lowered: safe_classes.add("PAYLOAD_DECODE")
+          if not safe_classes and lines: safe_classes.add("OTHER_ERROR")
           Path(sys.argv[2]).write_text(json.dumps({
               "container_state": sys.argv[3],
               "error_line_count": len(lines),
               "error_categories": sorted(categories),
+              "safe_error_classes": sorted(safe_classes),
               "raw_log_sha256": hashlib.sha256(raw).hexdigest(),
               "raw_log_bytes": len(raw),
               "raw_log_in_artifact": False,
@@ -1143,7 +1159,7 @@ jobs:
             echo "::error::Authenticated Realtime delivery diagnostic failed with $realtime_code."
             exit "$realtime_result"
           fi
-          jq '.steps.realtime={status:"passed",authenticated_member:true,authorized_scoped_shift:true,event_delivered:true,synthetic_update_readback:true}' \
+            jq '.steps.realtime={status:"passed",authenticated_member:true,authorized_scoped_shift:true,event_delivered:true,exact_shift_and_marker_matched:true,subscription_filter:"client_side_exact_row_check",synthetic_update_readback:true}' \
             "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/realtime-evidence.json"
           mv "$RUNNER_TEMP/realtime-evidence.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
 
