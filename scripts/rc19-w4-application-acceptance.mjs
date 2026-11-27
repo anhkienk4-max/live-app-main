@@ -86,6 +86,15 @@ async function runBrowserAcceptance(credentials) {
     for (const specItem of suite.specs ?? []) {
       for (const testItem of specItem.tests ?? []) {
         const lastResult = testItem.results?.at(-1)
+        const failureText = (lastResult?.errors ?? []).map(error => String(error?.message ?? '')).join('\n').toLowerCase()
+        const failureClass = lastResult?.status === 'failed'
+          ? failureText.includes('timeout') ? 'TIMEOUT'
+            : failureText.includes('to be visible') || failureText.includes('not visible') ? 'VISIBILITY_ASSERTION'
+              : failureText.includes('to have url') || failureText.includes('navigation') ? 'NAVIGATION_ASSERTION'
+                : failureText.includes('401') || failureText.includes('403') || failureText.includes('unauthorized') ? 'AUTHORIZATION'
+                  : failureText.includes('strict mode violation') || failureText.includes('resolved to') ? 'LOCATOR_AMBIGUITY'
+                    : 'BROWSER_ASSERTION'
+          : null
         const interactionCountBeforeTest = browserInteractionCount
         const uiStatus = testItem.status === 'expected' && lastResult?.status === 'passed' ? 'PASS'
           : testItem.status === 'skipped' || testItem.expectedStatus === 'skipped' ? 'NOT RUN' : 'FAIL'
@@ -102,7 +111,7 @@ async function runBrowserAcceptance(credentials) {
           case_id: `browser:${specItem.title}`,
           actor: isAnonymousDenial ? 'Anonymous' : 'Synthetic Admin/Leader/Member as specified by authenticated browser test',
           expected: specItem.title,
-          actual: { http_status: readiness.status, rpc_code: uiStatus },
+          actual: { http_status: readiness.status, rpc_code: uiStatus, failure_class: failureClass },
           database_readback: { status: 'not_asserted_by_browser_suite', matches_expected: false },
           negative_authorization: { tested: isAnonymousDenial, passed: isAnonymousDenial && uiStatus === 'PASS' },
           browser_interaction: { performed: uiStatus === 'PASS' && testInteractionCount > 0,
@@ -374,7 +383,7 @@ async function createActor(service, url, anonKey, role, email, password, suffix)
     || row.deleted_at !== null || row.archived_at !== null) {
     stop(`BUSINESS_USER_MAPPING_MISMATCH_${suffix.toUpperCase()}`)
   }
-  return { id: authId, client }
+  return { id: authId, email, client }
 }
 
 function segment(segmentIndex, startTime, endTime, operationalRole) {
