@@ -179,7 +179,10 @@ jobs:
           import sys
           from pathlib import Path
 
-          log_path, stage, containers_path, output_path = map(Path, sys.argv[1:])
+          log_path = Path(sys.argv[1])
+          stage = sys.argv[2]
+          containers_path = Path(sys.argv[3])
+          output_path = Path(sys.argv[4])
           raw = log_path.read_bytes() if log_path.exists() else b""
           decoded = raw.decode("utf-8", errors="replace")
           patterns = [
