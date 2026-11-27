@@ -1,8 +1,8 @@
 {
   "mode": "bounded-runtime-diagnostic",
   "reviewed": true,
-  "application_sha": "2e49cc89047a3a8cc6a20626e2600d08eb721372",
-  "harness_sha": "4a3d2de26bebe804229bbc632da0b38007bd2823",
+  "application_sha": "c8a0eafce89d995c2608c75edb8842f6cd1a87f4",
+  "harness_sha": "58aced250ba59c7c97216f4cf69bf9c9a5091e14",
   "browser_uat_requested": true,
-  "diagnostic_id": "RC19-W4-runtime-diagnostic-2026-11-27-30"
+  "diagnostic_id": "RC19-W4-runtime-diagnostic-2026-11-27-31"
 }
