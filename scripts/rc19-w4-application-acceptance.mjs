@@ -8,8 +8,10 @@ import { classifyBrowserCase, readCaseEvidence } from './rc19-w4-browser-evidenc
 const schema = 'rc19-w4-application-acceptance/v2'
 const root = process.cwd()
 
-function stop(code) {
-  throw new Error(code)
+function stop(code, diagnostics = null) {
+  const error = new Error(code)
+  if (diagnostics) error.rc19Diagnostics = diagnostics
+  throw error
 }
 
 function required(name) {
@@ -926,7 +928,8 @@ async function main() {
         started_at: startedAt, completed_at: new Date().toISOString(), status: 'PASS' })
     } catch (error) {
       const code = typeof error?.message === 'string' ? error.message : 'ASSERTION_FAILED'
-      caseResults.push({ case_id: caseId, actor, expected, actual: { rpc_code: code },
+      caseResults.push({ case_id: caseId, actor, expected, actual: { rpc_code: code,
+        ...(error?.rc19Diagnostics ? { diagnostics: error.rc19Diagnostics } : {}) },
         database_readback: { status: 'failed', matches_expected: false },
         negative_authorization: { tested: false, passed: false },
         evidence_scope: 'Disposable local PG17 candidate with real GoTrue/PostgREST actor sessions',
@@ -970,7 +973,16 @@ async function main() {
         const obligations = await readObligations(admin, 1, { agencyCodes: [code] })
         if (obligations.total !== expected.length || obligations.page !== 1 || obligations.pageSize !== 10
           || !exactIds(obligations.rows ?? [], row => row.shift?.id, expected.map(row => ({ id: shiftIdFor(row) })))) {
-          stop('AGENCY_REPORT_OBLIGATION_SINGLE_CODE_MISMATCH')
+          stop('AGENCY_REPORT_OBLIGATION_SINGLE_CODE_MISMATCH', {
+            agency_code: code,
+            expected_total: expected.length,
+            actual_total: obligations.total ?? null,
+            page: obligations.page ?? null,
+            page_size: obligations.pageSize ?? null,
+            expected_shift_ids: expected.map(shiftIdFor).sort(),
+            actual_shift_ids: (obligations.rows ?? []).map(row => row.shift?.id ?? null).sort(),
+            report_list_total: list.total ?? null,
+          })
         }
       }
       for (const codes of [['ada', 'snap'], ['ada', 'live_ai'], ['snap', 'live_ai'], ['ada', 'snap', 'live_ai']]) {
@@ -1700,11 +1712,11 @@ async function main() {
       const browserMemberEmail = browserCredentials.find(item => item.role === 'member')?.email
       const browserMember = browserMemberEmail === realtimeMemberEmail
       if (!browserMember) stop('BROWSER_MEMBER_FIXTURE_MAPPING_FAILED')
+      if (realtimeMember.id === member.id) stop('BROWSER_MEMBER_FIXTURE_NOT_ISOLATED')
       const browserFixtureReadback = readDatabase(databaseContainer,
         `SELECT (SELECT count(*) FROM public.shift_registrations WHERE id=${sqlLiteral(browserSourceRegistration.id)} AND user_id=${sqlLiteral(realtimeMember.id)} AND shift_id=${sqlLiteral(browserShiftA)} AND staffing_segment_id=${sqlLiteral(browserSourceSegment.id)} AND status='manually_assigned')::text || '|' || (SELECT count(*) FROM public.shift_registrations WHERE id=${sqlLiteral(browserCounterpartRegistration.id)} AND user_id=${sqlLiteral(memberSupport.id)} AND shift_id=${sqlLiteral(browserShiftB)} AND staffing_segment_id=${sqlLiteral(browserCounterpartSegment.id)} AND status='manually_assigned')::text || '|' || (SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(realtimeMember.id)} AND agency_id=${sqlLiteral(agencyIds.inScope)} AND status='active' AND effective_from<=statement_timestamp() AND (effective_until IS NULL OR effective_until>statement_timestamp()))::text || '|' || (SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(memberBrowserCandidate.id)} AND agency_id=${sqlLiteral(agencyIds.inScope)} AND status='active' AND effective_from<=statement_timestamp() AND (effective_until IS NULL OR effective_until>statement_timestamp()))::text`)
       if (browserFixtureReadback !== '1|1|1|1') stop('BROWSER_FIXTURE_POSTGRES_READBACK_MISMATCH')
       const passSwapRevocationEvidence = caseResults.find(item => item.case_id === 'pass-swap-same-key-concurrency-and-replay')
-      if (passSwapRevocationEvidence?.status !== 'PASS') stop('BROWSER_PASS_SWAP_REVOCATION_CASE_NOT_PASSED')
       const externalRevisionReadback = readDatabase(databaseContainer,
         `SELECT (SELECT count(*) FROM private.rc19_report_revision_sources WHERE report_id=${sqlLiteral(externalSummaryFixtures[0].reportId)} AND revision_version=${Number(externalSummaryFixtures[0].approvedRevisionVersion)} AND external_projection->'operationalSummary'->>'content'=${sqlLiteral(externalSummaryFixtures[0].contentA)})::text || '|' || (SELECT count(*) FROM private.rc19_report_revision_sources WHERE report_id=${sqlLiteral(externalSummaryFixtures[0].reportId)} AND revision_version=${Number(externalSummaryFixtures[0].approvedRevisionBVersion)} AND external_projection->'operationalSummary'->>'content'=${sqlLiteral(externalSummaryFixtures[0].contentB)})::text`)
       if (externalRevisionReadback !== '1|1') stop('BROWSER_EXTERNAL_REVISION_POSTGRES_READBACK_MISMATCH')
@@ -1734,8 +1746,10 @@ async function main() {
           shiftId: row.shiftId, agencyCode: row.agencyCode, brandId: row.brandId })),
         brandId: brandIds[0], agencyId: agencyIds.inScope, shiftId: scopedShiftId,
         expectedState: {
-          pass_swap_mutations_completed_before_browser: true,
-          requester_membership: 'PASS/Swap revocation case passed with its own independent readback',
+          pass_swap_mutations_completed_before_browser: passSwapRevocationEvidence?.status === 'PASS',
+          requester_membership: passSwapRevocationEvidence?.status === 'PASS'
+            ? 'PASS/Swap revocation case passed with its own independent readback'
+            : `PASS/Swap revocation case ${passSwapRevocationEvidence?.status ?? 'NOT RUN'}; browser actor is independent`,
           browser_member_membership: 'active and independent of PASS/Swap lifecycle',
           browser_member_registration: 'manually assigned to the isolated browser source segment',
           counterpart_registration: 'manually assigned to the isolated browser counterpart segment',
