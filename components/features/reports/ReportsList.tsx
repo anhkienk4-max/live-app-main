@@ -144,7 +144,7 @@ export function ReportsList() {
   const [draftFilters, setDraftFilters] = React.useState<Filters>(filters)
   const lastUrlFilters = React.useRef(JSON.stringify(filters))
   const [showFilters, setShowFilters] = React.useState(false)
-  const reportDetailId = searchParams.get('reports_report_id')
+  const reportDetailId = searchParams.get('reports_report_id') || searchParams.get('report_id')
   const [selectedReportState, setSelectedReportState] = React.useState<Report | null>(null)
   const [selectedReportIdentity, setSelectedReportIdentity] = React.useState('')
   const selectedReport = reportDetailId
@@ -375,15 +375,61 @@ export function ReportsList() {
     return () => { active = false }
   }, [clearTargetQuery, currentUser, deepLinkShiftId, loadError, loading, myShiftIds, openReportDetail, t, toast, userLoading])
 
+  const deepLinkReportId = searchParams.get('reports_report_id') || searchParams.get('report_id')
+  const reportDetailRequest = React.useRef<{ reportId: string; promise: Promise<{ report: Report; shift: Shift | null }> } | null>(null)
+  const handledReportDetail = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    if (!deepLinkReportId) {
+      handledReportDetail.current = null
+      reportDetailRequest.current = null
+      return
+    }
+    if (loading || userLoading || loadError || !currentUser || handledReportDetail.current === deepLinkReportId) return
+    if (selectedReportState?.id === deepLinkReportId && (targetedShift || shifts.some(s => s.id === selectedReportState.shift_id))) return
+
+    if (reportDetailRequest.current?.reportId !== deepLinkReportId) {
+      const existingReport = reports.find(r => r.id === deepLinkReportId) ?? candidateReports.find(r => r.id === deepLinkReportId)
+      const existingShift = existingReport ? (shifts.find(s => s.id === existingReport.shift_id) ?? candidateShifts.find(s => s.id === existingReport.shift_id) ?? null) : null
+      reportDetailRequest.current = {
+        reportId: deepLinkReportId,
+        promise: (async () => {
+          const rep = existingReport ?? await reportService.getById(deepLinkReportId)
+          if (!rep) throw new Error('REPORT_NOT_FOUND')
+          let sh = existingShift ?? shifts.find(s => s.id === rep.shift_id) ?? candidateShifts.find(s => s.id === rep.shift_id) ?? null
+          if (!sh && rep.shift_id) {
+            sh = await shiftService.getById(rep.shift_id).catch(() => null)
+          }
+          return { report: rep, shift: sh }
+        })(),
+      }
+    }
+
+    let active = true
+    void reportDetailRequest.current.promise.then(({ report: rep, shift: sh }) => {
+      if (!active || handledReportDetail.current === deepLinkReportId) return
+      handledReportDetail.current = deepLinkReportId
+      setSelectedReportState(rep)
+      setSelectedReportIdentity(identity)
+      if (sh) setTargetedShift(sh)
+    }).catch(err => {
+      if (!active || handledReportDetail.current === deepLinkReportId) return
+      handledReportDetail.current = deepLinkReportId
+      console.warn('Failed to load deep linked report detail', err)
+    })
+    return () => { active = false }
+  }, [candidateReports, candidateShifts, currentUser, deepLinkReportId, identity, loadError, loading, reports, selectedReportState?.id, selectedReportState?.shift_id, shifts, targetedShift, userLoading])
+
   const closeReportModal = () => {
     handledTarget.current = deepLinkShiftId
+    handledReportDetail.current = deepLinkReportId
     setShowForm(false)
     setSelectedReportState(null)
     setSelectedReportIdentity('')
     setEditingReport(undefined)
     setInitialShiftId(undefined)
     setTargetedShift(null)
-    navigate({ reports_report_id: null, shiftId: null }, true)
+    navigate({ reports_report_id: null, report_id: null, shiftId: null }, true)
   }
 
   const requestRemove = async (report: Report) => {
@@ -1067,7 +1113,7 @@ export function ReportsList() {
             </div>
           </>
         ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" data-testid="reports-cards-grid">
           {filteredReports.map(report => {
             const shift = shiftById.get(report.shift_id)
             if (!shift) {
@@ -1219,7 +1265,7 @@ export function ReportsList() {
           </div>}
         </DialogContent>
       </Dialog>
-      {selectedReport && modalShift && <ReportDetailModal open report={selectedReport} shift={modalShift} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => { if (!open) closeReportModal() }} onUpdated={() => { void loadData(); closeReportModal() }} campaigns={campaigns} />}
+      {selectedReport && modalShift && <ReportDetailModal open report={selectedReport} shift={modalShift} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => { if (!open) closeReportModal() }} onUpdated={() => { void loadData(); closeReportModal() }} campaigns={campaigns} initialTab={searchParams.get('reports_tab') || searchParams.get('tab') || undefined} />}
       <LifecycleActionDialog open={Boolean(removeTarget)} onOpenChange={open => { if (!open) { setRemoveTarget(null); setRemoveImpact(null) } }} title={removeTarget?.metrics_confirmed ? t('archiveConfirmedReport') : t('deleteUnconfirmedReport')} impact={removeImpact} confirmText={removeTarget?.metrics_confirmed ? t('archive') : t('delete')} onConfirm={removeReport} />
     </div>
   )

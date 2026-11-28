@@ -71,6 +71,7 @@ interface ReportDetailModalProps {
   campaigns?: Campaign[]
   registrations?: ShiftRegistration[]
   onUpdated?: () => void
+  initialTab?: string
 }
 
 export function ReportDetailHeaderActions({
@@ -282,6 +283,7 @@ export function ReportDetailModal({
   users,
   registrations = [],
   onUpdated,
+  initialTab,
 }: ReportDetailModalProps) {
   const [images, setImages] = React.useState<ReportImage[]>([])
   const [liveImages, setLiveImages] = React.useState<LiveReportImage[]>([])
@@ -302,7 +304,7 @@ export function ReportDetailModal({
   const [showReopen, setShowReopen] = React.useState(false)
   const [metricFilter, setMetricFilter] = React.useState<OcrMetricFilter>('data')
   const [metricsCollapsed, setMetricsCollapsed] = React.useState(false)
-  const [activeTab, setActiveTab] = React.useState('overview')
+  const [activeTab, setActiveTab] = React.useState(initialTab || 'overview')
   const [showConfirmWarning, setShowConfirmWarning] = React.useState(false)
   const [revisionPage, setRevisionPage] = React.useState(1)
   const [revisionPageSize, setRevisionPageSize] = React.useState(20)
@@ -983,6 +985,7 @@ export function ReportDetailModal({
                   readOnly={true}
                   allowWorkflowActions={true}
                   currentUser={currentUser}
+                  availableRevisions={loadedRevisions.map(r => ({ version: r.version, createdAt: r.created_at }))}
                   className="mt-4"
                 />
               </CardContent>

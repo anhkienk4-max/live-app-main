@@ -1006,7 +1006,7 @@ export function ReportOperationalNotesReview({
                 </span>
               </div>
             </div>
-            {externalProjection.operationalSummary?.content && (
+            {externalProjection.operationalSummary?.content ? (
               <div className="bg-white p-3 rounded border border-emerald-200 space-y-1.5" data-testid="report-approved-external-summary">
                 <div className="font-semibold text-emerald-950 text-xs">
                   {isVi ? 'Tóm tắt vận hành (Đã duyệt gửi đối tác)' : 'Operational Summary (Approved for External Sharing)'}
@@ -1018,7 +1018,19 @@ export function ReportOperationalNotesReview({
                   v{externalProjection.operationalSummary.version}
                 </div>
               </div>
-            )}
+            ) : (!isHistoricalSnapshot && workflowSummary?.workflowState === 'approved' && workflowSummary.content) ? (
+              <div className="bg-white p-3 rounded border border-emerald-200 space-y-1.5" data-testid="report-approved-external-summary">
+                <div className="font-semibold text-emerald-950 text-xs">
+                  {isVi ? 'Tóm tắt vận hành (Đã duyệt gửi đối tác)' : 'Operational Summary (Approved for External Sharing)'}
+                </div>
+                <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
+                  {workflowSummary.content}
+                </p>
+                <div className="text-[10px] text-muted-foreground pt-0.5">
+                  v{workflowSummary.version}
+                </div>
+              </div>
+            ) : null}
             <p className="text-[11px] text-emerald-800/80 leading-relaxed border-t border-emerald-200/60 pt-2">
               {isVi
                 ? 'Thông tin nhân sự, danh tính cá nhân và chi tiết ghi chú nội bộ được tách biệt hoàn toàn phía server theo ranh giới phân quyền.'

@@ -22,7 +22,7 @@ test('applied filters reset pagination and display removable active chips', () =
   assert.match(source, /onClick=\{resetFilters\}/)
 })
 test('date and multi-select editors change only drafts, not applied server filters', () => {
-  for (const field of ['start','end','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']) {
+  for (const field of ['start','end','brandIds','platformIds','campaignIds','agencyCodes','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']) {
     assert.match(source, new RegExp('value=\\{draftFilters\\.' + field + '\\}'))
   }
   assert.match(source, /hasUnappliedChanges && !invalidDraftDates && <p role="status"/)

@@ -787,15 +787,28 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
         }
       })
 
-      await page.goto(`/reports?report_id=${SYNTHETIC_FIXTURES.reportId}`)
+      await page.goto(`/reports?report_id=${SYNTHETIC_FIXTURES.reportId}&tab=insights`)
       await page.waitForLoadState('networkidle')
 
-      const viewDetailBtn = page.getByRole('button', { name: /Xem chi tiết|View details|Tiếp tục/i }).first()
-      await expect(viewDetailBtn).toBeVisible({ timeout: 20_000 })
-      await viewDetailBtn.click()
-
       const dialog = page.getByRole('dialog')
+      const dialogAlreadyOpen = await dialog.isVisible({ timeout: 5_000 }).catch(() => false)
+      if (!dialogAlreadyOpen) {
+        const reportAction = page.locator(`[data-testid="report-action-menu-${SYNTHETIC_FIXTURES.reportId}"], [data-testid="action-view-report"]`).first()
+        if (await reportAction.isVisible({ timeout: 5_000 }).catch(() => false)) {
+          await reportAction.click()
+        } else {
+          const viewDetailBtn = page.getByRole('button', { name: /Xem chi tiết|View details|Tiếp tục/i }).first()
+          await expect(viewDetailBtn).toBeVisible({ timeout: 15_000 })
+          await viewDetailBtn.click()
+        }
+      }
       await expect(dialog).toBeVisible({ timeout: 15_000 })
+
+      // Ensure insights tab is active
+      const insightsTab = dialog.getByRole('tab', { name: /Nhận xét|Insights/i })
+      if (await insightsTab.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        await insightsTab.click()
+      }
 
       // 1. Switch to external preview audience
       const externalAudienceBtn = dialog.getByTestId('preview-audience-external-btn')
@@ -813,7 +826,7 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
 
       // 3. Compare actual approved Revision A vs Revision B
       const revisionSelectorBar = dialog.getByTestId('report-revision-selector-bar')
-      if (await revisionSelectorBar.isVisible()) {
+      if (await revisionSelectorBar.isVisible({ timeout: 10_000 }).catch(() => false)) {
         const rev1Btn = dialog.getByTestId('revision-selector-v1')
         const rev2Btn = dialog.getByTestId('revision-selector-v2')
         if (await rev1Btn.isVisible() && await rev2Btn.isVisible()) {
@@ -830,6 +843,8 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
 
           expect(rev1Text.trim().length).toBeGreaterThan(0)
           expect(rev2Text.trim().length).toBeGreaterThan(0)
+          expect(rev1Text).toBeDefined()
+          expect(rev2Text).toBeDefined()
         }
       }
 
@@ -878,7 +893,7 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       expect(initialRangeText).toBeTruthy()
 
       // Verify reports table / cards render authorized rows
-      const reportsContainer = page.locator('[data-testid="reports-multiview-calendar"], table, [data-testid="reports-table-mobile-cards"]').first()
+      const reportsContainer = page.locator('[data-testid="reports-multiview-calendar"], table, [data-testid="reports-table-mobile-cards"], [data-testid="reports-cards-grid"]').first()
       await expect(reportsContainer).toBeVisible({ timeout: 15_000 })
 
       interactionCount++
