@@ -31,7 +31,7 @@ jobs:
       - name: Verify release-ready marker against pinned source refs
         id: reviewed
         env:
-          REVIEWED_HARNESS_SHA: de9c94f954b98db9632570e3df644f663e9aef2c
+          REVIEWED_HARNESS_SHA: 32459f73f6e1c98ee718d1001720791e2dde413f
         run: |
           set -euo pipefail
           marker=.github/rc19-w4-acceptance-ready.json
@@ -64,9 +64,9 @@ jobs:
     name: Call pinned disposable hosted acceptance harness
     needs: verify-reviewed-candidate-marker
     if: github.ref == 'refs/heads/integration/rc19-w4-codex02'
-    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@de9c94f954b98db9632570e3df644f663e9aef2c
+    uses: anhkienk4-max/live-app-main/.github/workflows/rc19-w4-hosted-application-acceptance.yml@32459f73f6e1c98ee718d1001720791e2dde413f
     with:
-      harness_sha: de9c94f954b98db9632570e3df644f663e9aef2c
+      harness_sha: 32459f73f6e1c98ee718d1001720791e2dde413f
       application_sha: ${{ needs.verify-reviewed-candidate-marker.outputs.application_sha }}
       run_browser_uat: true
       diagnostic_only: true
