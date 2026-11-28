@@ -19,7 +19,7 @@ const shiftFilterKeys = ['search','from','to','brandIds','platformIds','campaign
 const filterKeys: Record<string,string[]> = {
   shifts:shiftFilterKeys,live_shifts:shiftFilterKeys,open_shifts:shiftFilterKeys,my_shifts:shiftFilterKeys,
   staff:['search','statuses','roles','systemPermissions','archived'],brands:['search','statuses'],platforms:['search','statuses'],campaigns:['search','statuses','brandIds'],
-  notifications:['search','statuses','types'],reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],report_queue:['search','from','to','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses'],analytics_reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],registration_reviews:['search','statuses','roles'],
+  notifications:['search','statuses','types'],reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses','agencyCodes'],report_queue:['search','from','to','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses','agencyCodes'],analytics_reports:[...shiftFilterKeys,'reportStatuses','metricsStatuses'],registration_reviews:['search','statuses','roles'],
   archives:[],account_requests:['statuses'],live_updates:['shiftIds'],import_batches:[],schedule_changes:['from','to','actorIds','actionIds','shiftIds','brandIds','sources'],
   swaps:['search','from','to','brandIds','platformIds','campaignIds','scope','requesterIds','roles','statuses','shiftIds'],quality:['severity','qualitySources'],
 }
@@ -36,6 +36,8 @@ export const listFiltersSchema = z.object({
   scope: z.enum(['all', 'mine', 'forMe']).optional(), requesterIds: choices,
   actorIds: choices, actionIds: choices, shiftIds: choices, sources: choices,
   reportStatuses: choices, metricsStatuses: z.array(z.enum(['confirmed', 'unconfirmed'])).max(2).optional(),
+  agencyCodes: z.array(z.enum(['ada', 'snap', 'live_ai'])).min(1).max(3)
+    .refine(values => new Set(values).size === values.length).optional(),
   types: choices, statuses: choices, descending: z.boolean().optional(),
 }).strict().refine(value => !value.from || !value.to || value.from <= value.to)
 const schema = z.object({

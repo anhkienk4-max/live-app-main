@@ -30,7 +30,7 @@ create table public.campaigns (id text primary key, name text not null);
 create table public.shifts (
   id text primary key, date date not null, start_time time not null, end_time time not null,
   start_at timestamptz, end_at timestamptz, status text not null, registration_locked boolean not null default false,
-  brand_id text, platform_id text, campaign_id text,
+  brand_id text, platform_id text, campaign_id text, agency_code text,
   title text, host_id text, support_id text, technical_id text,
   deleted_at timestamptz, archived_at timestamptz
 );

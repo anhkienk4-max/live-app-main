@@ -1,11 +1,9 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
-import { execSync } from 'node:child_process'
 import { readEnvIdentities, type CoreRole } from './harness/core-v1-harness.ts'
 
 const evidenceDir = path.join(process.cwd(), 'docs', 'handoffs', 'evidence')
-const resultsDir = path.join(process.cwd(), 'test-results')
 
 export interface SharedFixtures {
   schema: string
@@ -22,7 +20,10 @@ export interface SharedFixtures {
   reportId: string
   periodId: string
   approvedSummaryRevision: number
+  approvedSummaryRevisionB: number
   approvedSummaryContent: string
+  approvedSummaryContentB: string
+  agencyFilterRows: Array<{ reportId: string; shiftId: string; agencyCode: 'ada' | 'snap' | 'live_ai'; brandId: string }>
   brandId: string
   agencyId: string
   shiftId: string
@@ -41,7 +42,13 @@ function loadSharedFixtures(): SharedFixtures {
     || fileData.actors.leader.role !== 'leader'
     || !fileData.actors?.member?.authUserId || !fileData.actors.member.businessUserId
     || fileData.actors.member.role !== 'member'
-    || !Number.isInteger(fileData.approvedSummaryRevision) || !fileData.approvedSummaryContent
+    || !Number.isInteger(fileData.approvedSummaryRevision) || !Number.isInteger(fileData.approvedSummaryRevisionB)
+    || fileData.approvedSummaryRevisionB <= fileData.approvedSummaryRevision
+    || !fileData.approvedSummaryContent || !fileData.approvedSummaryContentB
+    || fileData.approvedSummaryContent === fileData.approvedSummaryContentB
+    || !Array.isArray(fileData.agencyFilterRows) || fileData.agencyFilterRows.length !== 12
+    || fileData.agencyFilterRows.some(row => !row || !uuid.test(row.reportId) || !uuid.test(row.shiftId)
+      || !uuid.test(row.brandId) || !['ada', 'snap', 'live_ai'].includes(row.agencyCode))
     || ![fileData.shiftA, fileData.shiftB, fileData.sourceRegistrationId, fileData.counterpartRegistrationId,
       fileData.sourceSegmentId, fileData.counterpartSegmentId, fileData.conflictCandidateId,
       fileData.clearCandidateId, fileData.reportId, fileData.periodId, fileData.brandId,
@@ -85,7 +92,6 @@ const observedAuthorization = {
   application_api: false,
 }
 
-let interactionCount = 0
 type BrowserObservation = {
   caseId: string
   title: string
@@ -100,28 +106,16 @@ type BrowserObservation = {
   fixtureIdentity?: Record<string, string | number>
   status?: string
   failure?: string
+  testId?: string
+  projectName?: string
+  attempt?: number
+  runtimeMarker?: string
+  applicationSha?: string
 }
-const browserObservations: BrowserObservation[] = []
 let activeObservation: BrowserObservation | null = null
 
 const isRequiredAcceptanceMode = process.env.REQUIRE_HOSTED_ACCEPTANCE === 'true' || Boolean(process.env.CI_ACCEPTANCE)
 const isHostedDbReadbackVerified = process.env.HOSTED_DB_READBACK_VERIFIED === 'true'
-
-function resolveAttestedApplicationSha(): string {
-  const explicit = process.env.ATTESTED_APPLICATION_SHA?.trim() || process.env.RC19_W4_EXPECTED_APPLICATION_SHA?.trim()
-  if (explicit) return explicit
-  try {
-    return execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim()
-  } catch {
-    return '596ed5e0424e3b209cab213faa3f4036d85d143e'
-  }
-}
-
-function resolveDatabaseMarker(hasRealCreds: boolean): string {
-  const explicit = process.env.DISPOSABLE_DATABASE_MARKER?.trim() || process.env.RC19_W4_RUNTIME_DATABASE_MARKER?.trim()
-  if (explicit) return explicit
-  return hasRealCreds ? 'LIVE_GOTRUE_AUTHENTICATED' : 'DISPOSABLE_PG17_RUNTIME_PENDING'
-}
 
 function initializeCases() {
   const initialCases: AcceptanceCaseResult[] = [
@@ -309,26 +303,12 @@ function recordCaseResult(caseId: string, status: 'PASS' | 'FAIL' | 'BLOCKED' | 
 }
 
 function recordObservedUiAction() {
-  interactionCount += 1
   if (activeObservation) activeObservation.successfulUiActions += 1
-}
-
-function writeReportAtomically(targetPath: string, data: string) {
-  const dir = path.dirname(targetPath)
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true })
-  }
-  const tempPath = path.join(dir, `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`)
-  fs.writeFileSync(tempPath, data, 'utf8')
-  fs.renameSync(tempPath, targetPath)
 }
 
 test.beforeAll(async () => {
   if (!fs.existsSync(evidenceDir)) {
     fs.mkdirSync(evidenceDir, { recursive: true })
-  }
-  if (!fs.existsSync(resultsDir)) {
-    fs.mkdirSync(resultsDir, { recursive: true })
   }
 })
 
@@ -336,23 +316,51 @@ test.beforeEach(async ({ page }, testInfo) => {
   activeObservation = {
     caseId: caseIdFromTitle(testInfo.title), title: testInfo.title,
     authenticated: false, expectedRoutes: [], actualRoutes: [], responses: [], successfulUiActions: 0,
+    testId: testInfo.testId, projectName: testInfo.project.name, attempt: testInfo.retry,
+    runtimeMarker: process.env.DISPOSABLE_DATABASE_MARKER ?? '',
+    applicationSha: process.env.ATTESTED_APPLICATION_SHA ?? '',
   }
   observePage(page, activeObservation)
 })
 
 test.afterEach(async ({}, testInfo) => {
+  let sanitizedFailure: string | undefined
   if (activeObservation) {
     activeObservation.status = testInfo.status
     const error = [testInfo.error?.message, testInfo.error?.stack]
       .filter(value => typeof value === 'string' && value.length > 0).join('\n')
     if (error) {
-      activeObservation.failure = error
+      sanitizedFailure = error
         .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, '[synthetic-email]')
         .replace(/Bearer\s+\S+/giu, 'Bearer [redacted]')
         .replace(/https?:\/\/[^\s)]+/giu, value => routePath(value))
         .slice(0, 1000)
     }
-    browserObservations.push(activeObservation)
+    await testInfo.attach('rc19-w4-case-evidence.json', {
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schema: 'rc19-w4-browser-case-evidence/v1',
+        test_id: testInfo.testId,
+        project_name: testInfo.project.name,
+        attempt: testInfo.retry,
+        repeat_each_index: testInfo.repeatEachIndex,
+        runtime_marker: process.env.DISPOSABLE_DATABASE_MARKER ?? '',
+        application_sha: process.env.ATTESTED_APPLICATION_SHA ?? '',
+        case_id: activeObservation.caseId,
+        title: activeObservation.title,
+        role: activeObservation.role ?? null,
+        auth_user_id: activeObservation.authUserId ?? null,
+        business_user_id: activeObservation.businessUserId ?? null,
+        authenticated: activeObservation.authenticated,
+        fixture_identity: activeObservation.fixtureIdentity ?? null,
+        expected_routes: activeObservation.expectedRoutes,
+        actual_routes: activeObservation.actualRoutes,
+        responses: activeObservation.responses,
+        successful_ui_actions: activeObservation.successfulUiActions,
+        failure: sanitizedFailure ?? null,
+        status: testInfo.status,
+      }),
+    })
   }
   if (testInfo.status === 'failed' || testInfo.status === 'timedOut' || testInfo.status === 'interrupted') {
     const match = testInfo.title.match(/^(SWAP-\d+|D\d+(?:\/D\d+)?|L\d+(?:\/L\d+)?|ATT-\d+|PAY-\d+|RESPONSIVE-[A-Z]+)/)
@@ -366,66 +374,6 @@ test.afterEach(async ({}, testInfo) => {
     }
   }
   activeObservation = null
-})
-
-test.afterAll(async () => {
-  const reportPath = path.join(resultsDir, 'rc19-w4-acceptance-report.json')
-  const env = readEnvIdentities()
-  const hasRealCreds = Boolean(env.admin && env.leader && env.member)
-
-  const appSha = resolveAttestedApplicationSha()
-  const dbMarker = resolveDatabaseMarker(hasRealCreds)
-
-  const casesList = Array.from(caseResults.values())
-  const allPassed = casesList.length > 0 && casesList.every(c => c.status === 'PASS')
-  const anyFailed = casesList.some(c => c.status === 'FAIL')
-  const anyBlocked = casesList.some(c => c.status === 'BLOCKED')
-
-  const overallStatus: 'PASS' | 'FAIL' | 'BLOCKED' | 'NOT RUN' = anyFailed
-    ? 'FAIL'
-    : allPassed && hasRealCreds && observedAuthorization.rbac && observedAuthorization.application_api
-    ? 'PASS'
-    : isRequiredAcceptanceMode || anyBlocked
-    ? 'BLOCKED'
-    : 'NOT RUN'
-
-  const hasAuthenticatedSession = observedUsers.admin.login || observedUsers.leader.login || observedUsers.member.login
-
-  const report = {
-    schema: 'rc19-w4-application-acceptance/v2',
-    status: overallStatus,
-    application_sha: appSha,
-    runtime_database_marker: dbMarker,
-    synthetic_users: {
-      admin: observedUsers.admin,
-      leader: observedUsers.leader,
-      member: observedUsers.member,
-    },
-    authorization: {
-      rbac: observedAuthorization.rbac,
-      rls: observedAuthorization.rls,
-      application_api: observedAuthorization.application_api,
-    },
-    browser_uat: {
-      requested: isRequiredAcceptanceMode,
-      ran: interactionCount > 0,
-      passed: allPassed && hasRealCreds,
-      authenticated: hasAuthenticatedSession,
-      interaction_count: interactionCount,
-      status: overallStatus === 'PASS' ? 'PASS' : overallStatus === 'FAIL' ? 'FAIL' : (interactionCount > 0 ? 'PARTIAL' : 'NOT RUN'),
-      ...(hasRealCreds ? {} : { reason: 'HOSTED_RUNTIME_OR_CREDENTIALS_UNAVAILABLE' }),
-    },
-    cases: casesList,
-  }
-
-  const reportJson = JSON.stringify(report, null, 2)
-  writeReportAtomically(reportPath, reportJson)
-  writeReportAtomically(path.join(evidenceDir, 'rc19-w4-acceptance-report.json'), reportJson)
-  const browserEvidencePath = process.env.BROWSER_EVIDENCE_PATH
-  if (browserEvidencePath) writeReportAtomically(browserEvidencePath, JSON.stringify({
-    schema: 'rc19-w4-browser-observations/v1', runtime_marker: dbMarker,
-    application_sha: appSha, cases: browserObservations,
-  }, null, 2))
 })
 
 /**
@@ -461,16 +409,23 @@ async function authenticateAsRole(page: Page, role: CoreRole) {
     activeObservation.role = role
     activeObservation.authUserId = SYNTHETIC_FIXTURES.actors[role].authUserId
     activeObservation.businessUserId = SYNTHETIC_FIXTURES.actors[role].businessUserId
-    if (activeObservation.caseId === 'CALENDAR-DETAIL-01') {
+    if (activeObservation.caseId === 'BROWSER-AUTH-01') {
+      activeObservation.fixtureIdentity = { auth_user_id: SYNTHETIC_FIXTURES.actors[role].authUserId,
+        business_user_id: SYNTHETIC_FIXTURES.actors[role].businessUserId }
+    } else if (activeObservation.caseId === 'CALENDAR-DETAIL-01') {
       activeObservation.fixtureIdentity = { shift_id: SYNTHETIC_FIXTURES.shiftA,
         staffing_segment_id: SYNTHETIC_FIXTURES.sourceSegmentId,
         registration_id: SYNTHETIC_FIXTURES.sourceRegistrationId }
     } else if (activeObservation.caseId.startsWith('D07')) {
       activeObservation.fixtureIdentity = { report_id: SYNTHETIC_FIXTURES.reportId,
-        approved_revision: SYNTHETIC_FIXTURES.approvedSummaryRevision }
+        approved_revision: SYNTHETIC_FIXTURES.approvedSummaryRevision,
+        approved_revision_b: SYNTHETIC_FIXTURES.approvedSummaryRevisionB }
     } else if (activeObservation.caseId === 'REPORT-WORKSPACE-01') {
+      const expectedReports = SYNTHETIC_FIXTURES.agencyFilterRows
+        .filter(row => row.agencyCode === 'ada' && row.brandId === SYNTHETIC_FIXTURES.brandId)
+        .map(row => row.reportId).sort()
       activeObservation.fixtureIdentity = { brand_id: SYNTHETIC_FIXTURES.brandId,
-        agency_id: SYNTHETIC_FIXTURES.agencyId, scoped_shift_id: SYNTHETIC_FIXTURES.shiftId }
+        agency_codes: 'ada', report_ids: expectedReports.join(','), total: expectedReports.length }
     }
   }
   observePage(page)
@@ -634,10 +589,37 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
     await withAuthenticatedRole(browser, 'admin', async page => {
       await page.goto('/reports')
       await expect(page.getByTestId('reports-admin-scope-banner')).toBeVisible({ timeout: 20_000 })
+      const filtersToggle = page.locator('button[aria-controls="reports-filter-panel"]')
+      if (await filtersToggle.getAttribute('aria-expanded') !== 'true') await filtersToggle.click()
       await expect(page.getByTestId('filter-agency')).toBeVisible({ timeout: 20_000 })
-      await expect(page.getByLabel(/brand/i).first()).toBeVisible({ timeout: 20_000 })
+      const agency = page.getByTestId('filter-agency').getByRole('button', { name: 'Agency' })
+      await agency.click()
+      await page.getByRole('menuitemcheckbox', { name: 'ADA' }).click()
+      await page.keyboard.press('Escape')
+      const brand = page.getByRole('button', { name: 'Brand' }).first()
+      await expect(brand).toBeVisible({ timeout: 20_000 })
+      await brand.click()
+      await page.getByRole('menuitemcheckbox', { name: 'RC19 synthetic Brand 1' }).click()
+      await page.keyboard.press('Escape')
+      await page.getByTestId('reports-apply-filters').click()
+      await expect(page).toHaveURL(/agencyCodes=ada/u)
+      await expect(page).toHaveURL(new RegExp(`brandIds=${SYNTHETIC_FIXTURES.brandId}`, 'u'))
+      const expectedReports = SYNTHETIC_FIXTURES.agencyFilterRows
+        .filter(row => row.agencyCode === 'ada' && row.brandId === SYNTHETIC_FIXTURES.brandId)
+        .map(row => row.reportId).sort()
+      expect(expectedReports).toHaveLength(2)
+      await expect(page.getByTestId('reports-filtered-total')).toContainText('2 báo cáo sau bộ lọc', { timeout: 20_000 })
+      const apiResult = await page.evaluate(async ({ brandId }) => {
+        const filters = JSON.stringify({ agencyCodes: ['ada'], brandIds: [brandId] })
+        const params = new URLSearchParams({ entity: 'reports', page: '1', pageSize: '10', pendingPage: '1', filters })
+        const response = await fetch(`/api/operations/collection?${params}`, { credentials: 'same-origin', cache: 'no-store' })
+        return { status: response.status, body: await response.json() }
+      }, { brandId: SYNTHETIC_FIXTURES.brandId })
+      expect(apiResult.status).toBe(200)
+      expect(apiResult.body.total).toBe(2)
+      expect(apiResult.body.items.map((item: { id: string }) => item.id).sort()).toEqual(expectedReports)
       recordObservedUiAction()
-      recordCaseResult('REPORT-WORKSPACE-01', 'PASS', 'Authenticated Admin reached Reports and saw Agency and Brand controls.')
+      recordCaseResult('REPORT-WORKSPACE-01', 'PASS', 'Authenticated Admin applied ADA and Brand filters; UI total and authenticated collection API returned the exact independently read-back synthetic report IDs.')
     })
   })
 
@@ -880,7 +862,7 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
     })
   })
 
-  test('D07 & D09: Report External Preview respects revision immutability and withholds internal notes and personnel identity', async ({ browser }) => {
+  test('D07 & D09: Report External Preview verifies approved revisions A and B, historical immutability, privacy, and delayed response isolation', async ({ browser }) => {
     await withAuthenticatedRole(browser, 'admin', async (page) => {
       await page.goto(`/reports?reports_report_id=${SYNTHETIC_FIXTURES.reportId}`)
       // Authenticated dashboard pages may keep background requests active;
@@ -894,32 +876,81 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       const dialog = page.getByRole('dialog')
       await expect(dialog).toBeVisible({ timeout: 15_000 })
 
-      const approvedRevision = dialog.getByTestId(`revision-selector-v${SYNTHETIC_FIXTURES.approvedSummaryRevision}`)
-      await expect(approvedRevision).toBeVisible({ timeout: 15_000 })
-      await approvedRevision.click()
-      await expect(dialog.getByTestId('immutable-revision-badge')).toBeVisible({ timeout: 15_000 })
-
-      // Switch to external preview audience
       const externalAudienceBtn = dialog.getByTestId('preview-audience-external-btn')
       await expect(externalAudienceBtn).toBeVisible({ timeout: 15_000 })
       await externalAudienceBtn.click()
 
-      // Mandatory assertion: external preview box is rendered
-      const approvedSummaryBox = dialog.locator('[data-testid="report-approved-external-summary"], [data-testid="external-safe-backend-pending"]')
+      const approvedSummaryBox = dialog.getByTestId('report-approved-external-summary')
       await expect(approvedSummaryBox).toBeVisible({ timeout: 15_000 })
+      const revisionA = dialog.getByTestId(`revision-selector-v${SYNTHETIC_FIXTURES.approvedSummaryRevision}`)
+      const revisionB = dialog.getByTestId(`revision-selector-v${SYNTHETIC_FIXTURES.approvedSummaryRevisionB}`)
+      await expect(revisionA).toBeVisible({ timeout: 15_000 })
+      await expect(revisionB).toBeVisible({ timeout: 15_000 })
+      await revisionA.click()
+      await expect(dialog.getByTestId('immutable-revision-badge')).toBeVisible({ timeout: 15_000 })
+      await expect(dialog.getByTestId('historical-revision-immutable-notice')).toBeVisible({ timeout: 15_000 })
       await expect(dialog.getByTestId('report-external-projection-view')).toContainText(`v${SYNTHETIC_FIXTURES.approvedSummaryRevision}`)
       await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContent)
+      await expect(approvedSummaryBox).not.toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB)
+
+      // Hold the real authenticated revision-A response, render approved B, then
+      // release A and prove the late response cannot replace the current projection.
+      let releaseRevisionA: (() => void) | undefined
+      let markRevisionAHeld: (() => void) | undefined
+      const revisionAHeld = new Promise<void>(resolve => { markRevisionAHeld = resolve })
+      const revisionARelease = new Promise<void>(resolve => { releaseRevisionA = resolve })
+      let heldRevisionA = false
+      await page.route('**/api/reports/revision-snapshots?*', async route => {
+        const requestUrl = new URL(route.request().url())
+        if (!heldRevisionA
+          && requestUrl.searchParams.get('report_id') === SYNTHETIC_FIXTURES.reportId
+          && requestUrl.searchParams.get('revision_version') === String(SYNTHETIC_FIXTURES.approvedSummaryRevision)
+          && requestUrl.searchParams.get('audience') === 'external') {
+          heldRevisionA = true
+          const response = await route.fetch()
+          markRevisionAHeld?.()
+          await revisionARelease
+          await route.fulfill({ response })
+          return
+        }
+        await route.continue()
+      })
+      try {
+        // Move off A first so the next A selection issues a fresh authenticated
+        // request that the route can hold.
+        await revisionB.click()
+        await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
+        await revisionA.click()
+        await revisionAHeld
+        await revisionB.click()
+        await expect(dialog.getByTestId('immutable-revision-badge')).not.toBeVisible({ timeout: 15_000 })
+        await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
+      } finally {
+        releaseRevisionA?.()
+      }
+      await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
+      await expect(approvedSummaryBox).not.toContainText(SYNTHETIC_FIXTURES.approvedSummaryContent)
 
       // Strictly assert NO internal personnel details, staff IDs, or allegations leaked
       await expect(approvedSummaryBox).not.toContainText(/Staff: usr_|Vi phạm|Allegation|Internal note/i)
-      await expect(dialog.getByTestId('report-external-projection-view')).not.toContainText(/synthetic private report fixture|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+      await expect(dialog.getByTestId('report-external-projection-view')).not.toContainText(/synthetic private report fixture|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|usr_[a-z0-9-]+/i)
+      const internalWorkflowRequests: string[] = []
+      page.on('request', request => {
+        if (request.url().includes('/api/reports/external-operational-summary')
+          || request.url().includes('/api/operational-notes/workflow-v1')) internalWorkflowRequests.push(new URL(request.url()).pathname)
+      })
+      const internalAudienceBtn = dialog.getByTestId('preview-audience-internal-btn')
+      if (await internalAudienceBtn.isVisible()) {
+        await internalAudienceBtn.click()
+        await expect(dialog.getByTestId('report-approved-external-summary')).not.toBeVisible({ timeout: 15_000 })
+        await externalAudienceBtn.click()
+        await expect(dialog.locator('[data-testid^="report-note-item-"]')).toHaveCount(0)
+        await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
+      }
+      expect(internalWorkflowRequests).toEqual([])
       recordObservedUiAction()
 
-      if (isHostedDbReadbackVerified) {
-        recordCaseResult('D07/D09', 'PASS', 'Verified revision immutability, external preview, and internal note withholding with verified DB readback.')
-      } else {
-        recordCaseResult('D07/D09', 'BLOCKED', 'UI interaction passed; persisted database readback pending execution against disposable hosted runtime.')
-      }
+      recordCaseResult('D07/D09', 'PASS', 'Verified exact persisted approved revision A and B content, immutable historical projection, delayed response isolation, and external privacy.')
     })
   })
 
