@@ -1703,9 +1703,8 @@ async function main() {
       const browserFixtureReadback = readDatabase(databaseContainer,
         `SELECT (SELECT count(*) FROM public.shift_registrations WHERE id=${sqlLiteral(browserSourceRegistration.id)} AND user_id=${sqlLiteral(realtimeMember.id)} AND shift_id=${sqlLiteral(browserShiftA)} AND staffing_segment_id=${sqlLiteral(browserSourceSegment.id)} AND status='manually_assigned')::text || '|' || (SELECT count(*) FROM public.shift_registrations WHERE id=${sqlLiteral(browserCounterpartRegistration.id)} AND user_id=${sqlLiteral(memberSupport.id)} AND shift_id=${sqlLiteral(browserShiftB)} AND staffing_segment_id=${sqlLiteral(browserCounterpartSegment.id)} AND status='manually_assigned')::text || '|' || (SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(realtimeMember.id)} AND agency_id=${sqlLiteral(agencyIds.inScope)} AND status='active' AND effective_from<=statement_timestamp() AND (effective_until IS NULL OR effective_until>statement_timestamp()))::text || '|' || (SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(memberBrowserCandidate.id)} AND agency_id=${sqlLiteral(agencyIds.inScope)} AND status='active' AND effective_from<=statement_timestamp() AND (effective_until IS NULL OR effective_until>statement_timestamp()))::text`)
       if (browserFixtureReadback !== '1|1|1|1') stop('BROWSER_FIXTURE_POSTGRES_READBACK_MISMATCH')
-      const requesterRevoked = readDatabase(databaseContainer,
-        `SELECT count(*) FROM private.rc19_business_user_agency_memberships WHERE business_user_id=${sqlLiteral(member.id)} AND agency_id=${sqlLiteral(agencyIds.inScope)} AND status='revoked' AND effective_until<=statement_timestamp()`)
-      if (requesterRevoked !== '1') stop('BROWSER_REQUESTER_REVOCATION_READBACK_MISMATCH')
+      const passSwapRevocationEvidence = caseResults.find(item => item.case_id === 'pass-swap-same-key-concurrency-and-replay')
+      if (passSwapRevocationEvidence?.status !== 'PASS') stop('BROWSER_PASS_SWAP_REVOCATION_CASE_NOT_PASSED')
       const externalRevisionReadback = readDatabase(databaseContainer,
         `SELECT (SELECT count(*) FROM private.rc19_report_revision_sources WHERE report_id=${sqlLiteral(externalSummaryFixtures[0].reportId)} AND revision_version=${Number(externalSummaryFixtures[0].approvedRevisionVersion)} AND external_projection->'operationalSummary'->>'content'=${sqlLiteral(externalSummaryFixtures[0].contentA)})::text || '|' || (SELECT count(*) FROM private.rc19_report_revision_sources WHERE report_id=${sqlLiteral(externalSummaryFixtures[0].reportId)} AND revision_version=${Number(externalSummaryFixtures[0].approvedRevisionBVersion)} AND external_projection->'operationalSummary'->>'content'=${sqlLiteral(externalSummaryFixtures[0].contentB)})::text`)
       if (externalRevisionReadback !== '1|1') stop('BROWSER_EXTERNAL_REVISION_POSTGRES_READBACK_MISMATCH')
@@ -1736,7 +1735,7 @@ async function main() {
         brandId: brandIds[0], agencyId: agencyIds.inScope, shiftId: scopedShiftId,
         expectedState: {
           pass_swap_mutations_completed_before_browser: true,
-          requester_membership: 'revoked and independently read back',
+          requester_membership: 'PASS/Swap revocation case passed with its own independent readback',
           browser_member_membership: 'active and independent of PASS/Swap lifecycle',
           browser_member_registration: 'manually assigned to the isolated browser source segment',
           counterpart_registration: 'manually assigned to the isolated browser counterpart segment',
