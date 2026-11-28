@@ -444,7 +444,7 @@ function segment(segmentIndex, startTime, endTime, operationalRole) {
   }
 }
 
-async function createShift(admin, service, brandId, platformId, title, date, segmentRows, agencyCode = null) {
+async function createShift(admin, service, brandId, platformId, title, date, segmentRows, agencyCode = null, studio = null) {
   const result = await admin.rpc('create_shift_with_staffing_segments', {
     p_data: {
       date,
@@ -462,6 +462,7 @@ async function createShift(admin, service, brandId, platformId, title, date, seg
         agency_code: agencyCode,
         execution_source: agencyCode === 'ada' ? 'internal' : 'agency',
       } : {}),
+      ...(studio ? { studio } : {}),
     },
     p_segments: segmentRows,
   }).single()
@@ -624,11 +625,11 @@ async function main() {
   )
   const swapShiftId = await createShift(
     admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} reciprocal segment exchange`, '2099-12-04',
-    [segment(1, '10:00', '12:00', 'host'), segment(2, '12:00', '14:00', 'host')],
+    [segment(1, '10:00', '12:00', 'host'), segment(2, '12:00', '14:00', 'host')], null, 'RC19 synthetic swap studio',
   )
   const swapConflictShiftId = await createShift(
     admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} post-acceptance conflict`, '2099-12-04',
-    [segment(1, '12:30', '14:00', 'host')],
+    [segment(1, '12:30', '14:00', 'host')], null, 'RC19 synthetic conflict studio',
   )
   const agencyFilterRows = []
   for (let index = 0; index < 12; index += 1) {
@@ -1919,8 +1920,10 @@ async function main() {
         { id: realtimeShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: '2099-12-03',
           purpose: 'dedicated authenticated Realtime delivery and wrong-scope event denial' },
         { id: swapShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: '2099-12-04',
+          studio: 'RC19 synthetic swap studio',
           purpose: 'reciprocal exact-segment PASS/Swap exchange' },
         { id: swapConflictShiftId, brand_id: brandIds[0], agency_id: agencyIds.inScope, business_date: '2099-12-04',
+          studio: 'RC19 synthetic conflict studio',
           purpose: 'approval-time candidate conflict invalidation' },
       ],
       staffing_segments: storedSegments.map(row => ({ id: row.id, shift_id: row.shift_id,
