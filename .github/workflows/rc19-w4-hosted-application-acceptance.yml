@@ -947,6 +947,7 @@ jobs:
                runtime_database_marker_match:(.runtime_database_marker == $marker),
                synthetic_users,authorization,browser_uat,
                cases:[.cases[]|{case_id,status,evidence_scope}],
+               business_cases:[.business_cases[]|{case_id,status,actor:{role:.actor.role,scope_key:.actor.scope_key},expected:.expected.result,actual:{rpc_code:.actual.rpc_code,diagnostics:.actual.diagnostics},database_readback:{status:.database_readback.status,matches_expected:.database_readback.matches_expected}}],
                browser_cases:[.browser_cases[]|{case_id,status,actor:{role:.actor.role,auth_user_id:.actor.auth_user_id,business_user_id:.actor.business_user_id,fixture_identity:.actor.fixture_identity},actual:{expected_route:.actual.expected_route,actual_route:.actual.actual_route,response_statuses:.actual.response_statuses,locator_failure_class:.actual.locator_failure_class,failure_evidence:.actual.failure_evidence,cause_classification:.actual.cause_classification},database_readback:{status:.database_readback.status,matches_expected:.database_readback.matches_expected},browser_interaction:{performed:.browser_interaction.performed,authenticated:.browser_interaction.authenticated,interaction_count:.browser_interaction.interaction_count,status:.browser_interaction.status}}],
                fixtures:{authenticated_users:.fixtures.authenticated_users,brands:.fixtures.brands,
                  platforms:.fixtures.platforms,parent_shifts:.fixtures.parent_shifts,
@@ -959,6 +960,21 @@ jobs:
               "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic.json"
             mv "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
             echo "Bounded runtime diagnostic completed. Strict final business acceptance was not run; browser UAT requested=$RUN_BROWSER_UAT." >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "### Executed authenticated backend case evidence"
+              echo
+              echo "Application SHA: \`$EXPECTED_APPLICATION_SHA\`  "
+              echo "Harness SHA: \`$(git rev-parse HEAD)\`  "
+              echo "Runtime marker: \`$RC19_W4_RUNTIME_DATABASE_MARKER\`  "
+              echo "Scope: bounded disposable diagnostic; no Production or Staging access."
+              echo
+              echo "| Case | Result | Actor | Expected | Actual | DB readback |"
+              echo "|---|---|---|---|---|---|"
+            } >> "$GITHUB_STEP_SUMMARY"
+            jq -r '
+              .business_cases[] | select(.status != "not_run" and .case_id != "authenticated-browser") |
+              "| `\(.case_id)` | \(.status) | \(.actor.role // "unresolved") | \((.expected // "") | tostring | gsub("[\\r\\n]+"; " ") | .[0:240]) | \((.actual.rpc_code // "unreported") + (if .actual.diagnostics then " " + ((.actual.diagnostics | tojson) | .[0:480]) else "" end)) | \(.database_readback.status // "missing") / \(.database_readback.matches_expected // false) |"
+            ' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
             if [[ "$RUN_BROWSER_UAT" == "true" ]]; then
               {
                 echo "### Authenticated browser case evidence"
