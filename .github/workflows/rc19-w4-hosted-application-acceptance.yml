@@ -967,11 +967,11 @@ jobs:
                 echo
                 echo "| Case | Result | Auth actor | Fixture identity | Expected route | Actual route | HTTP responses | DB readback | Failure evidence |"
                 echo "|---|---|---|---|---|---|---|---|---|"
-                jq -r '
-                  .browser_cases[] |
-                  "| `\(.case_id)` | \(.status) | \(.actor.role // "unresolved") / `\(.actor.auth_user_id // "unresolved")` | `\((.actor.fixture_identity // {}) | tojson)` | `\(.actual.expected_route // "n/a")` | `\(.actual.actual_route // "n/a")` | `\((.actual.response_statuses // []) | tojson)` | \(.database_readback.status // "missing") / \(.database_readback.matches_expected // false) | \((.actual.failure_evidence // "") | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "\\\\|")) |"
-                ' "$report"
               } >> "$GITHUB_STEP_SUMMARY"
+              jq -r '
+                .browser_cases[] |
+                "| `\(.case_id)` | \(.status) | \(.actor.role // "unresolved") / `\(.actor.auth_user_id // "unresolved")` | `\((.actor.fixture_identity // {}) | tojson)` | `\(.actual.expected_route // "n/a")` | `\(.actual.actual_route // "n/a")` | `\((.actual.response_statuses // []) | tojson)` | \(.database_readback.status // "missing") / \(.database_readback.matches_expected // false) | \((.actual.failure_evidence // "") | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "\\\\|")) |"
+              ' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
             fi
             exit 0
           fi
