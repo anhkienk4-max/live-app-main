@@ -596,7 +596,7 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       await agency.click()
       await page.getByRole('menuitemcheckbox', { name: 'ADA' }).click()
       await page.keyboard.press('Escape')
-      const brand = page.getByRole('button', { name: 'Brand' }).first()
+      const brand = page.getByRole('button', { name: /^(Brand|Thương hiệu)$/u }).first()
       await expect(brand).toBeVisible({ timeout: 20_000 })
       await brand.click()
       await page.getByRole('menuitemcheckbox', { name: 'RC19 synthetic Brand 1' }).click()
@@ -886,18 +886,9 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       const revisionB = dialog.getByTestId(`revision-selector-v${SYNTHETIC_FIXTURES.approvedSummaryRevisionB}`)
       await expect(revisionA).toBeVisible({ timeout: 15_000 })
       await expect(revisionB).toBeVisible({ timeout: 15_000 })
-      await revisionA.click()
-      await expect(dialog.getByTestId('immutable-revision-badge')).toBeVisible({ timeout: 15_000 })
-      await expect(dialog.getByTestId('historical-revision-immutable-notice')).toBeVisible({ timeout: 15_000 })
-      await expect(dialog.getByTestId('report-external-projection-view')).toContainText(`v${SYNTHETIC_FIXTURES.approvedSummaryRevision}`)
-      await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContent)
-      await expect(approvedSummaryBox).not.toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB)
-
-      // Hold the real authenticated revision-A response, render approved B, then
-      // release A and prove the late response cannot replace the current projection.
+      // Hold the first authenticated revision-A response, render approved B,
+      // then release A and prove the late response cannot replace the projection.
       let releaseRevisionA: (() => void) | undefined
-      let markRevisionAHeld: (() => void) | undefined
-      const revisionAHeld = new Promise<void>(resolve => { markRevisionAHeld = resolve })
       const revisionARelease = new Promise<void>(resolve => { releaseRevisionA = resolve })
       let heldRevisionA = false
       await page.route('**/api/reports/revision-snapshots?*', async route => {
@@ -908,7 +899,6 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
           && requestUrl.searchParams.get('audience') === 'external') {
           heldRevisionA = true
           const response = await route.fetch()
-          markRevisionAHeld?.()
           await revisionARelease
           await route.fulfill({ response })
           return
@@ -916,18 +906,31 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
         await route.continue()
       })
       try {
-        // Move off A first so the next A selection issues a fresh authenticated
-        // request that the route can hold.
-        await revisionB.click()
-        await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
+        const revisionAResponse = page.waitForResponse(response => {
+          const requestUrl = new URL(response.url())
+          return requestUrl.pathname === '/api/reports/revision-snapshots'
+            && requestUrl.searchParams.get('report_id') === SYNTHETIC_FIXTURES.reportId
+            && requestUrl.searchParams.get('revision_version') === String(SYNTHETIC_FIXTURES.approvedSummaryRevision)
+            && requestUrl.searchParams.get('audience') === 'external'
+        })
         await revisionA.click()
-        await revisionAHeld
+        await expect.poll(() => heldRevisionA, { timeout: 20_000 }).toBe(true)
         await revisionB.click()
-        await expect(dialog.getByTestId('immutable-revision-badge')).not.toBeVisible({ timeout: 15_000 })
         await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
+        releaseRevisionA?.()
+        await revisionAResponse
+        await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
+        await expect(dialog.getByTestId('immutable-revision-badge')).not.toBeVisible({ timeout: 15_000 })
       } finally {
         releaseRevisionA?.()
       }
+      await revisionA.click()
+      await expect(dialog.getByTestId('immutable-revision-badge')).toBeVisible({ timeout: 15_000 })
+      await expect(dialog.getByTestId('historical-revision-immutable-notice')).toBeVisible({ timeout: 15_000 })
+      await expect(dialog.getByTestId('report-external-projection-view')).toContainText(`v${SYNTHETIC_FIXTURES.approvedSummaryRevision}`)
+      await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContent)
+      await expect(approvedSummaryBox).not.toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB)
+      await revisionB.click()
       await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
       await expect(approvedSummaryBox).not.toContainText(SYNTHETIC_FIXTURES.approvedSummaryContent)
 

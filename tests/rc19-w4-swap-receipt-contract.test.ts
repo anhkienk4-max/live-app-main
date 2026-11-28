@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const migration = readFileSync(new URL('../supabase/migrations/20261127100000_rc19_w4_segment_aware_swap_receipts.sql', import.meta.url), 'utf8')
+const replayFix = readFileSync(new URL('../supabase/migrations/20261128120757_rc19_w4_fix_swap_receipt_replay_actor_binding.sql', import.meta.url), 'utf8')
 const service = readFileSync(new URL('../lib/services/supabaseSwapRequestService.ts', import.meta.url), 'utf8')
 
 test('receipt storage binds actor, key, action, original request identity, payload, and committed row', () => {
@@ -24,6 +25,16 @@ test('receipt replay checks current active actor and action-specific identity an
   assert.match(migration, /private\.rc19_has_any_leader_brand_scope\(source_shift\.brand_id, ARRAY\['shifts\.manage'\]::text\[\]\)/u)
   assert.match(migration, /live_request\.counterpart_id IS DISTINCT FROM p_actor_id/u)
   assert.match(migration, /live_request\.requester_id IS DISTINCT FROM p_actor_id/u)
+})
+
+test('replacement receipt replay binds the candidate to replacement_staff_id and preserves scope/security checks', () => {
+  assert.match(replayFix, /live_request\.mode = 'replacement'[\s\S]*live_request\.replacement_staff_id IS DISTINCT FROM p_actor_id/u)
+  assert.match(replayFix, /live_request\.mode = 'exchange'[\s\S]*live_request\.counterpart_id IS DISTINCT FROM p_actor_id/u)
+  assert.match(replayFix, /private\.rc19_assert_swap_agency_scope\(p_actor_id, live_request\.source_shift_id\)/u)
+  assert.match(replayFix, /NOT private\.current_business_user_is_active\(\)[\s\S]*SWAP_RECEIPT_REPLAY_ACTOR_INACTIVE/u)
+  assert.match(replayFix, /SECURITY DEFINER[\s\S]*SET search_path = ''/u)
+  assert.match(replayFix, /ALTER FUNCTION private\.rc19_assert_swap_receipt_replay\(text,text,text,jsonb,jsonb\) OWNER TO postgres/u)
+  assert.match(replayFix, /REVOKE ALL ON FUNCTION private\.rc19_assert_swap_receipt_replay\(text,text,text,jsonb,jsonb\)[\s\S]*FROM PUBLIC, anon, authenticated, service_role/u)
 })
 
 test('all authenticated mutations use the receipt RPC and legacy direct mutation grants are retired', () => {

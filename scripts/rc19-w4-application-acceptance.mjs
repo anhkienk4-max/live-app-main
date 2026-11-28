@@ -619,7 +619,7 @@ async function main() {
   )
   const browserShiftA = await createShift(
     admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} isolated browser source`, '2099-12-04',
-    [segment(1, '10:00', '12:00', 'host')],
+    [segment(1, '10:00', '12:00', 'support'), segment(2, '12:00', '14:00', 'host')],
   )
   const browserShiftB = await createShift(
     admin.client, service, brandIds[0], platformId, `RC19 acceptance ${suffix} isolated browser counterpart`, '2099-12-05',
@@ -647,7 +647,7 @@ async function main() {
   const segmentRows = await service.from('shift_staffing_segments')
     .select('id,shift_id,segment_index,start_at,end_at').in('shift_id', [scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, browserShiftA, browserShiftB, swapShiftId, swapConflictShiftId, ...agencyFilterRows.map(row => row.shiftId)])
   const storedSegments = await requireNoError(segmentRows, 'SEGMENT_FIXTURE_READBACK_FAILED')
-  if (!Array.isArray(storedSegments) || storedSegments.length !== 24
+  if (!Array.isArray(storedSegments) || storedSegments.length !== 25
     || storedSegments.some(row => !row.id || ![scopedShiftId, foreignShiftId, d01ShiftId, realtimeShiftId, browserShiftA, browserShiftB, swapShiftId, swapConflictShiftId, ...agencyFilterRows.map(item => item.shiftId)].includes(row.shift_id))) {
     stop('SEGMENT_FIXTURE_READBACK_MISMATCH')
   }
@@ -796,7 +796,7 @@ async function main() {
     || realtimeRegistration.user_id !== realtimeMember.id || realtimeRegistration.operational_role !== 'host') {
     stop('REALTIME_ASSIGNMENT_FIXTURE_CREATE_MISMATCH')
   }
-  const browserSourceSegment = storedSegments.find(row => row.shift_id === browserShiftA && row.segment_index === 1)
+  const browserSourceSegment = storedSegments.find(row => row.shift_id === browserShiftA && row.segment_index === 2)
   const browserCounterpartSegment = storedSegments.find(row => row.shift_id === browserShiftB && row.segment_index === 1)
   if (!browserSourceSegment?.id || !browserCounterpartSegment?.id) stop('BROWSER_ASSIGNMENT_SEGMENT_FIXTURE_MISSING')
   const browserSourceVersionResult = await service.from('shifts').select('version').eq('id', browserShiftA).single()
@@ -958,21 +958,21 @@ async function main() {
       const readObligations = async (actor, page, filters) => requireNoError(
         await actor.client.rpc('get_report_obligation_page', { p_page: page, p_page_size: 10, p_filters: filters }),
         'AGENCY_REPORT_OBLIGATION_RPC_FAILED')
-      const exactIds = (rows, getId, expected) => {
+      const exactIds = (rows, getId, expectedIds) => {
         const actual = rows.map(getId).sort()
-        const wanted = expected.map(getId).sort()
+        const wanted = [...expectedIds].sort()
         return actual.length === wanted.length && actual.every((id, index) => id === wanted[index])
       }
       for (const code of ['ada', 'snap', 'live_ai']) {
         const expected = expectedFor([code])
         const list = await readReportList(admin, 1, { agencyCodes: [code] })
         if (list.total !== expected.length || list.page !== 1 || list.pageSize !== 10
-          || !exactIds(list.rows ?? [], row => row.id, expected.map(row => ({ id: reportIdFor(row) })))) {
+          || !exactIds(list.rows ?? [], row => row.id, expected.map(reportIdFor))) {
           stop('AGENCY_REPORT_LIST_SINGLE_CODE_MISMATCH')
         }
         const obligations = await readObligations(admin, 1, { agencyCodes: [code] })
         if (obligations.total !== expected.length || obligations.page !== 1 || obligations.pageSize !== 10
-          || !exactIds(obligations.rows ?? [], row => row.shift?.id, expected.map(row => ({ id: shiftIdFor(row) })))) {
+          || !exactIds(obligations.rows ?? [], row => row.shift?.id, expected.map(shiftIdFor))) {
           stop('AGENCY_REPORT_OBLIGATION_SINGLE_CODE_MISMATCH', {
             agency_code: code,
             expected_total: expected.length,
@@ -990,9 +990,9 @@ async function main() {
         const list = await readReportList(admin, 1, { agencyCodes: codes })
         const obligations = await readObligations(admin, 1, { agencyCodes: codes })
         if (list.total !== expected.length || !exactIds(list.rows ?? [], row => row.id,
-          expected.map(row => ({ id: reportIdFor(row) })))) stop('AGENCY_REPORT_LIST_COMBINATION_MISMATCH')
+          expected.map(reportIdFor))) stop('AGENCY_REPORT_LIST_COMBINATION_MISMATCH')
         if (obligations.total !== expected.length || !exactIds(obligations.rows ?? [], row => row.shift?.id,
-          expected.map(row => ({ id: shiftIdFor(row) })))) stop('AGENCY_REPORT_OBLIGATION_COMBINATION_MISMATCH')
+          expected.map(shiftIdFor))) stop('AGENCY_REPORT_OBLIGATION_COMBINATION_MISMATCH')
       }
       const allCodes = ['ada', 'snap', 'live_ai']
       const firstListPage = await readReportList(admin, 1, { agencyCodes: allCodes })
@@ -1000,13 +1000,13 @@ async function main() {
       if (firstListPage.total !== 12 || firstListPage.rows.length !== 10
         || secondListPage.total !== 12 || secondListPage.page !== 2 || secondListPage.rows.length !== 2
         || !exactIds([...firstListPage.rows, ...secondListPage.rows], row => row.id,
-          agencyFilterReportRows.map(row => ({ id: row.reportId })))) stop('AGENCY_REPORT_LIST_PAGINATION_MISMATCH')
+          agencyFilterReportRows.map(row => row.reportId))) stop('AGENCY_REPORT_LIST_PAGINATION_MISMATCH')
       const firstObligationPage = await readObligations(admin, 1, { agencyCodes: allCodes })
       const secondObligationPage = await readObligations(admin, 2, { agencyCodes: allCodes })
       if (firstObligationPage.total !== 12 || firstObligationPage.rows.length !== 10
         || secondObligationPage.total !== 12 || secondObligationPage.page !== 2 || secondObligationPage.rows.length !== 2
         || !exactIds([...firstObligationPage.rows, ...secondObligationPage.rows], row => row.shift?.id,
-          agencyFilterRows.map(row => ({ id: row.shiftId })))) stop('AGENCY_REPORT_OBLIGATION_PAGINATION_MISMATCH')
+          agencyFilterRows.map(row => row.shiftId))) stop('AGENCY_REPORT_OBLIGATION_PAGINATION_MISMATCH')
 
       const leaderBrandRows = agencyFilterRows.filter(row => row.brandId === brandIds[0])
       const leaderAda = await readReportList(leader, 1, { agencyCodes: ['ada'], brandIds: [brandIds[0]] })

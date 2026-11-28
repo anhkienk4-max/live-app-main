@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const entrypoint = readFileSync(new URL('../scripts/rc19-w4-application-acceptance.mjs', import.meta.url), 'utf8')
+const browserAcceptance = readFileSync(new URL('../e2e/rc19-w4-browser-acceptance.spec.ts', import.meta.url), 'utf8')
 const hostedPlaywrightConfig = readFileSync(new URL('../playwright.rc19-w4-hosted-acceptance.config.ts', import.meta.url), 'utf8')
 const fixtureManifest = JSON.parse(readFileSync(new URL('../docs/rc19/W4_EXECUTABLE_ACCEPTANCE_FIXTURE_MANIFEST.json', import.meta.url), 'utf8')) as {
   schema: string
@@ -24,6 +25,9 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /function stop\(code, diagnostics = null\)/u)
   assert.match(entrypoint, /error\?\.rc19Diagnostics \? \{ diagnostics: error\.rc19Diagnostics \}/u)
   assert.match(entrypoint, /actual_shift_ids: \(obligations\.rows \?\? \[\]\)\.map\(row => row\.shift\?\.id \?\? null\)\.sort\(\)/u)
+  assert.match(entrypoint, /const exactIds = \(rows, getId, expectedIds\) => \{\s*const actual = rows\.map\(getId\)\.sort\(\)\s*const wanted = \[\.\.\.expectedIds\]\.sort\(\)/u)
+  assert.match(entrypoint, /browserShiftA[\s\S]*?\[segment\(1, '10:00', '12:00', 'support'\), segment\(2, '12:00', '14:00', 'host'\)\]/u)
+  assert.match(entrypoint, /browserSourceSegment = storedSegments\.find\(row => row\.shift_id === browserShiftA && row\.segment_index === 2\)/u)
   assert.match(entrypoint, /Promise\.all\(\[invoke\(\), invoke\(\)\]\)/u)
   assert.match(entrypoint, /E2E_ADMIN_EMAIL: byRole\.admin\.email/u)
   assert.match(entrypoint, /authenticated-browser/u)
@@ -61,6 +65,10 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /member: \{ authUserId: realtimeMember\.id, businessUserId: realtimeMember\.id, role: 'member' \}/u)
   assert.doesNotMatch(entrypoint, /BROWSER_REQUESTER_REVOCATION_READBACK_MISMATCH/u)
   assert.doesNotMatch(entrypoint, /BROWSER_EVIDENCE_PATH/u)
+  assert.ok(browserAcceptance.includes("name: /^(Brand|Thương hiệu)$/u }).first()"))
+  assert.match(browserAcceptance, /Hold the first authenticated revision-A response/u)
+  assert.match(browserAcceptance, /await expect\.poll\(\(\) => heldRevisionA, \{ timeout: 20_000 \}\)\.toBe\(true\)/u)
+  assert.doesNotMatch(browserAcceptance, /revisionAHeld/u)
   assert.match(entrypoint, /authenticatedBrowserInteractionCount/u)
   assert.match(entrypoint, /fixture_manifest:[\s\S]*runtime_marker: marker/u)
   assert.match(entrypoint, /replace_shift_assignment_with_incident_v1/u)
