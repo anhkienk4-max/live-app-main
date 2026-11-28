@@ -984,7 +984,7 @@ jobs:
                 echo "Runtime marker: \`$RC19_W4_RUNTIME_DATABASE_MARKER\`  "
                 echo "Scope: bounded diagnostic; this is not strict final acceptance."
                 echo
-                echo "| Case | Result | Auth actor | Fixture identity | Expected route | Actual route | HTTP responses | DB readback | Failure evidence |"
+                echo "| Case | Result | Auth actor | Fixture identity | Expected route | Actual route | HTTP responses | DB readback | Attempts and sanitized failures |"
                 echo "|---|---|---|---|---|---|---|---|---|"
               } >> "$GITHUB_STEP_SUMMARY"
               jq -r '"Browser UAT: requested=\(.browser_uat.requested) ran=\(.browser_uat.ran) passed=\(.browser_uat.passed) status=\(.browser_uat.status) blocker=\(.browser_uat.blocker // "none") authenticated=\(.browser_uat.authenticated) interactions=\(.browser_uat.interaction_count) expected=\(.browser_uat.expected) failed=\(.browser_uat.failed) skipped=\(.browser_uat.skipped) cases=\(.browser_cases | length)"' "$report" \
@@ -1002,7 +1002,7 @@ jobs:
                   "| No browser case records | \(.browser_uat.status) | unresolved | {} | n/a | n/a | [] | unavailable / false | \(.browser_uat.blocker // "No case records returned") |"
                 else
                   .browser_cases[] |
-                  "| `\(.case_id)` | \(.status) | \(.actor.role // "unresolved") / `\(.actor.auth_user_id // "unresolved")` | `\((.actor.fixture_identity // {}) | tojson)` | `\(.actual.expected_route // "n/a")` | `\(.actual.actual_route // "n/a")` | `\((.actual.response_statuses // []) | tojson)` | \(.database_readback.status // "missing") / \(.database_readback.matches_expected // false) | \((.actual.failure_evidence // "") | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "\\\\|")) |"
+                  "| `\(.case_id)` | \(.status) | \(.actor.role // "unresolved") / `\(.actor.auth_user_id // "unresolved")` | `\((.actor.fixture_identity // {}) | tojson)` | `\(.actual.expected_route // "n/a")` | `\(.actual.actual_route // "n/a")` | `\((.actual.response_statuses // []) | tojson)` | \(.database_readback.status // "missing") / \(.database_readback.matches_expected // false) | `\((.evidence_attempts // [] | map({attempt,result_status,observation_present,authenticated,successful_ui_actions,failure}) | tojson | .[0:1200] | gsub("\\|"; "\\\\|")))` |"
                 end
               ' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
             fi
