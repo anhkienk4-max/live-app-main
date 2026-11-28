@@ -502,6 +502,167 @@ export function ShiftDetailActions({
   )
 }
 
+export interface AttendanceResolutionResult {
+  status: 'valid' | 'missing_segment' | 'invalid_timing' | 'shift_time_invalid'
+  segmentId?: string
+  segmentIndex?: string | null
+  segmentTime?: string | null
+  date: string
+  startTime: string
+  endTime: string
+  crossesMidnight: boolean
+  isSegmented: boolean
+}
+
+export function parseStrictAttendanceTime(
+  value: unknown,
+  timezone = 'Asia/Ho_Chi_Minh',
+): { time: string; date?: string } | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  // 1. Strict time format: HH:mm or HH:mm:ss (hours 00-23, minutes 00-59, seconds 00-59)
+  const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(trimmed)
+  if (timeMatch) {
+    return { time: `${timeMatch[1]}:${timeMatch[2]}` }
+  }
+
+  // 2. Strict ISO timestamp format (must include date and time)
+  if (trimmed.includes('T') || (trimmed.includes('-') && trimmed.includes(':'))) {
+    const d = new Date(trimmed)
+    if (!Number.isNaN(d.getTime())) {
+      try {
+        const time = new Intl.DateTimeFormat('en-GB', {
+          timeZone: timezone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hourCycle: 'h23',
+        }).format(d)
+        const date = new Intl.DateTimeFormat('en-CA', {
+          timeZone: timezone,
+        }).format(d)
+        if (/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+          return { time, date }
+        }
+      } catch {
+        return null
+      }
+    }
+  }
+
+  return null
+}
+
+export function resolveAttendanceSegmentContext({
+  shift,
+  registration,
+}: {
+  shift: Shift
+  registration: ShiftRegistration
+}): AttendanceResolutionResult {
+  const isSegmented = Boolean(
+    (shift.persisted_staffing_segments && shift.persisted_staffing_segments.length > 0) ||
+    (shift.staffing_segments && shift.staffing_segments.length > 0) ||
+    registration.staffing_segment_id
+  )
+
+  if (!isSegmented) {
+    // Non-segmented: resolve strictly from parent shift boundaries
+    const shiftDateTime = resolveShiftDateTime(shift.date, shift.start_time, shift.end_time, shift.timezone)
+    const parsedStart = parseStrictAttendanceTime(shift.start_time)
+    const parsedEnd = parseStrictAttendanceTime(shift.end_time)
+    if (!parsedStart || !parsedEnd) {
+      return {
+        status: 'shift_time_invalid',
+        date: shift.date,
+        startTime: '',
+        endTime: '',
+        crossesMidnight: false,
+        isSegmented: false,
+      }
+    }
+    return {
+      status: 'valid',
+      date: shift.date,
+      startTime: parsedStart.time,
+      endTime: parsedEnd.time,
+      crossesMidnight: Boolean(shiftDateTime?.valid && shiftDateTime.crossesMidnight),
+      isSegmented: false,
+    }
+  }
+
+  // Segmented registration: must resolve exact segment belonging to this shift
+  if (!registration.staffing_segment_id) {
+    return {
+      status: 'missing_segment',
+      date: shift.date,
+      startTime: '',
+      endTime: '',
+      crossesMidnight: false,
+      isSegmented: true,
+    }
+  }
+
+  const segment = shift.persisted_staffing_segments?.find(
+    item => item.shift_id === shift.id && item.id === registration.staffing_segment_id
+  ) ?? (shift.staffing_segments as unknown as Array<{ id?: string; shift_id?: string }> | undefined)?.find(
+    item => (!item.shift_id || item.shift_id === shift.id) && item.id === registration.staffing_segment_id
+  )
+
+  if (!segment) {
+    return {
+      status: 'missing_segment',
+      date: shift.date,
+      startTime: '',
+      endTime: '',
+      crossesMidnight: false,
+      isSegmented: true,
+    }
+  }
+
+  // Extract times strictly from the segment itself; never fall back to parent shift boundaries
+  const rawStart = ('start_at' in segment && typeof segment.start_at === 'string' && segment.start_at)
+    || ('start_time' in segment && typeof (segment as { start_time?: unknown }).start_time === 'string' && (segment as { start_time?: string }).start_time)
+    || null
+  const rawEnd = ('end_at' in segment && typeof segment.end_at === 'string' && segment.end_at)
+    || ('end_time' in segment && typeof (segment as { end_time?: unknown }).end_time === 'string' && (segment as { end_time?: string }).end_time)
+    || null
+
+  const parsedStart = parseStrictAttendanceTime(rawStart)
+  const parsedEnd = parseStrictAttendanceTime(rawEnd)
+
+  if (!parsedStart || !parsedEnd) {
+    return {
+      status: 'invalid_timing',
+      segmentId: segment.id,
+      date: shift.date,
+      startTime: '',
+      endTime: '',
+      crossesMidnight: false,
+      isSegmented: true,
+    }
+  }
+
+  const segmentDate = parsedStart.date || shift.date
+  const crossesMidnight = parsedEnd.time < parsedStart.time || Boolean(parsedStart.date && parsedEnd.date && parsedEnd.date > parsedStart.date)
+  const segmentIndexLabel = 'segment_index' in segment && segment.segment_index != null
+    ? `K${segment.segment_index}`
+    : 'K1'
+
+  return {
+    status: 'valid',
+    segmentId: segment.id,
+    segmentIndex: segmentIndexLabel,
+    segmentTime: `${parsedStart.time}–${parsedEnd.time}`,
+    date: segmentDate,
+    startTime: parsedStart.time,
+    endTime: parsedEnd.time,
+    crossesMidnight,
+    isSegmented: true,
+  }
+}
+
 export function ShiftDetailModal({
   initialTab,
   onTabChange,
@@ -711,40 +872,80 @@ export function ShiftDetailModal({
     const attendanceShift = activeShift
     const mine = registrations.filter(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r))
     const segmented = Boolean(attendanceShift.persisted_staffing_segments?.length || attendanceShift.staffing_segments?.length || mine.some(r => r.staffing_segment_id))
-    const localTime = (value: unknown): string => {
-      if (typeof value !== 'string' || !value) return ''
-      if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(value.trim())) {
-        return value.trim().slice(0, 5)
-      }
-      try {
-        const d = new Date(value)
-        if (Number.isNaN(d.getTime())) return value.slice(0, 5)
-        return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d)
-      } catch {
-        return value.slice(0, 5)
-      }
-    }
     return mine.map(registration => {
       const segment = attendanceShift.persisted_staffing_segments?.find(item => item.shift_id === attendanceShift.id && item.id === registration.staffing_segment_id)
-        ?? attendanceShift.persisted_staffing_segments?.find(item => item.id === registration.staffing_segment_id)
-        ?? (attendanceShift.staffing_segments as unknown as Array<{ id?: string }> | undefined)?.find(item => item.id === registration.staffing_segment_id)
+        ?? (attendanceShift.staffing_segments as unknown as Array<{ id?: string; shift_id?: string }> | undefined)?.find(item => (!item.shift_id || item.shift_id === attendanceShift.id) && item.id === registration.staffing_segment_id)
+
       if (segmented && (!registration.staffing_segment_id || !segment)) {
-        return <div key={registration.id} role="status" className="rounded-md border p-3 text-sm">{language === 'en' ? 'Assigned segment details are unavailable. Please refresh or contact an administrator.' : 'Không có thông tin khung đã phân công. Vui lòng tải lại hoặc liên hệ quản trị viên.'}</div>
+        return (
+          <div
+            key={registration.id}
+            role="status"
+            className="rounded-md border p-3 text-sm text-amber-900 bg-amber-50 border-amber-200"
+            data-testid="attendance-segment-unavailable"
+          >
+            {language === 'en'
+              ? 'Assigned segment details are unavailable. Please refresh or contact an administrator.'
+              : 'Không có thông tin khung đã phân công. Vui lòng tải lại hoặc liên hệ quản trị viên.'}
+          </div>
+        )
       }
-      const shiftDateTime = resolveShiftDateTime(attendanceShift.date, attendanceShift.start_time, attendanceShift.end_time, attendanceShift.timezone)
-      const segmentStart = segment ? (('start_at' in segment && typeof segment.start_at === 'string' && segment.start_at) || ('start_time' in segment && typeof (segment as { start_time?: unknown }).start_time === 'string' && (segment as { start_time?: string }).start_time) || attendanceShift.start_time) : attendanceShift.start_time
-      const segmentEnd = segment ? (('end_at' in segment && typeof segment.end_at === 'string' && segment.end_at) || ('end_time' in segment && typeof (segment as { end_time?: unknown }).end_time === 'string' && (segment as { end_time?: string }).end_time) || attendanceShift.end_time) : attendanceShift.end_time
-      const formattedStart = localTime(segmentStart) || attendanceShift.start_time.slice(0, 5)
-      const formattedEnd = localTime(segmentEnd) || attendanceShift.end_time.slice(0, 5)
-      const segmentIndexLabel = segment ? ('segment_index' in segment ? `K${segment.segment_index}` : 'K1') : null
-      return <SelfAttendancePanel key={registration.id} actorId={currentUser!.id} shiftId={attendanceShift.id}
-        role={registration.operational_role} assignmentId={segment ? registration.id : undefined}
-        shiftContext={{ date: attendanceShift.date, start_time: formattedStart,
-          end_time: formattedEnd, brand: brands.find(item => item.id === attendanceShift.brand_id)?.name ?? attendanceShift.brand_id,
-          platform: platforms.find(item => item.id === attendanceShift.platform_id)?.name ?? attendanceShift.platform_id, title: attendanceShift.title, studio: attendanceShift.studio,
-          crossesMidnight: segment ? formattedEnd < formattedStart : Boolean(shiftDateTime?.valid && shiftDateTime.crossesMidnight),
-          staffName: currentUser?.full_name || 'Nhân sự', segmentIndex: segmentIndexLabel,
-          segmentTime: segment ? `${formattedStart}–${formattedEnd}` : null }} />
+
+      const res = resolveAttendanceSegmentContext({ shift: attendanceShift, registration })
+
+      if (res.status === 'invalid_timing') {
+        return (
+          <div
+            key={registration.id}
+            role="status"
+            className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+            data-testid="attendance-segment-time-invalid"
+          >
+            {language === 'en'
+              ? 'Assigned segment timing is invalid or missing. Check-in is blocked until verified by an administrator.'
+              : 'Khung giờ được phân công không hợp lệ hoặc thiếu dữ liệu thời gian. Chấm công bị khóa đến khi xác minh dữ liệu.'}
+          </div>
+        )
+      }
+
+      if (res.status === 'shift_time_invalid') {
+        return (
+          <div
+            key={registration.id}
+            role="status"
+            className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+            data-testid="attendance-parent-time-invalid"
+          >
+            {language === 'en'
+              ? 'Shift timing is invalid. Check-in is blocked.'
+              : 'Thời gian ca trực không hợp lệ. Chấm công bị khóa.'}
+          </div>
+        )
+      }
+
+      const formattedStart = res.startTime
+      const formattedEnd = res.endTime
+
+      return (
+        <SelfAttendancePanel
+          key={registration.id}
+          actorId={currentUser!.id}
+          shiftId={attendanceShift.id}
+          role={registration.operational_role} assignmentId={segment ? registration.id : undefined}
+          shiftContext={{ date: attendanceShift.date,
+            start_time: formattedStart,
+            end_time: formattedEnd,
+            brand: brands.find(item => item.id === attendanceShift.brand_id)?.name ?? attendanceShift.brand_id,
+            platform: platforms.find(item => item.id === attendanceShift.platform_id)?.name ?? attendanceShift.platform_id,
+            title: attendanceShift.title,
+            studio: attendanceShift.studio,
+            crossesMidnight: segment ? formattedEnd < formattedStart : res.crossesMidnight,
+            staffName: currentUser?.full_name || 'Nhân sự',
+            segmentIndex: res.segmentIndex,
+            segmentTime: res.segmentTime,
+          }}
+        />
+      )
     })
   }
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || fallback : fallback

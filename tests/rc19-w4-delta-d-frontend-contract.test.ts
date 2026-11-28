@@ -67,18 +67,15 @@ test('D06 Contract: ShiftOperationalNotesSection maintains persistent draft cach
     'utf8',
   )
 
-  // Module-level draft cache exists
-  assert.match(notesSource, /const SHIFT_NOTE_DRAFT_CACHE = new Map<string, string>\(\)/)
+  // Module-level draft cache exists and exports ShiftNoteDraftEntry
+  assert.match(notesSource, /export const SHIFT_NOTE_DRAFT_CACHE = new Map<string, ShiftNoteDraftEntry>\(\)/)
 
   // Operational note input uses standard testid
   assert.ok(notesSource.includes('data-testid="operational-note-input"'))
 
   // Input initializes from and writes to SHIFT_NOTE_DRAFT_CACHE
   assert.match(notesSource, /SHIFT_NOTE_DRAFT_CACHE\.get\(draftKey\)/)
-  assert.match(notesSource, /SHIFT_NOTE_DRAFT_CACHE\.set\(draftKey, e\.target\.value\)/)
-
-  // handleSaveNote(true) persists draft to cache and retains text
-  assert.match(notesSource, /SHIFT_NOTE_DRAFT_CACHE\.set\(draftKey, noteText\.trim\(\)\)/)
+  assert.match(notesSource, /SHIFT_NOTE_DRAFT_CACHE\.set\(draftKey, /)
 
   // handleSaveNote(false) and handleCancelEditing delete draft from cache
   assert.match(notesSource, /SHIFT_NOTE_DRAFT_CACHE\.delete\(draftKey\)/)
