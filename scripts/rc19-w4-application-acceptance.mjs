@@ -122,6 +122,21 @@ async function runBrowserAcceptance(credentials, fixtureManifestPath, verifiedRe
         const isAnonymousDenial = /^L08:/u.test(specItem.title)
         const testInteractionCount = Number.isInteger(observation?.successful_ui_actions) ? observation.successful_ui_actions : 0
         const readback = verifiedReadbacks[titleCaseId] ?? null
+        const expectedReportId = typeof observation?.fixture_identity?.report_id === 'string'
+          ? observation.fixture_identity.report_id : null
+        const matchingReportRead = expectedReportId
+          ? (observation?.collection_reads ?? []).find(read => read.entity === 'reports' && read.search === expectedReportId)
+          : null
+        const failureCauseClassification = uiStatus !== 'FAIL' ? null
+          : !observation ? 'TEST_OR_REPORTER_EVIDENCE_MISSING'
+            : titleCaseId === 'D07' || specItem.title.startsWith('D07')
+              ? !matchingReportRead ? 'TEST_FILTER_NOT_OBSERVED_IN_REPORT_QUERY'
+                : matchingReportRead.status !== 200 || matchingReportRead.total === 0
+                  || !matchingReportRead.rowIds.includes(expectedReportId)
+                  ? 'APPLICATION_REPORT_QUERY_OR_AUTHORIZED_SCOPE'
+                  : 'APPLICATION_REPORT_DETAIL_RENDER_OR_LOCATOR'
+              : failureClass === 'TIMEOUT' ? 'BROWSER_ACTION_OR_APPLICATION_READINESS_TIMEOUT'
+                : 'APPLICATION_OR_BROWSER_ASSERTION_REQUIRES_CASE_EVIDENCE'
         const authenticatedActor = observation?.authenticated === true
           && typeof observation?.auth_user_id === 'string' && observation.auth_user_id === observation?.business_user_id
         const authenticatedRoleMatches = readback?.role === observation?.role
@@ -150,9 +165,10 @@ async function runBrowserAcceptance(credentials, fixtureManifestPath, verifiedRe
             expected_route: observation?.expected_routes?.at(-1) ?? null,
             actual_route: observation?.actual_routes?.at(-1) ?? null,
             response_statuses: observation?.responses ?? [],
+            collection_reads: observation?.collection_reads ?? [],
             locator_failure_class: failureClass,
             failure_evidence: uiStatus === 'FAIL' ? (observation?.failure ?? actualFailure).slice(0, 1000) : null,
-            cause_classification: uiStatus === 'FAIL' ? 'UNRESOLVED_PENDING_EVIDENCE_REVIEW' : null,
+            cause_classification: failureCauseClassification,
           },
           database_readback: readback && uiStatus === 'PASS'
             ? readback

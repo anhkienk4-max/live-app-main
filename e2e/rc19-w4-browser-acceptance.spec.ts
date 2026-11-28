@@ -102,6 +102,16 @@ type BrowserObservation = {
   expectedRoutes: string[]
   actualRoutes: string[]
   responses: Array<{ route: string; status: number }>
+  collectionReads: Array<{
+    entity: string | null
+    search: string | null
+    agencyCodes: string[]
+    brandIds: string[]
+    status: number
+    total: number | null
+    rowIds: string[]
+  }>
+  pendingResponseCaptures: Array<Promise<void>>
   successfulUiActions: number
   fixtureIdentity?: Record<string, string | number>
   status?: string
@@ -283,6 +293,28 @@ function observePage(page: Page, observation: BrowserObservation | null = active
     const url = response.url()
     if (url.startsWith(process.env.E2E_BASE_URL ?? '')) {
       currentObservation.responses.push({ route: routePath(url), status: response.status() })
+      const requestUrl = new URL(url)
+      if (requestUrl.pathname === '/api/operations/collection') {
+        const requestParams = new URL(response.request().url()).searchParams
+        const filters = (() => {
+          try { return JSON.parse(requestParams.get('filters') ?? '{}') as Record<string, unknown> }
+          catch { return {} }
+        })()
+        currentObservation.pendingResponseCaptures.push((async () => {
+          let body: { total?: unknown; items?: Array<{ id?: unknown }> } | null = null
+          try { body = await response.json() as typeof body } catch { /* Keep the status and query even for non-JSON errors. */ }
+          currentObservation.collectionReads.push({
+            entity: requestParams.get('entity'),
+            search: typeof filters.search === 'string' ? filters.search.slice(0, 256) : null,
+            agencyCodes: Array.isArray(filters.agencyCodes) ? filters.agencyCodes.filter((value): value is string => typeof value === 'string') : [],
+            brandIds: Array.isArray(filters.brandIds) ? filters.brandIds.filter((value): value is string => typeof value === 'string') : [],
+            status: response.status(),
+            total: Number.isInteger(body?.total) ? Number(body?.total) : null,
+            rowIds: (Array.isArray(body?.items) ? body.items : [])
+              .map(item => item?.id).filter((id): id is string => typeof id === 'string').slice(0, 50),
+          })
+        })())
+      }
     }
   })
   const originalGoto = page.goto.bind(page)
@@ -315,7 +347,8 @@ test.beforeAll(async () => {
 test.beforeEach(async ({ page }, testInfo) => {
   activeObservation = {
     caseId: caseIdFromTitle(testInfo.title), title: testInfo.title,
-    authenticated: false, expectedRoutes: [], actualRoutes: [], responses: [], successfulUiActions: 0,
+    authenticated: false, expectedRoutes: [], actualRoutes: [], responses: [], collectionReads: [],
+    pendingResponseCaptures: [], successfulUiActions: 0,
     testId: testInfo.testId, projectName: testInfo.project.name, attempt: testInfo.retry,
     runtimeMarker: process.env.DISPOSABLE_DATABASE_MARKER ?? '',
     applicationSha: process.env.ATTESTED_APPLICATION_SHA ?? '',
@@ -326,6 +359,7 @@ test.beforeEach(async ({ page }, testInfo) => {
 test.afterEach(async ({}, testInfo) => {
   let sanitizedFailure: string | undefined
   if (activeObservation) {
+    await Promise.allSettled(activeObservation.pendingResponseCaptures)
     activeObservation.status = testInfo.status
     const error = [testInfo.error?.message, testInfo.error?.stack]
       .filter(value => typeof value === 'string' && value.length > 0).join('\n')
@@ -356,6 +390,7 @@ test.afterEach(async ({}, testInfo) => {
         expected_routes: activeObservation.expectedRoutes,
         actual_routes: activeObservation.actualRoutes,
         responses: activeObservation.responses,
+        collection_reads: activeObservation.collectionReads,
         successful_ui_actions: activeObservation.successfulUiActions,
         failure: sanitizedFailure ?? null,
         status: testInfo.status,
