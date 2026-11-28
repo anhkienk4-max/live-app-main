@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "1b32fa315a6dc79a94e69c794379dd262b7d6b4b",
+    "head": "db8e653a5eb3b848d7e40b19839626ab311ea0ed",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -38,6 +38,7 @@
       "app/(dashboard)/campaigns/page.tsx",
       "app/(dashboard)/data-quality/page.tsx",
       "app/(dashboard)/live/page.tsx",
+      "app/(dashboard)/my-payslip/page.tsx",
       "app/(dashboard)/notifications/page.tsx",
       "app/(dashboard)/page.tsx",
       "app/(dashboard)/payroll/page.tsx",
@@ -126,14 +127,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 102,
+        "app": 103,
         "components": 201,
         "lib": 311,
         "scripts": 196,
         "supabase": 173,
-        "tests": 416
+        "tests": 419
       },
-      "total": 1399
+      "total": 1403
     },
     "tests": {
       "files": [
@@ -394,6 +395,8 @@
         "tests/rc19-unified-import-postgres17.test.ts",
         "tests/rc19-w4-agency-filter-contract.test.ts",
         "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
+        "tests/rc19-w4-attendance-payroll-contract.test.ts",
+        "tests/rc19-w4-delta-d-frontend-contract.test.ts",
         "tests/rc19-w4-deltac-live-monitoring.test.ts",
         "tests/rc19-w4-deltac-webrtc.test.ts",
         "tests/rc19-w4-external-summary-revision-integrity.test.ts",
@@ -404,6 +407,7 @@
         "tests/rc19-w4-staffing-conflict-api.test.ts",
         "tests/rc19-w4-swap-brand-security-postgres17.test.ts",
         "tests/rc19-w4-swap-brand-security.test.ts",
+        "tests/rc19-w4-swap-lifecycle-contract.test.ts",
         "tests/rc19-w4-taskb-issue184-kao-regression.test.ts",
         "tests/rc19-w4-taskb-staffing-semantics.test.ts",
         "tests/rc19-w4-workforce-monthly-v2-contract.test.ts",
@@ -475,7 +479,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 337
+      "count": 340
     },
     "migrations": {
       "files": [
@@ -639,5 +643,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-28T10:01:42Z"
+  "synced_at": "2026-11-28T11:43:20Z"
 }
