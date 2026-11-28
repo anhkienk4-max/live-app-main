@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "a2a4775b0c94ee6a1db6b3055e78025aab740337",
+    "head": "1b32fa315a6dc79a94e69c794379dd262b7d6b4b",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -131,9 +131,9 @@
         "lib": 311,
         "scripts": 196,
         "supabase": 173,
-        "tests": 415
+        "tests": 416
       },
-      "total": 1398
+      "total": 1399
     },
     "tests": {
       "files": [
@@ -392,6 +392,7 @@
         "tests/rc19-u15-ux-quality.test.ts",
         "tests/rc19-ui-functional-integration.test.tsx",
         "tests/rc19-unified-import-postgres17.test.ts",
+        "tests/rc19-w4-agency-filter-contract.test.ts",
         "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
         "tests/rc19-w4-deltac-live-monitoring.test.ts",
         "tests/rc19-w4-deltac-webrtc.test.ts",
@@ -474,7 +475,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 336
+      "count": 337
     },
     "migrations": {
       "files": [
@@ -638,5 +639,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-27T18:12:09Z"
+  "synced_at": "2026-11-28T10:01:42Z"
 }
