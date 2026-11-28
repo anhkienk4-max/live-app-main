@@ -13,7 +13,13 @@ export function readCaseEvidence(result, expected) {
   if (!attachment) return null
 
   let evidence
-  try { evidence = JSON.parse(attachment.body) } catch { return null }
+  try {
+    // Playwright's JSON reporter serializes Buffer attachment bodies as base64.
+    // Accept raw JSON too for older report fixtures, but prefer the reporter format.
+    evidence = JSON.parse(Buffer.from(attachment.body, 'base64').toString('utf8'))
+  } catch {
+    try { evidence = JSON.parse(attachment.body) } catch { return null }
+  }
   if (evidence?.schema !== 'rc19-w4-browser-case-evidence/v1'
     || evidence.test_id !== expected.testId
     || evidence.project_name !== expected.projectName

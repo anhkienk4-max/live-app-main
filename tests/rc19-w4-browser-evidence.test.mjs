@@ -18,7 +18,8 @@ function resultFor(attempt, worker, caseId, fixtureIdentity) {
   }
   return { status: 'passed', retry: attempt, attachments: [{
     name: BROWSER_CASE_EVIDENCE_ATTACHMENT, contentType: 'application/json',
-    body: JSON.stringify(evidence),
+    // Playwright's JSON reporter serializes Buffer attachment bodies as base64.
+    body: Buffer.from(JSON.stringify(evidence)).toString('base64'),
   }] }
 }
 
