@@ -69,7 +69,7 @@ test('TASK C (#100): URL filter synchronization is shared across all view modes'
 
   // Apply/Reset filter contract is shared in every view
   assert.match(source, /const syncFilterUrl = React\.useCallback\(\(value: Filters\) => \{/)
-  assert.match(source, /const keys: \(keyof Filters\)\[\] = \['search','start','end','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses'\]/)
+  assert.match(source, /const keys: \(keyof Filters\)\[\] = \['search','start','end','brandIds','platformIds','campaignIds','agencyCodes','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses'\]/)
 
   // Both reportPage and queuePage reset on apply/reset
   assert.match(source, /applyFilters = React\.useCallback\(\(\) => \{[\s\S]*?setReportPage\(1\)[\s\S]*?setQueuePage\(1\)/)
