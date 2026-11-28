@@ -1,6 +1,6 @@
 {
   "application_sha": "7fd117f19d95444b12851d577dd742daeb5b45bb",
-  "harness_sha": "de62311ad035ea32e03020e4ee0e991dd37fa6cb",
+  "harness_sha": "bf0439bad060c1e8306d0e4259f67ccd24dcdccc",
   "acceptance_contract": "rc19-w4-application-acceptance/v2",
   "diagnostic_batch": "first-four-authenticated-browser-cases",
   "reviewed": true
