@@ -112,6 +112,7 @@ type BrowserObservation = {
     rowIds: string[]
   }>
   pendingResponseCaptures: Array<Promise<void>>
+  viewMode?: string
   successfulUiActions: number
   fixtureIdentity?: Record<string, string | number>
   status?: string
@@ -356,10 +357,12 @@ test.beforeEach(async ({ page }, testInfo) => {
   observePage(page, activeObservation)
 })
 
-test.afterEach(async ({}, testInfo) => {
+test.afterEach(async ({ page }, testInfo) => {
   let sanitizedFailure: string | undefined
   if (activeObservation) {
     await Promise.allSettled(activeObservation.pendingResponseCaptures)
+    try { activeObservation.viewMode = new URL(page.url()).searchParams.get('reports_view') ?? 'cards' }
+    catch { activeObservation.viewMode = 'unavailable' }
     activeObservation.status = testInfo.status
     const error = [testInfo.error?.message, testInfo.error?.stack]
       .filter(value => typeof value === 'string' && value.length > 0).join('\n')
@@ -391,6 +394,7 @@ test.afterEach(async ({}, testInfo) => {
         actual_routes: activeObservation.actualRoutes,
         responses: activeObservation.responses,
         collection_reads: activeObservation.collectionReads,
+        view_mode: activeObservation.viewMode ?? null,
         successful_ui_actions: activeObservation.successfulUiActions,
         failure: sanitizedFailure ?? null,
         status: testInfo.status,
@@ -903,6 +907,12 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       // Authenticated dashboard pages may keep background requests active;
       // wait for the actual report action below instead of global network idle.
       await page.waitForLoadState('domcontentloaded')
+
+      // The report-view test ID belongs to the table layout. Select that
+      // actual workspace mode explicitly; the default cards layout uses a
+      // different ActionBar control.
+      await page.getByRole('button', { name: 'Chế độ bảng' }).click()
+      await expect(page).toHaveURL(/(?:\?|&)reports_view=table(?:&|$)/u)
 
       // Search through the real Reports workspace controls so the exact
       // same-runtime fixture is located independently of the default page.

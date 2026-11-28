@@ -134,7 +134,8 @@ async function runBrowserAcceptance(credentials, fixtureManifestPath, verifiedRe
                 : matchingReportRead.status !== 200 || matchingReportRead.total === 0
                   || !matchingReportRead.rowIds.includes(expectedReportId)
                   ? 'APPLICATION_REPORT_QUERY_OR_AUTHORIZED_SCOPE'
-                  : 'APPLICATION_REPORT_DETAIL_RENDER_OR_LOCATOR'
+                  : observation?.view_mode !== 'table' ? 'TEST_VIEW_MODE_LOCATOR_MISMATCH'
+                    : 'APPLICATION_REPORT_DETAIL_RENDER_OR_LOCATOR'
               : failureClass === 'TIMEOUT' ? 'BROWSER_ACTION_OR_APPLICATION_READINESS_TIMEOUT'
                 : 'APPLICATION_OR_BROWSER_ASSERTION_REQUIRES_CASE_EVIDENCE'
         const authenticatedActor = observation?.authenticated === true
@@ -166,6 +167,7 @@ async function runBrowserAcceptance(credentials, fixtureManifestPath, verifiedRe
             actual_route: observation?.actual_routes?.at(-1) ?? null,
             response_statuses: observation?.responses ?? [],
             collection_reads: observation?.collection_reads ?? [],
+            view_mode: observation?.view_mode ?? null,
             locator_failure_class: failureClass,
             failure_evidence: uiStatus === 'FAIL' ? (observation?.failure ?? actualFailure).slice(0, 1000) : null,
             cause_classification: failureCauseClassification,
@@ -990,8 +992,8 @@ async function main() {
 
   await executeCase('reports-agency-code-filter-rpc-matrix', 'Authenticated Admin, scoped Leader, assigned Member',
     'Both report RPCs filter ADA/SNAP/Live AI independently and in combinations before count/pagination; role, Brand, exact rows and invalid values are verified against same-runtime PostgreSQL fixtures.', async () => {
-      const reportIdFor = fixture => fixture.reportId
-      const shiftIdFor = fixture => fixture.shiftId
+      const reportIdFor = value => value.reportId ?? value.id
+      const shiftIdFor = value => value.shiftId ?? value.shift?.id
       const expectedFor = codes => agencyFilterReportRows.filter(row => codes.includes(row.agencyCode))
       const readReportList = async (actor, page, filters) => requireNoError(
         await actor.client.rpc('get_report_list_with_history', { p_page: page, p_page_size: 10, p_filters: filters }),

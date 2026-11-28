@@ -82,7 +82,7 @@ test('G7: report detail modal follows browser history without losing list contex
   assert.match(source, /const reportDetailId = searchParams\.get\('reports_report_id'\)/)
   assert.match(source, /navigate\(\{ reports_report_id: report\.id \}\)/)
   assert.match(source, /selectedReportIdentity === identity && selectedReportState\?\.id === reportDetailId/)
-  assert.match(source, /navigate\(\{ reports_report_id: null, shiftId: null \}, true\)/)
+  assert.match(source, /navigate\(\{ reports_report_id: null, report_id: null, shiftId: null \}, true\)/)
 })
 
 test('TASK C (#100): Calendar view collects authorized entries without 20-shift page truncation', async () => {
