@@ -74,7 +74,7 @@ export function MyPayslipPanel() {
   const validYear=/^20[2-9][0-9]$/.test(year)
   const statements=current?.data?.statements ?? []
   const selected=statements.find(s=>selection?.year===year && s.period_id===selection.id) ?? statements[0]
-  return <section className="mx-auto max-w-5xl space-y-5 p-4 pb-24 md:p-6" aria-label="Phiếu lương của tôi">
+  return <section className="mx-auto max-w-5xl space-y-5 p-4 pb-24 md:p-6" aria-label="Phiếu lương của tôi" data-testid="my-payslip-page">
     <header className="space-y-1"><h1 className="text-xl font-semibold">Phiếu lương của tôi</h1>
       <p className="text-sm text-muted-foreground">Chỉ hiển thị kỳ đã khóa và số liệu của chính tài khoản đang đăng nhập. Chấm công chờ duyệt không được tính thành lương.</p>
     </header>

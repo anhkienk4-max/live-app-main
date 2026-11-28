@@ -711,21 +711,40 @@ export function ShiftDetailModal({
     const attendanceShift = activeShift
     const mine = registrations.filter(r => r.user_id === currentUser?.id && r.shift_id === shift.id && isStaffedRegistration(r))
     const segmented = Boolean(attendanceShift.persisted_staffing_segments?.length || attendanceShift.staffing_segments?.length || mine.some(r => r.staffing_segment_id))
-    const localTime = (value: string) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value))
+    const localTime = (value: unknown): string => {
+      if (typeof value !== 'string' || !value) return ''
+      if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(value.trim())) {
+        return value.trim().slice(0, 5)
+      }
+      try {
+        const d = new Date(value)
+        if (Number.isNaN(d.getTime())) return value.slice(0, 5)
+        return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d)
+      } catch {
+        return value.slice(0, 5)
+      }
+    }
     return mine.map(registration => {
       const segment = attendanceShift.persisted_staffing_segments?.find(item => item.shift_id === attendanceShift.id && item.id === registration.staffing_segment_id)
+        ?? attendanceShift.persisted_staffing_segments?.find(item => item.id === registration.staffing_segment_id)
+        ?? (attendanceShift.staffing_segments as unknown as Array<{ id?: string }> | undefined)?.find(item => item.id === registration.staffing_segment_id)
       if (segmented && (!registration.staffing_segment_id || !segment)) {
         return <div key={registration.id} role="status" className="rounded-md border p-3 text-sm">{language === 'en' ? 'Assigned segment details are unavailable. Please refresh or contact an administrator.' : 'Không có thông tin khung đã phân công. Vui lòng tải lại hoặc liên hệ quản trị viên.'}</div>
       }
       const shiftDateTime = resolveShiftDateTime(attendanceShift.date, attendanceShift.start_time, attendanceShift.end_time, attendanceShift.timezone)
+      const segmentStart = segment ? (('start_at' in segment && typeof segment.start_at === 'string' && segment.start_at) || ('start_time' in segment && typeof (segment as { start_time?: unknown }).start_time === 'string' && (segment as { start_time?: string }).start_time) || attendanceShift.start_time) : attendanceShift.start_time
+      const segmentEnd = segment ? (('end_at' in segment && typeof segment.end_at === 'string' && segment.end_at) || ('end_time' in segment && typeof (segment as { end_time?: unknown }).end_time === 'string' && (segment as { end_time?: string }).end_time) || attendanceShift.end_time) : attendanceShift.end_time
+      const formattedStart = localTime(segmentStart) || attendanceShift.start_time.slice(0, 5)
+      const formattedEnd = localTime(segmentEnd) || attendanceShift.end_time.slice(0, 5)
+      const segmentIndexLabel = segment ? ('segment_index' in segment ? `K${segment.segment_index}` : 'K1') : null
       return <SelfAttendancePanel key={registration.id} actorId={currentUser!.id} shiftId={attendanceShift.id}
         role={registration.operational_role} assignmentId={segment ? registration.id : undefined}
-        shiftContext={{ date: attendanceShift.date, start_time: segment ? localTime(segment.start_at) : attendanceShift.start_time,
-          end_time: segment ? localTime(segment.end_at) : attendanceShift.end_time, brand: brands.find(item => item.id === attendanceShift.brand_id)?.name ?? attendanceShift.brand_id,
+        shiftContext={{ date: attendanceShift.date, start_time: formattedStart,
+          end_time: formattedEnd, brand: brands.find(item => item.id === attendanceShift.brand_id)?.name ?? attendanceShift.brand_id,
           platform: platforms.find(item => item.id === attendanceShift.platform_id)?.name ?? attendanceShift.platform_id, title: attendanceShift.title, studio: attendanceShift.studio,
-          crossesMidnight: segment ? localTime(segment.end_at) < localTime(segment.start_at) : Boolean(shiftDateTime?.valid && shiftDateTime.crossesMidnight),
-          staffName: currentUser?.full_name || 'Nhân sự', segmentIndex: segment ? `K${segment.segment_index}` : null,
-          segmentTime: segment ? `${localTime(segment.start_at)}–${localTime(segment.end_at)}` : null }} />
+          crossesMidnight: segment ? formattedEnd < formattedStart : Boolean(shiftDateTime?.valid && shiftDateTime.crossesMidnight),
+          staffName: currentUser?.full_name || 'Nhân sự', segmentIndex: segmentIndexLabel,
+          segmentTime: segment ? `${formattedStart}–${formattedEnd}` : null }} />
     })
   }
   const userName = (id?: string) => id ? users.find(user => user.id === id)?.full_name || fallback : fallback

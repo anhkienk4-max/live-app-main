@@ -114,6 +114,8 @@ const CATEGORY_TEMPLATES: CategoryTemplate[] = [
   },
 ]
 
+const SHIFT_NOTE_DRAFT_CACHE = new Map<string, string>()
+
 export function ShiftOperationalNotesSection({
   shift,
   currentUser,
@@ -122,12 +124,13 @@ export function ShiftOperationalNotesSection({
   const { language } = useTranslation()
   const { toast } = useToast()
   const isVi = language === 'vi'
+  const draftKey = currentUser ? `${shift.id}:${currentUser.id}` : ''
 
   const [notes, setNotes] = React.useState<ShiftOperationalNote[]>([])
   const [loading, setLoading] = React.useState(true)
   const [schemaUnavailable, setSchemaUnavailable] = React.useState(false)
   const [category, setCategory] = React.useState<ShiftOperationalNoteCategory>('normal')
-  const [noteText, setNoteText] = React.useState('')
+  const [noteText, setNoteText] = React.useState(() => draftKey ? (SHIFT_NOTE_DRAFT_CACHE.get(draftKey) ?? '') : '')
   const [submitting, setSubmitting] = React.useState(false)
   const [affectedUserId, setAffectedUserId] = React.useState('')
   const [editingNoteId, setEditingNoteId] = React.useState<string | null>(null)
@@ -139,7 +142,7 @@ export function ShiftOperationalNotesSection({
     action: 'request_correction' | 'reject'
   } | null>(null)
   const [reviewReason, setReviewReason] = React.useState('')
-  const idempotencyKeyRef = React.useRef<string>(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`)
+  const idempotencyKeyRef = React.useRef<string>('')
   const reviewActionIdempotencyKeysRef = React.useRef<Map<string, string>>(new Map())
 
   const getReviewActionKey = (actionKey: string) => {
@@ -204,6 +207,19 @@ export function ShiftOperationalNotesSection({
       const data = await shiftNoteService.getForShift(shift.id)
       setNotes(data)
       setSchemaUnavailable(false)
+      if (draftKey && SHIFT_NOTE_DRAFT_CACHE.has(draftKey)) {
+        setNoteText(SHIFT_NOTE_DRAFT_CACHE.get(draftKey)!)
+      } else {
+        const myDraft = data.find(n => (n.status === 'draft' || (n as unknown as { workflow_state?: string }).workflow_state === 'draft') && (n.author_id === currentUser?.id || n.author_id === (currentUser as unknown as { business_user_id?: string })?.business_user_id))
+        if (myDraft) {
+          setNoteText(myDraft.note)
+          setCategory(myDraft.category)
+          setEditingNoteId(myDraft.id)
+          setEditingVersion(myDraft.version ?? 1)
+          if (myDraft.affected_user_id) setAffectedUserId(myDraft.affected_user_id)
+          if (draftKey) SHIFT_NOTE_DRAFT_CACHE.set(draftKey, myDraft.note)
+        }
+      }
     } catch (err: unknown) {
       if (
         err instanceof Error &&
@@ -221,7 +237,7 @@ export function ShiftOperationalNotesSection({
     } finally {
       setLoading(false)
     }
-  }, [shift.id, isVi, toast])
+  }, [shift.id, isVi, toast, draftKey, currentUser])
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load of notes for shift
@@ -240,11 +256,14 @@ export function ShiftOperationalNotesSection({
   const handleSaveNote = async (asDraft: boolean) => {
     if (!currentUser || !noteText.trim()) return
 
+    const currentIdempotencyKey = idempotencyKeyRef.current || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`)
+    idempotencyKeyRef.current = currentIdempotencyKey
+
     setSubmitting(true)
     setSaveState('saving')
     try {
       if (asDraft) {
-        await shiftNoteService.saveDraft({
+        const res = await shiftNoteService.saveDraft({
           noteId: editingNoteId,
           expectedVersion: editingNoteId ? editingVersion : null,
           shiftId: shift.id,
@@ -252,13 +271,19 @@ export function ShiftOperationalNotesSection({
           category,
           note: noteText.trim(),
           affectedUserId: affectedUserId || null,
-          idempotencyKey: idempotencyKeyRef.current,
+          idempotencyKey: currentIdempotencyKey,
         })
         toast({
           title: isVi ? 'Thành công' : 'Success',
           description: isVi ? 'Đã lưu nháp ghi chú trên server.' : 'Draft saved to server.',
           variant: 'success',
         })
+        if (draftKey) SHIFT_NOTE_DRAFT_CACHE.set(draftKey, noteText.trim())
+        if (res?.note?.id) {
+          setEditingNoteId(res.note.id)
+          setEditingVersion(res.note.version ?? 1)
+        }
+        setSaveState('saved')
       } else {
         await shiftNoteService.submitNote({
           noteId: editingNoteId,
@@ -268,20 +293,21 @@ export function ShiftOperationalNotesSection({
           category,
           note: noteText.trim(),
           affectedUserId: affectedUserId || null,
-          idempotencyKey: idempotencyKeyRef.current,
+          idempotencyKey: currentIdempotencyKey,
         })
         toast({
           title: isVi ? 'Thành công' : 'Success',
           description: isVi ? 'Đã ghi nhận ghi chú vận hành.' : 'Operational note submitted.',
           variant: 'success',
         })
+        if (draftKey) SHIFT_NOTE_DRAFT_CACHE.delete(draftKey)
+        setSaveState('saved')
+        setNoteText('')
+        setEditingNoteId(null)
+        setEditingVersion(1)
+        setAffectedUserId('')
       }
       idempotencyKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`
-      setSaveState('saved')
-      setNoteText('')
-      setEditingNoteId(null)
-      setEditingVersion(1)
-      setAffectedUserId('')
       await loadNotes()
     } catch (err: unknown) {
       setSaveState('error')
@@ -393,6 +419,7 @@ export function ShiftOperationalNotesSection({
     setNoteText(note.note)
     setCategory(note.category)
     setAffectedUserId(note.affected_user_id || '')
+    // eslint-disable-next-line react-hooks/purity -- event callback resetting idempotency key
     idempotencyKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`
     setSaveState('idle')
   }
@@ -401,6 +428,8 @@ export function ShiftOperationalNotesSection({
     setEditingNoteId(null)
     setEditingVersion(1)
     setNoteText('')
+    if (draftKey) SHIFT_NOTE_DRAFT_CACHE.delete(draftKey)
+    setCategory('normal')
     setAffectedUserId('')
     setSaveState('idle')
   }
@@ -552,10 +581,11 @@ export function ShiftOperationalNotesSection({
 
               <div>
                 <Textarea
-                  data-testid="note-content-input"
+                  data-testid="operational-note-input"
                   value={noteText}
                   onChange={e => {
                     setNoteText(e.target.value)
+                    if (draftKey) SHIFT_NOTE_DRAFT_CACHE.set(draftKey, e.target.value)
                     setSaveState('dirty')
                   }}
                   placeholder={

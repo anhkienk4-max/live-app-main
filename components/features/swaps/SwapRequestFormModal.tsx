@@ -463,7 +463,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                       const shiftRegs = source.registrations.filter(reg => reg.shift_id === shift.id && reg.user_id === owner && isStaffedRegistration(reg))
                       const isSelected = sourceId === shift.id
                       return (
-                        <tr key={shift.id} className={isSelected ? 'bg-primary/5' : 'hover:bg-muted/40'}>
+                        <tr key={shift.id} data-shift-id={shift.id} className={isSelected ? 'bg-primary/5' : 'hover:bg-muted/40'}>
                           <td className="px-3 py-2 font-medium">{shift.title || copy('Ca trực', 'Shift')} {shift.crosses_midnight && <span className="ml-1 text-amber-700">· {copy('Qua đêm', 'Overnight')}</span>}</td>
                           <td className="px-3 py-2">{brands.find(item => item.id === shift.brand_id)?.name ?? '—'} · {platforms.find(item => item.id === shift.platform_id)?.name ?? '—'}</td>
                           <td className="whitespace-nowrap px-3 py-2">{shift.date} · {formatShiftTimeRange(shift)} <span className="text-muted-foreground">{shift.timezone || 'ICT / GMT+7'}{shift.studio ? ` · ${shift.studio}` : ''}</span></td>
@@ -671,6 +671,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                         <button
                           type="button"
                           key={item.id}
+                          data-candidate-id={item.id}
                           disabled={Boolean(why)}
                           aria-pressed={isSelected}
                           onClick={() => setReplacementId(item.id)}
@@ -837,6 +838,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
                         <button
                           type="button"
                           key={shift.id}
+                          data-shift-id={shift.id}
                           aria-pressed={isSelected}
                           onClick={() => { setTargetId(shift.id); setCounterpartId(''); setExchangeConflictSnapshot(null) }}
                           className={`w-full rounded-md border p-2 text-left text-xs transition-all focus-visible:ring-2 focus-visible:ring-primary ${
@@ -1076,6 +1078,7 @@ export function SwapRequestFormModal({ open, onOpenChange, brands, platforms, on
             <Button
               type="submit"
               size="sm"
+              data-testid="submit-swap-request"
               disabled={busy || !sourceRegistration || !validCandidate || reason.trim().length < 10 || Boolean(timingValidation && !timingValidation.allowed)}
               className="font-medium"
             >
