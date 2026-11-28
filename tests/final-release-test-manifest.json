@@ -256,6 +256,7 @@
     "tests/rc19-u15-ux-quality.test.ts",
     "tests/rc19-ui-functional-integration.test.tsx",
     "tests/rc19-unified-import-postgres17.test.ts",
+    "tests/rc19-w4-agency-filter-contract.test.ts",
     "tests/rc19-w4-application-acceptance-contract.test.ts",
     "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
     "tests/rc19-w4-deltac-live-monitoring.test.ts",
