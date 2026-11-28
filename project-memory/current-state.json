@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "c62a37025360b42bf9163f27a3e872d422062489",
+    "head": "e7599245876a70b7fc9efbf2f40ebd77feba907a",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -38,6 +38,7 @@
       "app/(dashboard)/campaigns/page.tsx",
       "app/(dashboard)/data-quality/page.tsx",
       "app/(dashboard)/live/page.tsx",
+      "app/(dashboard)/my-payslip/page.tsx",
       "app/(dashboard)/notifications/page.tsx",
       "app/(dashboard)/page.tsx",
       "app/(dashboard)/payroll/page.tsx",
@@ -126,14 +127,14 @@
     ],
     "source_files": {
       "roots": {
-        "app": 102,
+        "app": 103,
         "components": 201,
         "lib": 311,
         "scripts": 198,
-        "supabase": 176,
-        "tests": 422
+        "supabase": 177,
+        "tests": 427
       },
-      "total": 1410
+      "total": 1417
     },
     "tests": {
       "files": [
@@ -396,8 +397,12 @@
         "tests/rc19-w4-agency-filter-contract.test.ts",
         "tests/rc19-w4-application-acceptance-contract.test.ts",
         "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
+        "tests/rc19-w4-attendance-payroll-contract.test.ts",
+        "tests/rc19-w4-d06-persistent-draft-behavioral.test.ts",
+        "tests/rc19-w4-delta-d-frontend-contract.test.ts",
         "tests/rc19-w4-deltac-live-monitoring.test.ts",
         "tests/rc19-w4-deltac-webrtc.test.ts",
+        "tests/rc19-w4-exact-segment-attendance-behavioral.test.ts",
         "tests/rc19-w4-external-summary-revision-integrity.test.ts",
         "tests/rc19-w4-legacy-segment-compatibility.test.ts",
         "tests/rc19-w4-production-cli-migration-runner.test.ts",
@@ -406,6 +411,7 @@
         "tests/rc19-w4-staffing-conflict-api.test.ts",
         "tests/rc19-w4-swap-brand-security-postgres17.test.ts",
         "tests/rc19-w4-swap-brand-security.test.ts",
+        "tests/rc19-w4-swap-lifecycle-contract.test.ts",
         "tests/rc19-w4-swap-receipt-contract.test.ts",
         "tests/rc19-w4-taskb-issue184-kao-regression.test.ts",
         "tests/rc19-w4-taskb-staffing-semantics.test.ts",
@@ -479,7 +485,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 341
+      "count": 346
     },
     "migrations": {
       "files": [
@@ -630,9 +636,10 @@
         "supabase/migrations/20261126150000_rc19_w4_segment_aware_pass_swap.sql",
         "supabase/migrations/20261127090000_rc19_w4_workforce_monthly_full_scope_totals.sql",
         "supabase/migrations/20261127100000_rc19_w4_segment_aware_swap_receipts.sql",
-        "supabase/migrations/20261128100000_rc19_w4_reports_agency_code_filter.sql"
+        "supabase/migrations/20261128100000_rc19_w4_reports_agency_code_filter.sql",
+        "supabase/migrations/20261128120757_rc19_w4_fix_swap_receipt_replay_actor_binding.sql"
       ],
-      "count": 148
+      "count": 149
     }
   },
   "verification": {
@@ -646,5 +653,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-28T11:52:41Z"
+  "synced_at": "2026-11-28T12:49:25Z"
 }
