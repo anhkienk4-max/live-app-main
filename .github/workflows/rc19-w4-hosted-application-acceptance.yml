@@ -956,6 +956,23 @@ jobs:
               "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic.json"
             mv "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic.json" "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json"
             echo "Bounded runtime diagnostic completed. Strict final business acceptance was not run; browser UAT requested=$RUN_BROWSER_UAT." >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$RUN_BROWSER_UAT" == "true" ]]; then
+              {
+                echo "### Authenticated browser case evidence"
+                echo
+                echo "Application SHA: \`$EXPECTED_APPLICATION_SHA\`  "
+                echo "Harness SHA: \`$(git rev-parse HEAD)\`  "
+                echo "Runtime marker: \`$RC19_W4_RUNTIME_DATABASE_MARKER\`  "
+                echo "Scope: bounded diagnostic; this is not strict final acceptance."
+                echo
+                echo "| Case | Result | Auth actor | Fixture identity | Expected route | Actual route | HTTP responses | DB readback | Failure evidence |"
+                echo "|---|---|---|---|---|---|---|---|---|"
+                jq -r '
+                  .browser_cases[] |
+                  "| `\(.case_id)` | \(.status) | \(.actor.role // "unresolved") / `\(.actor.auth_user_id // "unresolved")` | `\((.actor.fixture_identity // {}) | tojson)` | `\(.actual.expected_route // "n/a")` | `\(.actual.actual_route // "n/a")` | `\((.actual.response_statuses // []) | tojson)` | \(.database_readback.status // "missing") / \(.database_readback.matches_expected // false) | \((.actual.failure_evidence // "") | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "\\\\|")) |"
+                ' "$report"
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
             exit 0
           fi
           jq --arg browser_requested "$RUN_BROWSER_UAT" -e '
