@@ -22,13 +22,24 @@ test('applied filters reset pagination and display removable active chips', () =
   assert.match(source, /onClick=\{resetFilters\}/)
 })
 test('date and multi-select editors change only drafts, not applied server filters', () => {
-  for (const field of ['start','end','brandIds','platformIds','campaignIds','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']) {
+  for (const field of ['start','end','brandIds','platformIds','campaignIds','agencyCodes','hostIds','supportIds','technicalIds','reportStatuses','metricsStatuses']) {
     assert.match(source, new RegExp('value=\\{draftFilters\\.' + field + '\\}'))
   }
   assert.match(source, /hasUnappliedChanges && !invalidDraftDates && <p role="status"/)
   assert.match(source, /invalidDraftDates && <p role="alert"/)
   assert.match(source, /disabled=\{!hasUnappliedChanges \|\| invalidDraftDates\}/)
   assert.match(source, /event\.key === 'Enter'/)
+})
+
+test('report deep links resolve exact reports outside the current page and open the requested tab', () => {
+  assert.match(source, /searchParams\.get\('reports_report_id'\) \|\| searchParams\.get\('report_id'\)/)
+  assert.match(source, /reportService\.getById\(reportDetailId\)/)
+  assert.match(source, /shiftService\.getById\(report\.shift_id\)/)
+  assert.match(source, /initialTab=\{searchParams\.get\('reports_tab'\) \|\| searchParams\.get\('tab'\)/)
+})
+
+test('report detail controls bind the opened report identity', () => {
+  assert.match(source, /data-testid=\{`report-view-\$\{report\.id\}`\}/)
 })
 
 

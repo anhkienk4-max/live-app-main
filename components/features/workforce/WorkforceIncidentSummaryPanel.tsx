@@ -379,7 +379,7 @@ export function WorkforceIncidentSummaryPanel({
             </Card>
 
             {/* Card 2: Confirmed Violations (Skip / Absent) */}
-            <Card className="shadow-2xs">
+            <Card className="shadow-2xs" data-testid="metric-confirmed-violations">
               <CardHeader className="p-2.5 pb-1">
                 <CardTitle className="text-xs font-medium text-rose-600">
                   {isVi ? 'Vi phạm (Skip/Vắng)' : 'Violations'}

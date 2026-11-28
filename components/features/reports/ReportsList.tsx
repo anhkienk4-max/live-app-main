@@ -144,7 +144,7 @@ export function ReportsList() {
   const [draftFilters, setDraftFilters] = React.useState<Filters>(filters)
   const lastUrlFilters = React.useRef(JSON.stringify(filters))
   const [showFilters, setShowFilters] = React.useState(false)
-  const reportDetailId = searchParams.get('reports_report_id')
+  const reportDetailId = searchParams.get('reports_report_id') || searchParams.get('report_id')
   const [selectedReportState, setSelectedReportState] = React.useState<Report | null>(null)
   const [selectedReportIdentity, setSelectedReportIdentity] = React.useState('')
   const selectedReport = reportDetailId
@@ -156,6 +156,8 @@ export function ReportsList() {
   const [targetedShift, setTargetedShift] = React.useState<Shift | null>(null)
   const targetRequest = React.useRef<{ shiftId: string; userId: string; promise: Promise<ReportTarget> } | null>(null)
   const handledTarget = React.useRef<string | null>(null)
+  const reportDetailRequest = React.useRef<{ reportId: string; promise: Promise<{ report: Report; shift: Shift | null }> } | null>(null)
+  const handledReportDetail = React.useRef<string | null>(null)
   const [removeTarget, setRemoveTarget] = React.useState<Report | null>(null)
   const [removeImpact, setRemoveImpact] = React.useState<DeletionImpact | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -375,15 +377,64 @@ export function ReportsList() {
     return () => { active = false }
   }, [clearTargetQuery, currentUser, deepLinkShiftId, loadError, loading, myShiftIds, openReportDetail, t, toast, userLoading])
 
+  React.useEffect(() => {
+    if (!reportDetailId) {
+      handledReportDetail.current = null
+      reportDetailRequest.current = null
+      return
+    }
+    if (loading || userLoading || loadError || !currentUser || handledReportDetail.current === reportDetailId) return
+    if (selectedReportState?.id === reportDetailId && (targetedShift || shifts.some(shift => shift.id === selectedReportState.shift_id))) return
+
+    if (reportDetailRequest.current?.reportId !== reportDetailId) {
+      const existingReport = reports.find(report => report.id === reportDetailId)
+        ?? candidateReports.find(report => report.id === reportDetailId)
+      const existingShift = existingReport
+        ? shifts.find(shift => shift.id === existingReport.shift_id)
+          ?? candidateShifts.find(shift => shift.id === existingReport.shift_id)
+          ?? null
+        : null
+      reportDetailRequest.current = {
+        reportId: reportDetailId,
+        promise: (async () => {
+          const report = existingReport ?? await reportService.getById(reportDetailId)
+          if (!report) throw new Error('REPORT_NOT_FOUND')
+          const shift = existingShift
+            ?? shifts.find(item => item.id === report.shift_id)
+            ?? candidateShifts.find(item => item.id === report.shift_id)
+            ?? (report.shift_id ? await shiftService.getById(report.shift_id).catch(() => null) : null)
+          if (!shift) throw new Error('REPORT_SHIFT_NOT_FOUND')
+          return { report, shift }
+        })(),
+      }
+    }
+
+    let active = true
+    void reportDetailRequest.current.promise.then(({ report, shift }) => {
+      if (!active || handledReportDetail.current === reportDetailId) return
+      handledReportDetail.current = reportDetailId
+      setSelectedReportState(report)
+      setSelectedReportIdentity(identity)
+      setTargetedShift(shift)
+    }).catch(() => {
+      if (!active || handledReportDetail.current === reportDetailId) return
+      handledReportDetail.current = reportDetailId
+      toast({ title: t('error'), description: t('reportTargetUnavailable'), variant: 'destructive' })
+      navigate({ reports_report_id: null, report_id: null }, true)
+    })
+    return () => { active = false }
+  }, [candidateReports, candidateShifts, currentUser, identity, loadError, loading, navigate, reportDetailId, reports, selectedReportState?.id, selectedReportState?.shift_id, shifts, t, toast, targetedShift, userLoading])
+
   const closeReportModal = () => {
     handledTarget.current = deepLinkShiftId
+    handledReportDetail.current = reportDetailId
     setShowForm(false)
     setSelectedReportState(null)
     setSelectedReportIdentity('')
     setEditingReport(undefined)
     setInitialShiftId(undefined)
     setTargetedShift(null)
-    navigate({ reports_report_id: null, shiftId: null }, true)
+    navigate({ reports_report_id: null, report_id: null, shiftId: null }, true)
   }
 
   const requestRemove = async (report: Report) => {
@@ -930,6 +981,7 @@ export function ReportsList() {
                               size="sm"
                               variant={isEditableDraft ? 'secondary' : 'outline'}
                               className="h-7 px-2.5 text-xs font-medium"
+                              data-testid={`report-view-${report.id}`}
                               onClick={() => {
                                 if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
                                 else openReportDetail(report)
@@ -1028,6 +1080,7 @@ export function ReportsList() {
                         size="sm"
                         variant={isEditableDraft ? 'secondary' : 'default'}
                         className="flex-1 text-xs h-8"
+                        data-testid={`report-view-${report.id}`}
                         onClick={() => {
                           if (isEditableDraft) { setEditingReport(report); setShowForm(true) }
                           else openReportDetail(report)
@@ -1219,7 +1272,7 @@ export function ReportsList() {
           </div>}
         </DialogContent>
       </Dialog>
-      {selectedReport && modalShift && <ReportDetailModal open report={selectedReport} shift={modalShift} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => { if (!open) closeReportModal() }} onUpdated={() => { void loadData(); closeReportModal() }} campaigns={campaigns} />}
+      {selectedReport && modalShift && <ReportDetailModal key={selectedReport.id} open report={selectedReport} shift={modalShift} brands={brands} platforms={platforms} users={users} registrations={registrations} onOpenChange={open => { if (!open) closeReportModal() }} onUpdated={() => { void loadData(); closeReportModal() }} campaigns={campaigns} initialTab={searchParams.get('reports_tab') || searchParams.get('tab') || undefined} />}
       <LifecycleActionDialog open={Boolean(removeTarget)} onOpenChange={open => { if (!open) { setRemoveTarget(null); setRemoveImpact(null) } }} title={removeTarget?.metrics_confirmed ? t('archiveConfirmedReport') : t('deleteUnconfirmedReport')} impact={removeImpact} confirmText={removeTarget?.metrics_confirmed ? t('archive') : t('delete')} onConfirm={removeReport} />
     </div>
   )

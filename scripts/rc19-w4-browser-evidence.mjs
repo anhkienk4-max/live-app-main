@@ -30,6 +30,22 @@ export function readCaseEvidence(result, expected) {
   return evidence
 }
 
+/**
+ * Preserve evidence from every Playwright retry for one stable test identity.
+ * The case classifier still uses the last result, while diagnostics can show
+ * whether an earlier completed attempt was lost or superseded by a worker retry.
+ */
+export function readCaseEvidenceAttempts(testItem, expected) {
+  return (testItem?.results ?? []).map(result => ({
+    attempt: result?.retry ?? null,
+    result_status: result?.status ?? 'unknown',
+    observation: readCaseEvidence(result, {
+      ...expected,
+      attempt: result?.retry,
+    }),
+  }))
+}
+
 export function classifyBrowserCase({ uiPassed, skipped, observation, readback, actorMatches }) {
   if (skipped) return 'NOT RUN'
   if (!uiPassed) return 'FAIL'

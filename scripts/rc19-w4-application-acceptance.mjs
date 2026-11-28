@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
-import { classifyBrowserCase, readCaseEvidence } from './rc19-w4-browser-evidence.mjs'
+import { classifyBrowserCase, readCaseEvidence, readCaseEvidenceAttempts } from './rc19-w4-browser-evidence.mjs'
 
 const schema = 'rc19-w4-application-acceptance/v2'
 const root = process.cwd()
@@ -105,6 +105,12 @@ async function runBrowserAcceptance(credentials, fixtureManifestPath, verifiedRe
           runtimeMarker: required('RC19_W4_RUNTIME_DATABASE_MARKER'),
           applicationSha: candidateSha(),
         })
+        const evidenceAttempts = readCaseEvidenceAttempts(testItem, {
+          testId: specItem.id,
+          projectName: testItem.projectName ?? '',
+          runtimeMarker: required('RC19_W4_RUNTIME_DATABASE_MARKER'),
+          applicationSha: candidateSha(),
+        })
         const actualFailure = (lastResult?.errors ?? []).map(error => [error?.message, error?.stack]
           .filter(value => typeof value === 'string' && value.length > 0).join('\n')).join('\n')
           .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, '[synthetic-email]')
@@ -155,6 +161,25 @@ async function runBrowserAcceptance(credentials, fixtureManifestPath, verifiedRe
           browser_interaction: { performed: testInteractionCount > 0,
             authenticated: authenticatedActor && !isAnonymousDenial,
             interaction_count: testInteractionCount, status },
+          evidence_attempts: evidenceAttempts.map(({ attempt, result_status, observation: attemptObservation }) => ({
+            attempt,
+            result_status,
+            observation_present: attemptObservation !== null,
+            actor: attemptObservation ? {
+              role: attemptObservation.role ?? null,
+              auth_user_id: attemptObservation.auth_user_id ?? null,
+              business_user_id: attemptObservation.business_user_id ?? null,
+            } : null,
+            fixture_identity: attemptObservation?.fixture_identity ?? null,
+            authenticated: attemptObservation?.authenticated === true,
+            routes: {
+              expected: attemptObservation?.expected_routes ?? [],
+              actual: attemptObservation?.actual_routes ?? [],
+            },
+            responses: attemptObservation?.responses ?? [],
+            successful_ui_actions: attemptObservation?.successful_ui_actions ?? 0,
+            failure: attemptObservation?.failure ?? null,
+          })),
           evidence_scope: 'Authenticated Playwright against exact local Next.js app; this UI assertion does not replace independent PostgreSQL readback.',
           status,
         })

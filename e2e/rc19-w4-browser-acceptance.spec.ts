@@ -864,12 +864,12 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
 
   test('D07 & D09: Report External Preview verifies approved revisions A and B, historical immutability, privacy, and delayed response isolation', async ({ browser }) => {
     await withAuthenticatedRole(browser, 'admin', async (page) => {
-      await page.goto(`/reports?reports_report_id=${SYNTHETIC_FIXTURES.reportId}`)
+      await page.goto('/reports')
       // Authenticated dashboard pages may keep background requests active;
       // wait for the actual report action below instead of global network idle.
       await page.waitForLoadState('domcontentloaded')
 
-      const viewDetailBtn = page.getByRole('button', { name: /Xem chi tiết|View details|Tiếp tục/i }).first()
+      const viewDetailBtn = page.getByTestId(`report-view-${SYNTHETIC_FIXTURES.reportId}`)
       await expect(viewDetailBtn).toBeVisible({ timeout: 20_000 })
       await viewDetailBtn.click()
 
@@ -878,6 +878,11 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
 
       const externalAudienceBtn = dialog.getByTestId('preview-audience-external-btn')
       await expect(externalAudienceBtn).toBeVisible({ timeout: 15_000 })
+      const internalWorkflowRequests: string[] = []
+      page.on('request', request => {
+        if (request.url().includes('/api/reports/external-operational-summary')
+          || request.url().includes('/api/operational-notes/workflow-v1')) internalWorkflowRequests.push(new URL(request.url()).pathname)
+      })
       await externalAudienceBtn.click()
 
       const approvedSummaryBox = dialog.getByTestId('report-approved-external-summary')
@@ -936,20 +941,19 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
 
       // Strictly assert NO internal personnel details, staff IDs, or allegations leaked
       await expect(approvedSummaryBox).not.toContainText(/Staff: usr_|Vi phạm|Allegation|Internal note/i)
-      await expect(dialog.getByTestId('report-external-projection-view')).not.toContainText(/synthetic private report fixture|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|usr_[a-z0-9-]+/i)
-      const internalWorkflowRequests: string[] = []
-      page.on('request', request => {
-        if (request.url().includes('/api/reports/external-operational-summary')
-          || request.url().includes('/api/operational-notes/workflow-v1')) internalWorkflowRequests.push(new URL(request.url()).pathname)
-      })
-      const internalAudienceBtn = dialog.getByTestId('preview-audience-internal-btn')
-      if (await internalAudienceBtn.isVisible()) {
-        await internalAudienceBtn.click()
-        await expect(dialog.getByTestId('report-approved-external-summary')).not.toBeVisible({ timeout: 15_000 })
-        await externalAudienceBtn.click()
-        await expect(dialog.locator('[data-testid^="report-note-item-"]')).toHaveCount(0)
-        await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
+      const externalProjection = dialog.getByTestId('report-external-projection-view')
+      await expect(externalProjection).not.toContainText(/synthetic private report fixture|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|usr_[a-z0-9-]+/i)
+      for (const actor of Object.values(SYNTHETIC_FIXTURES.actors)) {
+        await expect(externalProjection).not.toContainText(actor.authUserId)
+        await expect(externalProjection).not.toContainText(actor.businessUserId)
       }
+      const internalAudienceBtn = dialog.getByTestId('preview-audience-internal-btn')
+      await expect(internalAudienceBtn).toBeVisible({ timeout: 15_000 })
+      await internalAudienceBtn.click()
+      await expect(dialog.getByTestId('report-approved-external-summary')).not.toBeVisible({ timeout: 15_000 })
+      await externalAudienceBtn.click()
+      await expect(dialog.locator('[data-testid^="report-note-item-"]')).toHaveCount(0)
+      await expect(approvedSummaryBox).toContainText(SYNTHETIC_FIXTURES.approvedSummaryContentB, { timeout: 15_000 })
       expect(internalWorkflowRequests).toEqual([])
       recordObservedUiAction()
 

@@ -114,6 +114,255 @@ const CATEGORY_TEMPLATES: CategoryTemplate[] = [
   },
 ]
 
+export interface ShiftNoteDraftEntry {
+  text: string
+  noteId?: string | null
+  version?: number
+  category?: ShiftOperationalNoteCategory
+  affectedUserId?: string
+  authorId?: string
+}
+
+export const SHIFT_NOTE_DRAFT_CACHE = new Map<string, ShiftNoteDraftEntry>()
+
+export function getShiftNoteDraftKey(shiftId: string, userId?: string | null): string {
+  return userId ? `${shiftId}:${userId}` : ''
+}
+
+export interface ResolveShiftNoteDraftInput {
+  shiftId: string
+  currentShiftId: string
+  currentUser: { id: string; business_user_id?: string } | null
+  currentUserId?: string
+  serverNotes: ShiftOperationalNote[]
+  cachedEntry?: ShiftNoteDraftEntry | null
+}
+
+export interface ResolveShiftNoteDraftResult {
+  isStale: boolean
+  noteText?: string
+  category?: ShiftOperationalNoteCategory
+  affectedUserId?: string
+  editingNoteId: string | null
+  editingVersion: number
+  updatedCacheEntry?: ShiftNoteDraftEntry | null
+}
+
+export function resolveShiftNoteDraftState(
+  input: ResolveShiftNoteDraftInput
+): ResolveShiftNoteDraftResult {
+  // Protect against stale asynchronous responses when switching shifts or accounts
+  if (input.shiftId !== input.currentShiftId || input.currentUser?.id !== input.currentUserId) {
+    return {
+      isStale: true,
+      editingNoteId: null,
+      editingVersion: 1,
+    }
+  }
+
+  const myDraft = input.serverNotes.find(
+    n =>
+      (n.status === 'draft' || (n as unknown as { workflow_state?: string }).workflow_state === 'draft') &&
+      (n.author_id === input.currentUser?.id ||
+        n.author_id === (input.currentUser as unknown as { business_user_id?: string })?.business_user_id)
+  )
+
+  const cached = input.cachedEntry
+
+  if (cached && cached.text) {
+    // Preserve local unsaved text without losing its associated server draft identity
+    const resolvedNoteId = myDraft ? myDraft.id : (cached.noteId ?? null)
+    const resolvedVersion = myDraft ? (myDraft.version ?? 1) : (cached.version ?? 1)
+    return {
+      isStale: false,
+      noteText: cached.text,
+      category: cached.category ?? myDraft?.category,
+      affectedUserId: cached.affectedUserId ?? myDraft?.affected_user_id ?? undefined,
+      editingNoteId: resolvedNoteId,
+      editingVersion: resolvedVersion,
+      updatedCacheEntry: {
+        ...cached,
+        noteId: resolvedNoteId,
+        version: resolvedVersion,
+        authorId: input.currentUserId,
+      },
+    }
+  }
+
+  if (myDraft) {
+    // No local unsaved text: restore server draft content and seed cache
+    return {
+      isStale: false,
+      noteText: myDraft.note,
+      category: myDraft.category,
+      affectedUserId: myDraft.affected_user_id || undefined,
+      editingNoteId: myDraft.id,
+      editingVersion: myDraft.version ?? 1,
+      updatedCacheEntry: {
+        text: myDraft.note,
+        noteId: myDraft.id,
+        version: myDraft.version ?? 1,
+        category: myDraft.category,
+        affectedUserId: myDraft.affected_user_id || undefined,
+        authorId: input.currentUserId,
+      },
+    }
+  }
+
+  return {
+    isStale: false,
+    editingNoteId: null,
+    editingVersion: 1,
+  }
+}
+
+export interface ExecuteSaveNoteParams {
+  asDraft: boolean
+  shiftId: string
+  shiftDate: string
+  currentUser: { id: string } | null
+  noteText: string
+  category: ShiftOperationalNoteCategory
+  affectedUserId?: string | null
+  editingNoteId: string | null
+  editingVersion: number
+  idempotencyKey: string
+  service?: {
+    saveDraft: (params: {
+      noteId: string | null
+      expectedVersion: number | null
+      shiftId: string
+      businessDate: string
+      category: ShiftOperationalNoteCategory
+      note: string
+      affectedUserId: string | null
+      idempotencyKey: string
+    }) => Promise<{ note?: { id?: string; version?: number } } | null | void>
+    submitNote: (params: {
+      noteId: string | null
+      expectedVersion: number | null
+      shiftId: string
+      businessDate: string
+      category: ShiftOperationalNoteCategory
+      note: string
+      affectedUserId: string | null
+      idempotencyKey: string
+    }) => Promise<unknown>
+  }
+  draftCache?: Map<string, ShiftNoteDraftEntry>
+}
+
+export interface ExecuteSaveNoteResult {
+  success: boolean
+  resolvedNoteId?: string | null
+  resolvedVersion?: number
+  isConflict?: boolean
+  isSchemaError?: boolean
+  error?: unknown
+  retainedIdempotencyKey?: string
+  nextIdempotencyKey?: string
+}
+
+export async function executeSaveNoteOperation(
+  params: ExecuteSaveNoteParams
+): Promise<ExecuteSaveNoteResult> {
+  const {
+    asDraft,
+    shiftId,
+    shiftDate,
+    currentUser,
+    noteText,
+    category,
+    affectedUserId,
+    editingNoteId,
+    editingVersion,
+    idempotencyKey,
+    service = shiftNoteService,
+    draftCache = SHIFT_NOTE_DRAFT_CACHE,
+  } = params
+
+  if (!currentUser || !noteText.trim()) {
+    return { success: false }
+  }
+
+  const draftKey = getShiftNoteDraftKey(shiftId, currentUser.id)
+  const currentKey = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`)
+
+  try {
+    if (asDraft) {
+      const res = await service.saveDraft({
+        noteId: editingNoteId,
+        expectedVersion: editingNoteId ? editingVersion : null,
+        shiftId,
+        businessDate: shiftDate,
+        category,
+        note: noteText.trim(),
+        affectedUserId: affectedUserId || null,
+        idempotencyKey: currentKey,
+      })
+      const resolvedId = (res as { note?: { id?: string } })?.note?.id ?? editingNoteId
+      const resolvedVersion = (res as { note?: { version?: number } })?.note?.version ?? editingVersion
+      if (draftKey && draftCache) {
+        draftCache.set(draftKey, {
+          text: noteText.trim(),
+          noteId: resolvedId,
+          version: resolvedVersion,
+          category,
+          affectedUserId: affectedUserId || undefined,
+          authorId: currentUser.id,
+        })
+      }
+      const nextKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`
+      return {
+        success: true,
+        resolvedNoteId: resolvedId,
+        resolvedVersion,
+        nextIdempotencyKey: nextKey,
+      }
+    } else {
+      await service.submitNote({
+        noteId: editingNoteId,
+        expectedVersion: editingNoteId ? editingVersion : null,
+        shiftId,
+        businessDate: shiftDate,
+        category,
+        note: noteText.trim(),
+        affectedUserId: affectedUserId || null,
+        idempotencyKey: currentKey,
+      })
+      if (draftKey && draftCache) {
+        draftCache.delete(draftKey)
+      }
+      const nextKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`
+      return {
+        success: true,
+        resolvedNoteId: null,
+        resolvedVersion: 1,
+        nextIdempotencyKey: nextKey,
+      }
+    }
+  } catch (err: unknown) {
+    const isConflict =
+      err instanceof Error &&
+      (err.message.includes('NOTE_VERSION_CONFLICT') ||
+        (err as { code?: string }).code === 'NOTE_VERSION_CONFLICT')
+    const isSchemaError =
+      err instanceof Error &&
+      (err.message.includes('SCHEMA_NOT_DEPLOYED') ||
+        err.message.includes('D2_WORKFLOW_UNAVAILABLE') ||
+        (err as { code?: string }).code === 'SCHEMA_NOT_DEPLOYED' ||
+        (err as { code?: string }).code === 'D2_WORKFLOW_UNAVAILABLE')
+
+    return {
+      success: false,
+      isConflict,
+      isSchemaError,
+      error: err,
+      retainedIdempotencyKey: currentKey,
+    }
+  }
+}
+
 export function ShiftOperationalNotesSection({
   shift,
   currentUser,
@@ -122,16 +371,18 @@ export function ShiftOperationalNotesSection({
   const { language } = useTranslation()
   const { toast } = useToast()
   const isVi = language === 'vi'
+  const draftKey = currentUser ? `${shift.id}:${currentUser.id}` : ''
+  const initialCached = draftKey ? SHIFT_NOTE_DRAFT_CACHE.get(draftKey) : null
 
   const [notes, setNotes] = React.useState<ShiftOperationalNote[]>([])
   const [loading, setLoading] = React.useState(true)
   const [schemaUnavailable, setSchemaUnavailable] = React.useState(false)
-  const [category, setCategory] = React.useState<ShiftOperationalNoteCategory>('normal')
-  const [noteText, setNoteText] = React.useState('')
+  const [category, setCategory] = React.useState<ShiftOperationalNoteCategory>(() => initialCached?.category ?? 'normal')
+  const [noteText, setNoteText] = React.useState(() => initialCached?.text ?? '')
   const [submitting, setSubmitting] = React.useState(false)
-  const [affectedUserId, setAffectedUserId] = React.useState('')
-  const [editingNoteId, setEditingNoteId] = React.useState<string | null>(null)
-  const [editingVersion, setEditingVersion] = React.useState<number>(1)
+  const [affectedUserId, setAffectedUserId] = React.useState(() => initialCached?.affectedUserId ?? '')
+  const [editingNoteId, setEditingNoteId] = React.useState<string | null>(() => initialCached?.noteId ?? null)
+  const [editingVersion, setEditingVersion] = React.useState<number>(() => initialCached?.version ?? 1)
   const [saveState, setSaveState] = React.useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle')
   const [actionInProgress, setActionInProgress] = React.useState<string | null>(null)
   const [reviewDialog, setReviewDialog] = React.useState<{
@@ -139,7 +390,7 @@ export function ShiftOperationalNotesSection({
     action: 'request_correction' | 'reject'
   } | null>(null)
   const [reviewReason, setReviewReason] = React.useState('')
-  const idempotencyKeyRef = React.useRef<string | null>(null)
+  const idempotencyKeyRef = React.useRef<string>('')
   const reviewActionIdempotencyKeysRef = React.useRef<Map<string, string>>(new Map())
 
   const getReviewActionKey = (actionKey: string) => {
@@ -198,13 +449,53 @@ export function ShiftOperationalNotesSection({
 
   const canAddNote = (isAssignedStaff || isLeaderOrAdmin) && !schemaUnavailable
 
+  const currentShiftId = shift.id
+  const currentUserId = currentUser?.id
+
   const loadNotes = React.useCallback(async () => {
     try {
       setLoading(true)
-      const data = await shiftNoteService.getForShift(shift.id)
+      const data = await shiftNoteService.getForShift(currentShiftId)
+
+      // Protect against stale asynchronous responses when switching shifts or accounts
+      if (shift.id !== currentShiftId || currentUser?.id !== currentUserId) {
+        return
+      }
+
       setNotes(data)
       setSchemaUnavailable(false)
+
+      const draftResult = resolveShiftNoteDraftState({
+        shiftId: shift.id,
+        currentShiftId,
+        currentUser,
+        currentUserId,
+        serverNotes: data,
+        cachedEntry: draftKey ? SHIFT_NOTE_DRAFT_CACHE.get(draftKey) : null,
+      })
+
+      if (draftResult.isStale) {
+        return
+      }
+
+      setEditingNoteId(draftResult.editingNoteId)
+      setEditingVersion(draftResult.editingVersion)
+      if (draftResult.noteText !== undefined) {
+        setNoteText(draftResult.noteText)
+      }
+      if (draftResult.category !== undefined) {
+        setCategory(draftResult.category)
+      }
+      if (draftResult.affectedUserId !== undefined) {
+        setAffectedUserId(draftResult.affectedUserId)
+      }
+      if (draftKey && draftResult.updatedCacheEntry) {
+        SHIFT_NOTE_DRAFT_CACHE.set(draftKey, draftResult.updatedCacheEntry)
+      }
     } catch (err: unknown) {
+      if (shift.id !== currentShiftId || currentUser?.id !== currentUserId) {
+        return
+      }
       if (
         err instanceof Error &&
         (err.message.includes('SCHEMA_NOT_DEPLOYED') ||
@@ -219,9 +510,11 @@ export function ShiftOperationalNotesSection({
         })
       }
     } finally {
-      setLoading(false)
+      if (shift.id === currentShiftId && currentUser?.id === currentUserId) {
+        setLoading(false)
+      }
     }
-  }, [shift.id, isVi, toast])
+  }, [shift.id, currentShiftId, isVi, toast, draftKey, currentUser, currentUserId])
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load of notes for shift
@@ -240,76 +533,81 @@ export function ShiftOperationalNotesSection({
   const handleSaveNote = async (asDraft: boolean) => {
     if (!currentUser || !noteText.trim()) return
 
-    const idempotencyKey = idempotencyKeyRef.current ?? crypto.randomUUID()
-    idempotencyKeyRef.current = idempotencyKey
+    const currentIdempotencyKey = idempotencyKeyRef.current || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`)
+    idempotencyKeyRef.current = currentIdempotencyKey
 
     setSubmitting(true)
     setSaveState('saving')
     try {
-      if (asDraft) {
-        await shiftNoteService.saveDraft({
-          noteId: editingNoteId,
-          expectedVersion: editingNoteId ? editingVersion : null,
-          shiftId: shift.id,
-          businessDate: shift.date,
-          category,
-          note: noteText.trim(),
-          affectedUserId: affectedUserId || null,
-          idempotencyKey,
-        })
-        toast({
-          title: isVi ? 'Thành công' : 'Success',
-          description: isVi ? 'Đã lưu nháp ghi chú trên server.' : 'Draft saved to server.',
-          variant: 'success',
-        })
-      } else {
-        await shiftNoteService.submitNote({
-          noteId: editingNoteId,
-          expectedVersion: editingNoteId ? editingVersion : null,
-          shiftId: shift.id,
-          businessDate: shift.date,
-          category,
-          note: noteText.trim(),
-          affectedUserId: affectedUserId || null,
-          idempotencyKey,
-        })
-        toast({
-          title: isVi ? 'Thành công' : 'Success',
-          description: isVi ? 'Đã ghi nhận ghi chú vận hành.' : 'Operational note submitted.',
-          variant: 'success',
-        })
-      }
-      idempotencyKeyRef.current = null
-      setSaveState('saved')
-      setNoteText('')
-      setEditingNoteId(null)
-      setEditingVersion(1)
-      setAffectedUserId('')
-      await loadNotes()
-    } catch (err: unknown) {
-      setSaveState('error')
-      const isSchemaError =
-        err instanceof Error &&
-        (err.message.includes('SCHEMA_NOT_DEPLOYED') ||
-          err.message.includes('D2_WORKFLOW_UNAVAILABLE') ||
-          (err as { code?: string }).code === 'SCHEMA_NOT_DEPLOYED' ||
-          (err as { code?: string }).code === 'D2_WORKFLOW_UNAVAILABLE')
-      if (isSchemaError) {
-        setSchemaUnavailable(true)
-      }
-      const isConflict =
-        err instanceof Error &&
-        (err.message.includes('NOTE_VERSION_CONFLICT') ||
-          (err as { code?: string }).code === 'NOTE_VERSION_CONFLICT')
-      toast({
-        title: isVi ? 'Lỗi' : 'Error',
-        description: isConflict
-          ? isVi
-            ? 'Xung đột phiên bản (CAS): ghi chú đã được sửa đổi bởi người khác. Vui lòng tải lại trước khi lưu.'
-            : 'Version conflict (CAS): this note was modified elsewhere. Please refresh before saving.'
-          : err instanceof Error ? err.message : 'Không thể lưu ghi chú.',
-        variant: 'destructive',
+      const res = await executeSaveNoteOperation({
+        asDraft,
+        shiftId: shift.id,
+        shiftDate: shift.date,
+        currentUser,
+        noteText,
+        category,
+        affectedUserId,
+        editingNoteId,
+        editingVersion,
+        idempotencyKey: currentIdempotencyKey,
+        draftCache: SHIFT_NOTE_DRAFT_CACHE,
       })
+
+      if (res.success) {
+        if (asDraft) {
+          toast({
+            title: isVi ? 'Thành công' : 'Success',
+            description: isVi ? 'Đã lưu nháp ghi chú trên server.' : 'Draft saved to server.',
+            variant: 'success',
+          })
+          if (res.resolvedNoteId) {
+            setEditingNoteId(res.resolvedNoteId)
+            setEditingVersion(res.resolvedVersion ?? 1)
+          }
+          if (draftKey) {
+            SHIFT_NOTE_DRAFT_CACHE.set(draftKey, {
+              text: noteText.trim(),
+              noteId: res.resolvedNoteId ?? editingNoteId,
+              version: res.resolvedVersion ?? editingVersion,
+              category,
+              affectedUserId,
+              authorId: currentUser.id,
+            })
+          }
+          setSaveState('saved')
+        } else {
+          toast({
+            title: isVi ? 'Thành công' : 'Success',
+            description: isVi ? 'Đã ghi nhận ghi chú vận hành.' : 'Operational note submitted.',
+            variant: 'success',
+          })
+          if (draftKey) SHIFT_NOTE_DRAFT_CACHE.delete(draftKey)
+          setSaveState('saved')
+          setNoteText('')
+          setEditingNoteId(null)
+          setEditingVersion(1)
+          setAffectedUserId('')
+        }
+        idempotencyKeyRef.current = res.nextIdempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`)
+        await loadNotes()
+      } else {
+        setSaveState('error')
+        if (res.isSchemaError) {
+          setSchemaUnavailable(true)
+        }
+        toast({
+          title: isVi ? 'Lỗi' : 'Error',
+          description: res.isConflict
+            ? isVi
+              ? 'Xung đột phiên bản (CAS): ghi chú đã được sửa đổi bởi người khác. Vui lòng tải lại trước khi lưu.'
+              : 'Version conflict (CAS): this note was modified elsewhere. Please refresh before saving.'
+            : res.error instanceof Error ? res.error.message : 'Không thể lưu ghi chú.',
+          variant: 'destructive',
+        })
+        if (res.isConflict) {
+          void loadNotes()
+        }
+      }
     } finally {
       setSubmitting(false)
     }
@@ -396,7 +694,18 @@ export function ShiftOperationalNotesSection({
     setNoteText(note.note)
     setCategory(note.category)
     setAffectedUserId(note.affected_user_id || '')
-    idempotencyKeyRef.current = null
+    if (draftKey) {
+      SHIFT_NOTE_DRAFT_CACHE.set(draftKey, {
+        text: note.note,
+        noteId: note.id,
+        version: note.version || 1,
+        category: note.category,
+        affectedUserId: note.affected_user_id || '',
+        authorId: currentUser?.id,
+      })
+    }
+    // eslint-disable-next-line react-hooks/purity -- event callback resetting idempotency key
+    idempotencyKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`
     setSaveState('idle')
   }
 
@@ -404,6 +713,8 @@ export function ShiftOperationalNotesSection({
     setEditingNoteId(null)
     setEditingVersion(1)
     setNoteText('')
+    if (draftKey) SHIFT_NOTE_DRAFT_CACHE.delete(draftKey)
+    setCategory('normal')
     setAffectedUserId('')
     setSaveState('idle')
   }
@@ -555,10 +866,22 @@ export function ShiftOperationalNotesSection({
 
               <div>
                 <Textarea
-                  data-testid="note-content-input"
+                  data-testid="operational-note-input"
                   value={noteText}
                   onChange={e => {
-                    setNoteText(e.target.value)
+                    const val = e.target.value
+                    setNoteText(val)
+                    if (draftKey) {
+                      const prev = SHIFT_NOTE_DRAFT_CACHE.get(draftKey)
+                      SHIFT_NOTE_DRAFT_CACHE.set(draftKey, {
+                        text: val,
+                        noteId: prev?.noteId ?? editingNoteId,
+                        version: prev?.version ?? editingVersion,
+                        category,
+                        affectedUserId,
+                        authorId: currentUser?.id,
+                      })
+                    }
                     setSaveState('dirty')
                   }}
                   placeholder={
