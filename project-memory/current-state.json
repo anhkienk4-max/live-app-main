@@ -10,7 +10,7 @@
   },
   "repository": {
     "branch": "main",
-    "head": "db8e653a5eb3b848d7e40b19839626ab311ea0ed",
+    "head": "8b3149ac10c9988c17b76061527c27b9028ca98a",
     "origin_main": "9b5f3889b243f9ee795e4466a18f24cd896c162f"
   },
   "hardening": {
@@ -132,9 +132,9 @@
         "lib": 311,
         "scripts": 196,
         "supabase": 173,
-        "tests": 419
+        "tests": 421
       },
-      "total": 1403
+      "total": 1405
     },
     "tests": {
       "files": [
@@ -396,9 +396,11 @@
         "tests/rc19-w4-agency-filter-contract.test.ts",
         "tests/rc19-w4-attendance-drive-acl-failclosed.test.ts",
         "tests/rc19-w4-attendance-payroll-contract.test.ts",
+        "tests/rc19-w4-d06-persistent-draft-behavioral.test.ts",
         "tests/rc19-w4-delta-d-frontend-contract.test.ts",
         "tests/rc19-w4-deltac-live-monitoring.test.ts",
         "tests/rc19-w4-deltac-webrtc.test.ts",
+        "tests/rc19-w4-exact-segment-attendance-behavioral.test.ts",
         "tests/rc19-w4-external-summary-revision-integrity.test.ts",
         "tests/rc19-w4-legacy-segment-compatibility.test.ts",
         "tests/rc19-w4-production-cli-migration-runner.test.ts",
@@ -479,7 +481,7 @@
         "tests/workforce-period.test.ts",
         "tests/workforce-scope-pagination.test.ts"
       ],
-      "count": 340
+      "count": 342
     },
     "migrations": {
       "files": [
@@ -643,5 +645,5 @@
     "frontend_convergence_public_auth_capture": "10/10 PASS; 1440x1024 and 1280x900; no overflow or runtime errors",
     "frontend_convergence_release": "NO_FINAL_RC_OR_DEPLOYMENT"
   },
-  "synced_at": "2026-11-28T11:43:20Z"
+  "synced_at": "2026-11-28T12:13:38Z"
 }
