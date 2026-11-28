@@ -2,12 +2,12 @@
 
 <!-- GENERATED FILE. Do not edit. Source records are the JSON files in this directory. -->
 
-Generated at: 2026-11-28T10:40:55Z
+Generated at: 2026-11-28T11:35:56Z
 
 ## Repository
 
 - Canonical source branch: `main`
-- Snapshot HEAD: `501026bc2cd1f92b04845d95459b8ae30448514f`
+- Snapshot HEAD: `30490c82d93969d16a97942a6a3e7278b7536628`
 - origin/main: `9b5f3889b243f9ee795e4466a18f24cd896c162f`
 - Base: `origin/main` at `73b1999ea07cbc227d1bd4052088cc6c6f4cc8e5`
 
