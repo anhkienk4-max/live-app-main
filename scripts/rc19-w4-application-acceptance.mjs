@@ -988,6 +988,13 @@ async function main() {
         const wanted = [...expectedIds].sort()
         return actual.length === wanted.length && actual.every((id, index) => id === wanted[index])
       }
+      const pageIdsMatch = (result, expectedRows, getId) => {
+        const page = result.page
+        const pageSize = result.pageSize
+        if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) return false
+        const offset = (page - 1) * pageSize
+        return exactIds(result.rows ?? [], getId, expectedRows.slice(offset, offset + pageSize).map(getId))
+      }
       for (const code of ['ada', 'snap', 'live_ai']) {
         const expected = expectedFor([code])
         const list = await readReportList(admin, 1, { agencyCodes: [code] })
@@ -1014,10 +1021,32 @@ async function main() {
         const expected = expectedFor(codes)
         const list = await readReportList(admin, 1, { agencyCodes: codes })
         const obligations = await readObligations(admin, 1, { agencyCodes: codes })
-        if (list.total !== expected.length || !exactIds(list.rows ?? [], row => row.id,
-          expected.map(reportIdFor))) stop('AGENCY_REPORT_LIST_COMBINATION_MISMATCH')
-        if (obligations.total !== expected.length || !exactIds(obligations.rows ?? [], row => row.shift?.id,
-          expected.map(shiftIdFor))) stop('AGENCY_REPORT_OBLIGATION_COMBINATION_MISMATCH')
+        if (list.total !== expected.length || list.page !== 1 || list.pageSize !== 10
+          || !pageIdsMatch(list, expected, reportIdFor)) {
+          stop('AGENCY_REPORT_LIST_COMBINATION_MISMATCH', {
+            agency_codes: codes,
+            expected_total: expected.length,
+            actual_total: list.total ?? null,
+            page: list.page ?? null,
+            page_size: list.pageSize ?? null,
+            expected_report_ids: expected.map(reportIdFor).sort(),
+            expected_page_report_ids: expected.slice(0, list.pageSize ?? 10).map(reportIdFor).sort(),
+            actual_report_ids: (list.rows ?? []).map(row => row.id ?? null).sort(),
+          })
+        }
+        if (obligations.total !== expected.length || obligations.page !== 1 || obligations.pageSize !== 10
+          || !pageIdsMatch(obligations, expected, shiftIdFor)) {
+          stop('AGENCY_REPORT_OBLIGATION_COMBINATION_MISMATCH', {
+            agency_codes: codes,
+            expected_total: expected.length,
+            actual_total: obligations.total ?? null,
+            page: obligations.page ?? null,
+            page_size: obligations.pageSize ?? null,
+            expected_shift_ids: expected.map(shiftIdFor).sort(),
+            expected_page_shift_ids: expected.slice(0, obligations.pageSize ?? 10).map(shiftIdFor).sort(),
+            actual_shift_ids: (obligations.rows ?? []).map(row => row.shift?.id ?? null).sort(),
+          })
+        }
       }
       const allCodes = ['ada', 'snap', 'live_ai']
       const firstListPage = await readReportList(admin, 1, { agencyCodes: allCodes })

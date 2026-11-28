@@ -676,7 +676,7 @@ export function ReportsList() {
           <div className="flex min-w-0 flex-1 flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center">
             <div className="relative w-full min-w-0 flex-1 md:max-w-sm">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9 bg-background" value={draftFilters.search}
+              <Input className="pl-9 bg-background" value={draftFilters.search} data-testid="reports-search-filter"
                 onChange={event => updateFilters(current => ({ ...current, search: event.target.value }))}
                 onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyFilters() } }}
                 placeholder={t('reportSearchPlaceholder')} />

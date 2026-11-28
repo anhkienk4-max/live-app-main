@@ -869,6 +869,12 @@ test.describe('RC19 W4: Suite B - Mandatory Hosted Business Acceptance', () => {
       // wait for the actual report action below instead of global network idle.
       await page.waitForLoadState('domcontentloaded')
 
+      // Search through the real Reports workspace controls so the exact
+      // same-runtime fixture is located independently of the default page.
+      const reportSearch = page.getByTestId('reports-search-filter')
+      await expect(reportSearch).toBeVisible({ timeout: 20_000 })
+      await reportSearch.fill(SYNTHETIC_FIXTURES.reportId)
+      await page.getByTestId('reports-apply-filters').click()
       const viewDetailBtn = page.getByTestId(`report-view-${SYNTHETIC_FIXTURES.reportId}`)
       await expect(viewDetailBtn).toBeVisible({ timeout: 20_000 })
       await viewDetailBtn.click()
