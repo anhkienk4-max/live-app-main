@@ -29,6 +29,8 @@ test('application acceptance runs actor-backed Agency, Workforce and receipt cas
   assert.match(entrypoint, /SWAP_IDEMPOTENCY_KEY_REUSED/u)
   assert.match(entrypoint, /SWAP_APPROVAL_DID_NOT_REVALIDATE_CANDIDATE_CONFLICT/u)
   assert.match(entrypoint, /SWAP_INVALIDATION_ROLLBACK_READBACK_MISMATCH/u)
+  assert.match(entrypoint, /p_content: `\$\{contentA\} changed`/u)
+  assert.doesNotMatch(entrypoint, /p_content: `\$\{content\} changed`/u)
   assert.match(entrypoint, /\.\.\.\(studio \? \{ studio \} : \{\}\)/u)
   assert.match(entrypoint, /reciprocal segment exchange`[\s\S]*?'2099-12-04',[\s\S]*?null, 'RC19 synthetic swap studio'/u)
   assert.match(entrypoint, /post-acceptance conflict`[\s\S]*?'2099-12-04',[\s\S]*?null, 'RC19 synthetic conflict studio'/u)

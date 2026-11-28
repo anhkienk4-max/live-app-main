@@ -1580,7 +1580,7 @@ async function main() {
         `SELECT count(*) FROM private.rc19_report_external_summary_idempotency WHERE actor_id=${sqlLiteral(externalActor.id)} AND idempotency_key=${sqlLiteral(summaryKey)}::uuid AND response->>'summaryId'=${sqlLiteral(saveReceipt.summaryId)}`)
       if (receiptCount !== '1') stop('EXTERNAL_SUMMARY_RECEIPT_POSTGRES_READBACK_MISMATCH')
       const changedPayload = await externalActor.client.rpc('external_report_summary_workflow_v1', {
-        ...saveArgs, p_content: `${content} changed`,
+        ...saveArgs, p_content: `${contentA} changed`,
       })
       if (!changedPayload.error || !String(changedPayload.error.message).includes('REPORT_EXTERNAL_SUMMARY_IDEMPOTENCY_CONFLICT')) {
         stop('EXTERNAL_SUMMARY_CHANGED_PAYLOAD_NOT_REJECTED')
