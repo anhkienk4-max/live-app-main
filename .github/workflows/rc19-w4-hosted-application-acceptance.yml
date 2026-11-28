@@ -932,6 +932,9 @@ jobs:
               .synthetic_users.leader.login == true and .synthetic_users.leader.canonical_business_user_mapping == true and
               .synthetic_users.member.login == true and .synthetic_users.member.canonical_business_user_mapping == true
             ' "$report" > /dev/null || {
+              jq -r --arg sha "$EXPECTED_APPLICATION_SHA" --arg marker "$RC19_W4_RUNTIME_DATABASE_MARKER" '
+                "Diagnostic guard fields: schema=\(.schema // \"missing\") app_sha=\(.application_sha // \"missing\") app_sha_match=\(.application_sha == $sha) runtime_marker_match=\(.runtime_database_marker == $marker) admin_login=\(.synthetic_users.admin.login // false) admin_mapping=\(.synthetic_users.admin.canonical_business_user_mapping // false) leader_login=\(.synthetic_users.leader.login // false) leader_mapping=\(.synthetic_users.leader.canonical_business_user_mapping // false) member_login=\(.synthetic_users.member.login // false) member_mapping=\(.synthetic_users.member.canonical_business_user_mapping // false)"
+              ' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
               jq '.steps.application = {status:"blocked",code:"DIAGNOSTIC_REPORT_INVALID"}' \
                 "$RUNNER_TEMP/rc19-w4-app-artifact/acceptance.json" > "$RUNNER_TEMP/rc19-w4-app-artifact/diagnostic-invalid.json"
               jq --argjson requested "$RUN_BROWSER_UAT" '.scope="application-runtime-diagnostic" | .strict_acceptance=false | .browser_uat_requested=$requested' \
@@ -968,9 +971,15 @@ jobs:
                 echo "| Case | Result | Auth actor | Fixture identity | Expected route | Actual route | HTTP responses | DB readback | Failure evidence |"
                 echo "|---|---|---|---|---|---|---|---|---|"
               } >> "$GITHUB_STEP_SUMMARY"
+              jq -r '"Browser UAT: requested=\(.browser_uat.requested) ran=\(.browser_uat.ran) passed=\(.browser_uat.passed) status=\(.browser_uat.status) blocker=\(.browser_uat.blocker // "none") authenticated=\(.browser_uat.authenticated) interactions=\(.browser_uat.interaction_count) expected=\(.browser_uat.expected) failed=\(.browser_uat.failed) skipped=\(.browser_uat.skipped) cases=\(.browser_cases | length)"' "$report" \
+                | tee -a "$GITHUB_STEP_SUMMARY"
               jq -r '
-                .browser_cases[] |
-                "| `\(.case_id)` | \(.status) | \(.actor.role // "unresolved") / `\(.actor.auth_user_id // "unresolved")` | `\((.actor.fixture_identity // {}) | tojson)` | `\(.actual.expected_route // "n/a")` | `\(.actual.actual_route // "n/a")` | `\((.actual.response_statuses // []) | tojson)` | \(.database_readback.status // "missing") / \(.database_readback.matches_expected // false) | \((.actual.failure_evidence // "") | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "\\\\|")) |"
+                if (.browser_cases | length) == 0 then
+                  "| No browser case records | \(.browser_uat.status) | unresolved | {} | n/a | n/a | [] | unavailable / false | \(.browser_uat.blocker // "No case records returned") |"
+                else
+                  .browser_cases[] |
+                  "| `\(.case_id)` | \(.status) | \(.actor.role // "unresolved") / `\(.actor.auth_user_id // "unresolved")` | `\((.actor.fixture_identity // {}) | tojson)` | `\(.actual.expected_route // "n/a")` | `\(.actual.actual_route // "n/a")` | `\((.actual.response_statuses // []) | tojson)` | \(.database_readback.status // "missing") / \(.database_readback.matches_expected // false) | \((.actual.failure_evidence // "") | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "\\\\|")) |"
+                end
               ' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
             fi
             exit 0
