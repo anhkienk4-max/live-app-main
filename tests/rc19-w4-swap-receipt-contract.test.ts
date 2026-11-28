@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const migration = readFileSync(new URL('../supabase/migrations/20261127100000_rc19_w4_segment_aware_swap_receipts.sql', import.meta.url), 'utf8')
+const replayFixMigration = readFileSync(new URL('../supabase/migrations/20261128110000_rc19_w4_swap_accept_replay_authorization.sql', import.meta.url), 'utf8')
 const service = readFileSync(new URL('../lib/services/supabaseSwapRequestService.ts', import.meta.url), 'utf8')
 
 test('receipt storage binds actor, key, action, original request identity, payload, and committed row', () => {
@@ -24,6 +25,14 @@ test('receipt replay checks current active actor and action-specific identity an
   assert.match(migration, /private\.rc19_has_any_leader_brand_scope\(source_shift\.brand_id, ARRAY\['shifts\.manage'\]::text\[\]\)/u)
   assert.match(migration, /live_request\.counterpart_id IS DISTINCT FROM p_actor_id/u)
   assert.match(migration, /live_request\.requester_id IS DISTINCT FROM p_actor_id/u)
+})
+
+test('replacement acceptance replay binds the selected actor and preserves live Agency authorization', () => {
+  assert.match(replayFixMigration, /live_request\.mode = 'replacement'[\s\S]*live_request\.replacement_staff_id IS DISTINCT FROM p_actor_id/u)
+  assert.match(replayFixMigration, /live_request\.mode = 'exchange'[\s\S]*live_request\.counterpart_id IS DISTINCT FROM p_actor_id/u)
+  assert.match(replayFixMigration, /private\.rc19_assert_swap_agency_scope\(p_actor_id, live_request\.source_shift_id\)/u)
+  assert.match(replayFixMigration, /private\.rc19_assert_swap_agency_scope\(p_actor_id, live_request\.target_shift_id\)/u)
+  assert.match(replayFixMigration, /NOT private\.current_business_user_is_active\(\)/u)
 })
 
 test('all authenticated mutations use the receipt RPC and legacy direct mutation grants are retired', () => {

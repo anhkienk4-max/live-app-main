@@ -4,6 +4,7 @@ import test from 'node:test'
 import { PGlite } from '@electric-sql/pglite'
 
 const migration = await readFile(new URL('../supabase/migrations/20261127100000_rc19_w4_segment_aware_swap_receipts.sql', import.meta.url), 'utf8')
+const replayFixMigration = await readFile(new URL('../supabase/migrations/20261128110000_rc19_w4_swap_accept_replay_authorization.sql', import.meta.url), 'utf8')
 
 const baseline = String.raw`
 CREATE ROLE anon;
@@ -90,11 +91,11 @@ BEGIN
   END IF;
   PERFORM private.rc19_assert_swap_agency_scope(actor,(SELECT shift_id FROM public.shift_registrations WHERE id=p_source_registration_id));
   INSERT INTO public.swap_requests(id,requester_id,source_registration_id,source_shift_id,target_shift_id,
-    counterpart_registration_id,counterpart_id,operational_role,mode,status,reason,notes,shift_id)
+    counterpart_registration_id,counterpart_id,replacement_staff_id,operational_role,mode,status,reason,notes,shift_id)
   SELECT 'swap-' || (SELECT count(*)+1 FROM public.swap_requests),actor,registration.id,registration.shift_id,
     p_target_shift_id,p_counterpart_registration_id,
     (SELECT user_id FROM public.shift_registrations WHERE id=p_counterpart_registration_id),
-    registration.operational_role,p_mode,'pending',p_reason,p_notes,registration.shift_id
+    p_replacement_staff_id,registration.operational_role,p_mode,'pending',p_reason,p_notes,registration.shift_id
   FROM public.shift_registrations AS registration WHERE registration.id=p_source_registration_id
   RETURNING * INTO result;
   INSERT INTO public.swap_operation_log(actor_id,action,request_id) VALUES(actor,'create',result.id);
@@ -128,7 +129,9 @@ DECLARE actor text := private.current_business_user_id(); result public.swap_req
 BEGIN
   UPDATE public.swap_requests SET status=CASE WHEN p_action='accept' THEN 'accepted' ELSE 'rejected' END,
     responded_by=actor,responded_at=statement_timestamp(),version=version+1,updated_at=statement_timestamp()
-  WHERE id=p_request_id AND version=p_expected_version AND counterpart_id=actor RETURNING * INTO result;
+  WHERE id=p_request_id AND version=p_expected_version AND status='pending'
+    AND CASE WHEN mode='replacement' THEN replacement_staff_id=actor ELSE counterpart_id=actor END
+  RETURNING * INTO result;
   IF result.id IS NULL THEN RAISE EXCEPTION USING ERRCODE='42501', MESSAGE='SWAP_NOT_COUNTERPART'; END IF;
   INSERT INTO public.swap_operation_log(actor_id,action,request_id) VALUES(actor,'respond_'||p_action,result.id);
   RETURN result;
@@ -172,6 +175,7 @@ async function createDatabase() {
   const db = new PGlite()
   await db.exec(baseline)
   await db.exec(migration)
+  await db.exec(replayFixMigration)
   await db.exec(`
     INSERT INTO public.business_users(id,status,account_status,system_permission) VALUES
       ('member-a','active','active','member'),('member-b','active','active','member'),
@@ -214,6 +218,51 @@ test('same-key retries and concurrent identical calls return one committed resul
   assert.equal((await db.query('SELECT count(*)::integer AS count FROM public.swap_operation_log')).rows[0].count, 1)
   const receipt = (await db.query('SELECT response FROM private.rc19_swap_operation_receipts WHERE actor_id=$1 AND idempotency_key=$2::uuid', ['member-a',key])).rows[0]
   assert.deepEqual(receipt.response, results[0])
+})
+
+test('replacement PASS accept receipt replays after status transition with live authorization', async (t) => {
+  const db = await createDatabase()
+  t.after(() => db.close())
+  const createPayload = {
+    source_registration_id:'reg-a',mode:'replacement',reason:'coverage',target_shift_id:null,
+    replacement_staff_id:'member-b',counterpart_registration_id:null,notes:'create receipt',
+  }
+  const createKey = '55555555-5555-4555-8555-555555555555'
+  const created = await run(db,'member-a','create',null,createPayload,createKey)
+  const acceptPayload = { expected_version:1, notes:'accepted candidate' }
+  const acceptKey = '66666666-6666-4666-8666-666666666666'
+  const accepted = await run(db,'member-b','accept',created.id,acceptPayload,acceptKey)
+  assert.equal(accepted.status, 'accepted')
+  assert.equal(accepted.responded_by, 'member-b')
+  assert.equal(accepted.counterpart_id, null)
+  assert.equal(accepted.replacement_staff_id, 'member-b')
+
+  const replay = await run(db,'member-b','accept',created.id,acceptPayload,acceptKey)
+  assert.deepEqual(replay, accepted)
+  await assert.rejects(
+    () => run(db,'member-b','accept',created.id,{...acceptPayload,notes:'changed'},acceptKey),
+    /SWAP_IDEMPOTENCY_KEY_REUSED/u,
+  )
+  await assert.rejects(
+    () => run(db,'member-b','respond_reject',created.id,acceptPayload,acceptKey),
+    /SWAP_IDEMPOTENCY_KEY_REUSED/u,
+  )
+  await assert.rejects(
+    () => run(db,'member-a','accept',created.id,acceptPayload,acceptKey),
+    /SWAP_NOT_COUNTERPART/u,
+  )
+  await assert.rejects(
+    () => run(db,'member-b','accept',created.id,{...acceptPayload,expected_version:1},'77777777-7777-4777-8777-777777777777'),
+    /SWAP_NOT_COUNTERPART/u,
+  )
+  assert.equal((await db.query('SELECT count(*)::integer AS count FROM public.swap_requests')).rows[0].count, 1)
+  assert.equal((await db.query('SELECT count(*)::integer AS count FROM private.rc19_swap_operation_receipts')).rows[0].count, 2)
+  assert.equal((await db.query('SELECT count(*)::integer AS count FROM public.swap_operation_log')).rows[0].count, 2)
+
+  await db.exec("DELETE FROM public.test_agency_access WHERE actor_id='member-b' AND agency_id='agency-a'")
+  await assert.rejects(() => run(db,'member-b','accept',created.id,acceptPayload,acceptKey),
+    /RC19_AGENCY_MEMBERSHIP_REQUIRED/u)
+  assert.equal((await db.query('SELECT count(*)::integer AS count FROM private.rc19_swap_operation_receipts')).rows[0].count, 2)
 })
 
 test('same actor cannot reuse a key with changed payload', async (t) => {
