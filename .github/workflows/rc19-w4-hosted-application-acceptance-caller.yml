@@ -48,14 +48,14 @@ jobs:
           [[ "$harness_sha" == "$REVIEWED_HARNESS_SHA" ]]
           git cat-file -e "${REVIEWED_HARNESS_SHA}:.github/workflows/rc19-w4-hosted-application-acceptance.yml"
           git show "${REVIEWED_HARNESS_SHA}:.github/workflows/rc19-w4-hosted-application-acceptance.yml" \
-          | grep -Eq 'rc19-w4-application-acceptance/v2' || {
+          | grep -E 'rc19-w4-application-acceptance/v2' >/dev/null || {
               echo "::error::Pinned harness does not implement the v2 acceptance contract"; exit 1;
             }
           [[ "$(tr -d '[:space:]' < .github/rc19-w4-reviewed-application.sha)" == "$application_sha" ]]
           git cat-file -e "${application_sha}^{commit}"
           git cat-file -e "${application_sha}:scripts/rc19-w4-application-acceptance.mjs"
           git show "${application_sha}:scripts/rc19-w4-application-acceptance.mjs" \
-          | grep -Eq 'rc19-w4-application-acceptance/v2' || {
+          | grep -E 'rc19-w4-application-acceptance/v2' >/dev/null || {
               echo "::error::Reviewed application SHA does not implement the v2 acceptance report contract"; exit 1;
             }
           echo "application_sha=$application_sha" >> "$GITHUB_OUTPUT"
